@@ -332,8 +332,22 @@ func TestParsingInfixExpressions(t *testing.T) {
 		program := p.ParseProgram()
 		checkParserErrors(t, p)
 
-		// stmt := assert(t, "expectStmt2BExprStmt", program, 0).(*ast.ExpressionStatement)
-		assert(t, "expectStmt2BExprStmt", program, 0)
-		// exp, ok := stmt.Expression.(*ast.InfixExpression)
+		stmt := assert(t, "expectStmt2BExprStmt", program, 0).(*ast.ExpressionStatement)
+		exp, ok := stmt.Expression.(*ast.InfixExpression)
+		if !ok {
+			t.Fatalf("exp is not ast.InfixExpression. got=%T", stmt.Expression)
+		}
+
+		if !testIntegerLiteral(t, exp.Left, tt.leftValue) {
+			return
+		}
+
+		if exp.Operator != tt.operator {
+			t.Fatalf("exp.Operator is not '%s'. got=%s", tt.operator, exp.Operator)
+		}
+
+		if !testIntegerLiteral(t, exp.Right, tt.rightValue) {
+			return
+		}
 	}
 }
