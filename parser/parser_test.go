@@ -1,10 +1,12 @@
 package parser
 
 import (
+	// assrt "eyelang/assert"
 	"eyelang/ast"
 	"eyelang/lexer"
 	"eyelang/token"
 	"fmt"
+
 	// "fmt"
 	"testing"
 )
@@ -326,11 +328,16 @@ func TestParsingInfixExpressions(t *testing.T) {
 		{"5 != 5;", 5, "!=", 5},
 	}
 
+	// assertr := assrt.New(t)
+
 	for _, tt := range infixTests {
 		l := lexer.New(tt.input)
 		p := New(l)
 		program := p.ParseProgram()
 		checkParserErrors(t, p)
+
+		// fmt.Println(program)
+		// assertr.Expect(program.Statements[0]).Type(ast.ExpressionStatement{})
 
 		stmt := assert(t, "expectStmt2BExprStmt", program, 0).(*ast.ExpressionStatement)
 		exp, ok := stmt.Expression.(*ast.InfixExpression)
