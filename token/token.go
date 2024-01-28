@@ -1,5 +1,7 @@
 package token
 
+import "fmt"
+
 type TokenType string
 
 type Token struct {
@@ -9,6 +11,10 @@ type Token struct {
 		Row int
 		Col int
 	}
+}
+
+func (tok *Token) PositionString() string {
+	return fmt.Sprintf("(row: %d, column: %d)", tok.Position.Row, tok.Position.Col)
 }
 
 func (tok *Token) UpdatePosition(row, col int) {

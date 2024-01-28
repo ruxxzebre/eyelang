@@ -525,6 +525,18 @@ func TestOperatorPrecedenceParsing(t *testing.T) {
 			"!(true == true)",
 			"(!(true == true))",
 		},
+		{
+			"a + add(b * c) + d",
+			"((a + add((b * c))) + d)",
+		},
+		{
+			"add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+			"add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+		},
+		{
+			"add(a + b + c * d / f + g)",
+			"add((((a + b) + ((c * d) / f)) + g))",
+		},
 	}
 
 	for _, tt := range tests {
@@ -618,5 +630,109 @@ func TestIfElseStatement(t *testing.T) {
 }
 
 func TestFunctionLiteralParsing(t *testing.T) {
-	t.FailNow()
+	input := `fn(x, y) { x + y; }`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	assert(t, "programStmtLenEq", program, 1)
+	stmt := assert(t, "expectStmt2BExprStmt", program, 0).(*ast.ExpressionStatement)
+
+	function, ok := stmt.Expression.(*ast.FunctionLiteral)
+	if !ok {
+		t.Fatalf("stmt.Expression is not *ast.FunctionLiteral. got=%T", stmt.Expression)
+	}
+
+	if len(function.Parameters) != 2 {
+		t.Fatalf("expected function to have 2 parameters. got=%d", len(function.Parameters))
+	}
+
+	testLiteralExpression(t, function.Parameters[0], "x")
+	testLiteralExpression(t, function.Parameters[1], "y")
+
+	if len(function.Body.Statements) != 1 {
+		t.Fatalf("function.Body.Statements has not 1 statements. got=%d\n",
+			len(function.Body.Statements))
+	}
+
+	bodyStmt, ok := function.Body.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("function body stmt is not ast.ExpressionStatement. got=%T",
+			function.Body.Statements[0])
+	}
+
+	testInfixExpression(t, bodyStmt.Expression, "x", "+", "y")
+}
+
+func TestFunctionParameterParsing(t *testing.T) {
+	tests := []struct {
+		input          string
+		expectedParams []string
+	}{
+		{input: "fn() {};", expectedParams: []string{}},
+		{input: "fn(x) {};", expectedParams: []string{"x"}},
+		{input: "fn(x, y, z) {};", expectedParams: []string{"x", "y", "z"}},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		checkParserErrors(t, p)
+
+		program := p.ParseProgram()
+
+		assert(t, "programStmtLenEq", program, 1)
+		stmt := assert(t, "expectStmt2BExprStmt", program, 0).(*ast.ExpressionStatement)
+
+		funcStmt, ok := stmt.Expression.(*ast.FunctionLiteral)
+		if !ok {
+			t.Errorf("expected stmt.Expression to be *ast.FunctionLiteral. got=%T", stmt.Expression)
+		}
+
+		if len(funcStmt.Parameters) != len(tt.expectedParams) {
+			t.Errorf("expected to have %d params. got=%d", len(tt.expectedParams), len(funcStmt.Parameters))
+		}
+
+		for i, ident := range tt.expectedParams {
+			testLiteralExpression(t, funcStmt.Parameters[i], ident)
+		}
+
+		// for idx, param := range funcStmt.Parameters {
+		// 	if param.Value != tt.expectedParams[idx] {
+		// 		t.Errorf("expected funcStmt.Parameters[%d] to be %s. got=%s", idx, tt.expectedParams[idx], param.Value)
+		// 	}
+		// }
+	}
+}
+
+func TestCallExpression(t *testing.T) {
+	input := "add(1, 2 * 3, 4 + 5);"
+
+	l := lexer.New(input)
+	p := New(l)
+	checkParserErrors(t, p)
+
+	program := p.ParseProgram()
+
+	assert(t, "programStmtLenEq", program, 1)
+	stmt := assert(t, "expectStmt2BExprStmt", program, 0).(*ast.ExpressionStatement)
+
+	callExpr, ok := stmt.Expression.(*ast.CallExpression)
+	if !ok {
+		t.Errorf("expected stmt.Expression to be *ast.CallExpression. got=%T", callExpr)
+	}
+
+	if !testIdentifier(t, callExpr.Function, "add") {
+		return
+	}
+
+	if len(callExpr.Arguments) != 3 {
+		t.Errorf("expected callExpr.Arguments to have 3 args. got=%d", len(callExpr.Arguments))
+	}
+
+	testLiteralExpression(t, callExpr.Arguments[0], 1)
+	testInfixExpression(t, callExpr.Arguments[1], 2, "*", 3)
+	testInfixExpression(t, callExpr.Arguments[2], 4, "+", 5)
 }
