@@ -26,15 +26,21 @@ type (
 
 // TODO
 type ParsingError struct {
-	Type  string
-	Trace string
+	// Type string
+	// Trace string
+	Message string
+	Token   token.Token
+}
+
+func (pe *ParsingError) String() string {
+	return fmt.Sprintf("%s %s", pe.Message, pe.Token.PositionString())
 }
 
 type Parser struct {
 	l         *lexer.Lexer
 	curToken  token.Token
 	peekToken token.Token
-	errors    []string
+	errors    []ParsingError
 
 	prefixParseFns map[token.TokenType]prefixParseFn
 	infixParseFns  map[token.TokenType]infixParseFn
@@ -64,7 +70,7 @@ type infixParserTable = []struct {
 
 func New(l *lexer.Lexer) *Parser {
 	// t := tracer.New()
-	p := &Parser{l: l, errors: []string{}}
+	p := &Parser{l: l, errors: []ParsingError{}}
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
@@ -97,15 +103,15 @@ func New(l *lexer.Lexer) *Parser {
 	return p
 }
 
-func (p *Parser) Errors() []string {
+func (p *Parser) Errors() []ParsingError {
 	return p.errors
 }
 
-func (p *Parser) replaceError(idx int, err string) {
+func (p *Parser) replaceError(idx int, err ParsingError) {
 	p.errors[idx] = err
 }
 
-func (p *Parser) replaceLastError(err string) {
+func (p *Parser) replaceLastError(err ParsingError) {
 	p.errors[len(p.errors)-1] = err
 }
 
@@ -115,7 +121,10 @@ func (p *Parser) peekError(t token.TokenType) {
 		p.peekToken.Type,
 		p.peekToken.PositionString(),
 	)
-	p.errors = append(p.errors, msg)
+	p.errors = append(p.errors, ParsingError{
+		Message: msg,
+		Token:   p.peekToken,
+	})
 }
 
 func (p *Parser) registerPrefix(tokenType token.TokenType, fn prefixParseFn) {
@@ -185,15 +194,23 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
 
+	// expect peek advanced token too
+	// TODO: make function names more explicit
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
 
-	for !p.curTokenIs(token.SEMICOLON) {
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
 	}
 
 	return stmt
+	// for !p.curTokenIs(token.SEMICOLON) {
+	// 	p.nextToken()
+	// }
 }
 
 func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
@@ -203,7 +220,8 @@ func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
 
 	p.nextToken()
 
-	for !p.curTokenIs(token.SEMICOLON) {
+	stmt.ReturnValue = p.parseExpression(LOWEST)
+	if p.peekTokenIs(token.SEMICOLON) {
 		p.nextToken()
 	}
 
@@ -333,7 +351,10 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 	// so after that peek token should be ')'
 	if !p.expectPeek(token.RPAREN) {
 		msg := fmt.Sprintf("expected closing grouped expression. got=%s instead %s", p.peekToken.Literal, p.peekToken.PositionString())
-		p.replaceLastError(msg)
+		p.replaceLastError(ParsingError{
+			Message: msg,
+			Token:   p.peekToken,
+		})
 		return nil
 	}
 
@@ -348,7 +369,10 @@ func (p *Parser) parseIntegerLiteral() ast.Expression {
 	value, err := strconv.ParseInt(p.curToken.Literal, 0, 64)
 	if err != nil {
 		msg := fmt.Sprintf("could not parse %q as integer %s", p.curToken.Literal, p.curToken.PositionString())
-		p.errors = append(p.errors, msg)
+		p.errors = append(p.errors, ParsingError{
+			Message: msg,
+			Token:   p.curToken,
+		})
 		return nil
 	}
 
@@ -459,7 +483,10 @@ func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
 	msg := fmt.Sprintf("no prefix parse function for %s found %s", t, p.curToken.PositionString())
-	p.errors = append(p.errors, msg)
+	p.errors = append(p.errors, ParsingError{
+		Message: msg,
+		Token:   p.curToken,
+	})
 }
 
 func (p *Parser) parseStatement() ast.Statement {
