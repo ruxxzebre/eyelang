@@ -2,7 +2,9 @@ package repl
 
 import (
 	"bufio"
+	"eyelang/eval"
 	"eyelang/lexer"
+	"eyelang/object"
 	"eyelang/parser"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ const PROMPT = ">> "
 
 func Start(in io.Reader, out io.Writer) {
 	scanner := bufio.NewScanner(in)
+	env := object.NewEnvironment()
 
 	for {
 		_, err := fmt.Fprint(out, PROMPT)
@@ -36,8 +39,13 @@ func Start(in io.Reader, out io.Writer) {
 			continue
 		}
 
-		io.WriteString(out, program.String())
-		io.WriteString(out, "\n")
+		// io.WriteString(out, program.String())
+		// io.WriteString(out, fmt.Sprintf("%#v\n", program))
+		evaluated := eval.Eval(program, env)
+		if evaluated != nil {
+			fmt.Print(evaluated.Inspect())
+			io.WriteString(out, "\n")
+		}
 	}
 }
 
