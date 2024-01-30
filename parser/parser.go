@@ -84,6 +84,7 @@ func New(l *lexer.Lexer) *Parser {
 		{token.FALSE, p.parseBooleanExpression},
 		{token.BANG, p.parsePrefixExpression},
 		{token.MINUS, p.parsePrefixExpression},
+		{token.STRING, p.parseStringLiteral},
 	})
 	p.registerInfixes(infixParserTable{
 		{token.LPAREN, p.parseCallExpression},
@@ -405,6 +406,11 @@ func (p *Parser) parseExpression(precedence int) ast.Expression {
 func (p *Parser) parseBooleanExpression() ast.Expression {
 	defer untrace(trace("parseBooleanExpression"))
 	return &ast.Boolean{Token: p.curToken, Value: p.curTokenIs(token.TRUE)}
+}
+
+func (p *Parser) parseStringLiteral() ast.Expression {
+	defer untrace(trace("parseStringLiteral"))
+	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parsePrefixExpression() ast.Expression {

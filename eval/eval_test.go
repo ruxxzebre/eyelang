@@ -234,6 +234,10 @@ func TestErrorHandling(t *testing.T) {
 			"foobar",
 			"identifier not found: foobar",
 		},
+		{
+			`"foobar" * "world"`,
+			"unknown operator: STRING * STRING",
+		},
 	}
 
 	for idx, tt := range tests {
@@ -325,4 +329,53 @@ func TestClosures(t *testing.T) {
 	`
 	evaluated := testEval(input)
 	testIntegerObject(t, evaluated, 12)
+}
+
+func TestStringLiteral(t *testing.T) {
+	input := `"Hello World!"`
+	evaluated := testEval(input)
+	str, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("expected evaluated to be *object.String. got=%T", evaluated)
+	}
+
+	if str.Value != "Hello World!" {
+		t.Fatalf("expected evaluated.Value to be \"Hello World!\". got=%s", str.Value)
+	}
+}
+
+func TestStringConcat(t *testing.T) {
+	input := `"Hello" + " " + "World!"`
+	evaluated := testEval(input)
+	str, ok := evaluated.(*object.String)
+	if !ok {
+		t.Fatalf("expected evaluated to be *object.String. got=%T (%+v)", evaluated, evaluated)
+	}
+
+	if str.Value != "Hello World!" {
+		t.Fatalf("expected evaluated.Value to be \"Hello World!\". got=%s", str.Value)
+	}
+}
+
+func TestStringComparison(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`"foo" == "foo"`, true},
+		{`"foo" != "foo"`, false},
+		{`"foo" != "bar"`, true},
+		{`"foo" == "bar"`, false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		bl, ok := evaluated.(*object.Boolean)
+		if !ok {
+			t.Fatalf("expected evaluated to be *object.Boolean. got=%T", evaluated)
+		}
+		if bl.Value != tt.expected {
+			t.Fatalf("expected %t. got=%t", tt.expected, bl.Value)
+		}
+	}
 }

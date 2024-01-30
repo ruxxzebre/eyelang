@@ -757,3 +757,32 @@ func TestCallExpression(t *testing.T) {
 	testInfixExpression(t, callExpr.Arguments[1], 2, "*", 3)
 	testInfixExpression(t, callExpr.Arguments[2], 4, "+", 5)
 }
+
+func TestStringLiterals(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`"foobar";`, "foobar"},
+		{`"foo bar";`, "foo bar"},
+		{`"very nice eyes 🥲?";`, "very nice eyes 🥲?"},
+	}
+
+	for _, tt := range tests {
+
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+
+		checkParserErrors(t, p)
+
+		expr := program.Statements[0].(*ast.ExpressionStatement).Expression
+		str, ok := expr.(*ast.StringLiteral)
+		if !ok {
+			t.Fatalf("expected expr to be *ast.StringLiteral. got=%T", expr)
+		}
+		if str.Value != tt.expected {
+			t.Fatalf("expected expr.Value to be '%s'. got='%s'", tt.expected, str.Value)
+		}
+	}
+}
