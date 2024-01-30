@@ -48,7 +48,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return args[0]
 		}
 
-		return NULL
+		return applyFunction(function, args)
 	case *ast.FunctionLiteral:
 		params := node.Parameters
 		body := node.Body
@@ -286,4 +286,32 @@ func evalExpressions(nodes []ast.Expression, env *object.Environment) []object.O
 	}
 
 	return result
+}
+
+func extendFunctionEnv(fn *object.Function, args []object.Object) *object.Environment {
+	env := object.NewEnclosedEnvironment(fn.Env)
+
+	for idx, param := range fn.Parameters {
+		env.Set(param.Value, args[idx])
+	}
+
+	return env
+}
+
+func unwrapReturnValue(obj object.Object) object.Object {
+	if returnValue, ok := obj.(*object.ReturnValue); ok {
+		return returnValue.Value
+	}
+	return obj
+}
+
+func applyFunction(obj object.Object, args []object.Object) object.Object {
+	function, ok := obj.(*object.Function)
+	if !ok {
+		return newError("not a function: %s", obj.Type())
+	}
+
+	extendedEnv := extendFunctionEnv(function, args)
+	evaludated := Eval(function.Body, extendedEnv)
+	return unwrapReturnValue(evaludated)
 }

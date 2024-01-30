@@ -6,3 +6,4 @@ let add = fn (a, b) {
 }
 
 let result = add(five, ten)
+result

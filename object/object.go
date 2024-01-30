@@ -76,7 +76,7 @@ func (fn *Function) Inspect() string {
 	}
 
 	out.WriteString("fn(" + strings.Join(params, ", ") + ") {\n")
-	out.WriteString(fn.Body.String())
+	out.WriteString("\t" + fn.Body.String())
 	out.WriteString("\n}")
 
 	return out.String()
