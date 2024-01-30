@@ -80,6 +80,7 @@ func New(l *lexer.Lexer) *Parser {
 		{token.INT, p.parseIntegerLiteral},
 		{token.IF, p.parseIfExpression},
 		{token.LPAREN, p.parseGroupedExpression},
+		{token.LBRACKET, p.parseArrayLiteral},
 		{token.TRUE, p.parseBooleanExpression},
 		{token.FALSE, p.parseBooleanExpression},
 		{token.BANG, p.parsePrefixExpression},
@@ -523,4 +524,35 @@ func (p *Parser) ParseProgram() *ast.Program {
 	}
 
 	return program
+}
+
+func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
+	list := []ast.Expression{}
+
+	if p.peekTokenIs(end) {
+		p.nextToken()
+		return list
+	}
+
+	p.nextToken()
+	list = append(list, p.parseExpression(LOWEST))
+
+	for p.peekTokenIs(token.COMMA) {
+		p.nextToken()
+		p.nextToken()
+		list = append(list, p.parseExpression(LOWEST))
+	}
+
+	if !p.expectPeek(end) {
+		// TODO: error
+		return nil
+	}
+
+	return list
+}
+
+func (p *Parser) parseArrayLiteral() ast.Expression {
+	array := &ast.ArrayLiteral{Token: p.curToken}
+	array.Elements = p.parseExpressionList(token.RBRACKET)
+	return array
 }
