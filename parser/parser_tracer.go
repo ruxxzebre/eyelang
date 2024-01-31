@@ -8,7 +8,9 @@ import (
 var traceLevel = 0
 var silentTrace = true
 
-const traceIdentPlaceholder = "\t"
+const traceIdentPlaceholder = "  "
+
+// const traceIdentPlaceholder = "\t"
 
 func muteTracer() {
 	silentTrace = true

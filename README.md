@@ -14,3 +14,9 @@ Hey username! Welcome to Eye Language REPL
 > go run . "./example.eye"
 15
 ```
+
+# TODOs
+
+- keyword arguments/lists
+- Option<type> instead on NULL
+- Type system

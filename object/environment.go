@@ -29,3 +29,14 @@ func NewEnclosedEnvironment(outer *Environment) *Environment {
 	env.outer = outer
 	return env
 }
+
+func (env *Environment) Load(from *Environment) {
+	panic("deprecated")
+
+	for key, value := range from.store {
+		env.store[key] = value
+	}
+
+	from.outer = nil
+	from.store = nil
+}

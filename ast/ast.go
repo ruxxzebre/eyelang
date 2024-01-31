@@ -3,6 +3,7 @@ package ast
 import (
 	"bytes"
 	"eyelang/token"
+	"reflect"
 	"strings"
 )
 
@@ -293,5 +294,44 @@ func (al *ArrayLiteral) String() string {
 	out.WriteString(strings.Join(elements, ", "))
 
 	out.WriteString("]")
+	return out.String()
+}
+
+type IndexExpression struct {
+	Token token.Token
+	Left  Expression
+	Index Expression
+}
+
+func (ie *IndexExpression) expressionNode()      {}
+func (ie *IndexExpression) TokenLiteral() string { return ie.Token.Literal }
+func (ie *IndexExpression) String() string {
+	var out bytes.Buffer
+
+	out.WriteString("(")
+	out.WriteString(ie.Left.String())
+	out.WriteString("[")
+	out.WriteString(ie.Index.String())
+	out.WriteString("])")
+
+	return out.String()
+}
+
+func DebugAst(node interface{}) string {
+	var out bytes.Buffer
+
+	reflect.ValueOf(node)
+	switch node := node.(type) {
+	case Program:
+		for _, stmt := range node.Statements {
+			out.WriteString(DebugAst(stmt))
+		}
+	}
+
+	expr, ok := node.(Expression)
+	if ok {
+		out.WriteString(expr.String())
+	}
+
 	return out.String()
 }

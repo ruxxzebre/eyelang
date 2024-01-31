@@ -19,6 +19,8 @@ const (
 	FUNCTION_OBJ     = "FUNCTION"
 	STRING_OBJ       = "STRING"
 	BUILTIN_OBJ      = "BUILTIN"
+	ARRAY_OBJ        = "ARRAY"
+	MACRO_OBJ        = "MACRO"
 )
 
 type Object interface {
@@ -94,7 +96,7 @@ func (st *String) Inspect() string { return st.Value }
 
 func (st *String) Type() ObjectType { return STRING_OBJ }
 
-type BuiltinFunction func(args ...Object) Object
+type BuiltinFunction func(env *Environment, args ...Object) Object
 
 type Builtin struct {
 	Fn BuiltinFunction
@@ -103,3 +105,32 @@ type Builtin struct {
 func (b *Builtin) Inspect() string { return "builtin function" }
 
 func (b *Builtin) Type() ObjectType { return BUILTIN_OBJ }
+
+// type MacroFunction func(env *Environment, evaluator func(node ast.Node, env *Environment) Object) Object
+type Macro struct {
+	Name string
+}
+
+func (m *Macro) Inspect() string  { return fmt.Sprintf("[macro::%s]", m.Name) }
+func (m *Macro) Type() ObjectType { return MACRO_OBJ }
+
+type Array struct {
+	Elements []Object
+}
+
+func (a *Array) Inspect() string {
+	elements := []string{}
+	for _, el := range a.Elements {
+		elements = append(elements, el.Inspect())
+	}
+
+	var out bytes.Buffer
+
+	out.WriteString("[")
+	out.WriteString(strings.Join(elements, ", "))
+	out.WriteString("]")
+
+	return out.String()
+}
+
+func (a *Array) Type() ObjectType { return ARRAY_OBJ }

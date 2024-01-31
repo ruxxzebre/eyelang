@@ -85,6 +85,26 @@ func testBooleanObject(t *testing.T, obj object.Object, expected bool) bool {
 	return true
 }
 
+func testFunctionObject(t *testing.T, obj object.Object) bool {
+	_, ok := obj.(*object.Function)
+	return ok
+}
+
+func testStringObject(t *testing.T, obj object.Object, expected string) bool {
+	result, ok := obj.(*object.String)
+	if !ok {
+		t.Errorf("object is not String. got=%T (%+v)", obj, obj)
+		return false
+	}
+
+	if result.Value != expected {
+		t.Errorf("expected Value to be %s. got=%s", expected, result.Value)
+		return false
+	}
+
+	return true
+}
+
 func testIntegerObject(t *testing.T, obj object.Object, expected int64) bool {
 	result, ok := obj.(*object.Integer)
 	if !ok {
@@ -407,6 +427,100 @@ func TestBuiltinFunctions(t *testing.T) {
 			if errObj.Message != expected {
 				t.Fatalf("expected error to be '%s'. got='%s'", tt.expected, errObj.Message)
 			}
+		}
+	}
+}
+
+func TestArrayLiterals(t *testing.T) {
+	input := "[1 + 2, 6 * 9, \"strings are expensive\", fn () {}]"
+	evaluated := testEval(input)
+
+	arr, ok := evaluated.(*object.Array)
+	if !ok {
+		t.Fatalf("expected *object.Array. got=%T", evaluated)
+	}
+
+	testIntegerObject(t, arr.Elements[0], 3)
+	testIntegerObject(t, arr.Elements[1], 54)
+	testStringObject(t, arr.Elements[2], "strings are expensive")
+	testFunctionObject(t, arr.Elements[3])
+}
+
+func TestArrayIndexExpressions(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{
+			"[1, 2, 3][0]",
+			1,
+		},
+		{
+			"[1, 2, 3][1]",
+			2,
+		},
+		{
+			"[1, 2, 3][2]",
+			3,
+		},
+		{
+			"let i = 0; [1][i];",
+			1,
+		},
+		{
+			"[1, 2, 3][1 + 1];",
+			3,
+		},
+		{
+			"let myArray = [1, 2, 3]; myArray[2];",
+			3,
+		},
+		{
+			"let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+			6,
+		},
+		{
+			"let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]",
+			2,
+		},
+		{
+			"[1, 2, 3][3]",
+			nil,
+		},
+		{
+			"[1, 2, 3][-1]",
+			nil,
+		},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		integer, ok := tt.expected.(int)
+		if ok {
+			testIntegerObject(t, evaluated, int64(integer))
+		} else if !isError(evaluated) {
+			t.Fatalf("expected error. got=%T", evaluated)
+		}
+	}
+}
+
+func TestBuiltins(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"len(\"hello\")", "5"},
+		{"first([1,2,3])", "1"},
+		{"last([1,2,3])", "3"},
+		{"rest([1,2,3])", "[2, 3]"},
+		{"push([1,2,3], 6)", "[2, 3, 6]"},
+	}
+
+	for _, tt := range tests {
+		evaludated := testEval(tt.expected)
+
+		if evaludated.Inspect() != tt.expected {
+			t.Fatalf("expected %s. got=%s", tt.expected, evaludated.Inspect())
 		}
 	}
 }

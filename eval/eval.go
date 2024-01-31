@@ -2,33 +2,20 @@ package eval
 
 import (
 	"eyelang/ast"
+	"eyelang/lexer"
 	"eyelang/object"
+	"eyelang/parser"
 	"fmt"
 	"go/token"
+	"os"
 )
 
 var (
-	TRUE  = &object.Boolean{Value: true}
-	FALSE = &object.Boolean{Value: false}
-	NULL  = &object.Null{}
+	TRUE       = &object.Boolean{Value: true}
+	FALSE      = &object.Boolean{Value: false}
+	NULL       = &object.Null{}
+	LOAD_MACRO = &object.Macro{Name: "load"}
 )
-
-var builtins = map[string]*object.Builtin{
-	"len": {
-		Fn: func(args ...object.Object) object.Object {
-			if len(args) != 1 {
-				return newError("wrong number of arguments. expected=%d. got=%d", 1, len(args))
-			}
-
-			switch arg := args[0].(type) {
-			case *object.String:
-				return &object.Integer{Value: int64(len(arg.Value))}
-			default:
-				return newError("argument to `len` is not supported. got=%s", args[0].Type())
-			}
-		},
-	},
-}
 
 type EvalError struct {
 	Token   token.Token
@@ -48,6 +35,33 @@ func newError(format string, a ...interface{}) *object.Error {
 	return &object.Error{Message: fmt.Sprintf(format, a...)}
 }
 
+func loadFromString(file string, env *object.Environment) {
+	l := lexer.New(string(file))
+	p := parser.New(l)
+	program := p.ParseProgram()
+
+	Eval(program, env)
+}
+
+func isMacro(obj object.Object) bool {
+	return obj == LOAD_MACRO
+}
+
+func evalMacro(evaluation object.Object, args []object.Object, env *object.Environment) object.Object {
+	switch evaluation {
+	case LOAD_MACRO:
+		filepath := args[0].(*object.String).Value
+		file, err := os.ReadFile(filepath)
+		if err != nil {
+			return newError("file not found")
+		}
+		loadFromString(string(file), env)
+		return evaluation
+	}
+
+	return newError("macro not found")
+}
+
 func Eval(node ast.Node, env *object.Environment) object.Object {
 	switch node := node.(type) {
 	case *ast.Program:
@@ -65,7 +79,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return args[0]
 		}
 
-		return applyFunction(function, args)
+		return applyFunction(function, args, env)
 	case *ast.FunctionLiteral:
 		params := node.Parameters
 		body := node.Body
@@ -108,12 +122,30 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 
 		env.Set(node.Name.Value, val)
 		return val
+	case *ast.ArrayLiteral:
+		elements := evalExpressions(node.Elements, env)
+		if len(elements) == 1 && isError(elements[0]) {
+			return elements[0]
+		}
+		return &object.Array{Elements: elements}
 	case *ast.ReturnStatement:
 		val := Eval(node.ReturnValue, env)
 		if isError(val) {
 			return val
 		}
 		return &object.ReturnValue{Value: val}
+	case *ast.IndexExpression:
+		left := Eval(node.Left, env)
+		if isError(left) {
+			return left
+		}
+
+		right := Eval(node.Index, env)
+		if isError(right) {
+			return right
+		}
+
+		return evalIndexExpression(left, right)
 	}
 
 	return nil
@@ -346,10 +378,17 @@ func unwrapReturnValue(obj object.Object) object.Object {
 	return obj
 }
 
-func applyFunction(fn object.Object, args []object.Object) object.Object {
+func applyFunction(fn object.Object, args []object.Object, env *object.Environment) object.Object {
 	switch fn := fn.(type) {
 	case *object.Builtin:
-		return fn.Fn(args...)
+		result := fn.Fn(env, args...)
+
+		if isMacro(result) {
+			return evalMacro(result, args, env)
+		}
+
+		return result
+
 	case *object.Function:
 		extendedEnv := extendFunctionEnv(fn, args)
 		evaludated := Eval(fn.Body, extendedEnv)
@@ -357,4 +396,29 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 	default:
 		return newError("not a function: %s", fn.Type())
 	}
+}
+
+func evalIndexExpression(left, right object.Object) object.Object {
+	switch {
+	case left.Type() == object.ARRAY_OBJ && right.Type() == object.INTEGER_OBJ:
+		return evalArrayIndexExpression(left, right)
+	default:
+		return newError("index operator not supported for: %s", left.Type())
+	}
+}
+
+func evalArrayIndexExpression(left, right object.Object) object.Object {
+	arr := left.(*object.Array)
+	idx := right.(*object.Integer).Value
+	max := int64(len(arr.Elements) - 1)
+
+	if idx > max {
+		return newError("index above array limit. at least=%d. got=%d", len(arr.Elements), int(idx))
+	}
+
+	if idx < 0 {
+		return newError("index cannot be < 0. got=%d", idx)
+	}
+
+	return arr.Elements[idx]
 }
