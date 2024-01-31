@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"eyelang/ast"
 	"fmt"
+	"hash/fnv"
 	"strings"
 )
 
@@ -21,12 +22,24 @@ const (
 	BUILTIN_OBJ      = "BUILTIN"
 	ARRAY_OBJ        = "ARRAY"
 	MACRO_OBJ        = "MACRO"
+	HASH_OBJ         = "HASH"
 )
+
+type HashKey struct {
+	Type  ObjectType
+	Value uint64
+}
 
 type Object interface {
 	Type() ObjectType
 	Inspect() string
 }
+
+type Hashable interface {
+	HashKey() HashKey
+}
+
+var hashKeyCache = map[uint64]HashKey{}
 
 type Error struct {
 	Message string
@@ -43,6 +56,13 @@ func (i *Integer) Inspect() string { return fmt.Sprintf("%d", i.Value) }
 
 func (i *Integer) Type() ObjectType { return INTEGER_OBJ }
 
+func (i *Integer) HashKey() HashKey {
+	return HashKey{
+		Type:  STRING_OBJ,
+		Value: uint64(i.Value), // TODO: wtf if less then 0
+	}
+}
+
 type Boolean struct {
 	Value bool
 }
@@ -50,6 +70,18 @@ type Boolean struct {
 func (b *Boolean) Inspect() string { return fmt.Sprintf("%t", b.Value) }
 
 func (b *Boolean) Type() ObjectType { return BOOLEAN_OBJ }
+
+func (b *Boolean) HashKey() HashKey {
+	var val uint64 = 0
+	if b.Value {
+		val = 1
+	}
+
+	return HashKey{
+		Type:  b.Type(),
+		Value: val,
+	}
+}
 
 type Null struct{}
 
@@ -96,6 +128,16 @@ func (st *String) Inspect() string { return st.Value }
 
 func (st *String) Type() ObjectType { return STRING_OBJ }
 
+func (st *String) HashKey() HashKey {
+	h := fnv.New64a()
+	h.Write([]byte(st.Value))
+
+	return HashKey{
+		Type:  STRING_OBJ,
+		Value: h.Sum64(),
+	}
+}
+
 type BuiltinFunction func(env *Environment, args ...Object) Object
 
 type Builtin struct {
@@ -134,3 +176,30 @@ func (a *Array) Inspect() string {
 }
 
 func (a *Array) Type() ObjectType { return ARRAY_OBJ }
+
+type HashPair struct {
+	Key   Object
+	Value Object
+}
+
+type Hash struct {
+	Pairs map[HashKey]HashPair
+}
+
+func (h *Hash) Type() ObjectType { return HASH_OBJ }
+
+func (h *Hash) Inspect() string {
+	var out bytes.Buffer
+
+	pairs := []string{}
+
+	for _, pair := range h.Pairs {
+		pairs = append(pairs, fmt.Sprintf("%s: %s", pair.Key.Inspect(), pair.Value.Inspect()))
+	}
+
+	out.WriteString("{")
+	out.WriteString(strings.Join(pairs, ", "))
+	out.WriteString("}")
+
+	return out.String()
+}

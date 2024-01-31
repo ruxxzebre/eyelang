@@ -6,6 +6,7 @@ import (
 	"eyelang/lexer"
 	"eyelang/token"
 	"fmt"
+
 	// "fmt"
 	"testing"
 )
@@ -235,6 +236,8 @@ func testIdentifier(t *testing.T, exp ast.Expression, value string) bool {
 	return true
 }
 
+type IDENT string // ?
+
 func testLiteralExpression(t *testing.T, exp ast.Expression, expected any) bool {
 	switch v := expected.(type) {
 	case int:
@@ -242,7 +245,13 @@ func testLiteralExpression(t *testing.T, exp ast.Expression, expected any) bool 
 	case int64:
 		return testIntegerLiteral(t, exp, v)
 	case string:
-		return testIdentifier(t, exp, v)
+		return testIdentifier(t, exp, string(v))
+	case IDENT:
+		str, ok := exp.(*ast.StringLiteral)
+		if !ok {
+			t.Errorf("expected *ast.StringLiteral. got=%T", exp)
+		}
+		return str.Value == string(v)
 	case bool:
 		return testBooleanLiteral(t, exp, v)
 	}
@@ -836,5 +845,113 @@ func TestParsingIndexExpressions(t *testing.T) {
 	}
 	if !testInfixExpression(t, ie.Index, 1, "+", 2) {
 		return
+	}
+}
+
+func TestParsingHashLiteralsStringKeys(t *testing.T) {
+	input := `{"one": 1, "two": 2, "three": 3}`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	expr, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not *ast.Expression. got=%T", program.Statements[0])
+	}
+
+	hash, ok := expr.Expression.(*ast.HashLiteral)
+	expected := map[string]int64{
+		"one":   1,
+		"two":   2,
+		"three": 3,
+	}
+
+	if len(hash.Pairs) != 3 {
+		t.Fatalf("expected hash.Pairs to have 3 kv pairs. got=%T", len(hash.Pairs))
+	}
+
+	for key, value := range hash.Pairs {
+		if val, ok := expected[key.String()]; !ok {
+			t.Fatalf("expected not to have %s key", key.String())
+		} else {
+			if value.String() != fmt.Sprint(val) {
+				t.Fatalf("expected to equal %s %d", value.String(), val)
+			}
+		}
+	}
+}
+
+func TestParsingEmptyHashLiteral(t *testing.T) {
+	input := "{}"
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExpressionStatement)
+	expr, ok := stmt.Expression.(*ast.HashLiteral)
+
+	if !ok {
+		t.Fatalf("expected stmt.Expression to be *ast.HashLiteral. got=%T", stmt.Expression)
+	}
+
+	if len(expr.Pairs) != 0 {
+		t.Fatalf("expected expr.Pairs to have 0 entries. got=%T", expr.Pairs)
+	}
+}
+
+func TestHashLiteralWithExpressions(t *testing.T) {
+	unmuteTracer()
+	defer muteTracer()
+	input := `{"one": 1 + 1, "two": 6 * 9, "three": "two" + "two"}`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	expr, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not *ast.Expression. got=%T", program.Statements[0])
+	}
+
+	hash, ok := expr.Expression.(*ast.HashLiteral)
+	expected := map[string][]interface{}{
+		"one":   {"(1 + 1)", 1, "+", 1},
+		"two":   {"(6 * 9)", 6, "*", 9},
+		"three": {"(two + two)", IDENT("two"), "+", IDENT("two")},
+	}
+
+	if len(hash.Pairs) != 3 {
+		t.Fatalf("expected hash.Pairs to have 3 kv pairs. got=%T", len(hash.Pairs))
+	}
+
+	for key, value := range hash.Pairs {
+		fmt.Println(value)
+		if val, ok := expected[key.String()]; !ok {
+			t.Fatalf("expected not to have %s key", key.String())
+		} else {
+			if value.String() != val[0] {
+				t.Fatalf("expected to equal %s %s", value.String(), val)
+			}
+			str := val[2].(string)
+
+			isStr := false
+			if _, ok := val[1].(string); ok {
+				isStr = true
+			}
+
+			if isStr {
+				if !testInfixExpression(t, value, val[1].(IDENT), str, val[3].(IDENT)) {
+					return
+				}
+			} else {
+				if !testInfixExpression(t, value, val[1], str, val[3]) {
+					return
+				}
+			}
+
+		}
 	}
 }

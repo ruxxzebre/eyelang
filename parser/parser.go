@@ -88,6 +88,7 @@ func New(l *lexer.Lexer) *Parser {
 		{token.MINUS, p.parsePrefixExpression},
 		{token.STRING, p.parseStringLiteral},
 		{token.LBRACKET, p.parseArrayLiteral},
+		{token.LBRACE, p.parseHashLiteral},
 	})
 	p.registerInfixes(infixParserTable{
 		{token.LPAREN, p.parseCallExpression},
@@ -112,6 +113,13 @@ func (p *Parser) Errors() []ParsingError {
 	return p.errors
 }
 
+func (p *Parser) newError(format string, a ...interface{}) {
+	p.errors = append(p.errors, ParsingError{
+		Message: fmt.Sprintf(format, a...),
+		Token:   p.curToken,
+	})
+}
+
 func (p *Parser) replaceError(idx int, err ParsingError) {
 	p.errors[idx] = err
 }
@@ -121,7 +129,7 @@ func (p *Parser) replaceLastError(err ParsingError) {
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("expected next token to be %s, got=%s instead %s",
+	msg := fmt.Sprintf("expected next token to be '%s', got='%s' instead. %s",
 		t,
 		p.peekToken.Type,
 		p.peekToken.PositionString(),
@@ -575,4 +583,36 @@ func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
 	}
 
 	return ie
+}
+
+func (p *Parser) parseHashLiteral() ast.Expression {
+	hash := &ast.HashLiteral{Token: p.curToken}
+	hash.Pairs = map[ast.Expression]ast.Expression{}
+
+	for !p.peekTokenIs(token.RBRACE) {
+		p.nextToken()
+		key := p.parseExpression(LOWEST)
+
+		if !p.expectPeek(token.COLON) {
+			return nil
+		}
+
+		p.nextToken()
+		value := p.parseExpression(LOWEST)
+
+		hash.Pairs[key] = value
+
+		if !p.peekTokenIs(token.RBRACE) && !p.expectPeek(token.COMMA) {
+			// TODO parsing error
+			p.newError("expected %s or %s. got=%s", token.RBRACE, token.COMMA, p.curToken.Type)
+			return nil
+		}
+	}
+
+	if !p.expectPeek(token.RBRACE) {
+		// TODO parsing error
+		return nil
+	}
+
+	return hash
 }

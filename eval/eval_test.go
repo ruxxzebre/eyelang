@@ -4,6 +4,7 @@ import (
 	"eyelang/lexer"
 	"eyelang/object"
 	"eyelang/parser"
+	"fmt"
 	"testing"
 )
 
@@ -523,4 +524,78 @@ func TestBuiltins(t *testing.T) {
 			t.Fatalf("expected %s. got=%s", tt.expected, evaludated.Inspect())
 		}
 	}
+}
+
+func TestStringHashKey(t *testing.T) {
+	hello1 := &object.String{Value: "hello"}
+	hello2 := &object.String{Value: "hello"}
+	diff1 := &object.String{Value: "my name is skrillex"}
+	diff2 := &object.String{Value: "my name is skrillex"}
+
+	if hello1.HashKey() != hello2.HashKey() {
+		t.Errorf("strings with same content should have same hash keys")
+	}
+
+	if diff1.HashKey() != diff2.HashKey() {
+		t.Errorf("strings with same content should have same hash keys")
+	}
+
+	if hello1.HashKey() == diff1.HashKey() {
+		t.Errorf("strings with different content should differ")
+	}
+}
+
+func TestIntegerHashKey(t *testing.T) {
+	hello1 := &object.Integer{Value: 1}
+	hello2 := &object.Integer{Value: 1}
+	diff1 := &object.Integer{Value: 2}
+	diff2 := &object.Integer{Value: 2}
+
+	if hello1.HashKey() != hello2.HashKey() {
+		t.Errorf("integers with same value should have same hash keys")
+	}
+
+	if diff1.HashKey() != diff2.HashKey() {
+		t.Errorf("integers with same value should have same hash keys")
+	}
+
+	if hello1.HashKey() == diff1.HashKey() {
+		t.Errorf("integers with value content should differ")
+	}
+}
+
+func TestBooleanHashKey(t *testing.T) {
+	hello1 := &object.Boolean{Value: true}
+	hello2 := &object.Boolean{Value: true}
+	diff1 := &object.Boolean{Value: false}
+	diff2 := &object.Boolean{Value: false}
+
+	if hello1.HashKey() != hello2.HashKey() {
+		t.Errorf("same booleans should have same hash keys")
+	}
+
+	if diff1.HashKey() != diff2.HashKey() {
+		t.Errorf("same booleans should have same hash keys")
+	}
+
+	if hello1.HashKey() == diff1.HashKey() {
+		t.Errorf("different booleans should have different hash keys")
+	}
+}
+
+func TestHashKeysLog(t *testing.T) {
+	name1 := &object.String{Value: "name"}
+	monkey := &object.String{Value: "Monkey"}
+
+	pairs := map[object.HashKey]object.Object{}
+	pairs[name1.HashKey()] = monkey
+
+	fmt.Printf("pairs[name1.HashKey()]=%+v\n", pairs[name1.HashKey()])
+
+	name2 := &object.String{Value: "name"}
+
+	fmt.Printf("pairs[name2.HashKey()]=%+v\n", pairs[name2.HashKey()])
+	fmt.Printf("(name1 == name2)=%t\n", name1 == name2)
+	fmt.Printf("(name1.HashKey() == name2.HashKey())=%t\n", name1.HashKey() == name2.HashKey())
+
 }
