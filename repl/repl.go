@@ -31,7 +31,10 @@ func Start(in io.Reader, out io.Writer) {
 		}
 
 		line := scanner.Text()
-		l := lexer.New(line)
+		reader := strings.NewReader(line)
+		runeReader := bufio.NewReader(reader)
+
+		l := lexer.New_WIP(runeReader)
 		p := parser.New(l)
 		program := p.ParseProgram()
 		if len(p.Errors()) != 0 {
@@ -39,6 +42,7 @@ func Start(in io.Reader, out io.Writer) {
 			continue
 		}
 
+		// FOR DEBUG:
 		// io.WriteString(out, program.String())
 		// io.WriteString(out, fmt.Sprintf("%#v\n", program))
 		evaluated := eval.Eval(program, env)

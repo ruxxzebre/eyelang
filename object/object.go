@@ -39,7 +39,25 @@ type Hashable interface {
 	HashKey() HashKey
 }
 
-var hashKeyCache = map[uint64]HashKey{}
+// TODO:
+// Should it be cleared in separate routine? (ref counting?)
+// why it should be more performant btw???
+var hashKeyCache = map[ObjectType]map[uint64]HashKey{}
+
+func cacheHK(key uint64, typ ObjectType) HashKey {
+	if hasType, ok := hashKeyCache[typ]; ok {
+		if hasKey, ok := hasType[key]; ok {
+			return hasKey
+		}
+	}
+	if hashKeyCache[typ] == nil {
+		hashKeyCache[typ] = map[uint64]HashKey{}
+	}
+
+	hk := HashKey{Type: typ, Value: key}
+	hashKeyCache[typ][key] = hk
+	return hk
+}
 
 type Error struct {
 	Message string
@@ -57,10 +75,8 @@ func (i *Integer) Inspect() string { return fmt.Sprintf("%d", i.Value) }
 func (i *Integer) Type() ObjectType { return INTEGER_OBJ }
 
 func (i *Integer) HashKey() HashKey {
-	return HashKey{
-		Type:  STRING_OBJ,
-		Value: uint64(i.Value), // TODO: wtf if less then 0
-	}
+	// TODO: wtf if less then 0 btw
+	return cacheHK(uint64(i.Value), INTEGER_OBJ)
 }
 
 type Boolean struct {
@@ -77,10 +93,7 @@ func (b *Boolean) HashKey() HashKey {
 		val = 1
 	}
 
-	return HashKey{
-		Type:  b.Type(),
-		Value: val,
-	}
+	return cacheHK(val, BOOLEAN_OBJ)
 }
 
 type Null struct{}
@@ -132,10 +145,7 @@ func (st *String) HashKey() HashKey {
 	h := fnv.New64a()
 	h.Write([]byte(st.Value))
 
-	return HashKey{
-		Type:  STRING_OBJ,
-		Value: h.Sum64(),
-	}
+	return cacheHK(h.Sum64(), STRING_OBJ)
 }
 
 type BuiltinFunction func(env *Environment, args ...Object) Object

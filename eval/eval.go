@@ -146,9 +146,37 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 
 		return evalIndexExpression(left, right)
+	case *ast.HashLiteral:
+		hash := &object.Hash{}
+		pairs := map[object.HashKey]object.HashPair{}
+
+		for key, value := range node.Pairs {
+			left := Eval(key, env)
+			if isError(left) {
+				return left
+			}
+
+			right := Eval(value, env)
+			if isError(right) {
+				return right
+			}
+
+			hashed, ok := left.(object.Hashable)
+			if !ok {
+				return newError("unsupported hash key type: %T", left)
+			}
+
+			pairs[hashed.HashKey()] = object.HashPair{
+				Key:   left,
+				Value: right,
+			}
+		}
+
+		hash.Pairs = pairs
+		return hash
 	}
 
-	return nil
+	return newError("invalid type")
 }
 
 func evalProgram(node *ast.Program, env *object.Environment) object.Object {
@@ -402,8 +430,18 @@ func evalIndexExpression(left, right object.Object) object.Object {
 	switch {
 	case left.Type() == object.ARRAY_OBJ && right.Type() == object.INTEGER_OBJ:
 		return evalArrayIndexExpression(left, right)
+	case left.Type() == object.HASH_OBJ:
+		hashable, ok := right.(object.Hashable)
+		if ok {
+			hash := left.(*object.Hash)
+			if val, ok := hash.Pairs[hashable.HashKey()]; ok {
+				return val.Value
+			}
+			return NULL
+		}
+		return newError("hash index cannot be %s", right.Type())
 	default:
-		return newError("index operator not supported for: %s", left.Type())
+		return newError("index operator not supported for type: %s", left.Type())
 	}
 }
 

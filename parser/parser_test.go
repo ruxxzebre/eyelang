@@ -474,6 +474,7 @@ func TestParsingInfixExpressions(t *testing.T) {
 		l := lexer.New(tt.input)
 		p := New(l)
 		program := p.ParseProgram()
+		fmt.Println(program.Statements)
 		checkParserErrors(t, p)
 
 		stmt := assert(t, "expectStmt2BExprStmt", program, 0).(*ast.ExpressionStatement)
@@ -903,8 +904,8 @@ func TestParsingEmptyHashLiteral(t *testing.T) {
 }
 
 func TestHashLiteralWithExpressions(t *testing.T) {
-	unmuteTracer()
-	defer muteTracer()
+	// unmuteTracer()
+	// defer muteTracer()
 	input := `{"one": 1 + 1, "two": 6 * 9, "three": "two" + "two"}`
 	l := lexer.New(input)
 	p := New(l)
@@ -928,7 +929,6 @@ func TestHashLiteralWithExpressions(t *testing.T) {
 	}
 
 	for key, value := range hash.Pairs {
-		fmt.Println(value)
 		if val, ok := expected[key.String()]; !ok {
 			t.Fatalf("expected not to have %s key", key.String())
 		} else {

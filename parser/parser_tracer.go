@@ -11,7 +11,6 @@ var silentTrace = true
 const traceIdentPlaceholder = "  "
 
 // const traceIdentPlaceholder = "\t"
-
 func muteTracer() {
 	silentTrace = true
 }

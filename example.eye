@@ -76,3 +76,12 @@ puts(filter(
     [-1, 2, 4, 10, 0],
     fn (a) { a > 0 }
 ))
+
+
+let range = fn (from, to) {
+    let iter = fn (acum, curr) {
+        if (curr == to) { return acum }
+        else { return iter(push(acum, curr), curr + 1) };
+    }
+    iter([], from)
+}

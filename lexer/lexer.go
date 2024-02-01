@@ -1,13 +1,19 @@
 package lexer
 
 import (
+	"bufio"
+	"bytes"
 	"eyelang/token"
+	"io"
+	"strings"
 	"unicode"
+	"unicode/utf8"
 	// "unicode/utf8"
 )
 
 type Lexer struct {
-	input        []rune
+	// input        []rune
+	reader       *bufio.Reader
 	position     int
 	readPosition int
 	char         rune
@@ -18,7 +24,18 @@ type Lexer struct {
 }
 
 func New(input string) *Lexer {
-	l := &Lexer{input: []rune(input)}
+	// l := &Lexer{input: []rune(input)}
+	reader := strings.NewReader(input)
+	runeReader := bufio.NewReader(reader)
+	l := &Lexer{reader: runeReader}
+	l.textPosition.col = -1
+
+	l.readChar()
+	return l
+}
+
+func New_WIP(reader *bufio.Reader) *Lexer {
+	l := &Lexer{reader: reader}
 	l.textPosition.col = -1
 
 	l.readChar()
@@ -40,22 +57,34 @@ func isEmoji(char rune) bool {
 }
 
 func (l *Lexer) readChar() {
-	if l.readPosition >= len(l.input) {
+	rune, _, err := l.reader.ReadRune()
+
+	if err == io.EOF {
 		l.char = 0
 	} else {
-		l.char = l.input[l.readPosition]
+		if err != nil {
+			panic(err)
+		}
+		l.char = rune
 	}
+
 	l.position = l.readPosition
 	l.readPosition++
 	l.textPosition.col++
+	// if l.readPosition >= len(l.input) {
+	// 	l.char = 0
+	// } else {
+	// 	l.char = l.input[l.readPosition]
+	// }
 }
 
 func (l *Lexer) readNumber() string {
-	prevPos := l.position
+	var out bytes.Buffer
 	for isDigit(l.char) {
+		out.WriteRune(l.char)
 		l.readChar()
 	}
-	return string(l.input[prevPos:l.position])
+	return out.String()
 }
 
 func isSymbol(char rune) bool {
@@ -63,11 +92,12 @@ func isSymbol(char rune) bool {
 }
 
 func (l *Lexer) readIdentifier() string {
-	prevPos := l.position
+	var out bytes.Buffer
 	for isSymbol(l.char) {
+		out.WriteRune(l.char)
 		l.readChar()
 	}
-	return string(l.input[prevPos:l.position])
+	return out.String()
 }
 
 func newToken(tokenType token.TokenType, ch rune) token.Token {
@@ -84,12 +114,17 @@ func (l *Lexer) skipWhitespace() {
 	}
 }
 
+const PEEK_BYTES = 5
+
 func (l *Lexer) peekChar() rune {
-	if l.readPosition >= len(l.input) {
+	peekBytes, err := l.reader.Peek(PEEK_BYTES)
+	if err != nil && len(peekBytes) == 0 {
+		// TODO: LEXER ERROR
 		return 0
-	} else {
-		return l.input[l.readPosition]
 	}
+
+	rune, _ := utf8.DecodeRune(peekBytes)
+	return rune
 }
 
 func (l *Lexer) NextToken() token.Token {
@@ -176,7 +211,8 @@ func (l *Lexer) NextToken() token.Token {
 }
 
 func (l *Lexer) readString() string {
-	position := l.position + 1
+	var out bytes.Buffer
+
 	for {
 		l.readChar()
 		if l.char == '"' {
@@ -186,6 +222,7 @@ func (l *Lexer) readString() string {
 			// TODO: throw error
 			break
 		}
+		out.WriteRune(l.char)
 	}
-	return string(l.input[position:l.position])
+	return out.String()
 }

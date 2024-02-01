@@ -42,8 +42,6 @@ func copyArray(arr []object.Object) []object.Object {
 	return newArr
 }
 
-// func mergeArrays(arr1 []object.Object) // TODO
-
 var builtins = map[string]*object.Builtin{
 	"len": {
 		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
@@ -182,6 +180,25 @@ var builtins = map[string]*object.Builtin{
 	"load": {
 		Fn: func(_ *object.Environment, _args ...object.Object) object.Object {
 			return LOAD_MACRO
+		},
+	},
+	"import": {
+		Fn: func(_ *object.Environment, _args ...object.Object) object.Object {
+			return newError("not implemented")
+		},
+	},
+	"builtins2": {
+		Fn: func(_ *object.Environment, _args ...object.Object) object.Object {
+
+			builtinTable := `
+	puts
+	len first last rest push
+	printFile
+	load import
+	builtins
+			`
+
+			return &object.String{Value: builtinTable}
 		},
 	},
 }

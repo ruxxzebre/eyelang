@@ -1,5 +1,16 @@
 package object
 
+var BaseStore = map[string]Object{
+	"builtins": &String{
+		Value: `puts
+len first last rest push
+printFile
+load import
+builtins
+`,
+	},
+}
+
 type Environment struct {
 	store map[string]Object
 	outer *Environment
@@ -7,7 +18,10 @@ type Environment struct {
 
 func NewEnvironment() *Environment {
 	s := make(map[string]Object)
-	return &Environment{s, nil}
+	env := &Environment{s, nil}
+	env.loadStore(BaseStore)
+
+	return env
 }
 
 func (e *Environment) Get(name string) (Object, bool) {
@@ -31,12 +45,17 @@ func NewEnclosedEnvironment(outer *Environment) *Environment {
 }
 
 func (env *Environment) Load(from *Environment) {
-	panic("deprecated")
-
+	panic("unused")
 	for key, value := range from.store {
 		env.store[key] = value
 	}
 
-	from.outer = nil
-	from.store = nil
+	// from.outer = nil
+	// from.store = nil
+}
+
+func (env *Environment) loadStore(store map[string]Object) {
+	for key, value := range store {
+		env.store[key] = value
+	}
 }
