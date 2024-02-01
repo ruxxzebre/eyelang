@@ -68,6 +68,7 @@ func testEval(input string) object.Object {
 	p := parser.New(l)
 	program := p.ParseProgram()
 	env := object.NewEnvironment()
+	env.Load(initTestingScope().Outer)
 
 	return Eval(program, env)
 }
@@ -687,5 +688,47 @@ func TestHashIndexExpression(t *testing.T) {
 		} else {
 			testNullObject(t, evaluated)
 		}
+	}
+}
+
+func TestLoadMacro(t *testing.T) {
+	t.Skip()
+	// input := `let sc = load("test_data/quote.sc");`
+}
+
+func TestListsLib(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{"push([1, 2, 3], 66)", []int64{1, 2, 3, 66}},
+		{"rest([1, 2, 3])", []int64{2, 3}},
+		{"first([1, 2, 3])", 1},
+		{"last([1, 2, 3])", 3},
+	}
+
+	for _, tt := range tests {
+		expected := tt.expected.([]int64)
+		evaluated := testEval(tt.input)
+
+		arr, ok := evaluated.(*object.Array)
+		if ok {
+			if len(arr.Elements) != len(expected) {
+				t.Errorf("expected %d elements. got=%d", len(expected), len(arr.Elements))
+			}
+
+			for i, el := range arr.Elements {
+				testIntegerObject(t, el, expected[i])
+			}
+			return
+		}
+
+		num, ok := evaluated.(*object.Integer)
+		if ok {
+			testIntegerObject(t, evaluated, num.Value)
+			return
+		}
+
+		t.Fatalf("expected *object.Array or *object.Integer. got=%T", evaluated)
 	}
 }

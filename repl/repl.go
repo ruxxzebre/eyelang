@@ -44,6 +44,7 @@ func StartWithEnv(in io.Reader, out io.Writer, env *object.Environment) {
 		// FOR DEBUG:
 		// io.WriteString(out, program.String())
 		// io.WriteString(out, fmt.Sprintf("%#v\n", program))
+		// fmt.Println(env.Debug())
 		evaluated := eval.Eval(program, env)
 		if evaluated != nil {
 			fmt.Print(evaluated.Inspect())
@@ -59,22 +60,13 @@ func Start(in io.Reader, out io.Writer) {
 
 // TODO: polish when ILLEGAL (arrow up, etc)
 func printParserErrors(out io.Writer, errors []parser.ParsingError, line string) {
-	red := "\033[31m"
-	reset := "\033[0m"
+	// red := "\033[31m"
+	// reset := "\033[0m"
+	prompt := []rune(PROMPT)
 
-	prefix := "parsing error: "
-	defaultPad := "\t"
 	for _, error := range errors {
-		leftPadLen := len(PROMPT) + error.Token.Position.Col - 1
-		if leftPadLen >= len(prefix) {
-			leftPad := strings.Repeat(" ", leftPadLen-len(prefix))
-			io.WriteString(out, red+defaultPad+PROMPT+line+reset+"\n")
-			io.WriteString(out, defaultPad+prefix+leftPad+"↑ "+error.Message+"\n")
-		} else {
-			leftPad := strings.Repeat(" ", len(PROMPT)+error.Token.Position.Col-1)
-			io.WriteString(out, defaultPad+prefix+"\n")
-			io.WriteString(out, defaultPad+PROMPT+line+"\n")
-			io.WriteString(out, defaultPad+leftPad+"↑ "+error.Message+"\n")
-		}
+		leftPadLen := len(prompt) + error.Token.Position.Col - 1
+		leftPad := strings.Repeat(" ", leftPadLen)
+		io.WriteString(out, leftPad+"↑ "+error.Message+"\n")
 	}
 }

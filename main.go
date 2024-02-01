@@ -2,7 +2,7 @@ package main
 
 import (
 	"eyelang/cli"
-	"eyelang/object"
+	"eyelang/eval"
 	"eyelang/repl"
 	"flag"
 	"fmt"
@@ -16,13 +16,14 @@ func main() {
 		panic(err)
 	}
 
-	evalFileFlag := flag.String("evf", "", "evaluate a file")
-	evalStringFlag := flag.String("evs", "", "evaluate a string")
-	replFlag := flag.Bool("repl", false, "launch into repl")
+	evalFileFlag := flag.String("load", "", "evaluate a file")
+	evalStringFlag := flag.String("eval", "", "evaluate a string")
+	replFlag := flag.Bool("repl", true, "launch into repl, includes scopes from -load and -eval")
 
 	flag.Parse()
 
-	baseEnv := object.NewEnvironment()
+	replScope := eval.InitReplScope()
+	baseEnv := replScope.Outer
 
 	if *evalStringFlag != "" {
 		baseEnv.Load(cli.EvalString(*evalStringFlag))
@@ -32,14 +33,11 @@ func main() {
 		baseEnv.Load(cli.EvalFile(*evalFileFlag))
 	}
 
-	if *replFlag {
-		fmt.Printf("eyelang.init\n")
-		fmt.Printf("Hey %s! Welcome to Eye Language REPL\n", user.Username)
-		repl.StartWithEnv(os.Stdin, os.Stdout, baseEnv)
-		return
+	if !*replFlag {
+		return // exit
 	}
 
 	fmt.Printf("eyelang.init\n")
 	fmt.Printf("Hey %s! Welcome to Eye Language REPL\n", user.Username)
-	repl.Start(os.Stdin, os.Stdout)
+	repl.StartWithEnv(os.Stdin, os.Stdout, baseEnv)
 }

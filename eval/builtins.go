@@ -7,42 +7,19 @@ import (
 	"strings"
 )
 
-func assertBuiltinArgsLength(args []object.Object, op string, want int) object.Object {
-	switch op {
-	case ">":
-		if len(args) < want {
-			return newError("wrong number of arguments. expected at least %d. got=%d", want, len(args))
-		}
-	case "<":
-		if len(args) > want {
-			return newError("wrong number of arguments. expected less than %d. got=%d", want, len(args))
-		}
-	case "==":
-		if len(args) != want {
-			return newError("wrong number of arguments. expected=%d. got=%d", want, len(args))
-		}
-	}
-	return nil
-}
-
-func assertBuiltinArray(arr object.Array) object.Object {
-	panic("not implemented")
-}
-
-func assertBuiltinArgType(obj object.Object, kind object.ObjectType, metadata string) object.Object {
-	if obj.Type() != kind {
-		return newError("argument is not supported by %s. expected %s. got=%s", metadata, kind, obj.Type())
-	}
-	return nil
-}
-
 func copyArray(arr []object.Object) []object.Object {
 	newArr := make([]object.Object, len(arr), len(arr))
 	copy(newArr, arr)
 	return newArr
 }
 
-var builtins = map[string]*object.Builtin{
+func loadLibIntoScope(lib map[string]*object.Builtin, scope *object.Scope) {
+	for name, builtin := range lib {
+		scope.Outer.Set(name, builtin)
+	}
+}
+
+var Builtins = map[string]*object.Builtin{
 	"len": {
 		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
 			if err := assertBuiltinArgsLength(args, "==", 1); err != nil {
@@ -70,88 +47,6 @@ var builtins = map[string]*object.Builtin{
 			fmt.Println(strings.Join(elements, ", "))
 
 			return NULL
-		},
-	},
-	"first": {
-		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
-			if err := assertBuiltinArgsLength(args, "==", 1); err != nil {
-				return err
-			}
-
-			if err := assertBuiltinArgType(args[0], object.ARRAY_OBJ, "first"); err != nil {
-				return err
-			}
-
-			arr := args[0].(*object.Array)
-			length := len(arr.Elements)
-			if length == 0 {
-				return newError("array is empty")
-			}
-
-			return arr.Elements[0]
-		},
-	},
-	"last": {
-		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
-			if err := assertBuiltinArgsLength(args, "==", 1); err != nil {
-				return err
-			}
-
-			if err := assertBuiltinArgType(args[0], object.ARRAY_OBJ, "last"); err != nil {
-				return err
-			}
-
-			arr := args[0].(*object.Array)
-			length := len(arr.Elements)
-			if length == 0 {
-				return newError("array is empty")
-			}
-
-			return arr.Elements[length-1]
-		},
-	},
-	"rest": {
-		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
-			if err := assertBuiltinArgsLength(args, "==", 1); err != nil {
-				return err
-			}
-
-			if err := assertBuiltinArgType(args[0], object.ARRAY_OBJ, "rest"); err != nil {
-				return err
-			}
-
-			arr := args[0].(*object.Array)
-
-			length := len(arr.Elements)
-			if length == 0 {
-				return newError("array is empty")
-			}
-
-			newArr := copyArray(arr.Elements[1:])
-
-			return &object.Array{
-				Elements: newArr,
-			}
-		},
-	},
-	"push": {
-		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
-			if err := assertBuiltinArgsLength(args, ">", 2); err != nil {
-				return err
-			}
-
-			if err := assertBuiltinArgType(args[0], object.ARRAY_OBJ, "last"); err != nil {
-				return err
-			}
-
-			arr := args[0].(*object.Array)
-
-			newArr := copyArray(arr.Elements)
-			newArr = append(newArr, args[1:]...)
-
-			return &object.Array{
-				Elements: newArr,
-			}
 		},
 	},
 	"printFile": {

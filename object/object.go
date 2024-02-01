@@ -217,6 +217,7 @@ func (h *Hash) Inspect() string {
 
 type Scope struct {
 	Outer *Environment // no that's bullshit
+	Name  string
 	// TODO: consider scope issues of imported functions (fix?)
 	// Upd: fixed
 }

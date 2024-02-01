@@ -44,7 +44,11 @@ func loadFromString(file string, env *object.Environment) {
 }
 
 func isMacro(obj object.Object) bool {
-	return obj == LOAD_MACRO
+	switch obj {
+	case LOAD_MACRO:
+		return true
+	}
+	return false
 }
 
 func evalMacro(evaluation object.Object, args []object.Object, env *object.Environment) object.Object {
@@ -57,16 +61,21 @@ func evalMacro(evaluation object.Object, args []object.Object, env *object.Envir
 		if err != nil {
 			return newError("file not found")
 		}
-		shouldScope, ok := args[1].(*object.Boolean)
-		if !ok {
-			return newError("second argument to load must be a boolean")
-		}
 
-		if shouldScope.Value {
-			env := object.NewEnvironment()
-			loadFromString(string(file), env)
-			scope := &object.Scope{Outer: env}
-			return scope
+		if len(args) > 1 {
+			shouldScope, ok := args[1].(*object.Boolean)
+			if !ok {
+				return newError("second argument to load must be a boolean")
+			}
+
+			if shouldScope.Value {
+				env := object.NewEnvironment()
+				loadFromString(string(file), env)
+				scope := &object.Scope{Outer: env, Name: "dynamic scope"}
+				// TODO?: figure out a better name for this
+				// and/or WHEN to change/use it
+				return scope
+			}
 		}
 
 		loadFromString(string(file), env)
@@ -109,26 +118,8 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 		return evalPrefixExpression(node.Operator, right)
 	case *ast.InfixExpression:
-		fmt.Println("infix expression operator:", node.Operator)
-		fmt.Println("infix expression left:", node.Left)
-		fmt.Println("infix expression right:", node.Right)
-
 		if node.Operator == "." {
-			left := Eval(node.Left, env)
-			scope, ok := left.(*object.Scope)
-			if !ok {
-				return newError("attempted to access scope of non-scope object")
-			}
-
-			if ident, ok := node.Right.(*ast.Identifier); ok {
-				val, ok := scope.Outer.Get(ident.Value)
-				if !ok {
-					return newError("identifier not found in scope")
-				}
-				return val
-			}
-
-			return newError("attempted to access scope with non-identifier")
+			return evalScopeInfixExpression(node, env)
 		}
 
 		left := Eval(node.Left, env)
@@ -284,26 +275,26 @@ func evalStatements(statements []ast.Statement, env *object.Environment) object.
 	return result
 }
 
-// func evalScopeInfixExpression(operator string, right, left object.Object) object.Object {
-// 	scope := left.(*object.Scope)
-// 	key := right.(*object.String).Value
-// 	val, ok := scope.Outer.Get(key)
-// 	if !ok {
-// 		return newError("identifier not found in scope: " + key)
-// 	}
+func evalScopeInfixExpression(node *ast.InfixExpression, env *object.Environment) object.Object {
+	left := Eval(node.Left, env)
+	scope, ok := left.(*object.Scope)
+	if !ok {
+		return newError("attempted to access scope of non-scope object")
+	}
 
-// 	return val
-// }
+	if ident, ok := node.Right.(*ast.Identifier); ok {
+		val, ok := scope.Outer.Get(ident.Value)
+		if !ok {
+			return newError("identifier not found in scope")
+		}
+		return val
+	}
+
+	return newError("attempted to access scope with non-identifier")
+}
 
 func evalInfixExpression(operator string, right, left object.Object) object.Object {
 	switch {
-	// TODO: BUG!!! right string can overlap and be evaluated as identifier
-	// for example:
-	// >> let sc = load("iters.eye", true)
-	// >> sc.puts
-	// type mismatch: SCOPE . BUILTIN
-	// case operator == "." && left.Type() == object.SCOPE_OBJ && right.Type() == object.STRING_OBJ:
-	// 	return evalScopeInfixExpression(operator, right, left)
 	case right.Type() != left.Type():
 		return newError("type mismatch: %s %s %s", left.Type(), operator, right.Type())
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
@@ -398,14 +389,8 @@ func isError(obj object.Object) bool {
 }
 
 func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object {
-	// fmt.Println("env", env.Debug())
-
 	if val, ok := env.Get(node.Value); ok {
 		return val
-	}
-
-	if builtin, ok := builtins[node.Value]; ok {
-		return builtin
 	}
 
 	return newError("identifier not found: %s", node.Value)
