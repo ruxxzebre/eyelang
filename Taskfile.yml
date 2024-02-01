@@ -22,3 +22,16 @@ tasks:
       - task: build_linux
       - task: build_darwin
       - task: build_windows
+  test_supressed:
+    cmds:
+      - go test ./... | { grep -v 'no test files'; true; }
+    silent: true
+  coverage:
+    cmds:
+      - go test -cover ./...
+    silent: true
+  coverage_profile:
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out
+    silent: true
