@@ -5,3 +5,20 @@ tasks:
     cmds:
       - go test ./...
     silent: true
+  build_linux:
+    cmds:
+      - GOOS=linux GOARCH=amd64 go build -o bin/$(basename $(pwd))_linux_amd64
+    silent: true
+  build_darwin:
+    cmds:
+      - GOOS=darwin GOARCH=amd64 go build -o bin/$(basename $(pwd))_darwin_amd64
+    silent: true
+  build_windows:
+    cmds:
+      - GOOS=windows GOARCH=amd64 go build -o bin/$(basename $(pwd))_windows_amd64.exe
+    silent: true
+  build:
+    cmds:
+      - task: build_linux
+      - task: build_darwin
+      - task: build_windows
