@@ -297,6 +297,26 @@ func (al *ArrayLiteral) String() string {
 	return out.String()
 }
 
+type AccessExpression struct {
+	Token token.Token // "."
+	Left  Expression
+	Right Expression
+}
+
+func (ae *AccessExpression) expressionNode()      {}
+func (ae *AccessExpression) TokenLiteral() string { return ae.Token.Literal }
+func (ae *AccessExpression) String() string {
+	var out bytes.Buffer
+
+	out.WriteString("(")
+	out.WriteString(ae.Left.String())
+	out.WriteString(".")
+	out.WriteString(ae.Right.String())
+	out.WriteString(")")
+
+	return out.String()
+}
+
 type IndexExpression struct {
 	Token token.Token
 	Left  Expression

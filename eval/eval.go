@@ -392,6 +392,13 @@ func evalExpressions(nodes []ast.Expression, env *object.Environment) []object.O
 func extendFunctionEnv(fn *object.Function, args []object.Object) *object.Environment {
 	env := object.NewEnclosedEnvironment(fn.Env)
 
+	// TODO: test for that case
+	// !!! args should be the same length as fn.Parameters, or we're getting PANIC
+	// but this should be checked (what: in the parser) outside of extendFunctionEnv
+	if len(args) == 0 {
+		return env
+	}
+
 	for idx, param := range fn.Parameters {
 		env.Set(param.Value, args[idx])
 	}
@@ -418,6 +425,12 @@ func applyFunction(fn object.Object, args []object.Object, env *object.Environme
 		return result
 
 	case *object.Function:
+		if len(fn.Parameters) != len(args) {
+			return newError("wrong number of arguments. expected=%d got=%d"+
+				"\nIf you wanted to curry the function, it's not supported yet",
+				len(fn.Parameters), len(args))
+		}
+
 		extendedEnv := extendFunctionEnv(fn, args)
 		evaludated := Eval(fn.Body, extendedEnv)
 		return unwrapReturnValue(evaludated)

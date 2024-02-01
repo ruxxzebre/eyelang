@@ -955,3 +955,36 @@ func TestHashLiteralWithExpressions(t *testing.T) {
 		}
 	}
 }
+
+func TestAccessExpression(t *testing.T) {
+	unmuteTracer()
+	defer muteTracer()
+	input := `foo.bar`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	expr, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not *ast.Expression. got=%T", program.Statements[0])
+	}
+
+	inf, ok := expr.Expression.(*ast.InfixExpression)
+	if !ok {
+		t.Fatalf("expected expr.Expression to be *ast.InfixExpression. got=%T", expr.Expression)
+	}
+
+	if !testIdentifier(t, inf.Left, "foo") {
+		return
+	}
+
+	if !testIdentifier(t, inf.Right, "bar") {
+		return
+	}
+
+	if inf.Operator != "." {
+		t.Fatalf("expected inf.Operator to be '.'. got=%s", inf.Operator)
+	}
+
+}

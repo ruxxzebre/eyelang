@@ -23,6 +23,7 @@ const (
 	ARRAY_OBJ        = "ARRAY"
 	MACRO_OBJ        = "MACRO"
 	HASH_OBJ         = "HASH"
+	SCOPE_OBJ        = "SCOPE" // Module system
 )
 
 type HashKey struct {
@@ -213,3 +214,11 @@ func (h *Hash) Inspect() string {
 
 	return out.String()
 }
+
+type Scope struct {
+	Outer *Environment // no that's bullshit
+	// TODO: consider scope issues of imported functions (fix?)
+}
+
+func (s *Scope) Type() ObjectType { return SCOPE_OBJ }
+func (s *Scope) Inspect() string  { return "[scope]" }

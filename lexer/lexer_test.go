@@ -26,6 +26,8 @@ if (5 < 10) {
 
 10 == 10;
 10 != 9;
+"foo.bar"
+foo.bar
 "foobar"
 "foo bar"
 [1, 2];
@@ -109,6 +111,10 @@ if (5 < 10) {
 		{token.NOT_EQ, "!="},
 		{token.INT, "9"},
 		{token.SEMICOLON, ";"},
+		{token.STRING, "foo.bar"},
+		{token.IDENT, "foo"},
+		{token.DOT, "."},
+		{token.IDENT, "bar"},
 		{token.STRING, "foobar"},
 		{token.STRING, "foo bar"},
 		{token.LBRACKET, "["},

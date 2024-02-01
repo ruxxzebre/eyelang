@@ -58,6 +58,7 @@ var precedences = map[token.TokenType]int{
 	token.ASTERISK: PRODUCT,
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
+	token.DOT:      INDEX,
 }
 
 type prefixParserTable = []struct {
@@ -101,6 +102,7 @@ func New(l *lexer.Lexer) *Parser {
 		{token.MINUS, p.parseInfixExpression},
 		{token.SLASH, p.parseInfixExpression},
 		{token.LBRACKET, p.parseIndexExpression},
+		{token.DOT, p.parseInfixExpression},
 	})
 
 	p.nextToken()

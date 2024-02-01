@@ -158,6 +158,8 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.SLASH, l.char)
 	case '*':
 		tok = newToken(token.ASTERISK, l.char)
+	case '.':
+		tok = newToken(token.DOT, l.char)
 	case '!':
 		if l.peekChar() == '=' {
 			char := l.char

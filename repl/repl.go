@@ -13,9 +13,8 @@ import (
 
 const PROMPT = ">> "
 
-func Start(in io.Reader, out io.Writer) {
+func StartWithEnv(in io.Reader, out io.Writer, env *object.Environment) {
 	scanner := bufio.NewScanner(in)
-	env := object.NewEnvironment()
 
 	for {
 		_, err := fmt.Fprint(out, PROMPT)
@@ -51,6 +50,11 @@ func Start(in io.Reader, out io.Writer) {
 			io.WriteString(out, "\n")
 		}
 	}
+}
+
+func Start(in io.Reader, out io.Writer) {
+	env := object.NewEnvironment()
+	StartWithEnv(in, out, env)
 }
 
 // TODO: polish when ILLEGAL (arrow up, etc)

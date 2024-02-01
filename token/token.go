@@ -55,6 +55,9 @@ const (
 	LBRACKET = "["
 	RBRACKET = "]"
 
+	// Acess Operator
+	DOT = "."
+
 	// Keywords
 	FUNCTION = "FUNCTION"
 	LET      = "LET"

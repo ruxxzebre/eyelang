@@ -19,7 +19,7 @@ type Environment struct {
 func NewEnvironment() *Environment {
 	s := make(map[string]Object)
 	env := &Environment{s, nil}
-	env.loadStore(BaseStore)
+	env.LoadStore(BaseStore)
 
 	return env
 }
@@ -45,7 +45,6 @@ func NewEnclosedEnvironment(outer *Environment) *Environment {
 }
 
 func (env *Environment) Load(from *Environment) {
-	panic("unused")
 	for key, value := range from.store {
 		env.store[key] = value
 	}
@@ -54,7 +53,7 @@ func (env *Environment) Load(from *Environment) {
 	// from.store = nil
 }
 
-func (env *Environment) loadStore(store map[string]Object) {
+func (env *Environment) LoadStore(store map[string]Object) {
 	for key, value := range store {
 		env.store[key] = value
 	}
