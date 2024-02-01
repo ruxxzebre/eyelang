@@ -732,3 +732,8 @@ func TestListsLib(t *testing.T) {
 		t.Fatalf("expected *object.Array or *object.Integer. got=%T", evaluated)
 	}
 }
+
+// Currying vs Partial Application ?
+func TestCurrying(t *testing.T) {
+	t.Skip()
+}

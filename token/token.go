@@ -42,6 +42,8 @@ const (
 	GT       = ">"
 	EQ       = "=="
 	NOT_EQ   = "!="
+	PIPE     = "|" // pipe operator for function composition
+	// example of pipe operator: (let f(x) = x + 1 | g(x) = x * 2 | f(g(2)) = 6)???
 
 	// Delimiters
 	COMMA     = ","

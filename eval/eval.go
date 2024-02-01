@@ -440,8 +440,8 @@ func extendFunctionEnv(fn *object.Function, args []object.Object) *object.Enviro
 		return env
 	}
 
-	for idx, param := range fn.Parameters {
-		env.Set(param.Value, args[idx])
+	for idx, arg := range args {
+		env.Set(fn.Parameters[idx].Value, arg)
 	}
 
 	return env
@@ -466,10 +466,18 @@ func applyFunction(fn object.Object, args []object.Object, env *object.Environme
 		return result
 
 	case *object.Function:
-		if len(fn.Parameters) != len(args) {
-			return newError("wrong number of arguments. expected=%d got=%d"+
-				"\nIf you wanted to curry the function, it's not supported yet",
-				len(fn.Parameters), len(args))
+		if len(fn.Parameters) < len(args) {
+			return newError("wrong number of arguments. expected=%d got=%d", len(fn.Parameters), len(args))
+		}
+
+		if len(fn.Parameters) > len(args) {
+			extendedEnv := extendFunctionEnv(fn, args)
+
+			return &object.Function{
+				Parameters: fn.Parameters[len(args):],
+				Body:       fn.Body,
+				Env:        extendedEnv,
+			}
 		}
 
 		extendedEnv := extendFunctionEnv(fn, args)

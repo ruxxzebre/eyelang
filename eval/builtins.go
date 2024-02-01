@@ -96,4 +96,14 @@ var Builtins = map[string]*object.Builtin{
 			return &object.String{Value: builtinTable}
 		},
 	},
+	// TODO: error as a value and a type
+	"error": {
+		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("generic error")
+			}
+
+			return newError(args[0].Inspect())
+		},
+	},
 }
