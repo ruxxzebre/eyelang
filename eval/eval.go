@@ -431,18 +431,22 @@ func evalIndexExpression(left, right object.Object) object.Object {
 	case left.Type() == object.ARRAY_OBJ && right.Type() == object.INTEGER_OBJ:
 		return evalArrayIndexExpression(left, right)
 	case left.Type() == object.HASH_OBJ:
-		hashable, ok := right.(object.Hashable)
-		if ok {
-			hash := left.(*object.Hash)
-			if val, ok := hash.Pairs[hashable.HashKey()]; ok {
-				return val.Value
-			}
-			return NULL
-		}
-		return newError("hash index cannot be %s", right.Type())
+		return evalHashIndexExpression(left, right)
 	default:
 		return newError("index operator not supported for type: %s", left.Type())
 	}
+}
+
+func evalHashIndexExpression(left, right object.Object) object.Object {
+	hashable, ok := right.(object.Hashable)
+	if ok {
+		hash := left.(*object.Hash)
+		if val, ok := hash.Pairs[hashable.HashKey()]; ok {
+			return val.Value
+		}
+		return NULL
+	}
+	return newError("hash index cannot be %s", right.Type())
 }
 
 func evalArrayIndexExpression(left, right object.Object) object.Object {
