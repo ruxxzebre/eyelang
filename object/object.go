@@ -218,6 +218,7 @@ func (h *Hash) Inspect() string {
 type Scope struct {
 	Outer *Environment // no that's bullshit
 	// TODO: consider scope issues of imported functions (fix?)
+	// Upd: fixed
 }
 
 func (s *Scope) Type() ObjectType { return SCOPE_OBJ }

@@ -50,11 +50,25 @@ func isMacro(obj object.Object) bool {
 func evalMacro(evaluation object.Object, args []object.Object, env *object.Environment) object.Object {
 	switch evaluation {
 	case LOAD_MACRO:
+		fmt.Println("warning: load is in early stages of development and may not work as expected")
+
 		filepath := args[0].(*object.String).Value
 		file, err := os.ReadFile(filepath)
 		if err != nil {
 			return newError("file not found")
 		}
+		shouldScope, ok := args[1].(*object.Boolean)
+		if !ok {
+			return newError("second argument to load must be a boolean")
+		}
+
+		if shouldScope.Value {
+			env := object.NewEnvironment()
+			loadFromString(string(file), env)
+			scope := &object.Scope{Outer: env}
+			return scope
+		}
+
 		loadFromString(string(file), env)
 		return evaluation
 	}
@@ -248,8 +262,26 @@ func evalStatements(statements []ast.Statement, env *object.Environment) object.
 	return result
 }
 
+func evalScopeInfixExpression(operator string, right, left object.Object) object.Object {
+	scope := left.(*object.Scope)
+	key := right.(*object.String).Value
+	val, ok := scope.Outer.Get(key)
+	if !ok {
+		return newError("identifier not found: " + key)
+	}
+
+	return val
+}
+
 func evalInfixExpression(operator string, right, left object.Object) object.Object {
 	switch {
+	// TODO: BUG!!! right string can overlap and be evaluated as identifier
+	// for example:
+	// >> let sc = load("iters.eye", true)
+	// >> sc.puts
+	// type mismatch: SCOPE . BUILTIN
+	case operator == "." && left.Type() == object.SCOPE_OBJ && right.Type() == object.STRING_OBJ:
+		return evalScopeInfixExpression(operator, right, left)
 	case right.Type() != left.Type():
 		return newError("type mismatch: %s %s %s", left.Type(), operator, right.Type())
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:

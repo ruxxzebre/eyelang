@@ -28,3 +28,4 @@ Hey username! Welcome to Eye Language REPL
 - Option<type> instead on NULL
 - Type system
 - Makefile or smth
+- Decide on approach to environments (global, local, etc, pure functions)

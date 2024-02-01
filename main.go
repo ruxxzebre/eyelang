@@ -18,7 +18,6 @@ func main() {
 
 	evalFileFlag := flag.String("evf", "", "evaluate a file")
 	evalStringFlag := flag.String("evs", "", "evaluate a string")
-	// replFlag := flag.Bool("repl", false, "launch into repl")
 	replFlag := flag.Bool("repl", false, "launch into repl")
 
 	flag.Parse()
