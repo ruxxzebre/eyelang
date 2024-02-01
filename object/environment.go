@@ -53,6 +53,15 @@ func (env *Environment) Load(from *Environment) {
 	// from.store = nil
 }
 
+func (env *Environment) Debug() string {
+	var str string
+	for key, value := range env.store {
+		str += key + " -> " + value.Inspect() + "\n"
+	}
+
+	return str
+}
+
 func (env *Environment) LoadStore(store map[string]Object) {
 	for key, value := range store {
 		env.store[key] = value

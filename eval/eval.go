@@ -109,14 +109,36 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		}
 		return evalPrefixExpression(node.Operator, right)
 	case *ast.InfixExpression:
-		right := Eval(node.Right, env)
-		if isError(right) {
-			return right
+		fmt.Println("infix expression operator:", node.Operator)
+		fmt.Println("infix expression left:", node.Left)
+		fmt.Println("infix expression right:", node.Right)
+
+		if node.Operator == "." {
+			left := Eval(node.Left, env)
+			scope, ok := left.(*object.Scope)
+			if !ok {
+				return newError("attempted to access scope of non-scope object")
+			}
+
+			if ident, ok := node.Right.(*ast.Identifier); ok {
+				val, ok := scope.Outer.Get(ident.Value)
+				if !ok {
+					return newError("identifier not found in scope")
+				}
+				return val
+			}
+
+			return newError("attempted to access scope with non-identifier")
 		}
 
 		left := Eval(node.Left, env)
 		if isError(left) {
 			return left
+		}
+
+		right := Eval(node.Right, env)
+		if isError(right) {
+			return right
 		}
 
 		return evalInfixExpression(node.Operator, right, left)
@@ -262,16 +284,16 @@ func evalStatements(statements []ast.Statement, env *object.Environment) object.
 	return result
 }
 
-func evalScopeInfixExpression(operator string, right, left object.Object) object.Object {
-	scope := left.(*object.Scope)
-	key := right.(*object.String).Value
-	val, ok := scope.Outer.Get(key)
-	if !ok {
-		return newError("identifier not found: " + key)
-	}
+// func evalScopeInfixExpression(operator string, right, left object.Object) object.Object {
+// 	scope := left.(*object.Scope)
+// 	key := right.(*object.String).Value
+// 	val, ok := scope.Outer.Get(key)
+// 	if !ok {
+// 		return newError("identifier not found in scope: " + key)
+// 	}
 
-	return val
-}
+// 	return val
+// }
 
 func evalInfixExpression(operator string, right, left object.Object) object.Object {
 	switch {
@@ -280,8 +302,8 @@ func evalInfixExpression(operator string, right, left object.Object) object.Obje
 	// >> let sc = load("iters.eye", true)
 	// >> sc.puts
 	// type mismatch: SCOPE . BUILTIN
-	case operator == "." && left.Type() == object.SCOPE_OBJ && right.Type() == object.STRING_OBJ:
-		return evalScopeInfixExpression(operator, right, left)
+	// case operator == "." && left.Type() == object.SCOPE_OBJ && right.Type() == object.STRING_OBJ:
+	// 	return evalScopeInfixExpression(operator, right, left)
 	case right.Type() != left.Type():
 		return newError("type mismatch: %s %s %s", left.Type(), operator, right.Type())
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
@@ -376,6 +398,8 @@ func isError(obj object.Object) bool {
 }
 
 func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object {
+	// fmt.Println("env", env.Debug())
+
 	if val, ok := env.Get(node.Value); ok {
 		return val
 	}
