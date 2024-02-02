@@ -48,9 +48,6 @@ func (env *Environment) Load(from *Environment) {
 	for key, value := range from.store {
 		env.store[key] = value
 	}
-
-	// from.outer = nil
-	// from.store = nil
 }
 
 func (env *Environment) Debug() string {

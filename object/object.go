@@ -223,4 +223,32 @@ type Scope struct {
 }
 
 func (s *Scope) Type() ObjectType { return SCOPE_OBJ }
-func (s *Scope) Inspect() string  { return "[scope]" }
+func (s *Scope) Inspect() string {
+	// nil scope
+	if s.Outer.store == nil {
+		return "nil scope" // TODO
+	}
+
+	if len(s.Outer.store) == 0 {
+		return fmt.Sprintf("[scope::%s]", s.Name)
+	}
+
+	PER_ROW := 3
+	count := 0
+
+	var out bytes.Buffer
+	out.WriteString(fmt.Sprintf("[scope::%s] -> %s", s.Name, "\n"))
+
+	for key := range s.Outer.store {
+		count++
+		out.WriteString(fmt.Sprintf("%s ", key))
+
+		if count%PER_ROW == 0 {
+			count = 0
+			out.WriteString("\n")
+		} else {
+			out.WriteString(" ")
+		}
+	}
+	return out.String()
+}
