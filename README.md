@@ -30,6 +30,7 @@ Hey username! Welcome to Eye Language REPL
 
 # TODOs
 
+- MORE EXPAMPLES
 - keyword arguments/lists (?)
 - Option<type> instead on NULL
 - Type system
