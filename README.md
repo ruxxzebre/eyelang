@@ -37,3 +37,4 @@ Hey username! Welcome to Eye Language REPL
 - REPL multiline
 - REPL autocompletion
 - REPL syntax highlighting
+- Tests for REPL
