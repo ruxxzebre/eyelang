@@ -11,6 +11,7 @@ func InitReplScope() *object.Scope {
 	env.Set("global", scope)
 	env.Set("lists", ListsLib)
 	env.Set("hash", HashLib)
+	env.Set("math", MathLib)
 
 	env.Set("scopeName", &object.String{Value: scope.Name})
 

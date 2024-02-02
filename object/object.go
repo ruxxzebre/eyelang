@@ -221,6 +221,9 @@ type Scope struct {
 	Name  string
 	// TODO: consider scope issues of imported functions (fix?)
 	// Upd: fixed
+	// Upd: separate scope and environment
+	// What is the scope?
+	// What is an environment?
 }
 
 func (s *Scope) Type() ObjectType { return SCOPE_OBJ }

@@ -110,7 +110,8 @@ var Builtins = map[string]*object.Builtin{
 	},
 	"exit": {
 		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
-			// check if scope is REPL
+			// TODO: check if scope is REPL
+
 			if len(args) != 0 {
 				return newError("exit does not take any arguments")
 			}

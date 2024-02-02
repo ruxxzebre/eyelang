@@ -1,16 +1,5 @@
 package object
 
-var BaseStore = map[string]Object{
-	"builtins": &String{
-		Value: `puts
-len first last rest push
-printFile
-load import
-builtins
-`,
-	},
-}
-
 type Environment struct {
 	store map[string]Object
 	outer *Environment
@@ -19,7 +8,6 @@ type Environment struct {
 func NewEnvironment() *Environment {
 	s := make(map[string]Object)
 	env := &Environment{s, nil}
-	env.LoadStore(BaseStore)
 
 	return env
 }
