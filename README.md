@@ -28,20 +28,18 @@ Hey username! Welcome to Eye Language REPL
 > go test ./...
 ```
 
-# TODOs
+# TODOs (from highest)
 
-- MORE EXPAMPLES
-- keyword arguments/lists (?)
-- Option<type> instead on NULL
-- Type system
-- Makefile or smth
+- MORE EXAMPLES
 - Decide on approach to environments (global, local, etc, pure functions) (scopes)
-- ~~Comments (POUND operator)~~
-- PIPE operator
+- Figure out "symbols"
 - Error handling
-- LSP (Language Server Protocol), syntax highlighting, autocompletion, etc
-- REPL history
-- REPL multiline
-- REPL autocompletion
-- REPL syntax highlighting
+- keyword arguments (strings as keys)
+- EBNF
+- Option<type> instead on NULL
+- PIPE operator
+- REPL (history, multiline, completion)
+- Syntax highlighting for editors
 - Tests for REPL
+- Type system
+- LSP (Language Server Protocol), syntax highlighting, autocompletion, etc
