@@ -29,9 +29,12 @@ if (5 < 10) {
 "foo.bar"
 foo.bar
 "foobar"
+# this is a comment, it should be ignored
+# no amount of comments should affect the test below
 "foo bar"
 [1, 2];
 {"hello": 1, "bye": "no"};
+# comment at the end
 `
 
 	tests := []struct {

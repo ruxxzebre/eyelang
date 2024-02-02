@@ -59,8 +59,8 @@ const (
 	RBRACKET = "]"
 
 	// (currently) Scope Acess Operator
-	DOT   = "."
-	POUND = "#"
+	DOT     = "."
+	COMMENT = "#"
 
 	// Keywords
 	FUNCTION = "FUNCTION"

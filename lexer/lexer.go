@@ -100,6 +100,17 @@ func (l *Lexer) readIdentifier() string {
 	return out.String()
 }
 
+const EOF = 0
+
+func (l *Lexer) readUntil(delimiter rune) string {
+	var out bytes.Buffer
+	for l.char != delimiter && l.char != EOF {
+		out.WriteRune(l.char)
+		l.readChar()
+	}
+	return out.String()
+}
+
 func newToken(tokenType token.TokenType, ch rune) token.Token {
 	return token.Token{Type: tokenType, Literal: string(ch)}
 }
@@ -188,12 +199,22 @@ func (l *Lexer) NextToken() token.Token {
 	case '%':
 		tok = newToken(token.MOD, l.char)
 	case '#':
-		panic("TODO: comments")
-		// tok = newToken(token.POUND, l.char)
+		comment := l.readUntil('\n')
+		if comment == "" {
+			tok.Type = token.EOF
+			tok.Literal = ""
+		} else {
+			l.readChar() // skipping linebreak
+			return l.NextToken()
+		}
 	case '"':
 		tok.Type = token.STRING
 		tok.Literal = l.readString()
-	case 0:
+	// TODO: support for single quotes
+	// case '\'':
+	// 	tok.Type = token.STRING
+	// 	tok.Literal = l.readString()
+	case EOF:
 		tok.Literal = ""
 		tok.Type = token.EOF
 	default:
