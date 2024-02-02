@@ -108,4 +108,15 @@ var Builtins = map[string]*object.Builtin{
 		// generate description from the function signature/definition/comments
 		Description: "error(message: object.String) -> object.Error",
 	},
+	"exit": {
+		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
+			// check if scope is REPL
+			if len(args) != 0 {
+				return newError("exit does not take any arguments")
+			}
+
+			os.Exit(0)
+			return NULL
+		},
+	},
 }
