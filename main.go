@@ -38,6 +38,11 @@ func main() {
 		return // exit
 	}
 
+	if len(os.Args) == 2 {
+		cli.EvalFile(os.Args[1])
+		return
+	}
+
 	fmt.Printf("eyelang.init\n")
 	fmt.Printf("Hey %s! Welcome to Eye Language REPL\n", user.Username)
 	repl.StartWithEnv(os.Stdin, os.Stdout, baseEnv)

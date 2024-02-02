@@ -22,6 +22,10 @@ tasks:
       - task: build_linux
       - task: build_darwin
       - task: build_windows
+  run_example:
+    cmds:
+      - go run . ./examples/helloworld.eye:w
+    silent: true
   test_supressed:
     cmds:
       - go test ./... | { grep -v 'no test files'; true; }

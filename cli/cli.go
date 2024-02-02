@@ -55,10 +55,9 @@ func EvalFile(filepath string) *object.Environment {
 
 	scope := eval.InitReplScope()
 	env := scope.Outer
-	expr := eval.Eval(program, env)
+	// expr := eval.Eval(program, env)
+	eval.Eval(program, env)
 
-	fmt.Println(expr.Inspect())
-	// scanner := bufio.NewScanner(file)
-	// scanner.Scan()
+	// fmt.Println(expr.Inspect())
 	return env
 }
