@@ -26,6 +26,7 @@ func main() {
 	baseEnv := replScope.Outer
 
 	if *evalStringFlag != "" {
+		fmt.Println(*evalStringFlag)
 		baseEnv.Load(cli.EvalString(*evalStringFlag))
 	}
 
@@ -33,7 +34,7 @@ func main() {
 		baseEnv.Load(cli.EvalFile(*evalFileFlag))
 	}
 
-	if !*replFlag {
+	if !*replFlag && *evalStringFlag != "" || *evalFileFlag != "" {
 		return // exit
 	}
 

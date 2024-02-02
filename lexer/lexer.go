@@ -185,6 +185,11 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.RBRACKET, l.char)
 	case ':':
 		tok = newToken(token.COLON, l.char)
+	case '%':
+		tok = newToken(token.MOD, l.char)
+	case '#':
+		panic("TODO: comments")
+		// tok = newToken(token.POUND, l.char)
 	case '"':
 		tok.Type = token.STRING
 		tok.Literal = l.readString()

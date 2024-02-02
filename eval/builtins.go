@@ -105,5 +105,7 @@ var Builtins = map[string]*object.Builtin{
 
 			return newError(args[0].Inspect())
 		},
+		// generate description from the function signature/definition/comments
+		Description: "error(message: object.String) -> object.Error",
 	},
 }

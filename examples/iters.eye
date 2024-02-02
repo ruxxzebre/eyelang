@@ -40,3 +40,7 @@ let sum = fn (arr) {
         acc + cur
     }, 0)
 }
+
+# flexy?
+
+puts(sum(map(filter([1, 2, 3, 4], fn (x) { x % 2 == 0; }), fn (x) { x * 2 })))

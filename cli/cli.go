@@ -37,7 +37,7 @@ func EvalFile(filepath string) *object.Environment {
 	// file, err := os.Open(filepath)
 	content, err := os.ReadFile(filepath)
 	if err != nil {
-		panic(err)
+		log.Fatalf("could not read file: %s", err)
 	}
 
 	l := lexer.New(string(content))
@@ -53,7 +53,8 @@ func EvalFile(filepath string) *object.Environment {
 		log.Fatalf("parsing errors: %s", strings.Join(errors, "\n"))
 	}
 
-	env := object.NewEnvironment()
+	scope := eval.InitReplScope()
+	env := scope.Outer
 	expr := eval.Eval(program, env)
 
 	fmt.Println(expr.Inspect())

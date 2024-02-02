@@ -35,6 +35,7 @@ const (
 	ASSIGN   = "="
 	PLUS     = "+"
 	MINUS    = "-"
+	MOD      = "%"
 	BANG     = "!"
 	ASTERISK = "*"
 	SLASH    = "/"
@@ -57,8 +58,9 @@ const (
 	LBRACKET = "["
 	RBRACKET = "]"
 
-	// Acess Operator
-	DOT = "."
+	// (currently) Scope Acess Operator
+	DOT   = "."
+	POUND = "#"
 
 	// Keywords
 	FUNCTION = "FUNCTION"

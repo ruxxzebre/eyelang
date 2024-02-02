@@ -152,7 +152,8 @@ func (st *String) HashKey() HashKey {
 type BuiltinFunction func(env *Environment, args ...Object) Object
 
 type Builtin struct {
-	Fn BuiltinFunction
+	Fn          BuiltinFunction
+	Description string
 }
 
 func (b *Builtin) Inspect() string { return "builtin function" }
@@ -241,14 +242,14 @@ func (s *Scope) Inspect() string {
 
 	for key := range s.Outer.store {
 		count++
-		out.WriteString(fmt.Sprintf("%s ", key))
 
 		if count%PER_ROW == 0 {
 			count = 0
-			out.WriteString("\n")
+			out.WriteString(key + " \n")
 		} else {
-			out.WriteString(" ")
+			out.WriteString(key + " ")
 		}
 	}
+
 	return out.String()
 }
