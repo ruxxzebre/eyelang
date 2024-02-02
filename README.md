@@ -24,8 +24,16 @@ Hey username! Welcome to Eye Language REPL
 
 # TODOs
 
-- keyword arguments/lists
+- keyword arguments/lists (?)
 - Option<type> instead on NULL
 - Type system
 - Makefile or smth
-- Decide on approach to environments (global, local, etc, pure functions)
+- Decide on approach to environments (global, local, etc, pure functions) (scopes)
+- Comments (POUND operator)
+- PIPE operator
+- Error handling
+- LSP (Language Server Protocol), syntax highlighting, autocompletion, etc
+- REPL history
+- REPL multiline
+- REPL autocompletion
+- REPL syntax highlighting
