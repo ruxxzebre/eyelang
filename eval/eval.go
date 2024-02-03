@@ -337,6 +337,10 @@ func evalIntegerInfixExpression(operator string, right object.Object, left objec
 		return nativeBoolToBooleanObject(rightVal == leftVal)
 	case "!=":
 		return nativeBoolToBooleanObject(rightVal != leftVal)
+	case ">=":
+		return nativeBoolToBooleanObject(rightVal >= leftVal)
+	case "<=":
+		return nativeBoolToBooleanObject(rightVal <= leftVal)
 	default:
 		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}

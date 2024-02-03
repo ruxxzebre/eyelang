@@ -988,3 +988,7 @@ func TestAccessExpression(t *testing.T) {
 	}
 
 }
+
+func TestDebuggingAst(t *testing.T) {
+	// input := ``
+}

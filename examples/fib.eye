@@ -6,5 +6,10 @@ let fib = fn(n) {
 	return iter(0, 1, 0)
 }
 
-puts(map([]))
-puts(fib(5))
+let fibr = fn(a) {
+    if (a < 2) { a } else {
+        fibr(a - 1) + fibr(a - 2)
+    }
+}
+
+puts(fibr(5))

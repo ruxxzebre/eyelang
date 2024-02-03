@@ -120,4 +120,20 @@ var Builtins = map[string]*object.Builtin{
 			return NULL
 		},
 	},
+	"str": {
+		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("str requires an argument")
+			}
+
+			num, ok := args[0].(*object.Integer)
+			if !ok {
+				return newError("expected integer. got=%T", args[0])
+			}
+
+			return &object.String{
+				Value: fmt.Sprintf("%d", num.Value),
+			}
+		},
+	},
 }

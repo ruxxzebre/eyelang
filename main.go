@@ -19,7 +19,7 @@ func main() {
 
 	evalFileFlag := flag.String("load", "", "evaluate a file")
 	evalStringFlag := flag.String("eval", "", "evaluate a string")
-	replFlag := flag.Bool("repl", true, "launch into repl, includes scopes from -load and -eval")
+	replFlag := flag.Bool("repl", false, "launch into repl, includes scopes from -load and -eval")
 
 	flag.Parse()
 
