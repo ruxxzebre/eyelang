@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"strings"
 )
 
 func main() {
@@ -38,9 +39,12 @@ func main() {
 		return // exit
 	}
 
-	if len(os.Args) == 2 {
-		cli.EvalFile(os.Args[1])
-		return
+	lastArgIdx := len(os.Args) - 1
+	if lastArgIdx > 0 && len(os.Args[lastArgIdx]) > 0 && !strings.HasPrefix(os.Args[lastArgIdx], "-") {
+		cli.EvalFile(os.Args[lastArgIdx])
+		if !*replFlag {
+			return
+		}
 	}
 
 	fmt.Printf("eyelang.init\n")

@@ -55,6 +55,9 @@ func evalMacro(evaluation object.Object, args []object.Object, env *object.Envir
 	switch evaluation {
 	case LOAD_MACRO:
 		fmt.Println("warning: load is in early stages of development and may not work as expected")
+		if len(args) == 0 {
+			return newError("no args provided")
+		}
 
 		filepath := args[0].(*object.String).Value
 		file, err := os.ReadFile(filepath)
@@ -474,6 +477,9 @@ func applyFunction(fn object.Object, args []object.Object, env *object.Environme
 
 		if len(fn.Parameters) > len(args) {
 			extendedEnv := extendFunctionEnv(fn, args)
+			if len(args) == 0 {
+				return fn
+			}
 
 			return &object.Function{
 				Parameters: fn.Parameters[len(args):],

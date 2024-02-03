@@ -56,7 +56,10 @@ func EvalFile(filepath string) *object.Environment {
 	scope := eval.InitReplScope()
 	env := scope.Outer
 	// expr := eval.Eval(program, env)
-	eval.Eval(program, env)
+	obj := eval.Eval(program, env)
+	if err, ok := obj.(*object.Error); ok {
+		fmt.Printf(err.Inspect())
+	}
 
 	// fmt.Println(expr.Inspect())
 	return env

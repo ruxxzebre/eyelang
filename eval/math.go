@@ -10,19 +10,22 @@ var MathLib = builtinMapToScope("math", Math)
 var Math = map[string]*object.Builtin{
 	"pow": {
 		Fn: func(env *object.Environment, args ...object.Object) object.Object {
-			if len(args) == 0 || len(args) > 2 {
-				return newError("unexpected args")
+			if len(args) != 2 {
+				return newError("unexpected args. want=2. got=%d", len(args))
 			}
 
-			if num, ok := args[0].(*object.Integer); ok {
-				if pow, ok := args[1].(*object.Integer); ok && len(args) == 2 {
-					return &object.Integer{Value: int64(math.Pow(float64(num.Value), float64(pow.Value)))}
-				} else if len(args) == 1 {
-					return &object.Integer{Value: int64(math.Pow(float64(num.Value), 2))}
-				}
-				return newError("expected args[1] to be Integer. got=%T", args[1])
+			num, ok := args[0].(*object.Integer)
+			if !ok {
+				return newError("expected base to be %s. got=%s", num.Type(), args[0].Type())
 			}
-			return newError("expected args[0] to be Integer. got=%T", args[1])
+
+			pow, ok := args[1].(*object.Integer)
+			if !ok {
+				return newError("expected pow to be %s. got=%s", num.Type(), args[0].Type())
+			}
+
+			val := int64(math.Pow(float64(num.Value), float64(pow.Value)))
+			return &object.Integer{Value: val}
 		},
 	},
 	"sqrt": {
