@@ -7,9 +7,9 @@ let fibf = fn(n) {
 }
 
 let fib = fn(a) {
-    if (a == 0) { a } else {
+    if (a < 2) { a } else {
         fib(a - 1) + fib(a - 2)
     }
 }
 
-puts(fib(1000))
+puts(fib(10))

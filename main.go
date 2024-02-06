@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"strings"
 )
 
 func main() {
@@ -39,9 +38,8 @@ func main() {
 		return // exit
 	}
 
-	lastArgIdx := len(os.Args) - 1
-	if lastArgIdx > 0 && len(os.Args[lastArgIdx]) > 0 && !strings.HasPrefix(os.Args[lastArgIdx], "-") {
-		cli.EvalFile(os.Args[lastArgIdx])
+	for _, arg := range flag.Args() {
+		cli.EvalFile(arg)
 		if !*replFlag {
 			return
 		}

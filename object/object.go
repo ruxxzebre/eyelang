@@ -125,9 +125,14 @@ func (fn *Function) Inspect() string {
 		params = append(params, p.String())
 	}
 
-	out.WriteString("fn(" + strings.Join(params, ", ") + ") {\n")
-	out.WriteString("\t" + fn.Body.String())
-	out.WriteString("\n}")
+	body := fn.Body.String()
+	if body == "" {
+		out.WriteString("fn(" + strings.Join(params, ", ") + ") {}")
+	} else {
+		out.WriteString("fn(" + strings.Join(params, ", ") + ") {\n")
+		out.WriteString("\t" + body)
+		out.WriteString("\n}")
+	}
 
 	return out.String()
 }
