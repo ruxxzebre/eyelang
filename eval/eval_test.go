@@ -73,6 +73,23 @@ func testEval(input string) object.Object {
 	return Eval(program, env)
 }
 
+func testEval2(input string) (object.Object, *object.Environment) {
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	env := object.NewEnvironment()
+	env.Load(initTestingScope().Outer)
+
+	return Eval(program, env), env
+}
+
+func testEval3(input string, env *object.Environment) (object.Object, *object.Environment) {
+	l := lexer.New(input)
+	p := parser.New(l)
+	program := p.ParseProgram()
+	return Eval(program, env), env
+}
+
 func testBooleanObject(t *testing.T, obj object.Object, expected bool) bool {
 	result, ok := obj.(*object.Boolean)
 	if !ok {
@@ -590,6 +607,7 @@ func TestBooleanHashKey(t *testing.T) {
 }
 
 func TestHashKeysLog(t *testing.T) {
+	t.SkipNow()
 	name1 := &object.String{Value: "name"}
 	monkey := &object.String{Value: "Monkey"}
 

@@ -43,3 +43,4 @@ Hey username! Welcome to Eye Language REPL
 - Tests for REPL
 - Type system
 - LSP (Language Server Protocol), syntax highlighting, autocompletion, etc
+- Immutable Environments (memo if unchanged)

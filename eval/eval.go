@@ -88,7 +88,14 @@ func evalMacro(evaluation object.Object, args []object.Object, env *object.Envir
 	return newError("macro not found")
 }
 
+var globalStack = NewStack()
+var MAX_RECURSION_DEPTH = 10000
+
 func Eval(node ast.Node, env *object.Environment) object.Object {
+	if globalStack.Size() >= MAX_RECURSION_DEPTH {
+		return newError("max recursion depth exceeded %d", MAX_RECURSION_DEPTH)
+	}
+
 	switch node := node.(type) {
 	case *ast.Program:
 		return evalProgram(node, env)
@@ -463,6 +470,45 @@ func unwrapReturnValue(obj object.Object) object.Object {
 	return obj
 }
 
+func ApplyFunction(fn object.Object, args []object.Object, env *object.Environment) object.Object {
+	switch fn := fn.(type) {
+	case *object.Builtin:
+		result := fn.Fn(env, args...)
+
+		if isMacro(result) {
+			return evalMacro(result, args, env)
+		}
+
+		return result
+
+	case *object.Function:
+		if len(fn.Parameters) < len(args) {
+			return newError("wrong number of arguments. expected=%d got=%d", len(fn.Parameters), len(args))
+		}
+
+		if len(fn.Parameters) > len(args) {
+			if len(args) == 0 {
+				return fn
+			}
+			extendedEnv := extendFunctionEnv(fn, args)
+
+			return &object.Function{
+				Parameters: fn.Parameters[len(args):],
+				Body:       fn.Body,
+				Env:        extendedEnv,
+			}
+		}
+
+		globalStack.Push(fn)
+		extendedEnv := extendFunctionEnv(fn, args)
+		evaludated := Eval(fn.Body, extendedEnv)
+		globalStack.Pop()
+		return unwrapReturnValue(evaludated)
+	default:
+		return newError("not a function: %s", fn.Type())
+	}
+}
+
 func applyFunction(fn object.Object, args []object.Object, env *object.Environment) object.Object {
 	switch fn := fn.(type) {
 	case *object.Builtin:
@@ -480,10 +526,10 @@ func applyFunction(fn object.Object, args []object.Object, env *object.Environme
 		}
 
 		if len(fn.Parameters) > len(args) {
-			extendedEnv := extendFunctionEnv(fn, args)
 			if len(args) == 0 {
 				return fn
 			}
+			extendedEnv := extendFunctionEnv(fn, args)
 
 			return &object.Function{
 				Parameters: fn.Parameters[len(args):],
@@ -492,8 +538,10 @@ func applyFunction(fn object.Object, args []object.Object, env *object.Environme
 			}
 		}
 
+		globalStack.Push(fn)
 		extendedEnv := extendFunctionEnv(fn, args)
 		evaludated := Eval(fn.Body, extendedEnv)
+		globalStack.Pop()
 		return unwrapReturnValue(evaludated)
 	default:
 		return newError("not a function: %s", fn.Type())

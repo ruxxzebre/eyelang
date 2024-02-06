@@ -3,9 +3,11 @@ package token
 import "fmt"
 
 type TokenType string
+type TokenCategory string
 
 type Token struct {
-	Type     TokenType
+	Type TokenType
+	// Category TokenCategory (memory?)
 	Literal  string
 	Position struct {
 		Row int
@@ -14,7 +16,7 @@ type Token struct {
 }
 
 func (tok *Token) PositionString() string {
-	return fmt.Sprintf("(row: %d, column: %d)", tok.Position.Row, tok.Position.Col)
+	return fmt.Sprintf("(%d:%d)", tok.Position.Row, tok.Position.Col)
 }
 
 func (tok *Token) UpdatePosition(row, col int) {
@@ -45,6 +47,9 @@ const (
 	GT_EQ    = ">="
 	LT_EQ    = "<="
 	NOT_EQ   = "!="
+	// AND      = "and" // TODO gt eq and stuff
+	OR  = "||"
+	AND = "||"
 	// PIPE     = "|" // pipe operator for function composition
 	// example of pipe operator: (let f(x) = x + 1 | g(x) = x * 2 | f(g(2)) = 6)???
 

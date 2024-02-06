@@ -24,7 +24,6 @@ type Lexer struct {
 }
 
 func New(input string) *Lexer {
-	// l := &Lexer{input: []rune(input)}
 	reader := strings.NewReader(input)
 	runeReader := bufio.NewReader(reader)
 	l := &Lexer{reader: runeReader}
@@ -34,7 +33,7 @@ func New(input string) *Lexer {
 	return l
 }
 
-func New_WIP(reader *bufio.Reader) *Lexer {
+func NewFromReader(reader *bufio.Reader) *Lexer {
 	l := &Lexer{reader: reader}
 	l.textPosition.col = -1
 
@@ -94,6 +93,10 @@ func isSymbol(char rune) bool {
 func (l *Lexer) readIdentifier() string {
 	var out bytes.Buffer
 	for isSymbol(l.char) {
+		out.WriteRune(l.char)
+		l.readChar()
+	}
+	if l.char == '!' || l.char == '?' {
 		out.WriteRune(l.char)
 		l.readChar()
 	}

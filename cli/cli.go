@@ -58,7 +58,9 @@ func EvalFile(filepath string) *object.Environment {
 	// expr := eval.Eval(program, env)
 	obj := eval.Eval(program, env)
 	if err, ok := obj.(*object.Error); ok {
-		fmt.Printf(err.Inspect())
+		filepathParts := strings.Split(filepath, "/")
+		filename := filepathParts[len(filepathParts)-1]
+		fmt.Printf("error encountered [%s]: %s\n", filename, err.Inspect())
 	}
 
 	// fmt.Println(expr.Inspect())

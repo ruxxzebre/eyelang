@@ -35,7 +35,7 @@ func main() {
 		baseEnv.Load(cli.EvalFile(*evalFileFlag))
 	}
 
-	if !*replFlag && *evalStringFlag != "" || *evalFileFlag != "" {
+	if !*replFlag && (*evalStringFlag != "" || *evalFileFlag != "") {
 		return // exit
 	}
 
