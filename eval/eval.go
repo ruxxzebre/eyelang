@@ -142,7 +142,14 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return right
 		}
 
-		return evalInfixExpression(node.Operator, right, left)
+		result := evalInfixExpression(node.Operator, right, left)
+
+		// maybe it's pipe operator
+		if isError(result) {
+			result = evalInfixExpressionWithENV(node.Operator, right, left, env)
+		}
+
+		return result
 	case *ast.IfExpression:
 		return evalIfExpression(node, env)
 	case *ast.BlockStatement:
@@ -311,11 +318,19 @@ func evalInfixExpression(operator string, right, left object.Object) object.Obje
 		return evalStringInfixExpression(operator, left, right)
 	case left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ:
 		return evalIntegerInfixExpression(operator, left, right)
-	// Comparing TRUE and FALSE objects
 	case operator == "==":
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
 		return nativeBoolToBooleanObject(left != right)
+	default:
+		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
+	}
+}
+
+func evalInfixExpressionWithENV(operator string, right, left object.Object, env *object.Environment) object.Object {
+	switch {
+	case operator == "|>":
+		return evalPipeInfixExpression(left, right, env)
 	default:
 		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
@@ -367,6 +382,14 @@ func evalStringInfixExpression(operator string, right, left object.Object) objec
 	default:
 		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
+}
+
+func evalPipeInfixExpression(left, right object.Object, env *object.Environment) object.Object {
+	if right.Type() != object.FUNCTION_OBJ && right.Type() != object.BUILTIN_OBJ {
+		return newError("right hand side of |> must be a function. got=%s", right.Type())
+	}
+
+	return applyFunction(right, []object.Object{left}, env)
 }
 
 func evalPrefixExpression(operator string, right object.Object) object.Object {

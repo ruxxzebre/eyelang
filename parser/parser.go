@@ -18,6 +18,7 @@ const (
 	PREFIX
 	CALL
 	INDEX
+	PIPE
 )
 
 type (
@@ -62,6 +63,7 @@ var precedences = map[token.TokenType]int{
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
 	token.DOT:      INDEX,
+	token.PIPE:     PIPE,
 }
 
 type prefixParserTable = []struct {
@@ -109,6 +111,7 @@ func New(l *lexer.Lexer) *Parser {
 		{token.SLASH, p.parseInfixExpression},
 		{token.LBRACKET, p.parseIndexExpression},
 		{token.DOT, p.parseInfixExpression},
+		{token.PIPE, p.parseInfixExpression},
 	})
 
 	p.nextToken()

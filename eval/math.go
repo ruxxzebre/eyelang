@@ -35,7 +35,7 @@ var Math = map[string]*object.Builtin{
 			}
 
 			if num, ok := args[0].(*object.Integer); ok {
-				return &object.Integer{int64(math.Sqrt(float64(num.Value)))}
+				return &object.Integer{Value: int64(math.Sqrt(float64(num.Value)))}
 			}
 			return newError("expected args[0] to be Integer. got=%T", args[1])
 		},

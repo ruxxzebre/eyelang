@@ -48,8 +48,9 @@ const (
 	LT_EQ    = "<="
 	NOT_EQ   = "!="
 	// AND      = "and" // TODO gt eq and stuff
-	OR  = "||"
-	AND = "||"
+	OR   = "||"
+	AND  = "||"
+	PIPE = "|>"
 	// PIPE     = "|" // pipe operator for function composition
 	// example of pipe operator: (let f(x) = x + 1 | g(x) = x * 2 | f(g(2)) = 6)???
 

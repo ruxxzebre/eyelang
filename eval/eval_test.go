@@ -753,5 +753,16 @@ func TestListsLib(t *testing.T) {
 
 // Currying vs Partial Application ?
 func TestCurrying(t *testing.T) {
-	t.Skip()
+	t.Fatalf("not implemented")
+}
+
+func TestPipeExpression(t *testing.T) {
+	// be sure to test environments and stuff
+	// for example: 2 |> math.sqrt - fails with error "attempted to access scope of non-scope object"
+	// those kind of cases should be tested for
+	t.Fatalf("not implemented")
+}
+
+func TestScopes(t *testing.T) {
+	t.Fatalf("not implemented")
 }
