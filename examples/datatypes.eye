@@ -57,10 +57,16 @@ puts(rbg[true]);
 
 # There are special types, which cannot be created by user (for now) like those:
 # BUILTIN - builtin function type, implemented by host language, like `puts`, `len`, and methods on builtin modules
-# ERROR - error expression, returned when evaluator encounters type error
+# ERROR - error expression, returned when evaluator encounters type error (or `error` builtin)
 # SCOPE - returned by `load` function
-# MACRO - `load` function for now
+# MACRO - `load` function (for now)
 # NULL - returned by functions which don't return error (yet)
 
 # RETURN_VALUE
-# ahh?
+
+# Returns are not mandatory, until they are (return in if statement, for example)
+
+# return value of the function
+let add = fn (a, b) {
+    return a + b; # simply stops execution of the function and returns the value
+}
