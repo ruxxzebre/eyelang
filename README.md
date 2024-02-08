@@ -2,7 +2,7 @@
 
 # REPL
 
-Based on your OS, run the corresponding binary from the `bin` directory.
+Binaries are available for Windows, Mac, and Linux.
 ```sh
 > ./bin/eyelang_windows_amd64
 > ./bin/eyelang_darwin_amd64
@@ -10,16 +10,20 @@ Based on your OS, run the corresponding binary from the `bin` directory.
 
 Hey username! Welcome to Eye Language REPL
 >>> 2 + 3
+5
+>> puts("Hello, World!")
+"Hello, World!"
+null
 ```
 
-# Evaluate script
-
-`eyelang` is the binary that evaluates the script.
+# Running a script
 
 ```sh
 > eyelang "./example.eye"
 15
 ```
+
+Examples for syntax, data types and others are available in the `examples` directory.
 
 # Commands
 
@@ -31,16 +35,16 @@ Hey username! Welcome to Eye Language REPL
 # TODOs (from highest)
 
 - MORE EXAMPLES
-- Decide on approach to environments (global, local, etc, pure functions) (scopes)
+- Decide on approach for environments (global, local, etc, pure functions) (scopes)
 - Figure out "symbols"
 - Error handling
 - keyword arguments (strings as keys)
 - EBNF
-- Option<type> instead on NULL
+- Option<type> instead on NULL (implies Void type)
 - PIPE operator
 - REPL (history, multiline, completion)
-- Syntax highlighting for editors
 - Tests for REPL
-- Type system
+- Syntax highlighting for editors (nvim and vscode)
 - LSP (Language Server Protocol), syntax highlighting, autocompletion, etc
+- Type system
 - Immutable Environments (memo if unchanged)

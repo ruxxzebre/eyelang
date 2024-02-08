@@ -296,7 +296,7 @@ func evalScopeInfixExpression(node *ast.InfixExpression, env *object.Environment
 	left := Eval(node.Left, env)
 	scope, ok := left.(*object.Scope)
 	if !ok {
-		return newError("attempted to access scope of non-scope object")
+		return newError("attempted to access scope of non-scope object. %s", left.Inspect())
 	}
 
 	if ident, ok := node.Right.(*ast.Identifier); ok {

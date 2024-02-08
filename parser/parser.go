@@ -17,8 +17,8 @@ const (
 	PRODUCT
 	PREFIX
 	CALL
-	INDEX
 	PIPE
+	INDEX
 )
 
 type (
@@ -62,8 +62,8 @@ var precedences = map[token.TokenType]int{
 	token.ASTERISK: PRODUCT,
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
-	token.DOT:      INDEX,
 	token.PIPE:     PIPE,
+	token.DOT:      INDEX,
 }
 
 type prefixParserTable = []struct {
