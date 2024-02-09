@@ -31,6 +31,7 @@ const (
 	// Identifiers + Literals
 	IDENT  = "IDENT" // add, foobar, x, y
 	INT    = "INT"
+	FLOAT  = "FLOAT"
 	STRING = "STRING"
 
 	// Operators

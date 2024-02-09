@@ -13,6 +13,7 @@ type ObjectType string
 // Types
 const (
 	INTEGER_OBJ      = "INTEGER"
+	FLOAT_OBJ        = "FLOAT"
 	BOOLEAN_OBJ      = "BOOLEAN"
 	NULL_OBJ         = "NULL"
 	RETURN_VALUE_OBJ = "RETURN_VALUE"
@@ -78,6 +79,19 @@ func (i *Integer) Type() ObjectType { return INTEGER_OBJ }
 func (i *Integer) HashKey() HashKey {
 	// TODO: wtf if less then 0 btw
 	return cacheHK(uint64(i.Value), INTEGER_OBJ)
+}
+
+type Float struct {
+	Value float64
+}
+
+func (f *Float) Inspect() string { return fmt.Sprintf("%.2g", f.Value) }
+
+func (f *Float) Type() ObjectType { return FLOAT_OBJ }
+
+func (f *Float) HashKey() HashKey {
+	// TODO: collisions over here!
+	return cacheHK(uint64(f.Value), FLOAT_OBJ)
 }
 
 type Boolean struct {

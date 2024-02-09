@@ -61,8 +61,8 @@ var precedences = map[token.TokenType]int{
 	token.SLASH:    PRODUCT,
 	token.ASTERISK: PRODUCT,
 	token.LPAREN:   CALL,
-	token.LBRACKET: INDEX,
 	token.PIPE:     PIPE,
+	token.LBRACKET: INDEX,
 	token.DOT:      INDEX,
 }
 
@@ -86,6 +86,7 @@ func New(l *lexer.Lexer) *Parser {
 		{token.FUNCTION, p.parseFunctionLiteral},
 		{token.IDENT, p.parseIdentifier},
 		{token.INT, p.parseIntegerLiteral},
+		{token.FLOAT, p.parseFloatLiteral},
 		{token.IF, p.parseIfExpression},
 		{token.LPAREN, p.parseGroupedExpression},
 		{token.TRUE, p.parseBooleanExpression},
@@ -383,6 +384,25 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 	}
 
 	return exp
+}
+
+func (p *Parser) parseFloatLiteral() ast.Expression {
+	defer untrace(trace("parseIntegerLiteral"))
+
+	lit := &ast.FloatLiteral{Token: p.curToken}
+
+	value, err := strconv.ParseFloat(p.curToken.Literal, 64)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse %q as float %s", p.curToken.Literal, p.curToken.PositionString())
+		p.errors = append(p.errors, ParsingError{
+			Message: msg,
+			Token:   p.curToken,
+		})
+		return nil
+	}
+
+	lit.Value = value
+	return lit
 }
 
 func (p *Parser) parseIntegerLiteral() ast.Expression {

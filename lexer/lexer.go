@@ -51,10 +51,6 @@ var emoticons = &unicode.RangeTable{
 	},
 }
 
-func isEmoji(char rune) bool {
-	return unicode.Is(emoticons, char)
-}
-
 func (l *Lexer) readChar() {
 	rune, _, err := l.reader.ReadRune()
 
@@ -70,11 +66,6 @@ func (l *Lexer) readChar() {
 	l.position = l.readPosition
 	l.readPosition++
 	l.textPosition.col++
-	// if l.readPosition >= len(l.input) {
-	// 	l.char = 0
-	// } else {
-	// 	l.char = l.input[l.readPosition]
-	// }
 }
 
 func (l *Lexer) readNumber() string {
@@ -83,11 +74,12 @@ func (l *Lexer) readNumber() string {
 		out.WriteRune(l.char)
 		l.readChar()
 	}
+
 	return out.String()
 }
 
 func isSymbol(char rune) bool {
-	return unicode.IsLetter(char) || isEmoji(char)
+	return unicode.IsLetter(char) || unicode.Is(emoticons, char)
 }
 
 func (l *Lexer) readIdentifier() string {
@@ -250,7 +242,14 @@ func (l *Lexer) NextToken() token.Token {
 			return tok
 		} else if isDigit(l.char) {
 			tok.Literal = l.readNumber()
-			tok.Type = token.INT
+			if l.char == '.' {
+				l.readChar()
+				tok.Literal += "."
+				tok.Literal += l.readNumber()
+				tok.Type = token.FLOAT
+			} else {
+				tok.Type = token.INT
+			}
 			tok.UpdatePosition(initialPosition.row, initialPosition.col)
 			return tok
 		} else {

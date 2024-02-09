@@ -35,6 +35,7 @@ Examples for syntax, data types and others are available in the `examples` direc
 # TODOs (from highest)
 
 - MORE EXAMPLES
+- Support for Floats
 - Decide on approach for environments (global, local, etc, pure functions) (scopes)
 - Figure out "symbols"
 - Error handling

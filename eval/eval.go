@@ -119,6 +119,8 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return &object.Function{Parameters: params, Body: body, Env: env}
 	case *ast.IntegerLiteral:
 		return &object.Integer{Value: node.Value}
+	case *ast.FloatLiteral:
+		return &object.Float{Value: node.Value}
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
 	case *ast.PrefixExpression:
@@ -293,6 +295,7 @@ func evalStatements(statements []ast.Statement, env *object.Environment) object.
 }
 
 func evalScopeInfixExpression(node *ast.InfixExpression, env *object.Environment) object.Object {
+	// fmt.Println(node)
 	left := Eval(node.Left, env)
 	scope, ok := left.(*object.Scope)
 	if !ok {
@@ -318,6 +321,8 @@ func evalInfixExpression(operator string, right, left object.Object) object.Obje
 		return evalStringInfixExpression(operator, left, right)
 	case left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ:
 		return evalIntegerInfixExpression(operator, left, right)
+	case left.Type() == object.FLOAT_OBJ && right.Type() == object.FLOAT_OBJ:
+		return evalFloatInfixExpression(operator, left, right)
 	case operator == "==":
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
@@ -336,33 +341,59 @@ func evalInfixExpressionWithENV(operator string, right, left object.Object, env 
 	}
 }
 
-func evalIntegerInfixExpression(operator string, right object.Object, left object.Object) object.Object {
-	rightVal := right.(*object.Integer).Value
-	leftVal := left.(*object.Integer).Value
+func evalFloatInfixExpression(operator string, left, right object.Object) object.Object {
+	leftVal := left.(*object.Float).Value
+	rightVal := right.(*object.Float).Value
 
 	switch operator {
 	case "-":
-		return &object.Integer{Value: rightVal - leftVal}
+		return &object.Float{Value: leftVal - rightVal}
 	case "*":
-		return &object.Integer{Value: rightVal * leftVal}
+		return &object.Float{Value: leftVal * rightVal}
 	case "+":
-		return &object.Integer{Value: rightVal + leftVal}
+		return &object.Float{Value: leftVal + rightVal}
 	case "/":
-		return &object.Integer{Value: rightVal / leftVal}
-	case "%":
-		return &object.Integer{Value: rightVal % leftVal}
+		return &object.Float{Value: leftVal / rightVal}
 	case "<":
-		return nativeBoolToBooleanObject(rightVal < leftVal)
+		return nativeBoolToBooleanObject(leftVal < rightVal)
 	case ">":
-		return nativeBoolToBooleanObject(rightVal > leftVal)
+		return nativeBoolToBooleanObject(leftVal > rightVal)
 	case "==":
-		return nativeBoolToBooleanObject(rightVal == leftVal)
+		return nativeBoolToBooleanObject(leftVal == rightVal)
 	case "!=":
-		return nativeBoolToBooleanObject(rightVal != leftVal)
+		return nativeBoolToBooleanObject(leftVal != rightVal)
+	default:
+		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
+	}
+}
+
+func evalIntegerInfixExpression(operator string, left object.Object, right object.Object) object.Object {
+	leftVal := left.(*object.Integer).Value
+	rightVal := right.(*object.Integer).Value
+
+	switch operator {
+	case "-":
+		return &object.Integer{Value: leftVal - rightVal}
+	case "*":
+		return &object.Integer{Value: leftVal * rightVal}
+	case "+":
+		return &object.Integer{Value: leftVal + rightVal}
+	case "/":
+		return &object.Integer{Value: leftVal / rightVal}
+	case "%":
+		return &object.Integer{Value: leftVal % rightVal}
+	case "<":
+		return nativeBoolToBooleanObject(leftVal < rightVal)
+	case ">":
+		return nativeBoolToBooleanObject(leftVal > rightVal)
+	case "==":
+		return nativeBoolToBooleanObject(leftVal == rightVal)
+	case "!=":
+		return nativeBoolToBooleanObject(leftVal != rightVal)
 	case ">=":
-		return nativeBoolToBooleanObject(rightVal >= leftVal)
+		return nativeBoolToBooleanObject(leftVal >= rightVal)
 	case "<=":
-		return nativeBoolToBooleanObject(rightVal <= leftVal)
+		return nativeBoolToBooleanObject(leftVal <= rightVal)
 	default:
 		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
@@ -475,10 +506,12 @@ func extendFunctionEnv(fn *object.Function, args []object.Object) *object.Enviro
 	// TODO: test for that case
 	// !!! args should be the same length as fn.Parameters, or we're getting PANIC
 	// but this should be checked (what: in the parser) outside of extendFunctionEnv
+	// UPD: maybe not, we got partial application, and checking args outside of here
 	if len(args) == 0 {
 		return env
 	}
 
+	// should it be positional?
 	for idx, arg := range args {
 		env.Set(fn.Parameters[idx].Value, arg)
 	}
@@ -548,12 +581,12 @@ func applyFunction(fn object.Object, args []object.Object, env *object.Environme
 			return newError("wrong number of arguments. expected=%d got=%d", len(fn.Parameters), len(args))
 		}
 
+		// partial application
 		if len(fn.Parameters) > len(args) {
 			if len(args) == 0 {
 				return fn
 			}
 			extendedEnv := extendFunctionEnv(fn, args)
-
 			return &object.Function{
 				Parameters: fn.Parameters[len(args):],
 				Body:       fn.Body,
