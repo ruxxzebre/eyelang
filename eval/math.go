@@ -13,19 +13,24 @@ var Math = map[string]*object.Builtin{
 			if len(args) != 2 {
 				return newError("unexpected args. want=2. got=%d", len(args))
 			}
-
-			num, ok := args[0].(*object.Integer)
-			if !ok {
-				return newError("expected base to be %s. got=%s", num.Type(), args[0].Type())
+			if args[0].Type() != args[1].Type() {
+				return newError("expected args to be the same type. got=%s and %s", args[0].Type(), args[1].Type())
 			}
 
-			pow, ok := args[1].(*object.Integer)
-			if !ok {
-				return newError("expected pow to be %s. got=%s", num.Type(), args[0].Type())
+			switch args[0].(type) {
+			case *object.Integer:
+				num1 := args[0].(*object.Integer)
+				num2 := args[1].(*object.Integer)
+				val := int64(math.Pow(float64(num1.Value), float64(num2.Value)))
+				return &object.Integer{Value: val}
+			case *object.Float:
+				num1 := args[0].(*object.Float)
+				num2 := args[1].(*object.Float)
+				val := math.Pow(num1.Value, num2.Value)
+				return &object.Float{Value: val}
+			default:
+				return newError("expected base to be %s. got=%s", args[0].Type(), args[0].Type())
 			}
-
-			val := int64(math.Pow(float64(num.Value), float64(pow.Value)))
-			return &object.Integer{Value: val}
 		},
 	},
 	"sqrt": {
@@ -34,10 +39,19 @@ var Math = map[string]*object.Builtin{
 				return newError("unexpected args")
 			}
 
-			if num, ok := args[0].(*object.Integer); ok {
-				return &object.Integer{Value: int64(math.Sqrt(float64(num.Value)))}
+			if args[0].Type() == object.INTEGER_OBJ {
+				num := args[0].(*object.Integer)
+				val := int64(math.Sqrt(float64(num.Value)))
+				return &object.Integer{Value: val}
 			}
-			return newError("expected args[0] to be Integer. got=%T", args[1])
+
+			if args[0].Type() == object.FLOAT_OBJ {
+				num := args[0].(*object.Float)
+				val := math.Sqrt(num.Value)
+				return &object.Float{Value: val}
+			}
+
+			return newError("expected args[0] to be Integer or Float. got=%s", args[0].Type())
 		},
 	},
 }

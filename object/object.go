@@ -85,7 +85,7 @@ type Float struct {
 	Value float64
 }
 
-func (f *Float) Inspect() string { return fmt.Sprintf("%.2g", f.Value) }
+func (f *Float) Inspect() string { return strings.TrimRight(fmt.Sprintf("%f", f.Value), "0") }
 
 func (f *Float) Type() ObjectType { return FLOAT_OBJ }
 
