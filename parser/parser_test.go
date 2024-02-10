@@ -238,12 +238,31 @@ func testIdentifier(t *testing.T, exp ast.Expression, value string) bool {
 
 type IDENT string // ?
 
+func testFloatLiteral(t *testing.T, exp ast.Expression, expected float64) bool {
+	fl, ok := exp.(*ast.FloatLiteral)
+	if !ok {
+		t.Errorf("exp not *ast.FloatLiteral. got=%T", exp)
+		return false
+	}
+
+	if fl.Value != expected {
+		t.Errorf("fl.Value not %f. got=%f", expected, fl.Value)
+		return false
+	}
+
+	return true
+}
+
 func testLiteralExpression(t *testing.T, exp ast.Expression, expected any) bool {
 	switch v := expected.(type) {
 	case int:
 		return testIntegerLiteral(t, exp, int64(v))
 	case int64:
 		return testIntegerLiteral(t, exp, v)
+	case float32:
+		return testFloatLiteral(t, exp, float64(v))
+	case float64:
+		return testFloatLiteral(t, exp, v)
 	case string:
 		return testIdentifier(t, exp, string(v))
 	case IDENT:
@@ -465,6 +484,8 @@ func TestParsingInfixExpressions(t *testing.T) {
 		{"5 < 5;", 5, "<", 5},
 		{"5 == 5;", 5, "==", 5},
 		{"5 != 5;", 5, "!=", 5},
+		{"5 <= 5;", 5, "<=", 5},
+		{"5 >= 5;", 5, ">=", 5},
 		{"true == true", true, "==", true},
 		{"true != false", true, "!=", false},
 		{"false == false", false, "==", false},
@@ -990,5 +1011,64 @@ func TestAccessExpression(t *testing.T) {
 }
 
 func TestDebuggingAst(t *testing.T) {
+	t.SkipNow()
 	// input := ``
+}
+
+func TestFloatLiteralExpression(t *testing.T) {
+	input := `3.14;`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	stmt := program.Statements[0].(*ast.ExpressionStatement)
+	literal, ok := stmt.Expression.(*ast.FloatLiteral)
+	if !ok {
+		t.Fatalf("expected stmt.Expression to be *ast.FloatLiteral. got=%T", stmt.Expression)
+	}
+
+	if literal.Value != 3.14 {
+		t.Fatalf("expected literal.Value to be 3.14. got=%f", literal.Value)
+	}
+}
+
+func TestFloatInfixExpressions(t *testing.T) {
+	tests := []struct {
+		input    string
+		left     float64
+		operator string
+		right    float64
+	}{
+		{"3.14 + 3.14;", 3.14, "+", 3.14},
+		{"3.14 - 3.14;", 3.14, "-", 3.14},
+		{"3.14 * 3.14;", 3.14, "*", 3.14},
+		{"3.14 / 3.14;", 3.14, "/", 3.14},
+		{"3.14 % 3.14;", 3.14, "%", 3.14},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		program := p.ParseProgram()
+		checkParserErrors(t, p)
+
+		stmt := program.Statements[0].(*ast.ExpressionStatement)
+		infix, ok := stmt.Expression.(*ast.InfixExpression)
+		if !ok {
+			t.Fatalf("expected stmt.Expression to be *ast.InfixExpression. got=%T", stmt.Expression)
+		}
+
+		if !testFloatLiteral(t, infix.Left, tt.left) {
+			return
+		}
+
+		if infix.Operator != tt.operator {
+			t.Fatalf("expected infix.Operator to be %s. got=%s", tt.operator, infix.Operator)
+		}
+
+		if !testFloatLiteral(t, infix.Right, tt.right) {
+			return
+		}
+	}
 }
