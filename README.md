@@ -35,7 +35,8 @@ Examples for syntax, data types and others are available in the `examples` direc
 # TODOs (from highest)
 
 - MORE EXAMPLES
-- Support for Floats
+- ~~Support for Floats~~
+- Debugging (line numbers, print ast, objects)
 - Decide on approach for environments (global, local, etc, pure functions) (scopes)
 - Figure out "symbols"
 - Error handling

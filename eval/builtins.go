@@ -1,7 +1,9 @@
 package eval
 
 import (
+	"eyelang/lexer"
 	"eyelang/object"
+	"eyelang/parser"
 	"fmt"
 	"os"
 	"strings"
@@ -48,6 +50,28 @@ var Builtins = map[string]*object.Builtin{
 			fmt.Println(strings.Join(elements, ", "))
 
 			return NULL
+		},
+	},
+	"eval": {
+		Fn: func(env *object.Environment, args ...object.Object) object.Object {
+			if len(args) > 2 || len(args) < 1 {
+				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			}
+
+			code, ok := args[0].(*object.String)
+			if !ok {
+				return newError("argument to `eval` not supported, got %s", args[0].Type())
+			}
+
+			l := lexer.New(code.Value)
+			l.Debug = true
+			p := parser.New(l)
+			program := p.ParseProgram()
+			if len(p.Errors()) != 0 {
+				return newError(p.Errors()[0].Message)
+			}
+
+			return Eval(program, env)
 		},
 	},
 	"load": {

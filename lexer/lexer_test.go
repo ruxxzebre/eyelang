@@ -35,6 +35,9 @@ foo.bar
 [1, 2];
 {"hello": 1, "bye": "no"};
 # comment at the end
+2.1;
+0.1;
+0.000001;
 `
 
 	tests := []struct {
@@ -135,6 +138,12 @@ foo.bar
 		{token.COLON, ":"},
 		{token.STRING, "no"},
 		{token.RBRACE, "}"},
+		{token.SEMICOLON, ";"},
+		{token.FLOAT, "2.1"},
+		{token.SEMICOLON, ";"},
+		{token.FLOAT, "0.1"},
+		{token.SEMICOLON, ";"},
+		{token.FLOAT, "0.000001"},
 		{token.SEMICOLON, ";"},
 		{token.EOF, ""},
 	}

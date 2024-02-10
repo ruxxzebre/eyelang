@@ -2,6 +2,7 @@ package ast
 
 import (
 	"bytes"
+	"encoding/json"
 	"eyelang/token"
 	"reflect"
 	"strings"
@@ -23,7 +24,7 @@ type Expression interface {
 }
 
 type Program struct {
-	Statements []Statement
+	Statements []Statement `json:"statements"`
 }
 
 func (p *Program) TokenLiteral() string {
@@ -44,8 +45,8 @@ func (p *Program) String() string {
 }
 
 type Identifier struct {
-	Token token.Token
-	Value string
+	Token token.Token `json:"token" yaml:"token"`
+	Value string      `json:"value" yaml:"value"`
 }
 
 func (i *Identifier) expressionNode()      {}
@@ -55,8 +56,8 @@ func (i *Identifier) String() string {
 }
 
 type ReturnStatement struct {
-	Token       token.Token // 'return'
-	ReturnValue Expression
+	Token       token.Token `json:"token" yaml:"token"`
+	ReturnValue Expression  `json:"returnValue" yaml:"returnValue"`
 }
 
 func (rs *ReturnStatement) statementNode()       {}
@@ -76,9 +77,9 @@ func (rs *ReturnStatement) String() string {
 }
 
 type LetStatement struct {
-	Token token.Token
-	Name  *Identifier
-	Value Expression
+	Token token.Token `json:"token" yaml:"token"`
+	Name  *Identifier `json:"name" yaml:"name"`
+	Value Expression  `json:"value" yaml:"value"`
 }
 
 func (ls *LetStatement) statementNode()       {}
@@ -100,8 +101,8 @@ func (ls *LetStatement) String() string {
 }
 
 type ExpressionStatement struct {
-	Token      token.Token // first token of the expression
-	Expression Expression
+	Token      token.Token `json:"token" yaml:"token"`
+	Expression Expression  `json:"expression" yaml:"expression"`
 }
 
 func (es *ExpressionStatement) statementNode()       {}
@@ -114,8 +115,8 @@ func (es *ExpressionStatement) String() string {
 }
 
 type IntegerLiteral struct {
-	Token token.Token
-	Value int64
+	Token token.Token `json:"token" yaml:"token"`
+	Value int64       `json:"value" yaml:"value"`
 }
 
 func (il *IntegerLiteral) expressionNode()      {}
@@ -123,8 +124,8 @@ func (il *IntegerLiteral) TokenLiteral() string { return il.Token.Literal }
 func (il *IntegerLiteral) String() string       { return il.Token.Literal }
 
 type FloatLiteral struct {
-	Token token.Token
-	Value float64
+	Token token.Token `json:"token" yaml:"token"`
+	Value float64     `json:"value" yaml:"value"`
 }
 
 func (fl *FloatLiteral) expressionNode()      {}
@@ -132,8 +133,8 @@ func (fl *FloatLiteral) TokenLiteral() string { return fl.Token.Literal }
 func (fl *FloatLiteral) String() string       { return fl.Token.Literal }
 
 type StringLiteral struct {
-	Token token.Token
-	Value string
+	Token token.Token `json:"token" yaml:"token"`
+	Value string      `json:"value" yaml:"value"`
 }
 
 func (sl *StringLiteral) expressionNode()      {}
@@ -141,9 +142,9 @@ func (sl *StringLiteral) TokenLiteral() string { return sl.Token.Literal }
 func (sl *StringLiteral) String() string       { return sl.Token.Literal }
 
 type PrefixExpression struct {
-	Token    token.Token // the prefix token, e.g. !
-	Operator string
-	Right    Expression
+	Token    token.Token `json:"token" yaml:"token"`       // the prefix token, e.g. !
+	Operator string      `json:"operator" yaml:"operator"` // the operator, e.g. !
+	Right    Expression  `json:"right" yaml:"right"`       // the right expression, e.g. 5
 }
 
 func (pe *PrefixExpression) expressionNode()      {}
@@ -160,10 +161,10 @@ func (pe *PrefixExpression) String() string {
 }
 
 type InfixExpression struct {
-	Token    token.Token
-	Operator string
-	Left     Expression
-	Right    Expression
+	Token    token.Token `json:"token" yaml:"token"`
+	Operator string      `json:"operator" yaml:"operator"`
+	Left     Expression  `json:"left" yaml:"left"`
+	Right    Expression  `json:"right" yaml:"right`
 }
 
 func (ie *InfixExpression) expressionNode()      {}
@@ -190,8 +191,8 @@ func (b *Boolean) TokenLiteral() string { return b.Token.Literal }
 func (b *Boolean) String() string       { return b.Token.Literal }
 
 type BlockStatement struct {
-	Token      token.Token
-	Statements []Statement
+	Token      token.Token `json:"token" yaml:"token"`
+	Statements []Statement `json:"statements" yaml:"statements"`
 }
 
 func (bs *BlockStatement) expressionNode()      {}
@@ -207,10 +208,10 @@ func (bs *BlockStatement) String() string {
 }
 
 type IfExpression struct {
-	Token       token.Token
-	Condition   Expression
-	Consequence *BlockStatement
-	Alternative *BlockStatement
+	Token       token.Token     `json:"token" yaml:"token"`
+	Condition   Expression      `json:"condition" yaml:"condition"`
+	Consequence *BlockStatement `json:"consequence" yaml:"consequence"`
+	Alternative *BlockStatement `json:"alternative" yaml:"alternative"`
 }
 
 func (ie *IfExpression) expressionNode()      {}
@@ -232,9 +233,9 @@ func (ie *IfExpression) String() string {
 }
 
 type FunctionLiteral struct {
-	Token      token.Token
-	Parameters []*Identifier
-	Body       *BlockStatement
+	Token      token.Token     `json:"token" yaml:"token"`
+	Parameters []*Identifier   `json:"parameters" yaml:"parameters"`
+	Body       *BlockStatement `json:"body" yaml:"body"`
 }
 
 func (fl *FunctionLiteral) expressionNode()      {}
@@ -256,9 +257,9 @@ func (fl *FunctionLiteral) String() string {
 }
 
 type CallExpression struct {
-	Token     token.Token
-	Function  Expression
-	Arguments []Expression
+	Token     token.Token  `json:"token" yaml:"token"`
+	Function  Expression   `json:"function" yaml:"function"`
+	Arguments []Expression `json:"arguments" yaml:"arguments"`
 }
 
 func (ce *CallExpression) expressionNode()      {}
@@ -280,8 +281,8 @@ func (ce *CallExpression) String() string {
 }
 
 type ArrayLiteral struct {
-	Token    token.Token
-	Elements []Expression
+	Token    token.Token  `json:"token" yaml:"token"`
+	Elements []Expression `json:"elements" yaml:"elements"`
 }
 
 func (al *ArrayLiteral) expressionNode()      {}
@@ -307,9 +308,9 @@ func (al *ArrayLiteral) String() string {
 }
 
 type AccessExpression struct {
-	Token token.Token // "."
-	Left  Expression
-	Right Expression
+	Token token.Token `json:"token" yaml:"token"` // the '.' token
+	Left  Expression  `json:"left" yaml:"left"`
+	Right Expression  `json:"right" yaml:"right"`
 }
 
 func (ae *AccessExpression) expressionNode()      {}
@@ -327,9 +328,9 @@ func (ae *AccessExpression) String() string {
 }
 
 type IndexExpression struct {
-	Token token.Token
-	Left  Expression
-	Index Expression
+	Token token.Token `json:"token" yaml:"token"` // the '[' token
+	Left  Expression  `json:"left" yaml:"left"`
+	Index Expression  `json:"index" yaml:"index"`
 }
 
 func (ie *IndexExpression) expressionNode()      {}
@@ -347,8 +348,8 @@ func (ie *IndexExpression) String() string {
 }
 
 type HashLiteral struct {
-	Token token.Token
-	Pairs map[Expression]Expression
+	Token token.Token               `json:"token" yaml:"token"`
+	Pairs map[Expression]Expression `json:"pairs" yaml:"pairs"`
 }
 
 func (hl *HashLiteral) expressionNode()      {}
@@ -370,7 +371,25 @@ func (hl *HashLiteral) String() string {
 	return out.String()
 }
 
+func ToJSON(node interface{}) string {
+	bytes, err := json.Marshal(node)
+	if err != nil {
+		return err.Error()
+	}
+	return string(bytes)
+}
+
+// func ToYAML(node interface{}) string {
+// 	bytes, err := yaml.Marshal(node)
+// 	if err != nil {
+// 		return err.Error()
+// 	}
+// 	return string(bytes)
+// }
+
 func DebugAst(node interface{}) string {
+	panic("not implemented")
+
 	var out bytes.Buffer
 
 	reflect.ValueOf(node)

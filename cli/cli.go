@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"eyelang/ast"
 	"eyelang/eval"
 	"eyelang/lexer"
 	"eyelang/object"
@@ -52,6 +53,8 @@ func EvalFile(filepath string) *object.Environment {
 	if len(errors) > 0 {
 		log.Fatalf("parsing errors: %s", strings.Join(errors, "\n"))
 	}
+
+	fmt.Println(ast.ToJSON(program))
 
 	scope := eval.InitReplScope()
 	env := scope.Outer

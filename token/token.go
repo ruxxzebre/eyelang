@@ -1,18 +1,26 @@
 package token
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type TokenType string
 type TokenCategory string
 
 type Token struct {
-	Type TokenType
+	Type TokenType `json:"type"`
 	// Category TokenCategory (memory?)
-	Literal  string
+	Literal  string `json:"literal"`
 	Position struct {
-		Row int
-		Col int
-	}
+		Row int `json:"row"`
+		Col int `json:"col"`
+	} `json:"position"`
+}
+
+func (tok *Token) MarshalJSON() ([]byte, error) {
+	// tokenString := fmt.Sprintf("%s-%s (%d:%d)", tok.Type, tok.Literal, tok.Position.Row, tok.Position.Col)
+	return json.Marshal(tok.Type)
 }
 
 func (tok *Token) PositionString() string {

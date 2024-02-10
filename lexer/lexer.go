@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"eyelang/token"
+	"fmt"
 	"io"
 	"strings"
 	"unicode"
@@ -17,6 +18,7 @@ type Lexer struct {
 	position     int
 	readPosition int
 	char         rune
+	Debug        bool
 	textPosition struct {
 		row int
 		col int
@@ -259,6 +261,11 @@ func (l *Lexer) NextToken() token.Token {
 
 	tok.UpdatePosition(initialPosition.row, initialPosition.col)
 	l.readChar()
+
+	if l.Debug {
+		fmt.Printf("Token: (%s, '%s')\n", tok.Type, tok.Literal)
+	}
+
 	return tok
 }
 
