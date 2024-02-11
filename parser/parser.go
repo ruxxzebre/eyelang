@@ -281,13 +281,57 @@ func (p *Parser) parseFunctionParams() []*ast.Identifier {
 	return idents
 }
 
+// parse params like list
+func (p *Parser) parseShorthandFunctionLiteral(lit *ast.FunctionLiteral) ast.Expression {
+	params := []*ast.Identifier{}
+
+	p.nextToken()
+	for !p.curTokenIs(token.COLON) && !p.curTokenIs(token.EOF) {
+		param := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		params = append(params, param)
+		p.nextToken()
+		if p.curTokenIs(token.COMMA) {
+			p.nextToken()
+		}
+	}
+
+	if !p.curTokenIs(token.COLON) {
+		p.newError("expected colon after shorthand function literal parameters")
+		return nil
+	}
+
+	lit.Parameters = params
+	p.nextToken()
+
+	if p.curTokenIs(token.LBRACE) {
+		lit.Body = p.parseBlockStatement()
+	} else {
+		if p.curToken.Literal == "@" {
+			p.nextToken()
+		}
+		// TODO: eww that's ugly
+		lit.Body = &ast.BlockStatement{
+			Token: p.curToken,
+			Statements: []ast.Statement{
+				&ast.ExpressionStatement{
+					Token:      p.curToken,
+					Expression: p.parseExpression(LOWEST),
+				},
+			},
+		}
+	}
+
+	return lit
+}
+
 func (p *Parser) parseFunctionLiteral() ast.Expression {
 	lit := &ast.FunctionLiteral{
 		Token: p.curToken,
 	}
 
-	if !p.expectPeek(token.LPAREN) {
-		return nil
+	// TODO: preserve expectPeek
+	if !p.peekTokenIs(token.LPAREN) {
+		return p.parseShorthandFunctionLiteral(lit)
 	}
 
 	lit.Parameters = p.parseFunctionParams()

@@ -22,8 +22,6 @@ type EvalError struct {
 	Message string
 }
 
-var errorContext []EvalError
-
 func nativeBoolToBooleanObject(input bool) *object.Boolean {
 	if input {
 		return TRUE
@@ -95,6 +93,56 @@ func dieNilNode() object.Object {
 	return newError("nil node")
 }
 
+func decorateError(err object.Object, node ast.Node) object.Object {
+	error, ok := err.(*object.Error)
+	if !ok {
+		return newError("attempted to decorate non-error object")
+	}
+
+	switch node := node.(type) {
+	case *ast.LetStatement:
+		error.Message = fmt.Sprintf("in let statement: %s %s", error.Message, node.Token.PositionString())
+	case *ast.ReturnStatement:
+		error.Message = fmt.Sprintf("in return statement: %s %s", error.Message, node.Token.PositionString())
+	case *ast.ExpressionStatement:
+		error.Message = fmt.Sprintf("in expression statement: %s %s", error.Message, node.Token.PositionString())
+	case *ast.CallExpression:
+		error.Message = fmt.Sprintf("in call expression: %s %s", error.Message, node.Token.PositionString())
+	case *ast.FunctionLiteral:
+		error.Message = fmt.Sprintf("in function literal: %s %s", error.Message, node.Token.PositionString())
+	case *ast.IntegerLiteral:
+		error.Message = fmt.Sprintf("in integer literal: %s %s", error.Message, node.Token.PositionString())
+	case *ast.FloatLiteral:
+		error.Message = fmt.Sprintf("in float literal: %s %s", error.Message, node.Token.PositionString())
+	case *ast.StringLiteral:
+		error.Message = fmt.Sprintf("in string literal: %s %s", error.Message, node.Token.PositionString())
+	case *ast.Boolean:
+		error.Message = fmt.Sprintf("in boolean: %s %s", error.Message, node.Token.PositionString())
+	case *ast.PrefixExpression:
+		error.Message = fmt.Sprintf("in prefix expression: %s %s", error.Message, node.Token.PositionString())
+	case *ast.InfixExpression:
+		error.Message = fmt.Sprintf("in infix expression: %s %s", error.Message, node.Token.PositionString())
+	case *ast.IfExpression:
+		error.Message = fmt.Sprintf("in if expression: %s %s", error.Message, node.Token.PositionString())
+	case *ast.BlockStatement:
+		error.Message = fmt.Sprintf("in block statement: %s %s", error.Message, node.Token.PositionString())
+	case *ast.Identifier:
+		error.Message = fmt.Sprintf("in identifier: %s %s", error.Message, node.Token.PositionString())
+	case *ast.ArrayLiteral:
+		error.Message = fmt.Sprintf("in array literal: %s %s", error.Message, node.Token.PositionString())
+	case *ast.IndexExpression:
+		error.Message = fmt.Sprintf("in index expression: %s %s", error.Message, node.Token.PositionString())
+	case *ast.HashLiteral:
+		error.Message = fmt.Sprintf("in hash literal: %s %s", error.Message, node.Token.PositionString())
+	case *ast.AccessExpression:
+		error.Message = fmt.Sprintf("in access expression: %s %s", error.Message, node.Token.PositionString())
+	default:
+		error.Message = fmt.Sprintf("%s %s", error.Message, node.TokenLiteral())
+	}
+
+	return error
+}
+
 func Eval(node ast.Node, env *object.Environment) object.Object {
 	// fmt.Printf("evaluating %T %+v %t %#v\n", node, node, &node == nil, node)
 	if globalStack.Size() >= MAX_RECURSION_DEPTH {
@@ -161,8 +209,11 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		result := evalInfixExpression(node.Operator, right, left)
 
 		// maybe it's pipe operator
-		if isError(result) && node.Operator == "|>" {
-			result = evalInfixExpressionWithENV(node.Operator, right, left, env)
+		if isError(result) {
+			if node.Operator == "|>" {
+				result = evalInfixExpressionWithENV(node.Operator, right, left, env)
+			}
+			return decorateError(result, node)
 		}
 
 		return result
@@ -177,7 +228,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 	case *ast.LetStatement:
 		val := evalLetStatement(node, env)
 		if isError(val) {
-			return val
+			return decorateError(val, node)
 		}
 
 		env.Set(node.Name.Value, val)
@@ -185,27 +236,31 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 	case *ast.ArrayLiteral:
 		elements := evalExpressions(node.Elements, env)
 		if len(elements) == 1 && isError(elements[0]) {
-			return elements[0]
+			return decorateError(elements[0], node)
 		}
 		return &object.Array{Elements: elements}
 	case *ast.ReturnStatement:
 		val := Eval(node.ReturnValue, env)
 		if isError(val) {
-			return val
+			return decorateError(val, node)
 		}
 		return &object.ReturnValue{Value: val}
 	case *ast.IndexExpression:
 		left := Eval(node.Left, env)
 		if isError(left) {
-			return left
+			return decorateError(left, node.Left)
 		}
 
 		right := Eval(node.Index, env)
 		if isError(right) {
-			return right
+			return decorateError(right, node.Index)
 		}
 
-		return evalIndexExpression(left, right)
+		result := evalIndexExpression(left, right)
+		if isError(result) {
+			return decorateError(result, node)
+		}
+		return result
 	case *ast.HashLiteral:
 		hash := &object.Hash{}
 		pairs := map[object.HashKey]object.HashPair{}
@@ -213,17 +268,17 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		for key, value := range node.Pairs {
 			left := Eval(key, env)
 			if isError(left) {
-				return left
+				return decorateError(left, key)
 			}
 
 			right := Eval(value, env)
 			if isError(right) {
-				return right
+				return decorateError(right, value)
 			}
 
 			hashed, ok := left.(object.Hashable)
 			if !ok {
-				return newError("unsupported hash key type: %T", left)
+				return decorateError(newError("unsupported hash key type: %T", node), node)
 			}
 
 			pairs[hashed.HashKey()] = object.HashPair{
@@ -236,7 +291,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return hash
 	}
 
-	return newError("invalid type")
+	return decorateError(newError("invalid type"), node)
 }
 
 func evalProgram(node *ast.Program, env *object.Environment) object.Object {

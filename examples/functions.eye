@@ -2,7 +2,11 @@
 # and are expressions that can be assigned to variables
 
 let vectorLength = fn (x, y, z) {
-    return math.sqrt(math.pow(x, 2) + math.pow(y, 2) + math.pow(z, 2))
+    let x = float(x)
+    let y = float(y)
+    let z = float(z)
+    let p = float(2)
+    return math.sqrt(math.pow(x, p) + math.pow(y, p) + math.pow(z, p))
 }
 
 puts(vectorLength(3, 3, 3))

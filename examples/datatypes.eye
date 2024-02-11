@@ -14,7 +14,7 @@ let falsy = false;
 
 let moreThanThree = x > 3;
 if (moreThanThree) {
-    puts("x is more than 3! got=" + x);
+    puts("x is more than 3! got=" + str(x));
 }
 
 # FUNCTION

@@ -4,7 +4,10 @@ import (
 	"eyelang/lexer"
 	"eyelang/object"
 	"eyelang/parser"
+	_ "eyelang/testing"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -742,7 +745,7 @@ func TestHashIndexExpression(t *testing.T) {
 }
 
 func TestLoadMacro(t *testing.T) {
-	input := `let sc = load("test_data.eye", true); sc;`
+	input := `let sc = load("eval/test_data.eye", true); sc;`
 
 	evaluated := testEval(input)
 	if isError(evaluated) {
@@ -827,4 +830,30 @@ func TestPipeExpression(t *testing.T) {
 
 func TestScopes(t *testing.T) {
 	t.Fatalf("not implemented")
+}
+
+func TestExamplesInterpretingSuccessfully(t *testing.T) {
+	files, err := os.ReadDir("examples")
+	if err != nil {
+		t.Fatalf("failed to read examples directory: %s", err)
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		if strings.HasSuffix(file.Name(), ".eye") {
+			t.Logf("interpreting %s", file.Name())
+			input, err := os.ReadFile(fmt.Sprintf("examples/%s", file.Name()))
+			if err != nil {
+				t.Fatalf("failed to read file: %s", err)
+			}
+
+			evaluated := testEval(string(input))
+			if isError(evaluated) {
+				t.Fatalf("failed to interpret %s: %s", file.Name(), evaluated.Inspect())
+			}
+		}
+	}
 }

@@ -262,7 +262,7 @@ var Builtins = map[string]*object.Builtin{
 		},
 	},
 	"int": {
-		Fn: func(env *object.Environment, args ...object.Object) object.Object {
+		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
 			if len(args) != 1 {
 				return newError("unexpected args")
 			}
@@ -275,6 +275,61 @@ var Builtins = map[string]*object.Builtin{
 				return &object.Integer{Value: val}
 			default:
 				return newError("expected args[0] to be Integer or Float. got=%s", args[0].Type())
+			}
+		},
+	},
+	// "str": {
+	// 	Fn: func(_ *object.Environment, args ...object.Object) object.Object {
+	// 		if len(args) != 1 {
+	// 			return newError("str requires an argument")
+	// 		}
+
+	// 		return &object.String{
+	// 			Value: args[0].Inspect(),
+	// 		}
+	// 	},
+	// },
+	"range": {
+		Fn: func(env *object.Environment, args ...object.Object) object.Object {
+			if len(args) == 0 {
+				return newError("unexpected args")
+			}
+
+			startOrEnd, ok := args[0].(*object.Integer)
+			if !ok {
+				return newError("expected integer. got=%T", args[0])
+			}
+
+			if len(args) == 1 {
+				elements := make([]object.Object, startOrEnd.Value)
+				for i := int64(0); i < startOrEnd.Value; i++ {
+					elements[i] = &object.Integer{Value: i}
+				}
+
+				return &object.Array{
+					Elements: elements,
+				}
+			}
+
+			end, ok := args[1].(*object.Integer)
+			if !ok {
+				return newError("expected integer. got=%T", args[1])
+			}
+
+			if startOrEnd.Value > end.Value {
+				return newError("start must be less than end")
+			}
+
+			length := end.Value - startOrEnd.Value
+			elements := make([]object.Object, length)
+
+			step := int64(1)
+			for i := range elements {
+				elements[i] = &object.Integer{Value: int64(i) + startOrEnd.Value + step - 1}
+			}
+
+			return &object.Array{
+				Elements: elements,
 			}
 		},
 	},
