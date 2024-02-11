@@ -170,9 +170,16 @@ func (st *String) HashKey() HashKey {
 
 type BuiltinFunction func(env *Environment, args ...Object) Object
 
+type BultinParam struct {
+	Type     ObjectType
+	Name     string
+	Required bool
+}
+
 type Builtin struct {
 	Fn          BuiltinFunction
 	Description string
+	Parameters  []BultinParam
 }
 
 func (b *Builtin) Inspect() string { return "builtin function" }

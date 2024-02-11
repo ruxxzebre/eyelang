@@ -63,10 +63,29 @@ func TestEvalBooleanExpression(t *testing.T) {
 	}
 }
 
+func checkParserErrors(t *testing.T, p *parser.Parser) {
+	errors := p.Errors()
+	if len(errors) == 0 {
+		return
+	}
+
+	t.Errorf("parser has %d errors", len(errors))
+	for _, msg := range errors {
+		t.Errorf("parser error: %q", msg.Message)
+	}
+	t.FailNow()
+}
+
 func testEval(input string) object.Object {
 	l := lexer.New(input)
 	p := parser.New(l)
 	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		for _, e := range p.Errors() {
+			fmt.Println(e.Message)
+		}
+		return newError("parser error")
+	}
 	env := object.NewEnvironment()
 	env.Load(initTestingScope().Outer)
 
@@ -80,6 +99,13 @@ func testEval2(input string) (object.Object, *object.Environment) {
 	env := object.NewEnvironment()
 	env.Load(initTestingScope().Outer)
 
+	if len(p.Errors()) != 0 {
+		for _, e := range p.Errors() {
+			fmt.Println(e.Message)
+		}
+		return newError("parser error"), env
+	}
+
 	return Eval(program, env), env
 }
 
@@ -87,6 +113,12 @@ func testEval3(input string, env *object.Environment) (object.Object, *object.En
 	l := lexer.New(input)
 	p := parser.New(l)
 	program := p.ParseProgram()
+	if len(p.Errors()) != 0 {
+		for _, e := range p.Errors() {
+			fmt.Println(e.Message)
+		}
+		return newError("parser error"), env
+	}
 	return Eval(program, env), env
 }
 
@@ -710,8 +742,24 @@ func TestHashIndexExpression(t *testing.T) {
 }
 
 func TestLoadMacro(t *testing.T) {
-	t.Skip()
-	// input := `let sc = load("test_data/quote.sc");`
+	input := `let sc = load("test_data.eye", true); sc;`
+
+	evaluated := testEval(input)
+	if isError(evaluated) {
+		t.Errorf("load macro failed. got=%s", evaluated.Inspect())
+	}
+
+	sc, ok := evaluated.(*object.Scope)
+	if !ok {
+		t.Fatalf("load macro failed. got=%T", sc)
+	}
+
+	num, ok := sc.Outer.Get("num")
+	if !ok {
+		t.Fatalf("load macro failed. num not found")
+	}
+
+	testIntegerObject(t, num, 2)
 }
 
 func TestListsLib(t *testing.T) {
@@ -753,14 +801,28 @@ func TestListsLib(t *testing.T) {
 
 // Currying vs Partial Application ?
 func TestCurrying(t *testing.T) {
-	t.Fatalf("not implemented")
+	input := `
+	let add = fn(a, b) { a + b };
+	# detect why nil pointer dereference
+	let addtwo = add(2);
+	addtwo(3);
+	`
+
+	evaluated := testEval(input)
+	if isError(evaluated) {
+		t.Fatalf("currying failed. got=%s", evaluated.Inspect())
+	}
+	testIntegerObject(t, evaluated, 5)
 }
 
 func TestPipeExpression(t *testing.T) {
-	// be sure to test environments and stuff
-	// for example: 2 |> math.sqrt - fails with error "attempted to access scope of non-scope object"
-	// those kind of cases should be tested for
-	t.Fatalf("not implemented")
+	input := `
+		let add = fn(a, b) { a + b };
+		let square = fn(a) { a * a };
+		let addAndSquare = add(2) |> square;
+		add
+		`
+	t.Fatalf(input)
 }
 
 func TestScopes(t *testing.T) {

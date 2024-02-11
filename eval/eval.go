@@ -91,9 +91,23 @@ func evalMacro(evaluation object.Object, args []object.Object, env *object.Envir
 var globalStack = NewStack()
 var MAX_RECURSION_DEPTH = 10000
 
+func dieNilNode() object.Object {
+	return newError("nil node")
+}
+
 func Eval(node ast.Node, env *object.Environment) object.Object {
+	// fmt.Printf("evaluating %T %+v %t %#v\n", node, node, &node == nil, node)
 	if globalStack.Size() >= MAX_RECURSION_DEPTH {
 		return newError("max recursion depth exceeded %d", MAX_RECURSION_DEPTH)
+	}
+
+	if node == nil {
+		// HEY! This won't happen, never
+		// as we first should now exact type of node,
+		// otherwise it won't be nil no matter how hard you try, but *ast.LetStatement{nil} or something like that
+
+		// Gotta rewrite parser and lexer to be more 'go' idiomatic
+		return dieNilNode()
 	}
 
 	switch node := node.(type) {
@@ -112,7 +126,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return args[0]
 		}
 
-		return applyFunction(function, args, env)
+		return ApplyFunction(function, args, env)
 	case *ast.FunctionLiteral:
 		params := node.Parameters
 		body := node.Body
@@ -147,7 +161,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		result := evalInfixExpression(node.Operator, right, left)
 
 		// maybe it's pipe operator
-		if isError(result) {
+		if isError(result) && node.Operator == "|>" {
 			result = evalInfixExpressionWithENV(node.Operator, right, left, env)
 		}
 
@@ -313,9 +327,14 @@ func evalScopeInfixExpression(node *ast.InfixExpression, env *object.Environment
 	return newError("attempted to access scope with non-identifier")
 }
 
+var DEBUG = false
+
 func evalInfixExpression(operator string, right, left object.Object) object.Object {
+	if DEBUG {
+		fmt.Println("evalInfixExpression", operator, right, left, right.Type() != left.Type())
+	}
 	switch {
-	case right.Type() != left.Type():
+	case left.Type() != right.Type():
 		return newError("type mismatch: %s %s %s", left.Type(), operator, right.Type())
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
 		return evalStringInfixExpression(operator, left, right)
@@ -420,7 +439,7 @@ func evalPipeInfixExpression(left, right object.Object, env *object.Environment)
 		return newError("right hand side of |> must be a function. got=%s", right.Type())
 	}
 
-	return applyFunction(right, []object.Object{left}, env)
+	return ApplyFunction(right, []object.Object{left}, env)
 }
 
 func evalPrefixExpression(operator string, right object.Object) object.Object {
@@ -526,6 +545,36 @@ func unwrapReturnValue(obj object.Object) object.Object {
 	return obj
 }
 
+func partialApplicationBuiltin(fn *object.Builtin, args []object.Object) object.Object {
+	if len(args) == 0 {
+		return fn
+	}
+
+	// wrappedFn := &object.Function{
+	// 	// Parameters: fn.Parameters[len(args):],
+	// 	// Body:       fn.Body,
+	// 	// Env:        extendedEnv,
+	// }
+
+	// extendedEnv := extendFunctionEnv(fn, args)
+
+	return newError("partial application is not yet supported by builtins")
+}
+
+func partialApplication(fn *object.Function, args []object.Object) object.Object {
+	if len(args) == 0 {
+		return fn
+	}
+
+	extendedEnv := extendFunctionEnv(fn, args)
+
+	return &object.Function{
+		Parameters: fn.Parameters[len(args):],
+		Body:       fn.Body,
+		Env:        extendedEnv,
+	}
+}
+
 func ApplyFunction(fn object.Object, args []object.Object, env *object.Environment) object.Object {
 	switch fn := fn.(type) {
 	case *object.Builtin:
@@ -543,55 +592,7 @@ func ApplyFunction(fn object.Object, args []object.Object, env *object.Environme
 		}
 
 		if len(fn.Parameters) > len(args) {
-			if len(args) == 0 {
-				return fn
-			}
-			extendedEnv := extendFunctionEnv(fn, args)
-
-			return &object.Function{
-				Parameters: fn.Parameters[len(args):],
-				Body:       fn.Body,
-				Env:        extendedEnv,
-			}
-		}
-
-		globalStack.Push(fn)
-		extendedEnv := extendFunctionEnv(fn, args)
-		evaludated := Eval(fn.Body, extendedEnv)
-		globalStack.Pop()
-		return unwrapReturnValue(evaludated)
-	default:
-		return newError("not a function: %s", fn.Type())
-	}
-}
-
-func applyFunction(fn object.Object, args []object.Object, env *object.Environment) object.Object {
-	switch fn := fn.(type) {
-	case *object.Builtin:
-		result := fn.Fn(env, args...)
-
-		if isMacro(result) {
-			return evalMacro(result, args, env)
-		}
-
-		return result
-
-	case *object.Function:
-		if len(fn.Parameters) < len(args) {
-			return newError("wrong number of arguments. expected=%d got=%d", len(fn.Parameters), len(args))
-		}
-
-		// partial application
-		if len(fn.Parameters) > len(args) {
-			if len(args) == 0 {
-				return fn
-			}
-			extendedEnv := extendFunctionEnv(fn, args)
-			return &object.Function{
-				Parameters: fn.Parameters[len(args):],
-				Body:       fn.Body,
-				Env:        extendedEnv,
-			}
+			return partialApplication(fn, args)
 		}
 
 		globalStack.Push(fn)

@@ -41,7 +41,7 @@ func BenchmarkSimple(b *testing.B) {
 	}
 
 	fib := func(n int64) object.Object {
-		return applyFunction(fibo, getArgs(getInt(n)), env)
+		return ApplyFunction(fibo, getArgs(getInt(n)), env)
 	}
 
 	// num := int64(10)
@@ -128,10 +128,10 @@ func BenchmarkIter(b *testing.B) {
 	// num := int64(10)
 	for i := 0; i < b.N; i++ {
 		fib := func(n int64) object.Object {
-			return applyFunction(fibo, args, env)
+			return ApplyFunction(fibo, args, env)
 		}
 		fib(fibArg)
-		// applyFunction(fibo, args, env)
+		// ApplyFunction(fibo, args, env)
 	}
 }
 
@@ -185,12 +185,12 @@ func BenchmarkIterMemo(b *testing.B) {
 	// num := int64(10)
 	for i := 0; i < b.N; i++ {
 		fib := func(n int64) object.Object {
-			return applyFunction(fibo, args, env)
+			return ApplyFunction(fibo, args, env)
 		}
 		err := fib(fibArg)
 		if isError(err) {
 			b.Fatalf("got error %s", err.Inspect())
 		}
-		// applyFunction(fibo, args, env)
+		// ApplyFunction(fibo, args, env)
 	}
 }

@@ -127,7 +127,8 @@ const PEEK_BYTES = 5
 func (l *Lexer) peekChar() rune {
 	peekBytes, err := l.reader.Peek(PEEK_BYTES)
 	if err != nil && len(peekBytes) == 0 {
-		// TODO: LEXER ERROR
+		// TODO: LEXER ERROR, or EOF
+		// no, we really got EOF over here
 		return 0
 	}
 
@@ -245,10 +246,21 @@ func (l *Lexer) NextToken() token.Token {
 		} else if isDigit(l.char) {
 			tok.Literal = l.readNumber()
 			if l.char == '.' {
-				l.readChar()
 				tok.Literal += "."
-				tok.Literal += l.readNumber()
-				tok.Type = token.FLOAT
+				l.readChar()
+				mantissa := l.readNumber()
+				// fmt.Printf("Mantissa: %s\n", mantissa)
+				// fmt.Printf("Mantissa length: %d\n", len(mantissa))
+				// fmt.Printf("Current char: %s, Peek char: %s\n", string(l.char), string(l.peekChar()))
+				if len(mantissa) == 0 {
+					tok.UpdatePosition(l.textPosition.row, l.textPosition.col)
+					tok.Type = token.ILLEGAL
+					l.readChar()
+					return tok
+				} else {
+					tok.Literal += mantissa
+					tok.Type = token.FLOAT
+				}
 			} else {
 				tok.Type = token.INT
 			}
@@ -277,8 +289,8 @@ func (l *Lexer) readString() string {
 		if l.char == '"' {
 			break
 		}
+		// TODO: EOF over here, use same constant
 		if l.char == 0 {
-			// TODO: throw error
 			break
 		}
 		out.WriteRune(l.char)

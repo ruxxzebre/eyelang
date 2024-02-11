@@ -38,6 +38,7 @@ var Builtins = map[string]*object.Builtin{
 				return newError("argument to `len` is not supported. got=%s", args[0].Type())
 			}
 		},
+		Parameters: []object.BultinParam{},
 	},
 	"puts": {
 		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
@@ -95,6 +96,15 @@ var Builtins = map[string]*object.Builtin{
 		},
 		// generate description from the function signature/definition/comments
 		Description: "error(message: object.String) -> object.Error",
+	},
+	"typeof": {
+		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("type requires one argument")
+			}
+
+			return &object.String{Value: string(args[0].Type())}
+		},
 	},
 	"help": {
 		Fn: func(_ *object.Environment, args ...object.Object) object.Object {
@@ -223,7 +233,7 @@ var Builtins = map[string]*object.Builtin{
 			fn := args[0].(*object.Function)
 
 			start := time.Now()
-			result := applyFunction(fn, nargs.Elements, env)
+			result := ApplyFunction(fn, nargs.Elements, env)
 			elapsed := time.Since(start)
 
 			return &object.Array{
@@ -231,6 +241,40 @@ var Builtins = map[string]*object.Builtin{
 					&object.String{Value: fmt.Sprintf("executed in %s", elapsed)},
 					result,
 				},
+			}
+		},
+	},
+	"float": {
+		Fn: func(env *object.Environment, args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("unexpected args")
+			}
+
+			switch arg := args[0].(type) {
+			case *object.Integer:
+				val := float64(arg.Value)
+				return &object.Float{Value: val}
+			case *object.Float:
+				return arg
+			default:
+				return newError("expected args[0] to be Integer or Float. got=%s", args[0].Type())
+			}
+		},
+	},
+	"int": {
+		Fn: func(env *object.Environment, args ...object.Object) object.Object {
+			if len(args) != 1 {
+				return newError("unexpected args")
+			}
+
+			switch arg := args[0].(type) {
+			case *object.Integer:
+				return arg
+			case *object.Float:
+				val := int64(arg.Value)
+				return &object.Integer{Value: val}
+			default:
+				return newError("expected args[0] to be Integer or Float. got=%s", args[0].Type())
 			}
 		},
 	},

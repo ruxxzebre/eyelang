@@ -3,6 +3,7 @@ package eval
 import (
 	"eyelang/object"
 	"math"
+	"math/rand"
 )
 
 var MathLib = builtinMapToScope("math", Math)
@@ -33,16 +34,20 @@ var Math = map[string]*object.Builtin{
 			}
 		},
 	},
+	"random": {
+		Fn: func(env *object.Environment, args ...object.Object) object.Object {
+			if len(args) != 0 {
+				return newError("unexpected args")
+			}
+
+			val := rand.Float64()
+			return &object.Float{Value: val}
+		},
+	},
 	"sqrt": {
 		Fn: func(env *object.Environment, args ...object.Object) object.Object {
 			if len(args) != 1 {
 				return newError("unexpected args")
-			}
-
-			if args[0].Type() == object.INTEGER_OBJ {
-				num := args[0].(*object.Integer)
-				val := int64(math.Sqrt(float64(num.Value)))
-				return &object.Integer{Value: val}
 			}
 
 			if args[0].Type() == object.FLOAT_OBJ {
@@ -51,7 +56,7 @@ var Math = map[string]*object.Builtin{
 				return &object.Float{Value: val}
 			}
 
-			return newError("expected args[0] to be Integer or Float. got=%s", args[0].Type())
+			return newError("expected args[0] to be Float. got=%s", args[0].Type())
 		},
 	},
 }

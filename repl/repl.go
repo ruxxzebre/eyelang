@@ -64,6 +64,6 @@ func printParserErrors(out io.Writer, errors []parser.ParsingError, line string)
 	for _, error := range errors {
 		leftPadLen := len(prompt) + error.Token.Position.Col - 1
 		leftPad := strings.Repeat(" ", leftPadLen)
-		io.WriteString(out, leftPad+"↑ "+error.Message+"\n")
+		io.WriteString(out, leftPad+" | "+error.Message+"\n")
 	}
 }

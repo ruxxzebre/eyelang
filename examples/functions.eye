@@ -33,6 +33,7 @@ let clampTime = fn (lo, hi, num) {
     return num
 }
 
+
 # providing only 2 args
 let clampNight = clampTime(0, 9)
 
