@@ -44,3 +44,10 @@ let clampNight = clampTime(0, 9)
 puts(clampNight)
 puts(clampNight(3)) # -> gives 3
 puts(clampNight(11)) # -> gives 9
+
+# There's also (in progress) shorthand for defining functions
+
+let add = fn a, b: a + b
+let mul = fn a, b: { a * b }
+# returning maps
+let stats = fn mean, median, mode: @{ "mean": mean, "median": median, "mode": mode }

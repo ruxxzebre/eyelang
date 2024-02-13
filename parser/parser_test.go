@@ -1076,17 +1076,3 @@ func TestFloatInfixExpressions(t *testing.T) {
 		}
 	}
 }
-
-func TestFunctionShorthandExpression(t *testing.T) {
-	t.Fatalf("not implemented")
-	// tests := []struct {
-	// 	input    string
-	// 	expected struct {
-	// 		params []string
-	// 	}
-	// }{
-	// 	{"fn(x) { x + 2 }", "fn(x) { (x + 2) }"},
-	// 	{"fn(x, y) { x + y }", "fn(x, y) { (x + y) }"},
-	// 	{"fn(x, y, z) { x + y + z }", "fn(x, y, z) { ((x + y) + z) }"},
-	// }
-}

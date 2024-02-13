@@ -84,10 +84,11 @@ func testEval(input string) object.Object {
 	p := parser.New(l)
 	program := p.ParseProgram()
 	if len(p.Errors()) != 0 {
+		errors := []string{}
 		for _, e := range p.Errors() {
-			fmt.Println(e.Message)
+			errors = append(errors, e.Message)
 		}
-		return newError("parser error")
+		return newError("parser error: \n%s", strings.Join(errors, "\n"))
 	}
 	env := object.NewEnvironment()
 	env.Load(initTestingScope().Outer)
@@ -854,6 +855,36 @@ func TestExamplesInterpretingSuccessfully(t *testing.T) {
 			if isError(evaluated) {
 				t.Fatalf("failed to interpret %s: %s", file.Name(), evaluated.Inspect())
 			}
+		}
+	}
+}
+
+func TestFunctionShorthandNotation(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{"(fn a, b: a + b)(5, 6)", int64(11)},
+		{"(fn (a, b): a + b)(5, 6)", int64(11)},
+		{"(fn (a, b): { a + b })(5, 6)", int64(11)},
+		{"(fn: 5 + 6)()", int64(11)},
+		// why this isn't being catched?
+		// {"(fn (x, y, z): { x**2 + y**2 + z**2 })(1, 2, 3)", int64(14)},
+		{"(fn: { \"Heey!\" })()", "Heey!"},
+		{"(fn(a, b) { a*b })(5, 5)", int64(25)}, // regression just in case
+	}
+
+	// t.Fatal(tests)
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		if isError(evaluated) {
+			t.Fatalf("failed to interpret %s: %s", tt.input, evaluated.Inspect())
+		}
+		switch objType := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, evaluated, objType)
+		case string:
+			testStringObject(t, evaluated, objType)
 		}
 	}
 }

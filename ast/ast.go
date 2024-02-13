@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"eyelang/token"
+	"fmt"
 	"reflect"
 	"strings"
 )
@@ -171,7 +172,6 @@ func (ie *InfixExpression) expressionNode()      {}
 func (ie *InfixExpression) TokenLiteral() string { return ie.Token.Literal }
 func (ie *InfixExpression) String() string {
 	var out bytes.Buffer
-
 	out.WriteString("(")
 	out.WriteString(ie.Left.String())
 	out.WriteString(" " + ie.Operator + " ")

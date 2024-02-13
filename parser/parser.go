@@ -285,17 +285,40 @@ func (p *Parser) parseFunctionParams() []*ast.Identifier {
 func (p *Parser) parseShorthandFunctionLiteral(lit *ast.FunctionLiteral) ast.Expression {
 	params := []*ast.Identifier{}
 
+	fmt.Println(p.curToken.Literal, p.peekToken.Literal)
 	p.nextToken()
-	for !p.curTokenIs(token.COLON) && !p.curTokenIs(token.EOF) {
-		param := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-		params = append(params, param)
+
+	if p.curTokenIs(token.LPAREN) {
+		params = p.parseIdentifierList(token.RPAREN)
+		fmt.Println("params", params)
+		if params == nil {
+			p.newError("expected list of expressions")
+			return nil
+		}
+		for _, param := range params {
+			if param == nil {
+				p.newError("expected list of expressions")
+				return nil
+			}
+		}
 		p.nextToken()
-		if p.curTokenIs(token.COMMA) {
+	} else {
+		for !p.curTokenIs(token.COLON) && !p.curTokenIs(token.EOF) {
+			param := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+			params = append(params, param)
 			p.nextToken()
+			if p.curTokenIs(token.COMMA) {
+				p.nextToken()
+			}
 		}
 	}
+	// fmt.Println("curToken", p.curToken.Literal, "peekToken", p.peekToken.Literal)
 
-	if !p.curTokenIs(token.COLON) {
+	// if p.curTokenIs(token.RPAREN) {
+	// 	p.nextToken()
+	// }
+
+	if !p.curTokenIs(token.COLON) && !p.curTokenIs(token.LBRACE) {
 		p.newError("expected colon after shorthand function literal parameters")
 		return nil
 	}
@@ -303,11 +326,21 @@ func (p *Parser) parseShorthandFunctionLiteral(lit *ast.FunctionLiteral) ast.Exp
 	lit.Parameters = params
 	p.nextToken()
 
+	fmt.Println("here")
+
 	if p.curTokenIs(token.LBRACE) {
+		fmt.Println("blak")
 		lit.Body = p.parseBlockStatement()
+		// p.nextToken()
+		// p.nextToken()
 	} else {
-		if p.curToken.Literal == "@" {
+		fmt.Println("not black")
+		var expr ast.Expression
+		if p.curToken.Literal == "@" && p.peekTokenIs(token.LBRACE) {
 			p.nextToken()
+			expr = p.parseHashLiteral()
+		} else {
+			expr = p.parseExpression(LOWEST)
 		}
 		// TODO: eww that's ugly
 		lit.Body = &ast.BlockStatement{
@@ -315,12 +348,14 @@ func (p *Parser) parseShorthandFunctionLiteral(lit *ast.FunctionLiteral) ast.Exp
 			Statements: []ast.Statement{
 				&ast.ExpressionStatement{
 					Token:      p.curToken,
-					Expression: p.parseExpression(LOWEST),
+					Expression: expr,
 				},
 			},
 		}
 	}
 
+	// p.nextToken()
+	fmt.Printf("lit: '%s', '%s', '%s'\n", lit.String(), p.curToken.Literal, p.peekToken.Literal)
 	return lit
 }
 
@@ -329,10 +364,11 @@ func (p *Parser) parseFunctionLiteral() ast.Expression {
 		Token: p.curToken,
 	}
 
+	return p.parseShorthandFunctionLiteral(lit)
 	// TODO: preserve expectPeek
 	if !p.peekTokenIs(token.LPAREN) {
-		return p.parseShorthandFunctionLiteral(lit)
 	}
+	p.nextToken()
 
 	lit.Parameters = p.parseFunctionParams()
 
@@ -381,6 +417,24 @@ func (p *Parser) parseIfExpression() ast.Expression {
 	return ifexpr
 }
 
+func (p *Parser) parseFunctionBody() *ast.BlockStatement {
+	panic("not implemented")
+	if p.curTokenIs(token.LBRACE) {
+		return p.parseBlockStatement()
+	}
+
+	// stmt := p.parseExpressionList()
+	// if stmt != nil {
+	// 	return &ast.BlockStatement{
+	// 		Token:      p.curToken,
+	// 		Statements: []ast.Statement{stmt},
+	// 	}
+	// }
+
+	p.newError("expected block statement")
+	return nil
+}
+
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 	block := &ast.BlockStatement{
 		Token: p.curToken,
@@ -393,6 +447,8 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 		stmt := p.parseStatement()
 		if stmt != nil {
 			block.Statements = append(block.Statements, stmt)
+		} else {
+			// p.newError("expected statement")
 		}
 
 		p.nextToken()
@@ -410,6 +466,7 @@ func (p *Parser) parseIdentifier() ast.Expression {
 func (p *Parser) parseGroupedExpression() ast.Expression {
 	defer untrace(trace("parseGroupedExpression"))
 
+	fmt.Println("a: ", p.curToken.Literal, p.curToken.PositionString())
 	// Our current token is '('
 	p.nextToken()
 
@@ -417,9 +474,10 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 	// '(' is really sticky
 	exp := p.parseExpression(LOWEST)
 
+	fmt.Println("b: ", p.curToken.Literal, p.curToken.PositionString())
 	// so after that peek token should be ')'
 	if !p.expectPeek(token.RPAREN) {
-		msg := fmt.Sprintf("expected closing grouped expression. got=%s instead %s", p.peekToken.Literal, p.peekToken.PositionString())
+		msg := fmt.Sprintf("expected closing grouped expression. got='%s' instead %s", p.peekToken.Literal, p.peekToken.PositionString())
 		p.replaceLastError(ParsingError{
 			Message: msg,
 			Token:   p.peekToken,
@@ -610,6 +668,22 @@ func (p *Parser) ParseProgram() *ast.Program {
 	}
 
 	return program
+}
+
+func (p *Parser) parseIdentifierList(end token.TokenType) []*ast.Identifier {
+	expressions := p.parseExpressionList(end)
+	fmt.Println("expressions", expressions)
+	identifiers := []*ast.Identifier{}
+	// identifiers := make([]*ast.Identifier, len(expressions))
+	for _, exp := range expressions {
+		ident, ok := exp.(*ast.Identifier)
+		if !ok {
+			p.newError("expected identifier")
+			return nil
+		}
+		identifiers = append(identifiers, ident)
+	}
+	return identifiers
 }
 
 func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {
