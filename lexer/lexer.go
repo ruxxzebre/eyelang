@@ -9,11 +9,9 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
-	// "unicode/utf8"
 )
 
 type Lexer struct {
-	// input        []rune
 	reader       *bufio.Reader
 	position     int
 	readPosition int
@@ -72,8 +70,10 @@ func (l *Lexer) readChar() {
 
 func (l *Lexer) readNumber() string {
 	var out bytes.Buffer
-	for isDigit(l.char) {
-		out.WriteRune(l.char)
+	for isDigit(l.char) || l.char == '_' {
+		if isDigit(l.char) {
+			out.WriteRune(l.char)
+		}
 		l.readChar()
 	}
 
@@ -249,6 +249,7 @@ func (l *Lexer) NextToken() token.Token {
 				tok.Literal += "."
 				l.readChar()
 				mantissa := l.readNumber()
+				// TODO: verify
 				// fmt.Printf("Mantissa: %s\n", mantissa)
 				// fmt.Printf("Mantissa length: %d\n", len(mantissa))
 				// fmt.Printf("Current char: %s, Peek char: %s\n", string(l.char), string(l.peekChar()))
@@ -289,8 +290,7 @@ func (l *Lexer) readString() string {
 		if l.char == '"' {
 			break
 		}
-		// TODO: EOF over here, use same constant
-		if l.char == 0 {
+		if l.char == EOF {
 			break
 		}
 		out.WriteRune(l.char)
