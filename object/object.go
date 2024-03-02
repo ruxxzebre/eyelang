@@ -245,8 +245,6 @@ func (h *Hash) Inspect() string {
 type Scope struct {
 	Outer *Environment // no that's bullshit
 	Name  string
-	// TODO: consider scope issues of imported functions (fix?)
-	// Upd: fixed
 	// Upd: separate scope and environment
 	// What is the scope?
 	// What is an environment?

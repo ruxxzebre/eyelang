@@ -56,7 +56,7 @@ func Start(in io.Reader, out io.Writer) {
 }
 
 // TODO: polish when ILLEGAL (arrow up, etc)
-func printParserErrors(out io.Writer, errors []parser.ParsingError, line string) {
+func printParserErrors(out io.Writer, errors []parser.ParsingError, _line string) {
 	// red := "\033[31m"
 	// reset := "\033[0m"
 	prompt := []rune(PROMPT)

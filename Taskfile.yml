@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 tasks:
   run:
@@ -16,6 +16,10 @@ tasks:
   build_darwin:
     cmds:
       - GOOS=darwin GOARCH=amd64 go build -o bin/$(basename $(pwd))_darwin_amd64
+    silent: true
+  build_darwin_default:
+    cmds:
+      - GOOS=darwin GOARCH=amd64 go build -o bin/$(basename $(pwd))
     silent: true
   build_windows:
     cmds:

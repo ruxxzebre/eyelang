@@ -9,9 +9,8 @@ type TokenType string
 type TokenCategory string
 
 type Token struct {
-	Type TokenType `json:"type"`
-	// Category TokenCategory (memory?)
-	Literal  string `json:"literal"`
+	Type     TokenType `json:"type"`
+	Literal  string    `json:"literal"`
 	Position struct {
 		Row int `json:"row"`
 		Col int `json:"col"`
@@ -19,7 +18,6 @@ type Token struct {
 }
 
 func (tok *Token) MarshalJSON() ([]byte, error) {
-	// tokenString := fmt.Sprintf("%s-%s (%d:%d)", tok.Type, tok.Literal, tok.Position.Row, tok.Position.Col)
 	return json.Marshal(tok.Type)
 }
 
