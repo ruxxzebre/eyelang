@@ -69,7 +69,7 @@ var Builtins = map[string]*object.Builtin{
 			p := parser.New(l)
 			program := p.ParseProgram()
 			if len(p.Errors()) != 0 {
-				return newError(p.Errors()[0].Message)
+				return newError("%s", p.Errors()[0].Message)
 			}
 
 			return Eval(program, env)
@@ -92,7 +92,7 @@ var Builtins = map[string]*object.Builtin{
 				return newError("generic error")
 			}
 
-			return newError(args[0].Inspect())
+			return newError("%s", args[0].Inspect())
 		},
 		// generate description from the function signature/definition/comments
 		Description: "error(message: object.String) -> object.Error",

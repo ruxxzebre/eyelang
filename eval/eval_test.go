@@ -826,7 +826,7 @@ func TestPipeExpression(t *testing.T) {
 		let addAndSquare = add(2) |> square;
 		add
 		`
-	t.Fatalf(input)
+	t.Fatalf("%s", input)
 }
 
 func TestScopes(t *testing.T) {
