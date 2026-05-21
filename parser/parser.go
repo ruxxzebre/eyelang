@@ -365,20 +365,21 @@ func (p *Parser) parseFunctionLiteral() ast.Expression {
 	}
 
 	return p.parseShorthandFunctionLiteral(lit)
+
 	// TODO: preserve expectPeek
-	if !p.peekTokenIs(token.LPAREN) {
-	}
-	p.nextToken()
-
-	lit.Parameters = p.parseFunctionParams()
-
-	if !p.expectPeek(token.LBRACE) {
-		return nil
-	}
-
-	lit.Body = p.parseBlockStatement()
-
-	return lit
+	// if !p.peekTokenIs(token.LPAREN) {
+	// }
+	// p.nextToken()
+	//
+	// lit.Parameters = p.parseFunctionParams()
+	//
+	// if !p.expectPeek(token.LBRACE) {
+	// 	return nil
+	// }
+	//
+	// lit.Body = p.parseBlockStatement()
+	//
+	// return lit
 }
 
 func (p *Parser) parseIfExpression() ast.Expression {
@@ -419,10 +420,12 @@ func (p *Parser) parseIfExpression() ast.Expression {
 
 func (p *Parser) parseFunctionBody() *ast.BlockStatement {
 	panic("not implemented")
-	if p.curTokenIs(token.LBRACE) {
-		return p.parseBlockStatement()
-	}
 
+	// WIP:
+	// if p.curTokenIs(token.LBRACE) {
+	// 	return p.parseBlockStatement()
+	// }
+	//
 	// stmt := p.parseExpressionList()
 	// if stmt != nil {
 	// 	return &ast.BlockStatement{
@@ -430,9 +433,9 @@ func (p *Parser) parseFunctionBody() *ast.BlockStatement {
 	// 		Statements: []ast.Statement{stmt},
 	// 	}
 	// }
-
-	p.newError("expected block statement")
-	return nil
+	//
+	// p.newError("expected block statement")
+	// return nil
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {

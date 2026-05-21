@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"eyelang/token"
-	"reflect"
 	"strings"
 )
 
@@ -164,7 +163,7 @@ type InfixExpression struct {
 	Token    token.Token `json:"token" yaml:"token"`
 	Operator string      `json:"operator" yaml:"operator"`
 	Left     Expression  `json:"left" yaml:"left"`
-	Right    Expression  `json:"right" yaml:"right`
+	Right    Expression  `json:"right" yaml:"right"`
 }
 
 func (ie *InfixExpression) expressionNode()      {}
@@ -389,20 +388,21 @@ func ToJSON(node interface{}) string {
 func DebugAst(node interface{}) string {
 	panic("not implemented")
 
-	var out bytes.Buffer
-
-	reflect.ValueOf(node)
-	switch node := node.(type) {
-	case Program:
-		for _, stmt := range node.Statements {
-			out.WriteString(DebugAst(stmt))
-		}
-	}
-
-	expr, ok := node.(Expression)
-	if ok {
-		out.WriteString(expr.String())
-	}
-
-	return out.String()
+	// WIP:
+	// var out bytes.Buffer
+	//
+	// reflect.ValueOf(node)
+	// switch node := node.(type) {
+	// case Program:
+	// 	for _, stmt := range node.Statements {
+	// 		out.WriteString(DebugAst(stmt))
+	// 	}
+	// }
+	//
+	// expr, ok := node.(Expression)
+	// if ok {
+	// 	out.WriteString(expr.String())
+	// }
+	//
+	// return out.String()
 }
