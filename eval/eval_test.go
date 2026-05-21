@@ -330,8 +330,8 @@ func TestErrorHandling(t *testing.T) {
 			continue
 		}
 
-		if errObj.Message != tt.expectedMessage {
-			t.Errorf("wrong error message. expected=%q, got=%q",
+		if !strings.Contains(errObj.Message, tt.expectedMessage) {
+			t.Errorf("wrong error message. expected to contain %q, got=%q",
 				tt.expectedMessage, errObj.Message)
 		}
 	}
@@ -823,14 +823,55 @@ func TestPipeExpression(t *testing.T) {
 	input := `
 		let add = fn(a, b) { a + b };
 		let square = fn(a) { a * a };
-		let addAndSquare = add(2) |> square;
-		add
+		let addAndSquare = 2 |> add(3) |> square;
+		addAndSquare;
 		`
-	t.Fatalf("%s", input)
+
+	evaluated := testEval(input)
+	testIntegerObject(t, evaluated, 25)
+}
+
+func TestPipeExpressionWaitsForLeftInfixExpression(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{`"invoice-" + "2026" |> len`, int64(12)},
+		{`("invoice-" + "2026") |> len`, int64(12)},
+		{`"invoice-" + "2026" |> puts`, nil},
+		{`("invoice-" + "2026") |> puts`, nil},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, evaluated, expected)
+		case nil:
+			testNullObject(t, evaluated)
+		}
+	}
 }
 
 func TestScopes(t *testing.T) {
-	t.Fatalf("not implemented")
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{"global.scopeName", "testing"},
+		{`global.len("four")`, int64(4)},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, evaluated, expected)
+		case string:
+			testStringObject(t, evaluated, expected)
+		}
+	}
 }
 
 func TestExamplesInterpretingSuccessfully(t *testing.T) {

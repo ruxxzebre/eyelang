@@ -206,13 +206,17 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			return right
 		}
 
+		if node.Operator == "|>" {
+			result := evalPipeInfixExpression(left, right, env)
+			if isError(result) {
+				return decorateError(result, node)
+			}
+			return result
+		}
+
 		result := evalInfixExpression(node.Operator, right, left)
 
-		// maybe it's pipe operator
 		if isError(result) {
-			if node.Operator == "|>" {
-				result = evalInfixExpressionWithENV(node.Operator, right, left, env)
-			}
 			return decorateError(result, node)
 		}
 

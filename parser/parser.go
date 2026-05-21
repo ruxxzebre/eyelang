@@ -11,13 +11,13 @@ import (
 // Precedences
 const (
 	LOWEST = iota
+	PIPE
 	EQUALS
 	LESSGREATER
 	SUM
 	PRODUCT
 	PREFIX
 	CALL
-	PIPE
 	INDEX
 )
 
@@ -285,12 +285,10 @@ func (p *Parser) parseFunctionParams() []*ast.Identifier {
 func (p *Parser) parseShorthandFunctionLiteral(lit *ast.FunctionLiteral) ast.Expression {
 	params := []*ast.Identifier{}
 
-	fmt.Println(p.curToken.Literal, p.peekToken.Literal)
 	p.nextToken()
 
 	if p.curTokenIs(token.LPAREN) {
 		params = p.parseIdentifierList(token.RPAREN)
-		fmt.Println("params", params)
 		if params == nil {
 			p.newError("expected list of expressions")
 			return nil
@@ -324,19 +322,18 @@ func (p *Parser) parseShorthandFunctionLiteral(lit *ast.FunctionLiteral) ast.Exp
 	}
 
 	lit.Parameters = params
-	p.nextToken()
 
-	fmt.Println("here")
-
-	if p.curTokenIs(token.LBRACE) {
-		fmt.Println("blak")
+	switch {
+	case p.curTokenIs(token.LBRACE):
 		lit.Body = p.parseBlockStatement()
-		// p.nextToken()
-		// p.nextToken()
-	} else {
-		fmt.Println("not black")
+	case p.curTokenIs(token.COLON):
+		p.nextToken()
+
 		var expr ast.Expression
-		if p.curToken.Literal == "@" && p.peekTokenIs(token.LBRACE) {
+		if p.curTokenIs(token.LBRACE) {
+			lit.Body = p.parseBlockStatement()
+			return lit
+		} else if p.curToken.Literal == "@" && p.peekTokenIs(token.LBRACE) {
 			p.nextToken()
 			expr = p.parseHashLiteral()
 		} else {
@@ -355,7 +352,6 @@ func (p *Parser) parseShorthandFunctionLiteral(lit *ast.FunctionLiteral) ast.Exp
 	}
 
 	// p.nextToken()
-	fmt.Printf("lit: '%s', '%s', '%s'\n", lit.String(), p.curToken.Literal, p.peekToken.Literal)
 	return lit
 }
 
@@ -469,7 +465,6 @@ func (p *Parser) parseIdentifier() ast.Expression {
 func (p *Parser) parseGroupedExpression() ast.Expression {
 	defer untrace(trace("parseGroupedExpression"))
 
-	fmt.Println("a: ", p.curToken.Literal, p.curToken.PositionString())
 	// Our current token is '('
 	p.nextToken()
 
@@ -477,7 +472,6 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 	// '(' is really sticky
 	exp := p.parseExpression(LOWEST)
 
-	fmt.Println("b: ", p.curToken.Literal, p.curToken.PositionString())
 	// so after that peek token should be ')'
 	if !p.expectPeek(token.RPAREN) {
 		msg := fmt.Sprintf("expected closing grouped expression. got='%s' instead %s", p.peekToken.Literal, p.peekToken.PositionString())
@@ -675,7 +669,6 @@ func (p *Parser) ParseProgram() *ast.Program {
 
 func (p *Parser) parseIdentifierList(end token.TokenType) []*ast.Identifier {
 	expressions := p.parseExpressionList(end)
-	fmt.Println("expressions", expressions)
 	identifiers := []*ast.Identifier{}
 	// identifiers := make([]*ast.Identifier, len(expressions))
 	for _, exp := range expressions {
