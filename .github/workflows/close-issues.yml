@@ -28,10 +28,10 @@ jobs:
           AFTER: ${{ github.event.after }}
         run: |
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            range="$AFTER"            # a new branch: every commit it holds
-          else
-            range="$BEFORE..$AFTER"
+            # The branch is new: its history is closed by hand, once, not here.
+            exit 0
           fi
+          range="$BEFORE..$AFTER"
           git log --format='%H' "$range" | while read -r sha; do
             git log -1 --format='%B' "$sha" \
               | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' \

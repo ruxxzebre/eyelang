@@ -253,7 +253,8 @@ merges cleanly:
   questions; ROADMAP.md) are merged by whoever merges, after `task generate`.
 - **Close issues by commit.** A commit that finishes a task says `Closes #N`; the
   `Close issues` workflow closes it when the commit reaches `dev`, since GitHub does that only for
-  the default branch.
+  the default branch. (It skips the push that creates a branch; issues finished before `dev` existed
+  are closed by hand.)
 
 Paths owned now (2026-10-11):
 
