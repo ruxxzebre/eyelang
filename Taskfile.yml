@@ -27,6 +27,9 @@ tasks:
     cmds:
       - tree-sitter generate
       - tree-sitter test
+      # Every query must compile and run on every file of the conformance suite.
+      - tree-sitter build -o ../bin/eyelang-grammar.so .
+      - for q in queries/*.scm; do tree-sitter query --lib-path ../bin/eyelang-grammar.so --lang-name eyelang "$q" ../testdata/syntax/valid/*.eye > /dev/null || exit 1; done
 
   generate:
     desc: Regenerate everything derived from grammar.js and SPECS.md

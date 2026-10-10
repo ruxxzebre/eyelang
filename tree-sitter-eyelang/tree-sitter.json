@@ -8,6 +8,8 @@
       "scope": "source.eyelang",
       "path": ".",
       "file-types": ["eye"],
+      "highlights": "queries/highlights.scm",
+      "locals": "queries/locals.scm",
       "injection-regex": "^(eye|eyelang)$"
     }
   ],
