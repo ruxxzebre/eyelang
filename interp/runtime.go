@@ -64,12 +64,25 @@ func newRuntime(in *Interp) *runtime {
 		members: map[*ir.View]map[string]bool{}, fakes: map[*ir.Contract]*fakeSet{}, nextRun: 1,
 		seen: map[string]bool{}, uncertain: map[string]sentCommand{}, rate: map[string][]int64{}, warned: map[int64]bool{},
 	}
-	rt.useStore(newMemStore())
+	if in.prog.Store != nil {
+		rt.useStore(newEyeStore(in))
+	} else {
+		rt.useStore(newMemStore())
+	}
 	return rt
 }
 
-// useStore makes s the runtime's store.
+// useStore makes s the runtime's store. A journal read before the program
+// ran keeps its state in the Go store; it moves to the store written in
+// Eyelang here.
 func (rt *runtime) useStore(s Store) {
+	if j, ok := s.(*Journal); ok && rt.in.prog.Store != nil {
+		if _, already := j.memory.(*eyeStore); !already {
+			mem := newEyeStore(rt.in)
+			mem.Commit(j.snapshot())
+			j.memory = mem
+		}
+	}
 	rt.index = indexStore(s)
 	rt.store = rt.index
 }
@@ -101,9 +114,9 @@ type txRow struct {
 // load returns an entity's committed state, or its default state if it has
 // never been saved.
 func (rt *runtime) load(ref *EntityRef, at ir.Pos) (*Record, int64, bool) {
-	data, version, ok := rt.store.Load(entityKey(ref))
+	row, ok := rt.store.Load(entityKey(ref))
 	if ok {
-		return rt.in.decode(data, at).(*Record), version, true
+		return rt.decodeRow(ref.Entity, row, at), row.Version, true
 	}
 	return rt.defaults(ref, at), 0, false
 }
@@ -247,7 +260,7 @@ func (rt *runtime) commit(tx *txn) {
 			r.version++
 			changed = append(changed, r)
 		}
-		c.Writes = append(c.Writes, Write{Key: key, Entity: entityName(r.ref.Entity), State: rt.in.encode(r.state, ir.Pos{}), Version: r.version})
+		c.Writes = append(c.Writes, Write{Key: key, Entity: entityName(r.ref.Entity), State: rt.in.encode(r.state, ir.Pos{}), Version: r.version, Schema: entityVersion(r.ref.Entity)})
 	}
 	for _, run := range tx.starts {
 		c.Runs = append(c.Runs, RunWrite{ID: run.ID, Data: run.encode()})
@@ -366,8 +379,8 @@ func (rt *runtime) all(e *ir.Entity, at ir.Pos) *List {
 	}
 	l := &List{}
 	for _, key := range rt.store.Keys(entityName(e)) {
-		data, version, _ := rt.store.Load(key)
-		l.Elems = append(l.Elems, snapshotOf(rt.in.decode(data, at).(*Record), version))
+		row, _ := rt.store.Load(key)
+		l.Elems = append(l.Elems, snapshotOf(rt.decodeRow(e, row, at), row.Version))
 	}
 	return l
 }

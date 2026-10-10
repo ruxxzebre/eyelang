@@ -503,6 +503,15 @@ func builtinTable() map[string]*BuiltinFn {
 	}
 	answer("approve", true)
 	answer("decline", false)
+	add("startsWith", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 2, "startsWith", at)
+		s, ok1 := args[0].(string)
+		p, ok2 := args[1].(string)
+		if !ok1 || !ok2 {
+			in.faultf(at, "startsWith takes two Strings")
+		}
+		return strings.HasPrefix(s, p)
+	})
 	add("lower", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		return strings.ToLower(in.str(args, "lower", at))
 	})

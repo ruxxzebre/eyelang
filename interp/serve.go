@@ -51,6 +51,10 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 			code = 1
 		}
 	}()
+	if err := in.rt.checkVersions(); err != nil {
+		fmt.Fprintf(stderr, "eye run: %v\n", err)
+		return 1
+	}
 	in.rt.restore()
 	if main := prog.Root.Main; main != nil {
 		var argv []argVal
@@ -196,8 +200,8 @@ func (rt *runtime) restore() {
 			}
 			rt.members[v] = map[string]bool{}
 			for _, key := range rt.store.Keys(entityName(v.Entity)) {
-				data, version, _ := rt.store.Load(key)
-				rt.members[v][key] = rt.inView(v, snapshotOf(rt.in.decode(data, v.Pos).(*Record), version))
+				row, _ := rt.store.Load(key)
+				rt.members[v][key] = rt.inView(v, snapshotOf(rt.decodeRow(v.Entity, row, v.Pos), row.Version))
 			}
 		}
 	}

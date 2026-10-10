@@ -166,6 +166,10 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		b.arg(0, tString)
 		b.arg(1, tString)
 		return list(tString)
+	case "startsWith":
+		b.arg(0, tString)
+		b.arg(1, tString)
+		return tBool
 	case "trim", "lower", "upper":
 		b.arg(0, tString)
 		return tString

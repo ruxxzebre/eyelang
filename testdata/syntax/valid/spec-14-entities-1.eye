@@ -1,8 +1,8 @@
 # SPECS.md section 14, example 1.
 @version(3)
 entity Player(id: PlayerId) {
-  state name: String
-  state devices: Set(DeviceId) = {}          # v3: added; the default fills old rows
+  state name: String = ""                    # v3: renamed from nick
+  state devices: Set(DeviceId) = {}          # v3: added
 
   pub fn addDevice(d: DeviceId) -> Result((), DeviceError) {
     if devices |> size >= 5 { return Err(TooManyDevices) }

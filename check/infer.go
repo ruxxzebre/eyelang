@@ -157,6 +157,9 @@ func (c *checker) checkTypes() {
 					bodies = append(bodies, body{fn: s.Default, kind: kindGlobal, want: c.fromExpr(s.Type, typeEnv{}, false)})
 				}
 			}
+			for _, mg := range e.Migrations {
+				bodies = append(bodies, body{fn: mg.Func, kind: kindGlobal, want: c.migrationResult(e, mg)})
+			}
 		}
 		for _, j := range m.Jobs {
 			bodies = append(bodies, body{fn: j.Func, kind: kindJob})
@@ -1485,7 +1488,7 @@ func (x *fnCheck) recordFields(rec *tcon, names []string, values []typ, pos []ir
 		x.expect(pos[i], ft, values[i])
 	}
 	var missing []string
-	for _, f := range rec.decl.Alias.Fields {
+	for _, f := range rec.decl.Fields { // the fields a literal must give
 		if !given[f] {
 			missing = append(missing, f)
 		}

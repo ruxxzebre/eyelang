@@ -60,17 +60,23 @@ across restarts, in a journal file (SPECS.md open question 9): sleeping runs wak
 `daily`, `weekdays` and `every` fire in their zone (also on a test's clock), a full disk stops
 nothing for good, and `eye runs` shows every run with its status, what it waits for and its steps.
 Its exit test kills `eye run` in the middle of a job's sleep and checks the job finishes on time
-after a restart (`cmd/eye`, `TestRunSurvivesKill`). Part of 4.3, 4.4 and 4.5; the in-memory store
-is still written in Go (4.2).
+after a restart (`cmd/eye`, `TestRunSurvivesKill`). Part of 4.3, 4.4 and 4.5.
 
 **Attributes and limits, 2026-10-10.** Every attribute is declared with where it goes and what it
 takes, and checked; `@concurrency` (queued in order, scheduled starts skipped at the limit),
 `@limit` and `@deadline` are enforced; a job started with `key:` starts once per key, and `main`
 must give one (`testdata/programs/limits`).
 
+**The store in Eyelang, and entity versions, 2026-10-10.** The in-memory store is written in
+Eyelang (`check/runtime/store.eye`, 4.2): each commit is a pure function from one store value to the
+next, and the journal wraps it. Entities have `@version(N)` and `migrate from N` (4.6): rows record
+their version, migrations chain when a row is loaded, the checker refuses gaps and impure
+migrations, and `eye run` refuses to start on rows no migration can bring to the current version
+(`cmd/eye`, `TestRunMigratesStoredEntities`). Left from 4.2: a `Store` trait, once traits are
+checked (2.5).
+
 Still missing before v0.1: the rest of phase 2 (traits, mutation, diagnostics for every class),
-the store written in Eyelang (4.2), `@memory`, `@priority` and `@budget` at run time, migrations
-(4.6), and the REPL.
+the `Store` trait (4.2, with traits), `@memory`, `@priority` and `@budget` at run time, and the REPL.
 `approval!` is answered only by tests so far.
 
 ## Phases

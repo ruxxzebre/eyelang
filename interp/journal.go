@@ -26,7 +26,7 @@ import (
 //   - Beside it, a 4 MiB reserve file holds space that is released when a
 //     write fails, so that compaction, which frees space, can still finish.
 type Journal struct {
-	*memStore
+	memory
 	path   string
 	f      journalFile
 	lock   *os.File
@@ -82,7 +82,7 @@ func OpenJournal(path string) (*Journal, error) {
 		lock.Close()
 		return nil, err
 	}
-	j := &Journal{memStore: mem, path: path, lock: lock}
+	j := &Journal{memory: mem, path: path, lock: lock}
 	if err := j.compact(); err != nil {
 		lock.Close()
 		return nil, err
@@ -120,7 +120,7 @@ func (j *Journal) Commit(c *Commit) {
 		}
 		panic(&CommitError{j.path, err})
 	}
-	j.memStore.Commit(c)
+	j.memory.Commit(c)
 	if j.size > compactAtLeast && j.size > compactRatio*j.live {
 		_ = j.compact() // if it fails, the journal just stays longer
 	}

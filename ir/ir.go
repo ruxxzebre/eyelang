@@ -20,6 +20,9 @@ import (
 type Program struct {
 	Root    *Module
 	Prelude *Module
+	// Store is the in-memory store, written in Eyelang (check/runtime/store.eye),
+	// which the runtime keeps a program's entities, runs and events in.
+	Store   *Module
 	Modules []*Module // every module, the prelude first and the root last
 }
 
@@ -178,6 +181,20 @@ type Entity struct {
 	States  []*State
 	Methods map[string]*Func
 	Pos     Pos
+
+	// Version is the @version of the entity's stored shape, 1 without one.
+	Version int
+	// Migrations, oldest first, each turn a row saved at one version into
+	// the state at the next.
+	Migrations []*Migration
+}
+
+// Migration is `migrate from N (old) { … }`: a function of one parameter,
+// the row as saved at version From, that gives the state at From+1.
+type Migration struct {
+	From int
+	Func *Func
+	Pos  Pos
 }
 
 // State is a `state` field of an entity.
@@ -657,6 +674,7 @@ var BuiltinDocs = []BuiltinDoc{
 	{"split", "fn split(s: String, separator: String) -> List(String)", "The parts of s between separators.", "Strings and numbers"},
 	{"trim", "fn trim(s: String) -> String", "s without whitespace at either end.", "Strings and numbers"},
 	{"lower", "fn lower(s: String) -> String", "s with its letters in lower case.", "Strings and numbers"},
+	{"startsWith", "fn startsWith(s: String, prefix: String) -> Bool", "Whether s starts with prefix.", "Strings and numbers"},
 	{"upper", "fn upper(s: String) -> String", "s with its letters in upper case.", "Strings and numbers"},
 	{"toJson", "fn toJson(v: a) -> String where a: Schema", "v as JSON, in the shape its type's schema describes (SPECS.md §19).", "Strings and numbers"},
 	{"isOk", "fn isOk(r: Result(a, e)) -> Bool", "Whether r is `Ok`.", "Strings and numbers"},

@@ -40,6 +40,7 @@ func (c *checker) checkEffects() {
 			c.checkUses(f, all[f])
 		}
 	}
+	c.checkMigrationEffects(all)
 	for _, m := range c.prog.Modules {
 		for _, f := range c.bodiesOf(m) {
 			c.checkWaitingCalls(f, all)

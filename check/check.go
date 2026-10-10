@@ -22,6 +22,12 @@ import (
 //go:embed prelude.eye
 var preludeSrc []byte
 
+// storeSrc is the in-memory store the runtime keeps a program's state in,
+// written in Eyelang. It is part of every program, and no program imports it.
+//
+//go:embed runtime/store.eye
+var storeSrc []byte
+
 // std holds the standard modules written in Eyelang, one file each:
 // `import ai` loads std/ai.eye.
 //
@@ -46,6 +52,7 @@ func Program(dir string) (*ir.Program, []Diagnostic) {
 	prelude := c.parse("prelude", "", []*ir.File{parseFile("<prelude>", preludeSrc)})
 	c.prog.Prelude = prelude.mod
 	c.prelude = prelude
+	c.prog.Store = c.parse("runtime.store", "", []*ir.File{parseFile("<runtime store>", storeSrc)}).mod
 	root := c.load("", dir)
 	if root == nil {
 		return c.prog, c.diags
@@ -544,6 +551,7 @@ func (c *checker) entityDecl(m *module, f *ir.File, d *syntax.Node) {
 		e.ID = &ir.Param{Name: text(f, params[0].ChildByField(syntax.FieldName))}
 	}
 	body := d.ChildByField(syntax.FieldBody)
+	m.decls = append(m.decls, func() { c.entityVersions(m, f, d, e) })
 	for _, member := range body.NamedChildren() {
 		switch member.Kind {
 		case syntax.StateDeclaration:

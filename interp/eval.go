@@ -807,6 +807,8 @@ func (in *Interp) index(v, i Value, at ir.Pos) Value {
 			return in.some(val)
 		}
 		return in.none()
+	case Empty:
+		return in.none() // `{}` as a map: it holds nothing
 	case string:
 		if r, ok := i.(*RangeVal); ok {
 			lo, hi := in.bounds(r, len(x), at)

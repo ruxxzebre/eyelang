@@ -79,7 +79,7 @@ construct that also works outside that domain.
 | Wait marker | A **`!` suffix** on every durable step in a job, which is every call that may pause or has an outside effect: `sleep!(20 min)`, `notify.send!(…)` | Every save point is visible in code review |
 | Checkpoints | Every `!` call in a job is also a **checkpoint**: its result is saved and it runs once | No separate `step` keyword is needed |
 | Entity lifecycle | **Virtual**: an entity exists on first use. Ending one with protected state needs an `Approval` | No create/exists dance; deletion always involves a human |
-| Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang; **Postgres** is selectable. (Proposed: the in-memory backend can journal each commit to an append-only file, for durability on one machine without a database.) | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
+| Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang (`check/runtime/store.eye`); a journal file wraps it for durability on one machine (open question 9); **Postgres** is selectable | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
 | Errors | **Result only**: no exceptions. `?` wraps an error into the caller's error type when exactly one of its variants holds it; otherwise `.mapErr(…)`. Runtime faults and `unreachable` become outcomes of the run | Every failure is visible in a type, and wrapping needs no boilerplate |
 | Records | **Nominal**: a record type is its name, and a literal takes the type its context expects | Same-shaped types can't be mixed up, and methods, operators, schemas and error messages have a name to use |
@@ -94,7 +94,7 @@ construct that also works outside that domain.
 | Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
 | Reactions | **Views trigger jobs**: `@on(enters(view))`, `@on(leaves(view))` | Replaces most polling cron jobs |
-| Evolution | Adding a field with a default is automatic; anything else needs a **`migrate from N`** function; deploy is refused if any stored version has no path to the current one | Stored data outlives code |
+| Evolution | Adding a field with a default is automatic; anything else raises the entity's **`@version`** by one and adds a **`migrate from N`** function, from a row as it was stored at version N to the state at N+1. Migrations chain, with no gaps; `eye run` refuses to start if a stored row has no path to the current version | Stored data outlives code, and the shape of old data needs no declaration kept around: a migration reads the old row by name |
 | Mutation | **Mutable value semantics**: `var` locals, `mut` parameters and `mut self` methods, field assignment and `+=`. Callers write `mut` too: `unify(mut subst, a, b)`. Values never alias; there are no references or pointers | Systems code reads naturally, every place a value can change is visible in the diff, and without aliasing there are no cycles, so reference counting stays enough |
 | Generics and methods | Lower-case **type variables** (`List(a)`), requirements with `where a: Ord`, and methods on a type with `impl Type { … }` | Generic code without new brackets; types get their own operations |
 | Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing and saving are derived for data types | One mechanism for generic code |
@@ -754,8 +754,8 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
 ```eye
 @version(3)
 entity Player(id: PlayerId) {
-  state name: String
-  state devices: Set(DeviceId) = {}          # v3: added; the default fills old rows
+  state name: String = ""                    # v3: renamed from nick
+  state devices: Set(DeviceId) = {}          # v3: added
 
   pub fn addDevice(d: DeviceId) -> Result((), DeviceError) {
     if devices |> size >= 5 { return Err(TooManyDevices) }
@@ -792,9 +792,24 @@ entity Player(id: PlayerId) {
   which counts the transactions that changed the entity: 0 when it is new, then one more for each.
   Snapshots go stale, and commands can name the version they were based on (see `@fresh` in
   section 17). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
-- **Evolution:** adding a field with a default is automatic. Any other change to stored state needs
-  a `migrate from N` function. The compiler refuses to deploy if a stored version has no path to the
-  current one, and rows are migrated when they are next loaded.
+- **Evolution:** `@version(N)` numbers the shape of an entity's stored state (1 without it), and
+  every row records the version it was saved with; it isn't the snapshot's `version`, which counts
+  transactions.
+  - Adding a field with a default needs no new version: a row without the field gets the default
+    when it is loaded, and a field the entity no longer declares is dropped.
+  - Any other change, such as a rename or a new field without a default, raises `@version` by one
+    and adds `migrate from` the old version: a pure function from the row as it was stored at that
+    version to the state at the next one. `old` is that row; the old shape isn't declared anywhere,
+    so its fields are read by name and checked when the migration runs. The migration to the
+    current version gives the state the entity declares, which the checker holds it to: every
+    field without a default, each of its type. An older one gives the next version's shape.
+  - Migrations chain. A row saved at version 1 of a version-3 entity runs `migrate from 1`, then
+    `migrate from 2`, when it is next loaded, and is saved at version 3 the next time a transaction
+    changes it. So an entity has a migration from each version between its oldest one and the
+    current one, with no gaps; dropping the oldest migrations retires the rows saved before them.
+  - `eye run` reads every stored row's version before it starts, and refuses to start if one is
+    newer than the program's or older than its oldest migration: `3 Player saved at version 1, and
+    Player has no migrate from 1`.
 
 ## 15. Jobs and waiting
 
@@ -822,9 +837,13 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 - **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the
   checkpoint, so they happen exactly once.
 - **Where runs live.** Entities, runs and checkpoints are kept by a store, chosen when the program is
-  started or embedded. The default store keeps them in memory and is itself written in Eyelang: it is
-  an immutable value, each transaction is a pure function from one store value to the next, and the
-  runtime holds the only reference, so updates happen in place. It is what tests, the REPL and
+  started or embedded. The default store keeps them in memory and is itself written in Eyelang
+  (`MemoryStore` in `check/runtime/store.eye`, part of every program): it is an immutable value, each
+  transaction is a pure function from one store value to the next, and the runtime holds the only
+  reference, so compiled code updates it in place. (The interpreter has no reference counts, so it
+  copies what changes; the store keeps runs in buckets of 64 and rows by entity type to keep that
+  small.) Until traits are checked, `Store` is the Go interface the runtime calls, and
+  `MemoryStore` has the methods a `Store` trait will ask for. It is what tests, the REPL and
   embedders use; on its own it doesn't survive a restart. For one machine, the journal (question 9)
   appends each commit to a file and syncs it before the commit counts, which is what `eye run`
   uses. The Postgres store survives restarts and serves several runners. Both implement the `Store` trait from the standard library, and programs

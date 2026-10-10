@@ -10,8 +10,8 @@ import (
 // when the store does: tests use the in-memory store, and `eye run` a
 // journal (OpenJournal) that survives restarts.
 type Store interface {
-	// Load returns an entity's saved state and version.
-	Load(key string) (state []byte, version int64, ok bool)
+	// Load returns an entity's saved row.
+	Load(key string) (Row, bool)
 	// Keys lists the saved entities of one entity type, oldest first.
 	Keys(entity string) []string
 	// Run returns a saved job run.
@@ -41,11 +41,22 @@ type Commit struct {
 	DropEvents int `json:",omitempty"`
 }
 
+// Row is an entity as saved: its state, how many transactions have changed
+// it, and the @version of the entity's declaration it was saved with.
+type Row struct {
+	State   []byte
+	Version int64
+	Schema  int
+}
+
 // Write saves an entity's state.
 type Write struct {
 	Key, Entity string
 	State       []byte
 	Version     int64
+	// Schema is the entity's @version when the state was written; 0, in
+	// journals written before entities had versions, is 1.
+	Schema int `json:",omitempty"`
 }
 
 // RunWrite saves a job run.
@@ -170,7 +181,11 @@ func (ix *indexed) sleeping() []int64 {
 	return ids
 }
 
-// ---------------------------------------------------------------- the in-memory store
+// ---------------------------------------------------------------- the Go in-memory store
+
+// memStore is a store written in Go. The runtime keeps a program's state in
+// the store written in Eyelang (eyeStore); this one reads a journal before
+// there is a program to run it, for `eye runs` and while a journal opens.
 
 type memStore struct {
 	rows   map[string]memRow
@@ -181,18 +196,15 @@ type memStore struct {
 	meta   map[string][]byte
 }
 
-type memRow struct {
-	state   []byte
-	version int64
-}
+type memRow = Row
 
 func newMemStore() *memStore {
 	return &memStore{rows: map[string]memRow{}, kinds: map[string][]string{}, runs: map[int64][]byte{}, meta: map[string][]byte{}}
 }
 
-func (s *memStore) Load(key string) ([]byte, int64, bool) {
+func (s *memStore) Load(key string) (Row, bool) {
 	r, ok := s.rows[key]
-	return r.state, r.version, ok
+	return r, ok
 }
 
 func (s *memStore) Keys(entity string) []string { return s.kinds[entity] }
@@ -227,7 +239,7 @@ func (s *memStore) Commit(c *Commit) {
 		if _, ok := s.rows[w.Key]; !ok {
 			s.kinds[w.Entity] = append(s.kinds[w.Entity], w.Key)
 		}
-		s.rows[w.Key] = memRow{state: w.State, version: w.Version}
+		s.rows[w.Key] = Row{State: w.State, Version: w.Version, Schema: w.Schema}
 	}
 	for _, r := range c.Runs {
 		if _, ok := s.runs[r.ID]; !ok {
@@ -256,7 +268,7 @@ func (s *memStore) snapshot() *Commit {
 	for _, e := range entities {
 		for _, key := range s.kinds[e] {
 			r := s.rows[key]
-			c.Writes = append(c.Writes, Write{Key: key, Entity: e, State: r.state, Version: r.version})
+			c.Writes = append(c.Writes, Write{Key: key, Entity: e, State: r.State, Version: r.Version, Schema: r.Schema})
 		}
 	}
 	for _, id := range s.order {

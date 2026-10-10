@@ -50,8 +50,8 @@ func TestJournalSurvivesReopening(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer again.Close()
-	if state, version, _ := again.Load("m.E/1"); string(state) != "b" || version != 2 {
-		t.Errorf("entity = %q v%d, want \"b\" v2", state, version)
+	if r, _ := again.Load("m.E/1"); string(r.State) != "b" || r.Version != 2 {
+		t.Errorf("entity = %q v%d, want \"b\" v2", r.State, r.Version)
 	}
 	if ids := again.Runs(); len(ids) != 1 || ids[0] != 1 {
 		t.Errorf("runs = %v", ids)
@@ -105,8 +105,8 @@ func TestJournalRefusesACommitItCantWrite(t *testing.T) {
 	if err == nil || !errors.Is(err, syscall.ENOSPC) {
 		t.Fatalf("commit on a full disk: %v, want ENOSPC", err)
 	}
-	if state, version, _ := j.Load("m.E/1"); string(state) != "a" || version != 1 {
-		t.Errorf("after the failed commit the entity is %q v%d, want \"a\" v1", state, version)
+	if r, _ := j.Load("m.E/1"); string(r.State) != "a" || r.Version != 1 {
+		t.Errorf("after the failed commit the entity is %q v%d, want \"a\" v1", r.State, r.Version)
 	}
 	if _, err := os.Stat(path + ".reserve"); err == nil {
 		t.Error("the reserve wasn't released for compaction")
@@ -121,8 +121,8 @@ func TestJournalRefusesACommitItCantWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state, version, _ := mem.Load("m.E/1"); string(state) != "c" || version != 2 {
-		t.Errorf("replayed entity = %q v%d, want \"c\" v2", state, version)
+	if r, _ := mem.Load("m.E/1"); string(r.State) != "c" || r.Version != 2 {
+		t.Errorf("replayed entity = %q v%d, want \"c\" v2", r.State, r.Version)
 	}
 }
 
