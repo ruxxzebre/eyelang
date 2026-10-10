@@ -12,30 +12,45 @@ import (
 func runLSP(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("eye lsp", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	definition := flags.String("definition", "", "print where the name at `FILE:LINE:COLUMN` is declared, and exit")
-	references := flags.String("references", "", "print every use of the name at `FILE:LINE:COLUMN`, and exit")
+	probes := []struct{ method, usage string }{
+		{"definition", "print where the name or keyword at `FILE:LINE:COLUMN` is defined, and exit"},
+		{"references", "print every use of the name at `FILE:LINE:COLUMN`, and exit"},
+		{"implementation", "print every place eye implements the keyword at `FILE:LINE:COLUMN`, and exit"},
+		{"declaration", "print the SPECS.md section of the keyword at `FILE:LINE:COLUMN`, and exit"},
+	}
+	at := map[string]*string{}
+	for _, p := range probes {
+		at[p.method] = flags.String(p.method, "", p.usage)
+	}
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye lsp [--definition | --references FILE:LINE:COLUMN]")
+		fmt.Fprintln(stderr, "usage: eye lsp [--definition | --references | --implementation | --declaration FILE:LINE:COLUMN]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs the language server, speaking LSP on standard input and output.")
-		fmt.Fprintln(stderr, "Editors start it; see editors/vscode. With --definition or --references it")
-		fmt.Fprintln(stderr, "answers one request as an editor would get it and prints the locations as")
+		fmt.Fprintln(stderr, "Editors start it; see editors/vscode. With one of the flags it answers one")
+		fmt.Fprintln(stderr, "request as an editor would get it and prints the locations as")
 		fmt.Fprintln(stderr, "path:line:column, which checks the server without an editor.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
 	}
-	if *definition != "" || *references != "" {
-		method, at := "definition", *definition
-		if *references != "" {
-			method, at = "references", *references
+	method, pos := "", ""
+	for _, p := range probes {
+		if *at[p.method] == "" {
+			continue
 		}
-		if *definition != "" && *references != "" || flags.NArg() > 0 {
+		if method != "" {
 			flags.Usage()
 			return exitUsage
 		}
-		if err := lsp.Probe(method, at, stdout); err != nil {
+		method, pos = p.method, *at[p.method]
+	}
+	if method != "" {
+		if flags.NArg() > 0 {
+			flags.Usage()
+			return exitUsage
+		}
+		if err := lsp.Probe(method, pos, stdout); err != nil {
 			fmt.Fprintf(stderr, "eye lsp: %v\n", err)
 			return exitErrors
 		}

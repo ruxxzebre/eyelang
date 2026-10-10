@@ -44,6 +44,17 @@ func (s *server) definition(d *document, p Position) (any, *responseError) {
 	if loc, ok := s.hostLocation(d, offset); ok {
 		return []location{loc}, nil
 	}
+	if word := commentWord(d, offset); word != "" {
+		if target := res.Lookup(path, word); target != nil {
+			if loc, ok := s.targetLocation(target); ok {
+				return []location{loc}, nil
+			}
+		}
+		return nil, nil
+	}
+	if loc, ok := s.keywordDefinition(d, offset); ok {
+		return []location{loc}, nil
+	}
 	if n := declaredName(d, offset); n != nil {
 		// A declaration's own name: editors then offer its references.
 		return []location{{URI: d.uri, Range: d.rangeOf(n.Span)}}, nil
@@ -184,6 +195,15 @@ func (s *server) references(d *document, p Position, withDecl bool) (any, *respo
 			}
 			seen[loc] = true
 			out = append(out, loc)
+		}
+	}
+	// What the prelude and std declare, the runtime's Go often makes.
+	if at, ok := check.Definition(use.Target); ok && strings.HasPrefix(key, "<") {
+		for _, loc := range s.goSites(at.Text()) {
+			if !seen[loc] {
+				seen[loc] = true
+				out = append(out, loc)
+			}
 		}
 	}
 	return out, nil
@@ -388,4 +408,70 @@ func pathURI(path string) string {
 		p = "/" + p
 	}
 	return (&url.URL{Scheme: "file", Path: p}).String()
+}
+
+// implementation answers textDocument/implementation. For a keyword or an
+// operator it lists every place eye implements it: the checker, the
+// interpreter, the Go parser and the grammar. For a name it is the
+// definition.
+func (s *server) implementation(d *document, p Position) (any, *responseError) {
+	if locs := s.keywordImplementations(d, d.offset(p)); len(locs) > 0 {
+		return locs, nil
+	}
+	// A name the prelude or std declares: where the runtime's Go makes it.
+	if path, ok := uriPath(d.uri); ok {
+		if use, ok := s.checked(path).Index.At(path, d.offset(p)); ok {
+			if at, ok := check.Definition(use.Target); ok && at.File != nil && strings.HasPrefix(embeddedName(at.File.Path), "<") {
+				if locs := s.goSites(at.Text()); len(locs) > 0 {
+					return locs, nil
+				}
+			}
+		}
+	}
+	return s.definition(d, p)
+}
+
+// declaration answers textDocument/declaration. For a keyword or an operator
+// it is the section of SPECS.md that defines it; for a name, the definition.
+func (s *server) declaration(d *document, p Position) (any, *responseError) {
+	if tok, _ := keywordAt(d, d.offset(p)); tok != nil {
+		if _, loc, ok := s.keywordDoc(tok.Text(d.text)); ok && loc.URI != "" {
+			return []location{loc}, nil
+		}
+	}
+	return s.definition(d, p)
+}
+
+// commentWord returns the name at offset when offset is in a comment: a
+// word, or a dotted name such as notify.send, as `None` or [Delivery] write
+// it in a doc comment.
+func commentWord(d *document, offset int) string {
+	inComment := false
+	d.file.Root.Walk(func(n *syntax.Node) bool {
+		if inComment || offset < n.Span.Start-1 && len(n.Leading) == 0 {
+			return !inComment
+		}
+		for _, t := range n.Leading {
+			if t.Kind == syntax.Comment && t.Span.Start <= offset && offset < t.Span.End {
+				inComment = true
+			}
+		}
+		return !inComment
+	})
+	if !inComment {
+		return ""
+	}
+	isName := func(b byte) bool { return isIdentByte(b) || b == '.' }
+	start, end := offset, offset
+	for start > 0 && isName(d.text[start-1]) {
+		start--
+	}
+	for end < len(d.text) && isName(d.text[end]) {
+		end++
+	}
+	word := strings.Trim(string(d.text[start:end]), ".")
+	if word == "" || word[0] >= '0' && word[0] <= '9' {
+		return ""
+	}
+	return word
 }

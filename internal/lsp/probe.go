@@ -57,8 +57,12 @@ func Probe(method, at string, out io.Writer) error {
 		result, rerr = s.definition(d, p)
 	case "references":
 		result, rerr = s.references(d, p, true)
+	case "implementation":
+		result, rerr = s.implementation(d, p)
+	case "declaration":
+		result, rerr = s.declaration(d, p)
 	default:
-		return fmt.Errorf("can't probe %s: only definition and references", method)
+		return fmt.Errorf("can't probe %s: only definition, references, implementation and declaration", method)
 	}
 	if rerr != nil {
 		return rerr

@@ -158,6 +158,20 @@ func (s *server) handle(m *message) (any, *responseError) {
 			return nil, err
 		}
 		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) { return s.definition(d, p.Position) })
+	case "textDocument/implementation", "textDocument/declaration":
+		var p struct {
+			textDocumentParams
+			Position Position `json:"position"`
+		}
+		if err := decode(&p); err != nil {
+			return nil, err
+		}
+		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) {
+			if m.Method == "textDocument/implementation" {
+				return s.implementation(d, p.Position)
+			}
+			return s.declaration(d, p.Position)
+		})
 	case "textDocument/references":
 		var p struct {
 			textDocumentParams
@@ -215,6 +229,8 @@ func (s *server) initialize() any {
 			"foldingRangeProvider":       true,
 			"definitionProvider":         true,
 			"referencesProvider":         true,
+			"implementationProvider":     true,
+			"declarationProvider":        true,
 			"semanticTokensProvider": map[string]any{
 				"legend": map[string]any{"tokenTypes": tokenTypes, "tokenModifiers": tokenModifiers},
 				"full":   true,

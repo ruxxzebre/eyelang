@@ -28,6 +28,7 @@ type Result struct {
 	Program     *ir.Program
 	Diagnostics []Diagnostic
 	Index       *Index
+	c           *checker
 }
 
 // Check checks the program in dir, as Program does, and also indexes what
@@ -43,7 +44,7 @@ func Check(dir string, opts Options) *Result {
 	}
 	prog, diags := c.program(path)
 	c.indexDeclarations()
-	return &Result{Program: prog, Diagnostics: diags, Index: c.index}
+	return &Result{Program: prog, Diagnostics: diags, Index: c.index, c: c}
 }
 
 // loadAll loads every module below the program's directory that isn't
@@ -812,4 +813,57 @@ func (c *checker) indexAttributes(f *ir.File) {
 		}
 		return false
 	})
+}
+
+// Lookup finds what name means in the module of the file at path, as code
+// there would: a declaration of the module, an imported one (`notify.send`,
+// `notify.Delivery`), the prelude's, or a built-in. Tools use it for names
+// written in comments.
+func (r *Result) Lookup(path, name string) any {
+	if r.c == nil {
+		return nil
+	}
+	var m *module
+	for _, mod := range r.c.modules {
+		for _, f := range mod.mod.Files {
+			if f.Path == path {
+				m = mod
+			}
+		}
+	}
+	if m == nil {
+		return nil
+	}
+	if first, rest, ok := strings.Cut(name, "."); ok {
+		switch d := r.c.lookupValue(m, first).(type) {
+		case *ir.Module:
+			imp := r.c.modules[d.Path]
+			if imp == nil {
+				return nil
+			}
+			if v, ok := imp.values[rest]; ok {
+				return v
+			}
+			return imp.types[rest]
+		case ir.Builtin:
+			return ir.Builtin{Name: name}
+		}
+		if t, ok := r.c.lookupType(m, first).(*ir.Type); ok {
+			if fn, ok := t.Methods[rest]; ok {
+				return fn
+			}
+		}
+		return nil
+	}
+	if name != "" && name[0] >= 'A' && name[0] <= 'Z' {
+		d := r.c.lookupType(m, name)
+		if _, ok := d.(ambiguous); ok || d == nil {
+			if builtinTypes[name] {
+				return BuiltinType{Name: name}
+			}
+			return nil
+		}
+		return d
+	}
+	return r.c.lookupValue(m, name)
 }

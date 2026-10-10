@@ -288,7 +288,7 @@ func TestLSPProbe(t *testing.T) {
 	cases := []struct{ args, want string }{
 		{"--definition main.eye:4:17", "shapes/shapes.eye:1:8\n"},
 		{"--references shapes/shapes.eye:1:8", "main.eye:4:16\nshapes/shapes.eye:1:8\n"},
-		{"--definition main.eye:1:1", "nothing\n"},
+		{"--definition main.eye:2:1", "nothing\n"},
 	}
 	for _, c := range cases {
 		var stdout, stderr bytes.Buffer
