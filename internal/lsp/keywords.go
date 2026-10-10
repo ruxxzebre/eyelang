@@ -4,6 +4,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"eyelang/check"
@@ -257,11 +258,11 @@ func (s *server) findText(rel, text string, word, start bool) (location, bool) {
 	if !ok {
 		return location{}, false
 	}
-	src, err := os.ReadFile(path)
-	if err != nil {
+	lines, ok := s.lines(path)
+	if !ok {
 		return location{}, false
 	}
-	for i, line := range strings.Split(string(src), "\n") {
+	for i, line := range lines {
 		c := strings.Index(line, text)
 		for c >= 0 && word && c+len(text) < len(line) && isIdentByte(line[c+len(text)]) {
 			next := strings.Index(line[c+1:], text)
@@ -298,11 +299,11 @@ func (s *server) goSites(name string) []location {
 			if !ok {
 				continue
 			}
-			src, err := os.ReadFile(path)
-			if err != nil {
+			lines, ok := s.lines(path)
+			if !ok {
 				continue
 			}
-			for i, line := range strings.Split(string(src), "\n") {
+			for i, line := range lines {
 				if c := strings.Index(line, quoted); c >= 0 && !strings.HasPrefix(strings.TrimSpace(line), "//") {
 					at := Position{Line: i, Character: utf16Len([]byte(line[:c]))}
 					end := Position{Line: i, Character: at.Character + utf16Len([]byte(quoted))}
@@ -312,4 +313,33 @@ func (s *server) goSites(name string) []location {
 		}
 	}
 	return out
+}
+
+// sourceText is a file of eye's source as last read.
+type sourceText struct {
+	modified time.Time
+	lines    []string
+}
+
+// lines returns the lines of a file of eye's source, read again only when
+// the file has changed: finding a keyword's places reads the same files
+// many times.
+func (s *server) lines(path string) ([]string, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, false
+	}
+	if t, ok := s.sources[path]; ok && t.modified.Equal(info.ModTime()) {
+		return t.lines, true
+	}
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	if s.sources == nil {
+		s.sources = map[string]sourceText{}
+	}
+	t := sourceText{modified: info.ModTime(), lines: strings.Split(string(src), "\n")}
+	s.sources[path] = t
+	return t.lines, true
 }
