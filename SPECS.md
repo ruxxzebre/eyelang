@@ -67,7 +67,7 @@ outside that domain.
 | Entity lifecycle | **Virtual**: an entity exists on first use. Ending one with protected state needs an `Approval` | No create/exists dance; deletion always involves a human |
 | Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang; **Postgres** is selectable. (Proposed: the in-memory backend can journal each commit to an append-only file, for durability on one machine without a database.) | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
-| Errors | **Result only**: no exceptions, no panics. Runtime faults become outcomes of the run | Every failure is visible in a type |
+| Errors | **Result only**: no exceptions. `?` wraps an error into the caller's error type when exactly one of its variants holds it; otherwise `.mapErr(…)`. Runtime faults and `unreachable` become outcomes of the run | Every failure is visible in a type, and wrapping needs no boilerplate |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
 | Consistency | **Atomic inside eyelang**; keyed commands and **reconcile** at the boundary with other services | One database makes real transactions cheap; outside services own their own state |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
@@ -78,7 +78,8 @@ outside that domain.
 | Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing and saving are derived for data types | One mechanism for generic code |
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts | One general mechanism instead of special syntax per feature |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
-| Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values | Parallelism without coloured functions or data races |
+| Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
+| Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn open(config) -> dyn Store`, `List(dyn Handler)`) | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
 | Interop | **`extern fn`** for C functions and for functions provided by a Go program that embeds Eyelang | Reuse existing libraries; the standard library's primitives use the same mechanism |
 | Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
 | Blocks | **Braces** | Keeps parsing simple; no whitespace pitfalls |
@@ -207,7 +208,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
     extern`;
   - inside declarations: `state` and `migrate … from` in entities; `command`, `query`, `event` and
     `on` in contracts; `uses` and `where` after a signature;
-  - `with` at the start of a statement and inside a record update, and the unit names after a number.
+  - `with` at the start of a statement and inside a record update, `dyn` at the start of a type,
+    and the unit names after a number.
 
   A contextual keyword is read as a keyword wherever one is allowed, so a variable named `with`
   can't begin a statement. `in` and `for` may also be argument labels: `daily(07:40, in: zone)`.
@@ -394,6 +396,18 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
 - **Requirements** on type variables follow `where`: `where a: Ord + Show`. A trait used as a
   parameter type is short for one: `fn label(x: Named)` means `fn label(x: t) where t: Named`.
 - Generic code is specialised for the types it is used with, so it costs nothing at run time.
+- **`dyn Trait`** (from v0.2) is a value of some type that implements the trait, chosen at run
+  time. Calls on it look up the implementation, and `dyn` in the type says so:
+
+  ```eye
+  fn open(config: Config) -> dyn Store =
+    if config.postgres { PgStore.connect(config.url) } else { MemoryStore.new() }
+
+  let handlers: List(dyn Handler) = [Logger.new(), Metrics.new(port: 9100)]
+  ```
+
+  Only traits whose methods don't mention their own type in arguments or results, and aren't
+  generic, can be used this way. Until v0.2, a variant that wraps each implementation does the job.
 
 ## 9. Pattern matching
 
@@ -431,6 +445,21 @@ it a compile error, which is how a new outcome from another service reaches ever
 - Expected failures are values: `Result(T, E)` and domain variants such as `Refused` and
   `Uncertain`. Postfix `?` returns the error to the caller: `let p = Player(id).profile()?`. In a
   function that returns an `Option`, `?` on an `Option` returns `None`.
+- **Converting errors.** When the caller's error type has exactly one variant whose payload is the
+  error's type, `?` wraps the error in it. With none or several, write the conversion:
+  `.mapErr(Variant)?` or `.mapErr(fn e: …)?`.
+
+  ```eye
+  type CountError = | Usage | Unreadable(FsError) | BadNumber(ParseError)
+
+  fn count(path: String) -> Result(Int, CountError) uses {fs} {
+    let text = fs.readText(path)?        # an FsError becomes Unreadable(…)
+    let n = parseInt(text)?              # a ParseError becomes BadNumber(…)
+    Ok(n)
+  }
+  ```
+- **Programs that only report errors** can use the standard library's `Problem`: `?` turns any
+  error with `Show` into a `Problem`, and `.context("reading {path}")` adds a line to it.
 - There are no exceptions. Library functions are total: `xs[0]` and `first(xs)` return `Option`,
   and `parseInt(s)` returns `Result`.
 - **`unreachable("why")`** is the one way for code to stop itself. It ends the program, or the
@@ -539,6 +568,22 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
 - **Cheap tasks.** A task's stack starts small and grows, so thousands of waiting tasks cost little
   memory.
 - `race` cancels the losers at their next wait. `timeout(5 s, fn { … })` returns an `Option`.
+- **From v0.2, task groups and channels** cover streams and work that is discovered as it goes. A
+  group starts tasks with `spawn` and returns only when all of them have finished. A channel has a
+  fixed capacity, and `put` parks while it is full, so a fast producer can't fill memory:
+
+  ```eye
+  taskGroup(fn group {
+    let (send, receive) = channel(capacity: 64)
+    group.spawn(fn {
+      for line in fs.lines(path) { send.put(line) }
+      send.close()
+    })
+    for line in receive { handle(line) }
+  })
+  ```
+
+  Channels aren't durable and can't be live across a `!`; jobs talk through entities and events.
 - **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
   `first!`. `parallelMap` is allowed in a job only with a pure function, since its steps aren't
   recorded.
@@ -813,6 +858,19 @@ diagnostics layer, and a conversion from its editor-oriented tree.
    Postgres store.
 7. Code generation to C with reference counting, as described in the compilation analysis.
 
+**Self-hosting**, after native compilation (v0.4), starts with the lexer and parser:
+
+- Once the interpreter runs programs (phase 3), an Eyelang lexer and parser are written as a test
+  program in `testdata/programs/`. The conformance suite checks it as a third implementation of the
+  grammar, so it needs no tests of its own, and it exercises `mut`, characters, slices and byte
+  patterns on real systems code.
+- After v0.4, the formatter, `eye doc` and then the checker follow. The Go compiler (stage 0)
+  builds the Eyelang compiler (stage 1), which builds itself (stage 2); CI checks that stages 1
+  and 2 produce the same output.
+- Building Eyelang must not require an existing Eyelang binary. Releases publish the compiler's
+  generated C as a bootstrap seed, as Zig keeps a WebAssembly build of its compiler for the same
+  purpose; the repository itself still holds no build output.
+
 ## 22. Grammar sketch
 
 A readable summary of [`tree-sitter-eyelang/grammar.js`](tree-sitter-eyelang/grammar.js), which is
@@ -889,6 +947,7 @@ pattern    = pattern "|" pattern | ident | "_" | literal | "-" number
 ppart      = pattern | ident ":" pattern | ".." ;
 typeexpr   = Ident [ "(" typeexpr { "," typeexpr } ")" ] | ident "." Ident [ "(" … ")" ]
            | ident                                            (* a type variable *)
+           | "dyn" typeexpr                                   (* from v0.2 *)
            | "()" | "(" typeexpr "," typeexpr { "," typeexpr } ")"
            | "{" [ ident ":" typeexpr { "," … } ] "}"
            | "fn" "(" [ typeexpr { "," typeexpr } ] ")" [ "->" typeexpr ] ;
@@ -939,14 +998,3 @@ operator. All binary operators associate to the left except `??`, which associat
    and checkpoints) to a journal file, fsynced before the commit is acknowledged, and replay it on
    start, with periodic snapshots to bound replay time. Is that enough for single-machine
    deployments, and what is the file format?
-10. **Dynamic dispatch:** a list of different types that share a trait needs something like Rust's
-    `dyn Trait`. v0.1 uses variants for that. Is `List(dyn Named)` worth adding?
-11. **Channels between tasks:** structured concurrency covers starting tasks and collecting their
-    results. Producer and consumer pipelines want bounded channels; add `channel(capacity)`, or
-    stream through iterators only?
-12. **Self-hosting order:** after v0.4, which part moves to Eyelang first: the formatter, the lexer
-    and parser (checked by the conformance suite as a third implementation), or `eye doc`?
-13. **Converting errors with `?`:** `fs.readText(path)?` in a function whose error type is
-    `CountError` needs the `FsError` turned into a `CountError`. Wrap it automatically when the
-    caller's error type has exactly one variant that holds an `FsError`, or always require
-    `.mapErr(…)`?
