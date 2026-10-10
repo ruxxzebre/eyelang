@@ -8,7 +8,8 @@ entities and run jobs that mostly wait. It is being designed and built now:
   [GitHub issues](https://github.com/ruxxzebre/eyelang/issues).
 
 Nothing in the spec runs yet. `eye parse` prints the syntax tree of a file and reports syntax
-errors; the other subcommands arrive phase by phase.
+errors, and `eye fmt` formats files in the one canonical style (`--check` lists the ones that
+aren't); the other subcommands arrive phase by phase.
 
 ## Building
 

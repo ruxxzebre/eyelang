@@ -33,7 +33,7 @@ var commands []command
 func init() {
 	commands = []command{
 		{name: "parse", summary: "print the syntax tree of files", run: runParse, phase: 1, issue: 2},
-		{name: "fmt", summary: "format source files", phase: 1, issue: 2},
+		{name: "fmt", summary: "format source files", run: runFmt, phase: 1, issue: 2},
 		{name: "check", summary: "check a program and report diagnostics", phase: 2, issue: 3},
 		{name: "run", summary: "run a program", phase: 3, issue: 4},
 		{name: "test", summary: "run the test blocks of a program", phase: 3, issue: 4},

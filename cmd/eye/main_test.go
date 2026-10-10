@@ -91,6 +91,51 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestFmt(t *testing.T) {
+	dir := t.TempDir()
+	messy := filepath.Join(dir, "messy.eye")
+	tidy := filepath.Join(dir, "tidy.eye")
+	broken := filepath.Join(dir, "broken.eye")
+	write := func(path, src string) {
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(messy, "fn  f( x:Int )=x+1\n")
+	write(tidy, "fn f(x: Int) = x + 1\n")
+	write(broken, "fn f( {\n")
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"fmt", "--check", dir}, &stdout, &stderr); code != exitErrors {
+		t.Errorf("fmt --check exit code = %d, want %d", code, exitErrors)
+	}
+	if !strings.Contains(stdout.String(), "messy.eye") || strings.Contains(stdout.String(), "tidy.eye") {
+		t.Errorf("fmt --check listed %q, want only messy.eye", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "broken.eye:1:7") {
+		t.Errorf("fmt --check stderr = %q, want the syntax error in broken.eye", stderr.String())
+	}
+	if data, _ := os.ReadFile(messy); string(data) != "fn  f( x:Int )=x+1\n" {
+		t.Errorf("fmt --check changed messy.eye")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"fmt", messy, tidy}, &stdout, &stderr); code != 0 {
+		t.Errorf("fmt exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(messy); string(data) != "fn f(x: Int) = x + 1\n" {
+		t.Errorf("fmt wrote %q", data)
+	}
+
+	stdin = strings.NewReader("let  a=1\n")
+	defer func() { stdin = os.Stdin }()
+	stdout.Reset()
+	if code := run([]string{"fmt"}, &stdout, &stderr); code != 0 || stdout.String() != "let a = 1\n" {
+		t.Errorf("fmt from stdin: exit %d, output %q", code, stdout.String())
+	}
+}
+
 func TestUsageListsEveryCommand(t *testing.T) {
 	var out bytes.Buffer
 	usage(&out)

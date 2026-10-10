@@ -214,6 +214,10 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   A contextual keyword is read as a keyword wherever one is allowed, so a variable named `with`
   can't begin a statement. `in` and `for` may also be argument labels: `daily(07:40, in: zone)`.
 - **Attributes:** `@name` or `@name(args)` before a declaration or member.
+- **One style.** `eye fmt` keeps the line breaks you chose and fixes everything else: two spaces
+  of indentation, spacing around operators and after commas and colons, `;` turned into line
+  breaks, trailing commas in lists that end on their own line, and aligned trailing comments. It
+  has no options.
 - **Newlines end statements.** A line break ends a statement, declaration, member or match arm
   wherever one could end. It doesn't when the next line (ignoring blank and comment lines) starts
   with a binary operator, `.`, `?`, `,`, `:`, `=`, `->` or `else`; `-` and `!` continue only as

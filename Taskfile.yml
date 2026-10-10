@@ -49,14 +49,25 @@ tasks:
     cmds:
       - go test ./syntax -run 'TestConformance' -count=1
 
+  fmt:
+    desc: Format the repository's Eyelang sources
+    cmds:
+      - go run ./cmd/eye fmt testdata/fmt/*.golden.eye
+
+  fmt-check:
+    desc: Fail if any of the repository's Eyelang sources isn't formatted
+    cmds:
+      - go run ./cmd/eye fmt --check testdata/fmt/*.golden.eye
+
   check:
-    desc: Everything CI runs - generated files, build, vet, lint, tests, the conformance suite and the grammar's tests
+    desc: Everything CI runs - generated files, build, vet, lint, tests, formatting, the conformance suite and the grammar's tests
     cmds:
       - task: generated
       - go build ./...
       - task: vet
       - task: lint
       - task: test
+      - task: fmt-check
       - task: conformance
       - task: grammar
 
