@@ -70,6 +70,7 @@ outside that domain.
 | Pipes | Data-first: `x |> f(a)` is `f(x, a)`; `_` places the value elsewhere: `x |> f(a, _)` | Matches method-call intuition |
 | Memory | Reference counting with in-place reuse of uniquely owned values; immutable values; entities referenced by ID | No GC pauses, and no reference cycles by construction |
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
+| Metaprogramming | **No user-defined macros before v1.0.** `entity`, `job`, `contract` and `view` are built in, each lowered by its own compiler pass. Deriving is limited to the built-in traits; rare code generation goes through a build step (`eye generate`) | Fixed constructs give clearer errors and are easier for agents to work with; a macro system would delay v0.1; separate passes keep the option open |
 
 ## 3. A tour
 
@@ -326,6 +327,9 @@ entity Player(id: PlayerId) {
   default state.
 - **Methods are atomic transactions.** One writer at a time per entity, all or nothing. A method
   may call methods on other entities, and the whole call tree commits or rolls back together.
+- **How to think about `state`:** a method works on a copy of the entity's state, as if it were a
+  `var self`, loaded before the call and saved when the transaction commits. Assigning to a `state`
+  field changes that copy, and nothing outside the method sees the change until the commit.
 - **Methods never wait.** They can't use `!`, so they can't call other services; those calls
   belong in jobs. A method can `start` a job, and the job begins only if the transaction commits.
   Because entity methods have no outside side effects, the runtime can safely retry one after a
@@ -408,7 +412,9 @@ job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
 ## 14. Contracts: talking to other services
 
 A contract is the single description of another service's interface. It is written once and shared
-by eyelang and the Go, TypeScript, Rust and Python code that implements or calls it.
+by eyelang and the Go, TypeScript, Rust and Python code that implements or calls it. Think of it as a
+trait (an interface of operations) plus the facts needed to deploy it: port, allowed callers, keys and
+how to reconcile.
 
 ```eye
 @port(3001)
@@ -522,7 +528,10 @@ diagnostics layer, and a conversion from its editor-oriented tree.
 3. Type checker: inference inside bodies, checked signatures, traits, exhaustiveness, total arithmetic.
 4. Effect inference and checks: `uses`, the `!` rules, and `Save` across checkpoints.
 5. Typed IR, plus a reference interpreter on that IR. Used by the REPL and tests, with entities
-   and jobs on an in-memory store.
+   and jobs on an in-memory store. `entity`, `job`, `contract` and `view` are each lowered into core
+   IR by their own pass, kept separate from the type checker. Nothing else in the compiler needs to
+   know about them, and the passes are already shaped like macros if metaprogramming is added after
+   v1.0.
 6. The runtime pieces: runs table, runner, and storage interface on Postgres.
 7. Code generation to C with reference counting, as described in the compilation analysis.
 
@@ -597,3 +606,7 @@ not. The lexer tells them apart by position, and the waiting `!` can't contain s
    hash); registry or git only?
 7. **Calling C or Go libraries:** is a foreign-function interface needed for v1?
 8. **REPL behaviour for jobs:** run them against the in-memory store with a controllable clock?
+9. **Metaprogramming after v1.0:** if real code keeps repeating the same patterns, add attribute
+   macros (compile-time Eyelang functions that inspect a declaration's types and generate code).
+   The built-in constructs could then be re-expressed with them, and grammar and editor support
+   would stay unchanged because macros would only appear as attributes.
