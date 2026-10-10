@@ -780,10 +780,12 @@ module.exports = grammar({
 
     record_type: $ => seq('{', commaSep($.field_declaration), '}'),
 
+    // A function type without `uses` is pure: `fn(Event) uses {net Notify.send}` may call Notify.
     function_type: $ => prec.right(seq(
       'fn',
       field('parameters', $.function_type_parameters),
       optional(seq('->', field('return_type', $._type))),
+      optional(field('effects', $.uses_clause)),
     )),
 
     function_type_parameters: $ => seq('(', commaSep($._type), ')'),

@@ -61,6 +61,9 @@ func (p *parser) typeExpr() *Node {
 			b.add(p.bump())
 			b.field(FieldReturnType, p.typeExpr())
 		}
+		if p.atWord("uses") && !p.atBreak() {
+			b.field(FieldEffects, p.usesClause())
+		}
 		return b.done(p)
 	}
 	p.errorExpected("a type")

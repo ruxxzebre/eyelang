@@ -502,6 +502,9 @@ func AsFunctionType(n *Node) (FunctionTypeView, bool) {
 	return FunctionTypeView{n}, true
 }
 
+// Effects returns the effects child (uses_clause), or nil.
+func (v FunctionTypeView) Effects() *Node { return v.Node.ChildByField(FieldEffects) }
+
 // Parameters returns the parameters child (function_type_parameters).
 func (v FunctionTypeView) Parameters() *Node { return v.Node.ChildByField(FieldParameters) }
 

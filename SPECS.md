@@ -78,6 +78,8 @@ construct that also works outside that domain.
 | Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang; **Postgres** is selectable. (Proposed: the in-memory backend can journal each commit to an append-only file, for durability on one machine without a database.) | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
 | Errors | **Result only**: no exceptions. `?` wraps an error into the caller's error type when exactly one of its variants holds it; otherwise `.mapErr(…)`. Runtime faults and `unreachable` become outcomes of the run | Every failure is visible in a type, and wrapping needs no boilerplate |
+| Records | **Nominal**: a record type is its name, and a literal takes the type its context expects | Same-shaped types can't be mixed up, and methods, operators, schemas and error messages have a name to use |
+| Effects | **Inferred inside, stated at the boundary**: public functions list their effects with `uses` (none means pure); a callback's effects pass to the call that gives it; a function type kept in data states its effects | Permissions show up in the diff without annotating every helper, and higher-order functions work with any callback |
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
 | Consistency | **Atomic inside eyelang**; keyed commands and **reconcile** at the boundary with other services | One database makes real transactions cheap; outside services own their own state |
@@ -281,6 +283,17 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   parameter that is ignored.
 - **Records:** `type User = { name: String, age: Int }`, built with `{ name: "Ann", age: 3 }` and
   updated with `{ user with age: 4 }`, or with `user.age = 4` when `user` is a `var`.
+- **Records are nominal.** A record type is its name: two record types with the same fields are
+  different types, so a `Celsius` can't be passed where a `Fahrenheit` is expected, and methods,
+  traits and schemas attach to the name. A record literal takes the type its context expects: a
+  parameter, a field, a return type or an annotation. With no type expected, the compiler asks for
+  one:
+
+  ```eye
+  fn make() -> User = { name: "Ann", age: 3 }    # a User: the return type says so
+  let u: User = { name: "Bo", age: 4 }
+  let x = { name: "Cy", age: 5 }                 # error: which record type? write `let x: User = …`
+  ```
 - **Variants:** `type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)`,
   built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(a)`). A
   variant list needs at least one `|`, so a type with a single variant starts with one:
@@ -586,6 +599,29 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 | `ffi` | calling an `extern fn` (section 18) | Marks code the compiler can't check |
 
 A private function's effects are inferred and never need writing.
+
+- **Pure means no `uses`.** A public function without a `uses` clause is pure, and the compiler
+  holds it to that: if `area` read a file, the error would say `area uses fs, which its signature
+  doesn't list: add uses {fs}`. Editors show the inferred effects of private functions.
+- **Callbacks pass their effects to the call.** A function that takes a function lists only its own
+  effects; calling it adds the effects of the function passed in, where the call is written. `map`
+  is pure, and `paths |> map(fs.readText)` uses `fs`:
+
+  ```eye
+  pub fn sizes(paths: List(String)) -> List(Int) uses {fs} =
+    paths |> map(fn p: fs.readText(p) |> size)    # fs comes from the lambda, not from map
+  ```
+
+  So `retry`, `timeout`, `race`, `parallelMap` and `reserve!` work with any function, and every
+  public signature still lists everything its body can do.
+- **Functions stored in data state their effects.** A function type without `uses` is pure; one
+  kept in a field or a collection, and called later, says what it may do:
+
+  ```eye
+  type Handler = { name: String, run: fn(Event) uses {net Notify.send} }
+  ```
+
+  In a function's return type, the `uses` after a function type belongs to that function type.
 
 **`!` in jobs.** Inside a job, every call with an outside effect (`net`, `fs`, `process`, `clock`,
 `random`, `ffi` and the rest) is a `!` call: it runs once and its result is recorded, so a resumed run

@@ -108,3 +108,46 @@ fn f(a: (), b: { x: Int, y: Int }, c: fn(Int) -> Bool, d: fn(), e: fn() -> fn(In
               (type_identifier))
             (type_identifier)))))
     (block)))
+
+================================================================================
+Function types with effects
+================================================================================
+
+type Handler = { name: String, run: fn(Event) uses {net Notify.send} }
+fn every(f: fn() -> Int uses {clock}) -> Int = f()
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (function_type
+          (function_type_parameters
+            (type_identifier))
+          (uses_clause
+            (effect
+              (identifier)
+              (path
+                (type_identifier)
+                (identifier))))))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (function_type
+          (function_type_parameters)
+          (type_identifier)
+          (uses_clause
+            (effect
+              (identifier))))))
+    (type_identifier)
+    (call_expression
+      (identifier)
+      (arguments))))
