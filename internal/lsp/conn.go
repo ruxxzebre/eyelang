@@ -4,10 +4,11 @@
 // it starts instantly and answers in a few milliseconds.
 //
 // It offers diagnostics as you type, formatting, an outline of declarations,
-// folding, semantic highlighting, go-to-definition and find references. Both
-// check the program the file belongs to (see check.Root) and look names up
-// in the checker's index, so they reach imported modules, the prelude and
-// standard modules, and the Go behind built-ins.
+// folding, semantic highlighting, go-to-definition, find references and
+// hover. They check the program the file belongs to (see check.Root) and look
+// names up in the checker's index, so they reach imported modules, the
+// prelude and standard modules, and the Go behind built-ins. Hover shows a
+// name's signature and its doc comment, the text eye doc publishes.
 package lsp
 
 import (

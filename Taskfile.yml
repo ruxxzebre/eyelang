@@ -39,6 +39,20 @@ tasks:
       - tree-sitter build -o ../bin/eyelang-grammar.so .
       - for q in queries/*.scm; do tree-sitter query --lib-path ../bin/eyelang-grammar.so --lang-name eyelang "$q" ../testdata/syntax/valid/*.eye > /dev/null || exit 1; done
 
+  docs:
+    desc: Build the docs site into docs/.vitepress/dist (needs Node); the Go tests check its examples
+    dir: docs
+    cmds:
+      - npm ci --no-fund --no-audit
+      - npx vitepress build
+
+  docs-dev:
+    desc: Serve the docs site at http://localhost:5173, reloading as pages change (run task generate after changing SPECS.md or ## comments)
+    dir: docs
+    cmds:
+      - npm ci --no-fund --no-audit
+      - npx vitepress dev
+
   spec:
     desc: Render SPECS.md as one HTML page, bin/spec.html, with examples highlighted by Eyelang's own parser
     cmds:
@@ -86,18 +100,23 @@ tasks:
       - npm run package
 
   generate:
-    desc: Regenerate everything derived from grammar.js and SPECS.md
+    desc: Regenerate everything derived from grammar.js, SPECS.md, the standard library's ## comments and the eye command
     cmds:
       - cd tree-sitter-eyelang && tree-sitter generate
       - go generate ./syntax
       - go run ./tools/specexamples
+      # The docs site's generated pages: the language reference and design from SPECS.md, the API
+      # reference from ## comments, and the eye command's reference from its help.
+      - go run ./tools/specpages
+      - go run ./cmd/eye doc --out docs/reference/api
+      - go run ./tools/clidoc
 
   generated:
     desc: Fail if generated files in git don't match grammar.js and SPECS.md
     cmds:
       - task: generate
-      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid testdata/programs/tour/tour.eye
-      - test -z "$(git ls-files --others --exclude-standard -- testdata/syntax/valid)"
+      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid testdata/programs/tour/tour.eye docs/reference docs/design docs/.vitepress/spec-sidebar.json
+      - test -z "$(git ls-files --others --exclude-standard -- testdata/syntax/valid docs/reference docs/design)"
 
   conformance:
     desc: Compare the hand-written parser with tree-sitter on every file in testdata/syntax and the corpus
@@ -117,9 +136,11 @@ tasks:
       - go run ./cmd/eye fmt --check testdata/fmt/*.golden.eye
       # The programs, except the tour, which is the spec's text.
       - go run ./cmd/eye fmt --check $(find testdata/programs testdata/lab check/std check/runtime check/prelude.eye -name '*.eye' ! -name tour.eye)
+      # The docs site's programs.
+      - go run ./cmd/eye fmt --check $(find docs -name '*.eye' -not -path '*/node_modules/*')
 
   check:
-    desc: Everything CI runs - generated files, build, vet, lint, tests, formatting, the conformance suite, the grammar's tests and the VS Code extension
+    desc: Everything CI runs - generated files, build, vet, lint, tests, formatting, the conformance suite, the grammar's tests, the VS Code extension and the docs site
     cmds:
       - task: generated
       - go build ./...
@@ -130,6 +151,7 @@ tasks:
       - task: conformance
       - task: grammar
       - task: vscode
+      - task: docs
 
   coverage:
     desc: Show test coverage per package

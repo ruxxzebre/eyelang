@@ -1,6 +1,7 @@
-# The standard library's http module: requests to any URL, for services that
-# have no contract, such as web pages (SPECS.md §17). Its primitives are
-# provided by the host.
+## Requests to any URL, for services that have no contract, such as web
+## pages. Services that have one are called through it instead.
+
+# SPECS.md §17. Its primitives are provided by the host.
 
 ## What a server answered: any status, success or not.
 pub type Response = { status: Int, headers: Map(String, String), body: String }

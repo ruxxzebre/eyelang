@@ -17,18 +17,20 @@ func runLSP(args []string, stdout, stderr io.Writer) int {
 		{"references", "print every use of the name at `FILE:LINE:COLUMN`, and exit"},
 		{"implementation", "print every place eye implements the keyword at `FILE:LINE:COLUMN`, and exit"},
 		{"declaration", "print the SPECS.md section of the keyword at `FILE:LINE:COLUMN`, and exit"},
+		{"hover", "print the signature and doc comment of the name at `FILE:LINE:COLUMN`, and exit"},
 	}
 	at := map[string]*string{}
 	for _, p := range probes {
 		at[p.method] = flags.String(p.method, "", p.usage)
 	}
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye lsp [--definition | --references | --implementation | --declaration FILE:LINE:COLUMN]")
+		fmt.Fprintln(stderr, "usage: eye lsp [--definition | --references | --implementation | --declaration | --hover FILE:LINE:COLUMN]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs the language server, speaking LSP on standard input and output.")
 		fmt.Fprintln(stderr, "Editors start it; see editors/vscode. With one of the flags it answers one")
 		fmt.Fprintln(stderr, "request as an editor would get it and prints the locations as")
-		fmt.Fprintln(stderr, "path:line:column, which checks the server without an editor.")
+		fmt.Fprintln(stderr, "path:line:column, or a hover's Markdown, which checks the server")
+		fmt.Fprintln(stderr, "without an editor.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {

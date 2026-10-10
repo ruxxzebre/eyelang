@@ -11,15 +11,28 @@ import (
 
 func TestPages(t *testing.T) {
 	dir := t.TempDir()
-	src := `# Shapes and what they cover.
+	src := `## Shapes and what they cover. See [area].
+
+import ai
 
 ## A shape on the plane.
-pub type Shape = | Circle(Float) | Square(Float)
+pub type Shape =
+  ## Round, by its radius.
+  | Circle(Float)
+  | Square(Float)
+
+## A point, made with [Point.at] or [Origin].
+pub type Point = {
+  ## Across.
+  x: Int,
+  y: Int,
+}
 
 # An ordinary comment, not documentation.
 
-## The area of a shape.
-## Squares are exact; circles use 3.0 for pi.
+## The area of a [Shape], as a [Float] would hold it. [Square] is exact;
+## [Circle] uses 3.0 for pi. Built-ins link too: [filter], [Option], [ai.generate].
+## Broken: [Nowhere].
 pub fn area(s: Shape) -> Float = match s {
   Circle(r) => 3.0 * r * r
   Square(a) => a * a
@@ -27,7 +40,9 @@ pub fn area(s: Shape) -> Float = match s {
 
 fn helper() = 1
 
+## Where shapes go.
 pub entity Board(id: String) {
+  ## Everything added so far.
   state shapes: List(Shape) = []
 
   ## Adds a shape to the board.
@@ -41,7 +56,7 @@ pub entity Board(id: String) {
 	if len(diags) > 0 {
 		t.Fatal(diags)
 	}
-	pages := Pages(prog)
+	pages, problems := Pages(prog)
 	byPath := map[string]string{}
 	for _, p := range pages {
 		byPath[p.Path] = p.Content
@@ -49,10 +64,16 @@ pub entity Board(id: String) {
 	main := byPath["main.md"]
 	for _, want := range []string{
 		"Shapes and what they cover.",
-		"### Shape\n\n```eye\npub type Shape = | Circle(Float) | Square(Float)\n```\n\nA shape on the plane.",
-		"### area\n\n```eye\npub fn area(s: Shape) -> Float\n```\n\nThe area of a shape.\nSquares are exact; circles use 3.0 for pi.",
-		"#### Board.add\n\n```eye\npub fn add(s: Shape)\n```\n\nAdds a shape to the board.",
-		"state shapes: List(Shape) = []",
+		"Shapes and what they cover. See [`area`](./main#area).",
+		"### Shape {#Shape}\n\n```eye\npub type Shape =\n  | Circle(Float)\n  | Square(Float)\n```\n\nA shape on the plane.",
+		"- <span id=\"Shape-Circle\"></span>`Circle(Float)`: Round, by its radius.",
+		"- <span id=\"Point-x\"></span>`x: Int`: Across.",
+		"### area {#area}\n\n```eye\npub fn area(s: Shape) -> Float\n```\n\nThe area of a [`Shape`](./main#Shape)",
+		"[`Square`](./main#Shape-Square) is exact;\n[`Circle`](./main#Shape-Circle)",
+		"[`filter`](./std/builtins#filter), [`Option`](./std/prelude#Option), [`ai.generate`](./std/ai#generate)",
+		"Broken: [Nowhere].",
+		"- <span id=\"Board-shapes\"></span>`state shapes: List(Shape) = []`: Everything added so far.",
+		"#### Board.add {#Board-add}\n\n```eye\npub fn add(s: Shape)\n```\n\nAdds a shape to the board.",
 	} {
 		if !strings.Contains(main, want) {
 			t.Errorf("main.md lacks %q:\n%s", want, main)
@@ -64,7 +85,14 @@ pub entity Board(id: String) {
 	if !strings.Contains(byPath["std/prelude.md"], "### Option(a)") || !strings.Contains(byPath["std/builtins.md"], "### filter") {
 		t.Error("the standard library pages are missing")
 	}
-	if !strings.Contains(byPath["index.md"], "[main](./main)") {
+	var got []string
+	for _, p := range problems {
+		got = append(got, p.Decl+": "+p.Link)
+	}
+	if want := "Point: Point.at|Point: Origin|area: Float|area: Nowhere"; strings.Join(got, "|") != want {
+		t.Errorf("problems = %q, want %q", strings.Join(got, "|"), want)
+	}
+	if !strings.Contains(byPath["index.md"], "[main](./main) | Shapes and what they cover.") {
 		t.Errorf("the index doesn't link the module:\n%s", byPath["index.md"])
 	}
 

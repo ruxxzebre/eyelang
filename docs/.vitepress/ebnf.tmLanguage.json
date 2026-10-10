@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "EBNF",
+  "scopeName": "source.ebnf",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#rule" },
+    { "include": "#body" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.block.ebnf",
+      "begin": "\\(\\*",
+      "end": "\\*\\)"
+    },
+    "rule": {
+      "match": "^\\s*([A-Za-z_][\\w-]*)\\s*(=)",
+      "captures": {
+        "1": { "name": "entity.name.function.ebnf" },
+        "2": { "name": "keyword.operator.definition.ebnf" }
+      }
+    },
+    "body": {
+      "patterns": [
+        { "include": "#comment" },
+        { "name": "string.quoted.double.ebnf", "match": "\"[^\"]*\"" },
+        { "name": "string.quoted.single.ebnf", "match": "'[^']*'" },
+        { "name": "punctuation.terminator.ebnf", "match": ";" },
+        { "name": "keyword.operator.alternation.ebnf", "match": "\\|" },
+        { "name": "keyword.operator.ebnf", "match": "[-*+?…]|\\.\\.\\." },
+        { "name": "punctuation.section.brackets.ebnf", "match": "[\\[\\]{}()]" },
+        { "name": "variable.other.ebnf", "match": "[A-Za-z_][\\w-]*" }
+      ]
+    }
+  }
+}

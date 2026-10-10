@@ -5,6 +5,8 @@ entities and run jobs that mostly wait. It is being designed and built now:
 
 - [SPECS.md](SPECS.md) is the language design (draft). `task spec` renders it as one HTML page,
   `bin/spec.html`, with its examples highlighted by Eyelang's own parser.
+- [docs/](docs) is the documentation site: a quickstart, a tutorial, guides, and references for the
+  language, the standard library and the `eye` command. See [Documentation](#documentation).
 - [ROADMAP.md](ROADMAP.md) lists the phases, versions and exit criteria. Progress is tracked in
   [GitHub issues](https://github.com/ruxxzebre/eyelang/issues).
 
@@ -32,6 +34,18 @@ attributes, each error at its exact line and column.
 
 A program is a directory of `.eye` files; `import lab.notify` names the directory `lab/notify` under
 it.
+
+## Documentation
+
+The site in [docs/](docs) is Markdown, built with [VitePress](https://vitepress.dev). `task docs-dev`
+serves it at http://localhost:5173 and reloads pages as you edit them; `task docs` builds it into
+`docs/.vitepress/dist`. Both need Node.
+
+Part of it is generated, and `task generate` rewrites it: the language reference and design pages
+from SPECS.md, the API reference from the standard library's `##` comments (`eye doc`), and the
+`eye` command's page from its help. Edit the source, not the page. The tutorial's code lives in real
+programs next to the pages (`docs/**/code/*`), which `go test ./interp` runs, and every `eye` block
+written into a page must parse, so the docs fail CI when the language moves under them.
 
 ## Editors
 
@@ -84,6 +98,7 @@ Prebuilt binaries for Linux, macOS and Windows are attached to each
 | `ir/` | The resolved form programs are lowered to; types will be added to it |
 | `interp/` | The reference interpreter and in-memory runtime: entities, views, jobs, clock, fakes |
 | `repl/` | Line editor with history, reused by `eye repl` |
+| `docs/` | The documentation site (VitePress); `tools/specpages` and `tools/clidoc` generate parts of it |
 
 ## Eyelang 1
 

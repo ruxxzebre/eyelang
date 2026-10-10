@@ -1,4 +1,5 @@
-# The prelude: what every module sees without importing it.
+## What every module sees without importing it: [Option], [Result], and the
+## types that runs of jobs and calls to other services give back.
 
 ## A value that may be missing: `Some(value)`, or `None`. Eyelang has no null.
 ##
