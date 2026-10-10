@@ -39,6 +39,11 @@ outside that domain.
 
 ## 1. Goals
 
+- **Good programs are the point.** A feature earns its place by the programs written with it:
+  correct, fast, lean on memory, well organised and easy to change. The obvious way to write
+  something should be the right way. [CLAUDE.md](CLAUDE.md) turns this into a guide for decisions.
+- **Concise and pleasant.** Little ceremony, inference inside bodies, one obvious way to do each
+  thing, and errors, formatting and editor support that ship with every feature.
 - **A good general language first.** Values with no shared mutation, variants with exhaustive
   matching, traits and generics, inferred types, structured concurrency, and no nulls or exceptions.
   The domain constructs (entities, jobs, views, contracts) sit on top of a core that stands on its
@@ -81,7 +86,8 @@ outside that domain.
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
 | Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn open(config) -> dyn Store`, `List(dyn Handler)`) | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
-| AI | **Typed model calls and agents, as library code**: a call names the Eyelang type it wants, the compiler derives a JSON Schema from it, and the reply is checked and decoded into that type. Tools are functions whose effects become the caller's; in jobs every model call is a recorded `!` step; coding agents are sessions that durable jobs own | No new syntax: permissions, cost and nondeterminism are handled by effects, budgets and recordings, which already exist |
+| AI | **Typed model calls and agents, as library code**, with no syntax that serves only them: a call names the Eyelang type it wants, the compiler derives a JSON Schema from it, and the reply is checked and decoded into that type. Tools are functions whose effects become the caller's; in jobs every model call is a recorded `!` step; coding agents are sessions that durable jobs own | No new syntax: permissions, cost and nondeterminism are handled by effects, budgets and recordings, which already exist |
+| Syntax | **Add syntax when it is generally useful and clearly better than a library function**; syntax that also makes one area (jobs, agents) much better is welcome if it pays off elsewhere too | Keeps the language small without making common code clumsy |
 | Interop | **`extern fn`** for C functions and for functions provided by a Go program that embeds Eyelang | Reuse existing libraries; the standard library's primitives use the same mechanism |
 | Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
 | Blocks | **Braces** | Keeps parsing simple; no whitespace pitfalls |
@@ -781,7 +787,9 @@ extern fn showOnDesk(text: String) -> Result((), String)
 
 Programs that call language models, and jobs that run coding agents, use the pieces the rest of the
 language already has: types, effects, `!` steps and recordings. The standard library adds two
-modules, `ai` and `agents`; there is no new syntax.
+modules, `ai` and `agents`. Syntax that helps here and elsewhere is welcome: `##` doc comments
+describe schemas and tools as well as documentation, and prompts are the strongest case for
+multi-line strings (open question 8).
 
 **Typed model calls.** A call names the type it wants back. The compiler derives a JSON Schema from
 that type, the provider is asked for structured output matching it, and the reply is checked and
