@@ -78,6 +78,7 @@ construct that also works outside that domain.
 | Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang; **Postgres** is selectable. (Proposed: the in-memory backend can journal each commit to an append-only file, for durability on one machine without a database.) | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
 | Errors | **Result only**: no exceptions. `?` wraps an error into the caller's error type when exactly one of its variants holds it; otherwise `.mapErr(…)`. Runtime faults and `unreachable` become outcomes of the run | Every failure is visible in a type, and wrapping needs no boilerplate |
+| Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
 | Consistency | **Atomic inside eyelang**; keyed commands and **reconcile** at the boundary with other services | One database makes real transactions cheap; outside services own their own state |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
@@ -538,6 +539,29 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 - `Secret(a)` deliberately has no `Show` and no `Save`. Printing a secret, or holding one across a
   `!`, is a compile error.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
+- **Operators are traits.** `a + b` calls `Add`, and likewise `-` (`Sub`), `*` (`Mul`), `/`
+  (`Div`), `%` (`Rem`) and unary `-` (`Neg`); `==` uses `Eq` and `<` uses `Ord`. A trait names the
+  right-hand type and the result, and a type implements it at most once per right-hand type, so
+  the result is always known from the operands:
+
+  ```eye
+  trait Add(rhs, out) {
+    fn add(self, other: rhs) -> out
+  }
+
+  type Money = { cents: Int }
+
+  impl Add(Money, Money) for Money {
+    fn add(self, other: Money) -> Money = { cents: self.cents + other.cents }
+  }
+
+  let total = price + shipping                 # Money + Money
+  fn double(n) = n * 2                         # inferred: fn(t) -> o where t: Mul(Int, o)
+  ```
+
+  The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
+  `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,
+  `Size + Size`, and `Int / NonZero(Int)`. Nothing converts implicitly: `1 + 2.0` is an error.
 
 ## 12. Effects and signatures
 
