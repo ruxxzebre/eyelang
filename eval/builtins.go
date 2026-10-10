@@ -11,7 +11,7 @@ import (
 )
 
 func copyArray(arr []object.Object) []object.Object {
-	newArr := make([]object.Object, len(arr), len(arr))
+	newArr := make([]object.Object, len(arr))
 	copy(newArr, arr)
 	return newArr
 }
@@ -48,15 +48,15 @@ var Builtins = map[string]*object.Builtin{
 				elements = append(elements, arg.Inspect())
 			}
 
-			fmt.Println(strings.Join(elements, ", "))
+			fmt.Fprintln(Stdout, strings.Join(elements, ", "))
 
 			return NULL
 		},
 	},
 	"eval": {
 		Fn: func(env *object.Environment, args ...object.Object) object.Object {
-			if len(args) > 2 || len(args) < 1 {
-				return newError("wrong number of arguments. got=%d, want=1", len(args))
+			if err := assertBuiltinArgsLength(args, "==", 1); err != nil {
+				return err
 			}
 
 			code, ok := args[0].(*object.String)
@@ -65,7 +65,6 @@ var Builtins = map[string]*object.Builtin{
 			}
 
 			l := lexer.New(code.Value)
-			l.Debug = true
 			p := parser.New(l)
 			program := p.ParseProgram()
 			if len(p.Errors()) != 0 {
@@ -229,8 +228,14 @@ var Builtins = map[string]*object.Builtin{
 				return newError("expected 2 args")
 			}
 
-			nargs := args[1].(*object.Array)
-			fn := args[0].(*object.Function)
+			fn := args[0]
+			if fn.Type() != object.FUNCTION_OBJ && fn.Type() != object.BUILTIN_OBJ {
+				return newError("first argument to `time` must be a function. got=%s", fn.Type())
+			}
+			nargs, ok := args[1].(*object.Array)
+			if !ok {
+				return newError("second argument to `time` must be an array. got=%s", args[1].Type())
+			}
 
 			start := time.Now()
 			result := ApplyFunction(fn, nargs.Elements, env)
@@ -301,6 +306,9 @@ var Builtins = map[string]*object.Builtin{
 			}
 
 			if len(args) == 1 {
+				if startOrEnd.Value < 0 {
+					return newError("range end must not be negative. got=%d", startOrEnd.Value)
+				}
 				elements := make([]object.Object, startOrEnd.Value)
 				for i := int64(0); i < startOrEnd.Value; i++ {
 					elements[i] = &object.Integer{Value: i}

@@ -25,6 +25,25 @@ null
 
 Examples for syntax, data types and others are available in the `examples` directory.
 
+# Pipe operator
+
+`x |> f` calls `f` with `x` as its **last** argument, so it works together with partial application:
+
+```
+let sub = fn(a, b) { a - b }
+2 |> sub(10)            # sub(10, 2) -> 8
+
+let add = fn(a, b) { a + b }
+let square = fn a: a * a
+2 |> add(3) |> square   # square(add(3, 2)) -> 25
+```
+
+`|>` binds looser than arithmetic and tighter than comparison:
+`"a" + "b" |> len` is `("a" + "b") |> len`, and `xs |> len > 3` is `(xs |> len) > 3`.
+
+Shorthand function bodies extend as far right as possible, so wrap a lambda in parentheses to keep piping after it:
+`5 |> (fn a: a + 1) |> square`.
+
 # Commands
 
 ```sh
@@ -43,7 +62,7 @@ Examples for syntax, data types and others are available in the `examples` direc
 - keyword arguments (strings as keys)
 - EBNF
 - Option<type> instead on NULL (implies Void type)
-- PIPE operator
+- ~~PIPE operator~~
 - REPL (history, multiline, completion)
 - Tests for REPL
 - Syntax highlighting for editors (nvim and vscode)

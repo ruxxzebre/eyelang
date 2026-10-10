@@ -185,10 +185,10 @@ func (e *LineEditor) readEscape() (key, rune, error) {
 }
 
 type lineState struct {
-	buf     []rune
-	cur     int
-	histIdx int
-	draft   []rune
+	buf      []rune
+	cur      int
+	histIdx  int
+	draft    []rune
 	hasDraft bool
 }
 

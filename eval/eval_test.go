@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"bytes"
 	"eyelang/lexer"
 	"eyelang/object"
 	"eyelang/parser"
@@ -66,19 +67,6 @@ func TestEvalBooleanExpression(t *testing.T) {
 	}
 }
 
-func checkParserErrors(t *testing.T, p *parser.Parser) {
-	errors := p.Errors()
-	if len(errors) == 0 {
-		return
-	}
-
-	t.Errorf("parser has %d errors", len(errors))
-	for _, msg := range errors {
-		t.Errorf("parser error: %q", msg.Message)
-	}
-	t.FailNow()
-}
-
 func testEval(input string) object.Object {
 	l := lexer.New(input)
 	p := parser.New(l)
@@ -94,6 +82,16 @@ func testEval(input string) object.Object {
 	env.Load(initTestingScope().Outer)
 
 	return Eval(program, env)
+}
+
+// captureStdout redirects `puts` and interpreter warnings into a buffer for the rest of the test
+func captureStdout(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	prev := Stdout
+	Stdout = buf
+	t.Cleanup(func() { Stdout = prev })
+	return buf
 }
 
 func testEval2(input string) (object.Object, *object.Environment) {
@@ -318,8 +316,20 @@ func TestErrorHandling(t *testing.T) {
 			"{2:2}[fn(){}]",
 			"hash index cannot be FUNCTION",
 		},
+		{"1 / 0", "division by zero"},
+		{"5 % 0", "division by zero"},
+		{"{fn(){}: 1}", "unsupported hash key type: FUNCTION"},
+		{"foo.bar", "identifier not found: foo"},
+		{"let n = 5; n.bar", "attempted to access scope of non-scope object. got=INTEGER"},
+		{"range(-1)", "range end must not be negative"},
+		{"time(1, [])", "first argument to `time` must be a function"},
+		{"time(fn() { 1 }, 1)", "second argument to `time` must be an array"},
+		{"load(1)", "first argument to load must be a string"},
+		{`eval("1", "2")`, "wrong number of arguments"},
+		{"2 |> 3", "right hand side of |> must be a function"},
 	}
 
+	captureStdout(t)
 	for idx, tt := range tests {
 		evaluated := testEval(tt.input)
 
@@ -746,6 +756,7 @@ func TestHashIndexExpression(t *testing.T) {
 }
 
 func TestLoadMacro(t *testing.T) {
+	captureStdout(t)
 	input := `let sc = load("eval/test_data.eye", true); sc;`
 
 	evaluated := testEval(input)
@@ -843,14 +854,78 @@ func TestPipeExpressionWaitsForLeftInfixExpression(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		out := captureStdout(t)
 		evaluated := testEval(tt.input)
 		switch expected := tt.expected.(type) {
 		case int64:
 			testIntegerObject(t, evaluated, expected)
 		case nil:
 			testNullObject(t, evaluated)
+			if out.String() != "invoice-2026\n" {
+				t.Errorf("%s: expected puts to print %q. got=%q", tt.input, "invoice-2026\n", out.String())
+			}
 		}
 	}
+}
+
+func TestPipePrecedence(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		// piped value is passed as the last argument
+		{"let sub = fn(a, b) { a - b }; 2 |> sub(10)", int64(8)},
+		{"let isTwo = fn(a) { a == 2 }; 2 |> isTwo == true", true},
+		{"[1, 2, 3] |> len > 2", true},
+		{"1 + 5 % 3", int64(3)},
+		{"1 + 2 <= 3", true},
+		{"1 >= 2 + 3", false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		switch expected := tt.expected.(type) {
+		case int64:
+			testIntegerObject(t, evaluated, expected)
+		case bool:
+			testBooleanObject(t, evaluated, expected)
+		}
+	}
+}
+
+func TestFloatOperators(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected interface{}
+	}{
+		{"-1.5", -1.5},
+		{"-1.5 + 0.5", -1.0},
+		{"1.5 <= 2.0", true},
+		{"2.0 <= 2.0", true},
+		{"2.0 >= 2.5", false},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		switch expected := tt.expected.(type) {
+		case float64:
+			result, ok := evaluated.(*object.Float)
+			if !ok {
+				t.Errorf("%s: expected Float. got=%T (%+v)", tt.input, evaluated, evaluated)
+				continue
+			}
+			if result.Value != expected {
+				t.Errorf("%s: expected %f. got=%f", tt.input, expected, result.Value)
+			}
+		case bool:
+			testBooleanObject(t, evaluated, expected)
+		}
+	}
+}
+
+func TestIdentifiersWithDigitsAndUnderscores(t *testing.T) {
+	evaluated := testEval("let x1 = 2; let snake_case = 3; let _hidden = 4; x1 * snake_case * _hidden")
+	testIntegerObject(t, evaluated, 24)
 }
 
 func TestScopes(t *testing.T) {
@@ -875,6 +950,7 @@ func TestScopes(t *testing.T) {
 }
 
 func TestExamplesInterpretingSuccessfully(t *testing.T) {
+	captureStdout(t)
 	files, err := os.ReadDir("examples")
 	if err != nil {
 		t.Fatalf("failed to read examples directory: %s", err)

@@ -165,3 +165,63 @@ foo.bar
 		}
 	}
 }
+
+func TestIdentifiers(t *testing.T) {
+	input := `x1 snake_case _private ok? done! 1_000`
+
+	tests := []struct {
+		expectedType    token.TokenType
+		expectedLiteral string
+	}{
+		{token.IDENT, "x1"},
+		{token.IDENT, "snake_case"},
+		{token.IDENT, "_private"},
+		{token.IDENT, "ok?"},
+		{token.IDENT, "done!"},
+		{token.INT, "1000"},
+		{token.EOF, ""},
+	}
+
+	l := New(input)
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Type != tt.expectedType || tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - expected=(%q, %q), got=(%q, %q)",
+				i, tt.expectedType, tt.expectedLiteral, tok.Type, tok.Literal)
+		}
+	}
+}
+
+func TestTokenPositions(t *testing.T) {
+	input := "a\n# comment\nb\n\"x\ny\" z"
+
+	tests := []struct {
+		expectedLiteral string
+		row, col        int
+	}{
+		{"a", 0, 0},
+		{"b", 2, 0},
+		{"x\ny", 3, 0},
+		{"z", 4, 3},
+	}
+
+	l := New(input)
+	for i, tt := range tests {
+		tok := l.NextToken()
+		if tok.Literal != tt.expectedLiteral {
+			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q", i, tt.expectedLiteral, tok.Literal)
+		}
+		if tok.Position.Row != tt.row || tok.Position.Col != tt.col {
+			t.Errorf("tests[%d] - %q position wrong. expected=(%d:%d), got=%s",
+				i, tt.expectedLiteral, tt.row, tt.col, tok.PositionString())
+		}
+	}
+}
+
+func TestUnterminatedString(t *testing.T) {
+	l := New(`"abc`)
+	tok := l.NextToken()
+	if tok.Type != token.ILLEGAL || tok.Literal != `"abc` {
+		t.Fatalf("expected ILLEGAL token for unterminated string. got=(%q, %q)", tok.Type, tok.Literal)
+	}
+}

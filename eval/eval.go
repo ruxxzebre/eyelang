@@ -7,8 +7,12 @@ import (
 	"eyelang/parser"
 	"fmt"
 	"go/token"
+	"io"
 	"os"
 )
+
+// Stdout is where `puts` and interpreter warnings are written
+var Stdout io.Writer = os.Stdout
 
 var (
 	TRUE       = &object.Boolean{Value: true}
@@ -52,12 +56,16 @@ func isMacro(obj object.Object) bool {
 func evalMacro(evaluation object.Object, args []object.Object, env *object.Environment) object.Object {
 	switch evaluation {
 	case LOAD_MACRO:
-		fmt.Println("warning: load is in early stages of development and may not work as expected")
+		fmt.Fprintln(Stdout, "warning: load is in early stages of development and may not work as expected")
 		if len(args) == 0 {
 			return newError("no args provided")
 		}
 
-		filepath := args[0].(*object.String).Value
+		path, ok := args[0].(*object.String)
+		if !ok {
+			return newError("first argument to load must be a string. got=%s", args[0].Type())
+		}
+		filepath := path.Value
 		file, err := os.ReadFile(filepath)
 		if err != nil {
 			return newError("file not found")
@@ -282,7 +290,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 
 			hashed, ok := left.(object.Hashable)
 			if !ok {
-				return decorateError(newError("unsupported hash key type: %T", node), node)
+				return decorateError(newError("unsupported hash key type: %s", left.Type()), node)
 			}
 
 			pairs[hashed.HashKey()] = object.HashPair{
@@ -357,22 +365,15 @@ func evalIfExpression(ie *ast.IfExpression, env *object.Environment) object.Obje
 	return NULL
 }
 
-func evalStatements(statements []ast.Statement, env *object.Environment) object.Object {
-	var result object.Object
-
-	for _, statement := range statements {
-		result = Eval(statement, env)
-	}
-
-	return result
-}
-
 func evalScopeInfixExpression(node *ast.InfixExpression, env *object.Environment) object.Object {
 	// fmt.Println(node)
 	left := Eval(node.Left, env)
+	if isError(left) {
+		return left
+	}
 	scope, ok := left.(*object.Scope)
 	if !ok {
-		return newError("attempted to access scope of non-scope object. %s", left.Inspect())
+		return newError("attempted to access scope of non-scope object. got=%s", left.Type())
 	}
 
 	if ident, ok := node.Right.(*ast.Identifier); ok {
@@ -410,15 +411,6 @@ func evalInfixExpression(operator string, right, left object.Object) object.Obje
 	}
 }
 
-func evalInfixExpressionWithENV(operator string, right, left object.Object, env *object.Environment) object.Object {
-	switch {
-	case operator == "|>":
-		return evalPipeInfixExpression(left, right, env)
-	default:
-		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
-	}
-}
-
 func evalFloatInfixExpression(operator string, left, right object.Object) object.Object {
 	leftVal := left.(*object.Float).Value
 	rightVal := right.(*object.Float).Value
@@ -440,6 +432,10 @@ func evalFloatInfixExpression(operator string, left, right object.Object) object
 		return nativeBoolToBooleanObject(leftVal == rightVal)
 	case "!=":
 		return nativeBoolToBooleanObject(leftVal != rightVal)
+	case ">=":
+		return nativeBoolToBooleanObject(leftVal >= rightVal)
+	case "<=":
+		return nativeBoolToBooleanObject(leftVal <= rightVal)
 	default:
 		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
@@ -457,8 +453,14 @@ func evalIntegerInfixExpression(operator string, left object.Object, right objec
 	case "+":
 		return &object.Integer{Value: leftVal + rightVal}
 	case "/":
+		if rightVal == 0 {
+			return newError("division by zero")
+		}
 		return &object.Integer{Value: leftVal / rightVal}
 	case "%":
+		if rightVal == 0 {
+			return newError("division by zero")
+		}
 		return &object.Integer{Value: leftVal % rightVal}
 	case "<":
 		return nativeBoolToBooleanObject(leftVal < rightVal)
@@ -477,17 +479,17 @@ func evalIntegerInfixExpression(operator string, left object.Object, right objec
 	}
 }
 
-func evalStringInfixExpression(operator string, right, left object.Object) object.Object {
-	rightVal := right.(*object.String).Value
+func evalStringInfixExpression(operator string, left, right object.Object) object.Object {
 	leftVal := left.(*object.String).Value
+	rightVal := right.(*object.String).Value
 
 	switch operator {
 	case "+":
-		return &object.String{Value: rightVal + leftVal}
+		return &object.String{Value: leftVal + rightVal}
 	case "==":
-		return nativeBoolToBooleanObject(rightVal == leftVal)
+		return nativeBoolToBooleanObject(leftVal == rightVal)
 	case "!=":
-		return nativeBoolToBooleanObject(rightVal != leftVal)
+		return nativeBoolToBooleanObject(leftVal != rightVal)
 	default:
 		return newError("unknown operator: %s %s %s", left.Type(), operator, right.Type())
 	}
@@ -521,12 +523,14 @@ func evalBangOperatorExpression(right object.Object) object.Object {
 }
 
 func evalMinusOperatorExpression(right object.Object) object.Object {
-	if right.Type() != object.INTEGER_OBJ {
+	switch right := right.(type) {
+	case *object.Integer:
+		return &object.Integer{Value: -right.Value}
+	case *object.Float:
+		return &object.Float{Value: -right.Value}
+	default:
 		return newError("unknown operator: -%s", right.Type())
 	}
-
-	value := right.(*object.Integer).Value
-	return &object.Integer{Value: -value}
 }
 
 func isError(obj object.Object) bool {
@@ -602,22 +606,6 @@ func unwrapReturnValue(obj object.Object) object.Object {
 		return returnValue.Value
 	}
 	return obj
-}
-
-func partialApplicationBuiltin(fn *object.Builtin, args []object.Object) object.Object {
-	if len(args) == 0 {
-		return fn
-	}
-
-	// wrappedFn := &object.Function{
-	// 	// Parameters: fn.Parameters[len(args):],
-	// 	// Body:       fn.Body,
-	// 	// Env:        extendedEnv,
-	// }
-
-	// extendedEnv := extendFunctionEnv(fn, args)
-
-	return newError("partial application is not yet supported by builtins")
 }
 
 func partialApplication(fn *object.Function, args []object.Object) object.Object {

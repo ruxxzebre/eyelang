@@ -100,8 +100,7 @@ func evalLine(out io.Writer, input string, env *object.Environment) {
 	}
 	evaluated := eval.Eval(program, env)
 	if evaluated != nil {
-		fmt.Print(evaluated.Inspect())
-		io.WriteString(out, "\n")
+		fmt.Fprintln(out, evaluated.Inspect())
 	}
 }
 

@@ -85,7 +85,7 @@ var Lists = map[string]*object.Builtin{
 				return err
 			}
 
-			if err := assertBuiltinArgType(args[0], object.ARRAY_OBJ, "last"); err != nil {
+			if err := assertBuiltinArgType(args[0], object.ARRAY_OBJ, "push"); err != nil {
 				return err
 			}
 

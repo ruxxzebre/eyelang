@@ -6,6 +6,7 @@ import (
 	"eyelang/lexer"
 	"eyelang/token"
 	"fmt"
+	"strings"
 
 	// "fmt"
 	"testing"
@@ -612,6 +613,39 @@ func TestOperatorPrecedenceParsing(t *testing.T) {
 			`2 + 3 |> add(4) |> square`,
 			"(((2 + 3) |> add(4)) |> square)",
 		},
+		{
+			`2 |> isTwo == true`,
+			"((2 |> isTwo) == true)",
+		},
+		{
+			`xs |> len > 3`,
+			"((xs |> len) > 3)",
+		},
+		{
+			// shorthand lambda bodies extend as far right as possible
+			`5 |> fn a: a + 1 |> square`,
+			"(5 |> fn(a){ ((a + 1) |> square) })",
+		},
+		{
+			`5 |> (fn a: a + 1) |> square`,
+			"((5 |> fn(a){ (a + 1) }) |> square)",
+		},
+		{
+			"1 + 2 <= 3",
+			"((1 + 2) <= 3)",
+		},
+		{
+			"1 >= 2 + 3",
+			"(1 >= (2 + 3))",
+		},
+		{
+			"1 + 5 % 3",
+			"(1 + (5 % 3))",
+		},
+		{
+			"a * b % c",
+			"((a * b) % c)",
+		},
 	}
 
 	for _, tt := range tests {
@@ -851,6 +885,9 @@ func TestParsingArrayLiterals(t *testing.T) {
 	checkParserErrors(t, p)
 
 	stmt, ok := program.Statements[0].(*ast.ExpressionStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not *ast.ExpressionStatement. got=%T", program.Statements[0])
+	}
 	array, ok := stmt.Expression.(*ast.ArrayLiteral)
 	if !ok {
 		t.Fatalf("exp not ast.ArrayLiteral. got=%T", stmt.Expression)
@@ -899,6 +936,9 @@ func TestParsingHashLiteralsStringKeys(t *testing.T) {
 	}
 
 	hash, ok := expr.Expression.(*ast.HashLiteral)
+	if !ok {
+		t.Fatalf("exp is not *ast.HashLiteral. got=%T", expr.Expression)
+	}
 	expected := map[string]int64{
 		"one":   1,
 		"two":   2,
@@ -955,6 +995,9 @@ func TestHashLiteralWithExpressions(t *testing.T) {
 	}
 
 	hash, ok := expr.Expression.(*ast.HashLiteral)
+	if !ok {
+		t.Fatalf("exp is not *ast.HashLiteral. got=%T", expr.Expression)
+	}
 	expected := map[string][]interface{}{
 		"one":   {"(1 + 1)", 1, "+", 1},
 		"two":   {"(6 * 9)", 6, "*", 9},
@@ -1085,6 +1128,38 @@ func TestFloatInfixExpressions(t *testing.T) {
 
 		if !testFloatLiteral(t, infix.Right, tt.right) {
 			return
+		}
+	}
+}
+
+func TestParsingErrors(t *testing.T) {
+	tests := []struct {
+		input           string
+		expectedMessage string
+	}{
+		{"fn 1 2: 3", "expected identifier as function parameter. got='1'"},
+		{"fn a + b: a", "expected identifier as function parameter. got='+'"},
+		{"fn x x: x", "duplicate function parameter 'x'"},
+		{"fn (a, a): a", "duplicate function parameter 'a'"},
+		{"fn (a, 1): a", "expected identifier"},
+		{"if (true) { 1", "expected '}' to close block"},
+		{"fn a: { a", "expected '}' to close block"},
+		{`"unterminated`, "illegal token '\"unterminated'"},
+	}
+
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		p.ParseProgram()
+
+		found := false
+		for _, err := range p.Errors() {
+			if strings.Contains(err.Message, tt.expectedMessage) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q: expected an error containing %q. got=%v", tt.input, tt.expectedMessage, p.Errors())
 		}
 	}
 }

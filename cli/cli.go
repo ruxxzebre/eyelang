@@ -1,71 +1,63 @@
 package cli
 
 import (
-	"eyelang/ast"
 	"eyelang/eval"
 	"eyelang/lexer"
 	"eyelang/object"
 	"eyelang/parser"
 	"fmt"
-	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-func EvalString(input string) *object.Environment {
+// EvalString evaluates code passed on the command line in env and prints its result.
+// The returned error is non-nil when parsing or evaluation failed.
+func EvalString(input string, env *object.Environment) error {
+	obj, err := evalSource(input, env)
+	if err != nil {
+		return err
+	}
+
+	if obj != nil {
+		fmt.Println(obj.Inspect())
+	}
+
+	return nil
+}
+
+// EvalFile evaluates a script file in env.
+// The returned error is non-nil when the file could not be read, parsed or evaluated.
+func EvalFile(path string, env *object.Environment) error {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("could not read file: %w", err)
+	}
+
+	if _, err := evalSource(string(content), env); err != nil {
+		return fmt.Errorf("[%s]: %w", filepath.Base(path), err)
+	}
+
+	return nil
+}
+
+func evalSource(input string, env *object.Environment) (object.Object, error) {
 	l := lexer.New(input)
 	p := parser.New(l)
 	program := p.ParseProgram()
 
-	errors := []string{}
-	for _, error := range p.Errors() {
-		errors = append(errors, error.Message)
+	if len(p.Errors()) > 0 {
+		errors := []string{}
+		for _, error := range p.Errors() {
+			errors = append(errors, error.Message)
+		}
+		return nil, fmt.Errorf("parsing errors:\n%s", strings.Join(errors, "\n"))
 	}
 
-	if len(errors) > 0 {
-		log.Fatalf("parsing errors: %s", strings.Join(errors, "\n"))
-	}
-
-	env := object.NewEnvironment()
-	expr := eval.Eval(program, env)
-
-	fmt.Println(expr.Inspect())
-
-	return env
-}
-
-func EvalFile(filepath string) *object.Environment {
-	// file, err := os.Open(filepath)
-	content, err := os.ReadFile(filepath)
-	if err != nil {
-		log.Fatalf("could not read file: %s", err)
-	}
-
-	l := lexer.New(string(content))
-	p := parser.New(l)
-	program := p.ParseProgram()
-
-	errors := []string{}
-	for _, error := range p.Errors() {
-		errors = append(errors, error.Message)
-	}
-
-	if len(errors) > 0 {
-		log.Fatalf("parsing errors: %s", strings.Join(errors, "\n"))
-	}
-
-	fmt.Println(ast.ToJSON(program))
-
-	scope := eval.InitReplScope()
-	env := scope.Outer
-	// expr := eval.Eval(program, env)
 	obj := eval.Eval(program, env)
 	if err, ok := obj.(*object.Error); ok {
-		filepathParts := strings.Split(filepath, "/")
-		filename := filepathParts[len(filepathParts)-1]
-		fmt.Printf("error encountered [%s]: %s\n", filename, err.Inspect())
+		return nil, fmt.Errorf("error encountered: %s", err.Inspect())
 	}
 
-	// fmt.Println(expr.Inspect())
-	return env
+	return obj, nil
 }

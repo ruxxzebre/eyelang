@@ -81,12 +81,17 @@ func (l *Lexer) readNumber() string {
 }
 
 func isSymbol(char rune) bool {
-	return unicode.IsLetter(char) || unicode.Is(emoticons, char)
+	return unicode.IsLetter(char) || char == '_' || unicode.Is(emoticons, char)
+}
+
+// identifiers start with a symbol and may continue with digits: x1, snake_case
+func isIdentifierChar(char rune) bool {
+	return isSymbol(char) || isDigit(char)
 }
 
 func (l *Lexer) readIdentifier() string {
 	var out bytes.Buffer
-	for isSymbol(l.char) {
+	for isIdentifierChar(l.char) {
 		out.WriteRune(l.char)
 		l.readChar()
 	}
@@ -114,11 +119,17 @@ func newToken(tokenType token.TokenType, ch rune) token.Token {
 
 func (l *Lexer) skipWhitespace() {
 	for l.char == ' ' || l.char == '\t' || l.char == '\n' || l.char == '\r' {
-		if l.char == '\n' {
-			l.textPosition.row++
-			l.textPosition.col = -1
-		}
+		l.trackNewline()
 		l.readChar()
+	}
+}
+
+// trackNewline moves the text position to the next row when the current char is a newline,
+// so the next readChar lands on column 0
+func (l *Lexer) trackNewline() {
+	if l.char == '\n' {
+		l.textPosition.row++
+		l.textPosition.col = -1
 	}
 }
 
@@ -211,17 +222,17 @@ func (l *Lexer) NextToken() token.Token {
 	case '%':
 		tok = newToken(token.MOD, l.char)
 	case '#':
-		comment := l.readUntil('\n')
-		if comment == "" {
-			tok.Type = token.EOF
-			tok.Literal = ""
-		} else {
-			l.readChar() // skipping linebreak
-			return l.NextToken()
-		}
+		// the linebreak is left for skipWhitespace, so rows stay correct
+		l.readUntil('\n')
+		return l.NextToken()
 	case '"':
+		literal, terminated := l.readString()
 		tok.Type = token.STRING
-		tok.Literal = l.readString()
+		tok.Literal = literal
+		if !terminated {
+			tok.Type = token.ILLEGAL
+			tok.Literal = "\"" + literal
+		}
 	// TODO: support for single quotes
 	// case '\'':
 	// 	tok.Type = token.STRING
@@ -282,18 +293,19 @@ func (l *Lexer) NextToken() token.Token {
 	return tok
 }
 
-func (l *Lexer) readString() string {
+// readString reads until the closing quote, reporting false if input ended first
+func (l *Lexer) readString() (string, bool) {
 	var out bytes.Buffer
 
 	for {
+		l.trackNewline()
 		l.readChar()
 		if l.char == '"' {
-			break
+			return out.String(), true
 		}
 		if l.char == EOF {
-			break
+			return out.String(), false
 		}
 		out.WriteRune(l.char)
 	}
-	return out.String()
 }

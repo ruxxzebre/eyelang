@@ -20,10 +20,6 @@ func assertBuiltinArgsLength(args []object.Object, op string, want int) object.O
 	return nil
 }
 
-func assertBuiltinArray(arr object.Array) object.Object {
-	panic("not implemented")
-}
-
 func assertBuiltinArgType(obj object.Object, kind object.ObjectType, metadata string) object.Object {
 	if obj.Type() != kind {
 		return newError("argument is not supported by %s. expected %s. got=%s", metadata, kind, obj.Type())
