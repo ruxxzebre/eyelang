@@ -41,6 +41,9 @@ tasks:
     dir: editors/vscode
     deps: [build]
     cmds:
+      # npm ci can't remove a directory that holds a file it didn't install, such as a .DS_Store
+      # Finder left in node_modules, so clear it first.
+      - rm -rf node_modules
       - npm ci --no-fund --no-audit
       - npm test
       # The extension in a real VS Code. Set VSCODE_EXECUTABLE to use an installed one.

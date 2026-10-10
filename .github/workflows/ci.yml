@@ -24,6 +24,12 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@v3.29.1
 
+      # @vscode/test-electron needs Node 22 or later.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       # `task grammar` generates the parser from tree-sitter-eyelang/grammar.js and runs its corpus.
       - name: Set up tree-sitter
         run: npm install -g tree-sitter-cli@0.27.0
