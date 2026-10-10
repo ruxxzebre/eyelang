@@ -769,10 +769,21 @@ let a = match x { 0 => "zero", 1 => "one", _ => "many", }
             (string_content)))))))
 
 ================================================================================
-Match arm returning a record
+Match arms returning records
 ================================================================================
 
-let a = match x { Some(u) => ({ u with seen: true }), None => {} }
+let a = match x {
+  Some(u) => { u with seen: true }
+  Named(n) => { name: n, # a comment
+    age: 3 }
+  Pair(a, b) => { a, b }
+  One(v) => { v }
+  Run(v) => {
+    log(v)
+    v
+  }
+  None => {}
+}
 
 --------------------------------------------------------------------------------
 
@@ -787,16 +798,142 @@ let a = match x { Some(u) => ({ u with seen: true }), None => {} }
             (type_identifier)
             (pattern_arguments
               (identifier)))
-          (parenthesized_expression
-            (record_update
+          (record_update
+            (identifier)
+            (field_initializer
               (identifier)
-              (field_initializer
-                (identifier)
-                (boolean)))))
+              (boolean))))
+        (match_arm
+          (variant_pattern
+            (type_identifier)
+            (pattern_arguments
+              (identifier)))
+          (record
+            (field_initializer
+              (identifier)
+              (identifier))
+            (comment)
+            (field_initializer
+              (identifier)
+              (integer))))
+        (match_arm
+          (variant_pattern
+            (type_identifier)
+            (pattern_arguments
+              (identifier)
+              (identifier)))
+          (record
+            (shorthand_field
+              (identifier))
+            (shorthand_field
+              (identifier))))
+        (match_arm
+          (variant_pattern
+            (type_identifier)
+            (pattern_arguments
+              (identifier)))
+          (block
+            (identifier)))
+        (match_arm
+          (variant_pattern
+            (type_identifier)
+            (pattern_arguments
+              (identifier)))
+          (block
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier)))
+            (identifier)))
         (match_arm
           (variant_pattern
             (type_identifier))
           (block))))))
+
+================================================================================
+If with then
+================================================================================
+
+let a = if n < 2 then n else fib(n - 1) + fib(n - 2)
+let b = if a > 0 then 1 else if a < 0 then -1 else 0
+let c = if ready
+  then go()
+  else wait()
+fn f() {
+  if done then log("done")
+  let then = 1
+  if x { 1 } else if y then 2 else 3
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (if_expression
+      (binary_expression
+        (identifier)
+        (integer))
+      (identifier)
+      (binary_expression
+        (call_expression
+          (identifier)
+          (arguments
+            (binary_expression
+              (identifier)
+              (integer))))
+        (call_expression
+          (identifier)
+          (arguments
+            (binary_expression
+              (identifier)
+              (integer)))))))
+  (let_statement
+    (identifier)
+    (if_expression
+      (binary_expression
+        (identifier)
+        (integer))
+      (integer)
+      (if_expression
+        (binary_expression
+          (identifier)
+          (integer))
+        (unary_expression
+          (integer))
+        (integer))))
+  (let_statement
+    (identifier)
+    (if_expression
+      (identifier)
+      (call_expression
+        (identifier)
+        (arguments))
+      (call_expression
+        (identifier)
+        (arguments))))
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (if_expression
+        (identifier)
+        (call_expression
+          (identifier)
+          (arguments
+            (string
+              (string_content)))))
+      (let_statement
+        (identifier)
+        (integer))
+      (if_expression
+        (identifier)
+        (block
+          (integer))
+        (if_expression
+          (identifier)
+          (integer)
+          (integer))))))
 
 ================================================================================
 Starting jobs is a method call

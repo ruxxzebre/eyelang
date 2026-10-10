@@ -493,11 +493,22 @@ module.exports = grammar({
       ),
     )),
 
+    // `if c { … } else { … }` takes blocks; `if c then a else b` takes expressions, so a branch
+    // that is one expression needs no braces. `then` is a keyword only here.
     if_expression: $ => prec.right(seq(
       'if',
       field('condition', $._expression),
-      field('consequence', $.block),
-      optional(seq('else', field('alternative', choice($.block, $.if_expression)))),
+      choice(
+        seq(
+          field('consequence', $.block),
+          optional(seq('else', field('alternative', choice($.block, $.if_expression)))),
+        ),
+        seq(
+          'then',
+          field('consequence', $._expression),
+          optional(seq('else', field('alternative', $._expression))),
+        ),
+      ),
     )),
 
     match_expression: $ => seq(
@@ -510,7 +521,8 @@ module.exports = grammar({
 
     _arm_separators: $ => repeat1(choice(',', $._newline)),
 
-    // An arm body that starts with `{` is a block; wrap a record in parentheses to return one.
+    // An arm body that starts with `{` is a block, unless the `{` is followed by `name:`, `name,` or
+    // `name with`, which only a record can start (src/scanner.c looks ahead).
     match_arm: $ => seq(
       field('pattern', $._pattern),
       optional(seq('if', field('guard', $._expression))),

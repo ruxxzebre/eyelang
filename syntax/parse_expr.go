@@ -463,10 +463,24 @@ func (p *parser) lambda() *Node {
 	return b.done(p)
 }
 
+// ifExpression parses `if c { … } else { … }`, whose branches are blocks, and
+// `if c then a else b`, whose branches are expressions.
 func (p *parser) ifExpression() *Node {
 	b := p.start(IfExpression)
 	b.add(p.bump())
 	p.withNewlines(false, func() { b.field(FieldCondition, p.expr()) })
+	if p.atWord("then") {
+		b.add(p.bumpAs(Keyword))
+		if p.at(LBrace) && p.looksLikeBlock() {
+			p.errorAt(p.tok().Span, "after 'then' comes a single expression, so this '{' starts a record; for several statements, write 'if … { … }'")
+		}
+		b.field(FieldConsequence, p.expr())
+		if p.at(KwElse) {
+			b.add(p.bump())
+			b.field(FieldAlternative, p.expr())
+		}
+		return b.done(p)
+	}
 	b.field(FieldConsequence, p.block())
 	if p.at(KwElse) {
 		b.add(p.bump())
@@ -492,7 +506,7 @@ func (p *parser) matchExpression() *Node {
 }
 
 // matchArm parses `pattern if guard => value`. A value that starts with `{`
-// is a block.
+// is a block, unless the `{` starts a record (see startsRecord).
 func (p *parser) matchArm() *Node {
 	b := p.start(MatchArm)
 	p.withNewlines(false, func() {
@@ -503,10 +517,37 @@ func (p *parser) matchArm() *Node {
 		}
 		b.add(p.expect(FatArrow))
 	})
-	if p.at(LBrace) {
+	if p.at(LBrace) && !p.startsRecord() {
 		b.field(FieldValue, p.block())
 	} else {
 		b.field(FieldValue, p.expr())
 	}
 	return b.done(p)
+}
+
+// looksLikeBlock reports whether the `{` at the current token is followed by
+// what starts a statement but not a record or map: a statement keyword, or a
+// name followed by a call, a field access or an assignment.
+func (p *parser) looksLikeBlock() bool {
+	switch first, second := p.peek(1), p.peek(2); first.Kind {
+	case KwLet, KwVar, KwReturn, KwFor, KwWhile, KwIf, KwMatch, KwBreak, KwContinue:
+		return true
+	case Ident:
+		switch second.Kind {
+		case LParen, Dot, Assign, PlusEq, MinusEq, StarEq, SlashEq, PercentEq, Semicolon:
+			return true
+		}
+	}
+	return false
+}
+
+// startsRecord reports whether the `{` at the current token is followed by
+// `name:`, `name,` or `name with`. No statement starts that way, so the `{`
+// can only start a record. src/scanner.c makes the same check.
+func (p *parser) startsRecord() bool {
+	name, next := p.peek(1), p.peek(2)
+	if name.Kind != Ident {
+		return false
+	}
+	return next.Kind == Colon || next.Kind == Comma || next.Kind == Ident && p.text(next) == "with"
 }

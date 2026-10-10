@@ -94,9 +94,9 @@ construct that also works outside that domain.
 | Syntax | **Add syntax when it is generally useful and clearly better than a library function**; syntax that also makes one area (jobs, agents) much better is welcome if it pays off elsewhere too | Keeps the language small without making common code clumsy |
 | Interop | **`extern fn`** for C functions and for functions provided by a Go program that embeds Eyelang | Reuse existing libraries; the standard library's primitives use the same mechanism |
 | Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
-| Blocks | **Braces** | Keeps parsing simple; no whitespace pitfalls |
+| Blocks | **Braces**, only where they hold several statements. A branch that is one expression needs none: `if c then a else b`, `Pattern => value`, `fn x: value`, `fn f() = value`. Layout is free; indentation means nothing | Keeps parsing simple and pasting safe, with no whitespace pitfalls, while one-liners stay light |
 | Statements | **A newline ends a statement** unless the next line starts with an operator, `.`, `,`, `:`, `=` or `else`. `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
-| Braces in expressions | A `{` after `if`, `else`, `for`, `while`, `=>`, a signature or a lambda's parameters opens a block; anywhere else it starts a record or map. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found without lookahead, in both parsers |
+| Braces in expressions | A `{` after `if … `, `else`, `for`, `while`, a signature or a lambda's parameters opens a block; anywhere else it starts a record or map. After `=>` it opens a block unless `name:`, `name,` or `name with` follows, which only a record can start. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found with at most two tokens of lookahead, in both parsers; a match arm returns a record without extra parentheses |
 | Pipes | Data-first: `x |> f(a)` is `f(x, a)`; `_` places the value elsewhere: `x |> f(a, _)` | Matches method-call intuition |
 | Memory | Reference counting with in-place reuse of uniquely owned values; immutable values; entities referenced by ID | No GC pauses, and no reference cycles by construction |
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
@@ -246,11 +246,17 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   let next = a
   (b)                                        # a new statement, not the call a(b)
   ```
-- **Braces.** `{` opens a block after `if`, `else`, `for … in …`, `while`, `match` arms (`=>`),
+- **Braces.** Braces hold blocks of statements and data; layout is free and indentation means
+  nothing. A branch that is one expression needs no braces: `if n < 2 then n else fib(n - 1)`,
+  `Some(v) => v`, `fn x: x + 1`, `fn double(n) = n * 2`.
+
+  `{` opens a block after `if …` (without `then`), `else` (after a block), `for … in …`, `while`,
   `let … else`, a function or job signature, `test "…"` and a lambda's parameters. In any other
   expression position it starts a record (`{ name: "Ann" }`), a map (`{ "a": 1 }`), an update
-  (`{ user with age: 4 }`) or the empty `{}`. So a match arm that returns a record wraps it in
-  parentheses: `Some(u) => ({ u with seen: true })`. A lambda doesn't need to: `fn u: { u with seen: true }`.
+  (`{ user with age: 4 }`) or the empty `{}`. After a match arm's `=>`, `{` opens a block unless
+  `name:`, `name,` or `name with` follows, since only a record starts that way:
+  `Some(u) => { u with seen: true }` returns a record, `None => {}` is an empty block, and a record
+  with one shorthand field, `{ u }`, or a map needs parentheses there: `=> ({ u })`.
 - **Waiting calls:** in `f!(x)` the `!` and `(` follow the callee with no spaces. `x != y` and `!x`
   are the usual operators.
 
@@ -327,7 +333,12 @@ let later = fn { log.info("done") }                       # no parameters
 let sizes = urls |> map(fetchSize) |> filter(fn s: s > 0)   # data-first pipe
 let diff = 2 |> sub(10, _)                                   # _ places the value: sub(10, 2)
 
-if n < 2 { n } else { fib(n - 1) + fib(n - 2) }          # if is an expression; no parentheses
+let small = if n < 2 then n else fib(n - 1) + fib(n - 2)   # if is an expression
+if n > limit then log.warn("{n} is over the limit")       # `then` for one expression
+if retries > 3 {                                           # braces for several statements
+  log.warn("giving up")
+  return Err(TooManyRetries)
+}
 for item in items { log.info(item.name) }
 for (i, item) in items |> enumerate { log.info("{i}: {item.name}") }
 for i in 0..n { log.info("{i}") }
@@ -421,7 +432,7 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
 
   ```eye
   fn open(config: Config) -> dyn Store =
-    if config.postgres { PgStore.connect(config.url) } else { MemoryStore.new() }
+    if config.postgres then PgStore.connect(config.url) else MemoryStore.new()
 
   let handlers: List(dyn Handler) = [Logger.new(), Metrics.new(port: 9100)]
   ```
@@ -1072,10 +1083,11 @@ primary    = ident | Ident | "_" | literal | "(" expr ")" | "(" expr "," expr { 
            | "{" "}" | "{" field { "," field } "}" | "{" expr "with" field { "," field } "}"
            | "{" key ":" expr { "," key ":" expr } "}"
            | "if" expr block [ "else" ( block | if ) ]
+           | "if" expr "then" expr [ "else" expr ]
            | "match" expr "{" { arm ( "," | sep ) } "}" ;
 field      = ident ":" expr | ident ;
 key        = string | int | date | time | "(" expr ")" ;
-arm        = pattern [ "if" expr ] "=>" ( block | expr ) ;
+arm        = pattern [ "if" expr ] "=>" ( block | expr ) ;   (* "{" name ":"|","|"with" is a record *)
 literal    = int | float | char | string | "true" | "false" | "()" | number unit
            | date | time | date time "in" string | time "in" string ;
 
@@ -1144,13 +1156,10 @@ operator. All binary operators associate to the left except `??`, which associat
     values, checked as far as they go?
 11. **Prompts as text:** prompts are long, multi-line text, which makes question 8 (multi-line
     strings) more pressing. Should prompts also get their own literal form or template files?
-12. **Blocks by indentation instead of braces.** Braces would then mean data only: `{` always
-    starts a record, map or set. The `({ … })` a match arm needs today, and the scanner's rule for
-    telling a block's `{` from a record's, would go away, and a missing `}` could no longer move an
-    error to the end of the file. A body would be the indented lines under its header (`fn …`,
-    `if …`, `else`, `match …`, `entity …`, an arm ending in `=>`); the one-line forms would be
-    `if c then a else b`, `Pattern => value`, `fn x: value` and `fn f() = value`. The costs: the
-    formatter can no longer re-indent code, because indentation is meaning; pasted code has to be
-    re-indented by the editor; and a multi-line lambda inside an argument list needs an offside
-    rule in both parsers. Decide before much Eyelang is written (the standard library, the docs);
-    the lossless parser makes converting existing code mechanical.
+12. **Request-scoped values,** such as a trace ID or the current user. Go passes them in a
+    `context.Context`. Eyelang has no such parameter: cancellation and deadlines come from
+    structured concurrency, and capabilities from effects. Today such values are passed as
+    arguments. Should `with` provide a value to the rest of a block, as it provides fakes and clocks
+    in tests, with the dependency shown in signatures as an effect?
+13. **`eye fmt` and the two forms of `if`.** Should the formatter rewrite a one-line
+    `if c { a } else { b }` to `if c then a else b`, so that each `if` has one canonical form?

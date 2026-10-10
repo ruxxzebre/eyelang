@@ -16,7 +16,12 @@ fn example() {
   let sizes = urls |> map(fetchSize) |> filter(fn s: s > 0)   # data-first pipe
   let diff = 2 |> sub(10, _)                                   # _ places the value: sub(10, 2)
 
-  if n < 2 { n } else { fib(n - 1) + fib(n - 2) }          # if is an expression; no parentheses
+  let small = if n < 2 then n else fib(n - 1) + fib(n - 2)   # if is an expression
+  if n > limit then log.warn("{n} is over the limit")       # `then` for one expression
+  if retries > 3 {                                           # braces for several statements
+    log.warn("giving up")
+    return Err(TooManyRetries)
+  }
   for item in items { log.info(item.name) }
   for (i, item) in items |> enumerate { log.info("{i}: {item.name}") }
   for i in 0..n { log.info("{i}") }

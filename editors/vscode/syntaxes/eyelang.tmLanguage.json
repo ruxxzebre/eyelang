@@ -369,6 +369,14 @@
               "name": "storage.modifier.dyn.eyelang"
             }
           }
+        },
+        {
+          "match": "\\b(then)\\b(?!\\s*(?:[:,)]|[-+*/%]?=(?!=)))",
+          "captures": {
+            "1": {
+              "name": "keyword.control.eyelang"
+            }
+          }
         }
       ]
     },

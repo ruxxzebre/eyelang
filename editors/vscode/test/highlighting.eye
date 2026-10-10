@@ -115,3 +115,8 @@ contract Notify {
 # ^^^^^ storage.type.event.eyelang
 #                            ^^ keyword.other.on.eyelang
 }
+
+let small = if n < 2 then n else fib(n - 1)
+#                    ^^^^ keyword.control.eyelang
+let then = 1
+#   ^^^^ - keyword.control.eyelang

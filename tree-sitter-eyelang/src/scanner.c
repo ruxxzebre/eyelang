@@ -6,7 +6,8 @@
 //                   the parser could end a statement, member or match arm, and only when the next
 //                   line doesn't continue the expression (see continues_expression).
 //   _block_open     the `{` that opens a block. Where both a block and an expression are allowed
-//                   (a match arm's body), a `{` opens a block, never a record or map literal.
+//                   (a match arm's body), a `{` opens a block unless it is followed by `name:`,
+//                   `name,` or `name with`, which only a record can start (see starts_record).
 //   string_content  the text of a string between its quotes, escapes and interpolations.
 //
 // syntax/lexer.go applies the same rules, and testdata/syntax checks that the two agree.
@@ -130,6 +131,52 @@ static bool scan_string_content(TSLexer *lexer) {
   return has_content;
 }
 
+// skip_space_and_comments moves past whitespace, line breaks and comments.
+static void skip_space_and_comments(TSLexer *lexer) {
+  for (;;) {
+    while (is_space(lexer->lookahead)) {
+      advance(lexer);
+    }
+    if (lexer->lookahead != '#') {
+      return;
+    }
+    while (lexer->lookahead != '\n' && !lexer->eof(lexer)) {
+      advance(lexer);
+    }
+  }
+}
+
+static bool is_name_start(int32_t c) { return (c >= 'a' && c <= 'z') || c == '_'; }
+
+static bool is_name_char(int32_t c) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+// starts_record reports whether the text after a `{` begins a record: `name:`, `name,` or
+// `name with`. No statement starts that way, so the `{` can't open a block. The lexer has already
+// marked the end of the token, so looking further ahead doesn't consume anything.
+static bool starts_record(TSLexer *lexer) {
+  skip_space_and_comments(lexer);
+  if (!is_name_start(lexer->lookahead)) {
+    return false;
+  }
+  while (is_name_char(lexer->lookahead)) {
+    advance(lexer);
+  }
+  skip_space_and_comments(lexer);
+  if (lexer->lookahead == ':' || lexer->lookahead == ',') {
+    return true;
+  }
+  const char *with = "with";
+  for (int i = 0; with[i]; i++) {
+    if (lexer->lookahead != with[i]) {
+      return false;
+    }
+    advance(lexer);
+  }
+  return !is_name_char(lexer->lookahead);
+}
+
 bool tree_sitter_eyelang_external_scanner_scan(void *payload, TSLexer *lexer,
                                                const bool *valid_symbols) {
   (void)payload;
@@ -163,7 +210,8 @@ bool tree_sitter_eyelang_external_scanner_scan(void *payload, TSLexer *lexer,
       advance(lexer);
       lexer->mark_end(lexer);
       lexer->result_symbol = BLOCK_OPEN;
-      return true;
+      // Returning false lets the internal lexer read the `{` as a literal's.
+      return !starts_record(lexer);
     }
   }
 

@@ -550,13 +550,13 @@ func AsIfExpression(n *Node) (IfExpressionView, bool) {
 	return IfExpressionView{n}, true
 }
 
-// Alternative returns the alternative child (block, if_expression), or nil.
+// Alternative returns the alternative child (_expression, block), or nil.
 func (v IfExpressionView) Alternative() *Node { return v.Node.ChildByField(FieldAlternative) }
 
 // Condition returns the condition child (_expression).
 func (v IfExpressionView) Condition() *Node { return v.Node.ChildByField(FieldCondition) }
 
-// Consequence returns the consequence child (block).
+// Consequence returns the consequence child (_expression, block).
 func (v IfExpressionView) Consequence() *Node { return v.Node.ChildByField(FieldConsequence) }
 
 // ImplBodyView is a typed view of an impl_body node.

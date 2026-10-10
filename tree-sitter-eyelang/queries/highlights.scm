@@ -80,7 +80,7 @@
   (#match? @comment.documentation "^##"))
 
 ; Keywords
-["if" "else" "match"] @keyword.conditional
+["if" "then" "else" "match"] @keyword.conditional
 ["for" "while"] @keyword.repeat
 [(break_statement) (continue_statement)] @keyword.repeat
 "in" @keyword.operator
