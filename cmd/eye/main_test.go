@@ -301,10 +301,16 @@ func TestLSPProbe(t *testing.T) {
 			t.Errorf("eye lsp %s:\n%s\nwant:\n%s", c.args, got, c.want)
 		}
 	}
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"lsp", "--definition", "main.eye:4"}, &stdout, &stderr); code != exitErrors ||
-		!strings.Contains(stderr.String(), "FILE:LINE:COLUMN") {
-		t.Errorf("a position without a column: exit %d, stderr %q", code, stderr.String())
+	for at, want := range map[string]string{
+		"main.eye:4":    "FILE:LINE:COLUMN",
+		"main.eye:99:1": "has 6 lines",
+		"main.eye:4:40": "line 4 has 22 characters",
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{"lsp", "--definition", at}, &stdout, &stderr); code != exitErrors ||
+			!strings.Contains(stderr.String(), want) {
+			t.Errorf("--definition %s: exit %d, stderr %q, want %q", at, code, stderr.String(), want)
+		}
 	}
 }
 

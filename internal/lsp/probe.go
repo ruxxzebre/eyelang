@@ -12,7 +12,8 @@ import (
 // Probe answers one request the way an editor would get it, and prints the
 // result as plain text: each location as path:line:column, 1-based, with
 // paths below the working directory relative to it. method is "definition"
-// or "references"; at is FILE:LINE:COLUMN, the column counted in characters.
+// or "references"; at is FILE:LINE:COLUMN, the column counted in characters,
+// and a position outside the file is an error.
 // The working directory is the workspace, where references to the prelude
 // and built-ins are looked for.
 func Probe(method, at string, out io.Writer) error {
@@ -41,6 +42,14 @@ func Probe(method, at string, out io.Writer) error {
 	d := newDocument(pathURI(path), 1, src)
 	s.docs[d.uri] = d
 	p := Position{Line: line - 1, Character: col - 1}
+	// An editor's position is always in the file; a typed one may not be.
+	lines := strings.Split(string(src), "\n")
+	if line > len(lines) {
+		return fmt.Errorf("%s: %s has %d lines", at, parts[0], len(lines))
+	}
+	if n := utf16Len([]byte(strings.TrimSuffix(lines[line-1], "\r"))); col > n+1 {
+		return fmt.Errorf("%s: line %d has %d characters", at, line, n)
+	}
 	var result any
 	var rerr *responseError
 	switch method {
