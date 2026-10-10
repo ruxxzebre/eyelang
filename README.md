@@ -15,8 +15,8 @@ and a call to another service replayed from a recording.
 go run ./cmd/eye test testdata/programs/tour
 ```
 
-`eye check` checks names, types, exhaustive matches and effects; traits and `mut` come later in
-phase 2.
+`eye check` checks names, types, traits, exhaustive matches, effects, `mut` without aliasing, and
+attributes, each error at its exact line and column.
 
 | Command | What it does |
 |---|---|

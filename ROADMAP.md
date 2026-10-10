@@ -12,7 +12,7 @@ is done when all its sub-issues are closed and its exit test passes.
 | Version | Phases | What you can do with it |
 |---|---|---|
 | **v0.1** | 0–4 | Write, check, format, run and test Eyelang 2 programs, including entities, jobs and views, against an in-memory store with a controllable clock |
-| v0.2 | 5 | Run jobs durably, with Postgres selectable as the store; typed model calls; `dyn Trait`, task groups and channels; the morning digest runs in the lab |
+| v0.2 | 5 | Run jobs durably, with Postgres selectable as the store; typed model calls; `dyn Trait`, task groups and channels; `@memory`, `@priority` and `@budget` enforced; approvals that reach people; the morning digest runs in the lab |
 | v0.3 | 6 | Describe other services with contracts; network policy and Go/TypeScript types are derived from them; jobs run coding agents |
 | v0.4 | 7 | Compile to native code with reference counting; jobs run as short-lived processes |
 | v1.0 | — | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation |
@@ -94,8 +94,12 @@ wake time on a test's clock, so tests stay the same on every run (3.5,
 doesn't yet refuse a durable step in a task in a job (the runtime does), and the cheap,
 growing stacks of §13 are Go's goroutines for now.
 
-Still missing before v0.1: `@memory`, `@priority` and `@budget` at run time.
-`approval!` is answered only by tests so far.
+**v0.1.0, 2026-10-10.** Phases 2–4 are done: the checker (types, traits, exhaustive matches,
+effects, `mut` without aliasing, a test per error class), the interpreter with `eye run`, `eye test`
+and `eye repl`, structured concurrency, and entities, jobs, views, events and schedules on a store
+written in Eyelang, with entity migrations. Moved to v0.2, where model calls and memory pressure
+arrive: enforcing `@memory`, `@priority` and `@budget` at run time (they are checked already), and
+`approval!` reaching people (tests answer it).
 
 ## Phases
 
