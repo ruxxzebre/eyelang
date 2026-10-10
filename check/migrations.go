@@ -48,7 +48,7 @@ func (c *checker) entityVersions(m *module, f *ir.File, d *syntax.Node, e *ir.En
 		from[k] = true
 		param := member.ChildByField(syntax.FieldParameter)
 		l := c.newFunc(m, f, fmt.Sprintf("%s migrate from %d", e.Name, k), at, ctxGlobal)
-		l.fn.Params = []*ir.Param{{Name: text(f, param), Slot: l.bind(text(f, param), false, false)}}
+		l.fn.Params = []*ir.Param{{Name: text(f, param), Slot: l.bind(param, text(f, param), false, false)}}
 		l.fn.Body = l.block(member.ChildByField(syntax.FieldBody))
 		e.Migrations = append(e.Migrations, &ir.Migration{From: k, Func: l.done(), Pos: at})
 	}

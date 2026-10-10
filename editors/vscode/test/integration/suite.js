@@ -1,7 +1,7 @@
 // Runs inside VS Code. The workspace starts with a.eye, which has a syntax
-// error, and an empty bin/: the extension must start without a server, start
-// one when bin/eye appears, restart it when bin/eye changes, and answer
-// through it.
+// error, an empty bin/, and b.eye, which imports util/: the extension must
+// start without a server, start one when bin/eye appears, restart it when
+// bin/eye changes, and answer through it, go-to-definition included.
 'use strict';
 
 const assert = require('assert');
@@ -75,4 +75,15 @@ exports.run = async function run() {
     tokens.data.some((v, i) => i % 5 === 3 && v === waiting),
     'sleep! is not marked as a waiting call',
   );
+
+  // Go to definition: into another module, and into the Go behind a built-in.
+  const b = await vscode.workspace.openTextDocument(path.join(ws, 'b.eye'));
+  const definition = async (line, character) => {
+    const locs = await vscode.commands.executeCommand('vscode.executeDefinitionProvider', b.uri, new vscode.Position(line, character));
+    return locs.map((l) => l.uri || l.targetUri);
+  };
+  const [twice] = await definition(3, 14);
+  assert.ok(twice && twice.fsPath.endsWith(path.join('util', 'util.eye')), `util.twice goes to ${twice}`);
+  const [print] = await definition(3, 3);
+  assert.ok(print && print.fsPath.endsWith(path.join('interp', 'builtins.go')), `print goes to ${print}`);
 };

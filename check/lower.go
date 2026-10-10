@@ -28,8 +28,9 @@ const (
 // local is a variable in scope.
 type local struct {
 	slot    int
-	mutable bool // var, or a mut parameter
-	isVar   bool // a var, which closures can't capture
+	mutable bool   // var, or a mut parameter
+	isVar   bool   // a var, which closures can't capture
+	at      ir.Pos // where it is bound
 }
 
 // lowerer lowers one function body.
@@ -75,7 +76,7 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 				param.Name = "_"
 				param.Slot = l.newSlot()
 			} else {
-				param.Slot = l.bind(name, param.Mut, false)
+				param.Slot = l.bind(nameNode, name, param.Mut, false)
 			}
 			if def := p.ChildByField(syntax.FieldDefault); def != nil {
 				param.Default = l.expr(def)
@@ -124,9 +125,10 @@ func (l *lowerer) newSlot() int {
 	return s
 }
 
-func (l *lowerer) bind(name string, mutable, isVar bool) int {
+// bind declares the local that n names.
+func (l *lowerer) bind(n *syntax.Node, name string, mutable, isVar bool) int {
 	s := l.newSlot()
-	l.scopes[len(l.scopes)-1][name] = local{slot: s, mutable: mutable, isVar: isVar}
+	l.scopes[len(l.scopes)-1][name] = local{slot: s, mutable: mutable, isVar: isVar, at: l.pos(n)}
 	return s
 }
 
@@ -161,8 +163,8 @@ func (l *lowerer) lookupLocal(name string, n *syntax.Node) (local, bool) {
 		}
 		slot := l.newSlot()
 		l.fn.Captures = append(l.fn.Captures, ir.Capture{From: &ir.Local{At: l.at(n), Name: name, Slot: outer.slot}, Slot: slot})
-		l.scopes[0][name] = local{slot: slot}
-		return local{slot: slot}, true
+		l.scopes[0][name] = local{slot: slot, at: outer.at}
+		return local{slot: slot, at: outer.at}, true
 	}
 	// A state field or the receiver of the enclosing method.
 	if l.parent.selfField(name) || name == "self" && l.parent.hasSelf() {
@@ -257,7 +259,7 @@ func (l *lowerer) stmt(n *syntax.Node) ir.Expr {
 	case syntax.VarStatement:
 		value := l.expr(n.ChildByField(syntax.FieldValue))
 		name := n.ChildByField(syntax.FieldName)
-		slot := l.bind(l.text(name), true, true)
+		slot := l.bind(name, l.text(name), true, true)
 		return &ir.Let{At: l.at(n), Pattern: ir.PBind{Name: l.text(name), Slot: slot},
 			Type: l.c.typeExpr(l.m, l.f, n.ChildByField(syntax.FieldType), nil), Value: value}
 	case syntax.Assignment:
@@ -333,6 +335,7 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 		return p, true
 	}
 	if v, ok := l.lookupLocal(name, root); ok {
+		l.c.use(l.pos(root), Local{At: v.at})
 		if !v.mutable {
 			l.errorf(root, "%s can't change: it is a let or a parameter; declare it with var, or as a mut parameter", name)
 			return p, false
@@ -345,6 +348,7 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 		return p, true
 	}
 	if l.selfField(name) {
+		l.c.use(l.pos(root), Member{Of: l.method().entity, Name: name})
 		if l.parent != nil {
 			l.errorf(root, "a closure can't change the entity's state")
 			return p, false
@@ -528,6 +532,7 @@ func (l *lowerer) name(n *syntax.Node) ir.Expr {
 	name := l.text(n)
 	at := l.at(n)
 	if v, ok := l.lookupLocal(name, n); ok {
+		l.c.use(at.Pos, Local{At: v.at})
 		return &ir.Local{At: at, Name: name, Slot: v.slot}
 	}
 	if name == "self" {
@@ -543,6 +548,7 @@ func (l *lowerer) name(n *syntax.Node) ir.Expr {
 		return &ir.Lit{At: at, Value: ir.Unit{}}
 	}
 	if l.selfField(name) {
+		l.c.use(at.Pos, Member{Of: l.method().entity, Name: name})
 		if l.parent != nil {
 			if v, ok := l.scopes[0]["self"]; ok {
 				return &ir.Field{At: at, Value: &ir.Local{At: at, Name: "self", Slot: v.slot}, Name: name}
@@ -551,6 +557,7 @@ func (l *lowerer) name(n *syntax.Node) ir.Expr {
 		return &ir.SelfField{At: at, Name: name}
 	}
 	if d := l.c.lookupValue(l.m, name); d != nil {
+		l.c.use(at.Pos, d)
 		return &ir.Ref{At: at, Decl: d}
 	}
 	l.errorf(n, "undefined name %s", name)
@@ -564,6 +571,7 @@ func (l *lowerer) typeName(n *syntax.Node) ir.Expr {
 	at := l.at(n)
 	switch d := l.c.lookupType(l.m, name).(type) {
 	case *ir.Variant, *ir.Entity, *ir.Type, *ir.Contract:
+		l.c.use(at.Pos, d)
 		return &ir.Ref{At: at, Decl: d}
 	case ambiguous:
 		l.errorf(n, "%s is a variant in more than one imported module; qualify it with the module's name", name)
@@ -789,6 +797,7 @@ func (l *lowerer) call(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.E
 		recvNode := fnNode.ChildByField(syntax.FieldValue)
 		name := l.text(fnNode.ChildByField(syntax.FieldField))
 		if decl := l.qualified(recvNode, name); decl != nil {
+			l.c.use(l.pos(fnNode.ChildByField(syntax.FieldField)), decl)
 			return &ir.Call{At: at, Func: &ir.Ref{At: l.at(fnNode), Decl: decl}, Args: args}
 		}
 		return &ir.MethodCall{At: at, Recv: l.expr(recvNode), Name: name, Args: args, RecvPlace: l.quietPlace(recvNode)}
@@ -796,6 +805,7 @@ func (l *lowerer) call(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.E
 	if fnNode.Kind == syntax.Ident && l.ownMethod(fnNode) {
 		// In an entity, a method is called by its name, as a state field
 		// is read by its name: `unpin(p)` is `self.unpin(p)`.
+		l.c.use(l.pos(fnNode), l.method().entity.Methods[l.text(fnNode)])
 		return &ir.MethodCall{At: at, Recv: &ir.Self{At: at}, Name: l.text(fnNode), Args: args}
 	}
 	callee := l.expr(fnNode)
@@ -819,6 +829,7 @@ func (l *lowerer) pipedCall(n, fnNode *syntax.Node, args []ir.Arg, waiting bool)
 		return &ir.Lit{At: l.at(n), Value: ir.Unit{}}
 	}
 	l.checkDurable(n, d, waiting)
+	l.c.use(l.pos(fnNode), d)
 	return &ir.Call{At: l.at(n), Func: &ir.Ref{At: l.at(fnNode), Decl: d}, Args: args}
 }
 
@@ -863,6 +874,7 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 		}
 		switch d := l.c.lookupValue(l.m, recvName).(type) {
 		case *ir.Module:
+			l.c.use(l.pos(recv), d)
 			mod := l.c.modules[d.Path]
 			if decl, ok := mod.values[name]; ok {
 				return decl
@@ -887,10 +899,12 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 		switch d := l.c.lookupType(l.m, l.text(recv)).(type) {
 		case *ir.Type:
 			if fn, ok := d.Methods[name]; ok {
+				l.c.use(l.pos(recv), d)
 				return fn
 			}
 		case *ir.Variant:
 			if fn, ok := d.Type.Methods[name]; ok {
+				l.c.use(l.pos(recv), d)
 				return fn
 			}
 		}
@@ -902,6 +916,7 @@ func (l *lowerer) field(n *syntax.Node) ir.Expr {
 	recv := n.ChildByField(syntax.FieldValue)
 	name := l.text(n.ChildByField(syntax.FieldField))
 	if decl := l.qualified(recv, name); decl != nil {
+		l.c.use(l.pos(n.ChildByField(syntax.FieldField)), decl)
 		return &ir.Ref{At: l.at(n), Decl: decl}
 	}
 	return &ir.Field{At: l.at(n), Value: l.expr(recv), Name: name}
@@ -933,7 +948,7 @@ func (l *lowerer) lambda(n *syntax.Node) ir.Expr {
 		if p.Kind == syntax.Wildcard {
 			param.Slot = inner.newSlot()
 		} else {
-			param.Slot = inner.bind(param.Name, false, false)
+			param.Slot = inner.bind(p, param.Name, false, false)
 		}
 		inner.fn.Params = append(inner.fn.Params, param)
 	}
@@ -944,7 +959,7 @@ func (l *lowerer) lambda(n *syntax.Node) ir.Expr {
 			if nameNode.Kind == syntax.Wildcard {
 				param.Slot = inner.newSlot()
 			} else {
-				param.Slot = inner.bind(param.Name, param.Mut, false)
+				param.Slot = inner.bind(nameNode, param.Name, param.Mut, false)
 			}
 			inner.fn.Params = append(inner.fn.Params, param)
 		}
@@ -965,7 +980,7 @@ func (l *lowerer) pattern(n *syntax.Node, binds map[string]int) ir.Pattern {
 		if slot, ok := binds[name]; ok {
 			return ir.PBind{Name: name, Slot: slot}
 		}
-		slot := l.bind(name, false, false)
+		slot := l.bind(n, name, false, false)
 		binds[name] = slot
 		return ir.PBind{Name: name, Slot: slot}
 	case syntax.Wildcard:
@@ -1007,6 +1022,7 @@ func (l *lowerer) pattern(n *syntax.Node, binds map[string]int) ir.Pattern {
 		p := ir.PVariant{}
 		switch d := l.c.lookupType(l.m, name).(type) {
 		case *ir.Variant:
+			l.c.use(l.pos(nameNode), d)
 			p.Variant = d
 		case ambiguous:
 			// Matched by name: the value decides which variant it is.
