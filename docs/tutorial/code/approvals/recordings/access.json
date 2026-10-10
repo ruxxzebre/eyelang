@@ -1,0 +1,17 @@
+{
+  "contract": "Access",
+  "exchanges": [
+    {
+      "op": "grant",
+      "key": "grant-r-1",
+      "result": { "kind": "Added", "value": { "id": "g-1", "person": "ann", "group": "prod-db" } }
+    },
+    { "op": "grant", "key": "grant-r-2", "result": { "kind": "Uncertain", "key": "grant-r-2" } },
+    {
+      "op": "grantFor",
+      "key": "grant-r-2",
+      "result": { "kind": "Added", "value": { "id": "g-2", "person": "bob", "group": "billing" } }
+    },
+    { "op": "revoke", "key": "revoke-g-1", "result": "Removed" }
+  ]
+}

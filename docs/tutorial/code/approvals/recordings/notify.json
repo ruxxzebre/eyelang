@@ -1,0 +1,14 @@
+{
+  "contract": "Notify",
+  "exchanges": [
+    { "op": "ask", "key": "review-r-1", "result": { "kind": "Asking", "value": "q-1" } },
+    { "op": "ask", "key": "review-r-2", "result": { "kind": "Asking", "value": "q-2" } },
+    { "op": "send", "key": "granted-r-1", "result": { "kind": "Accepted", "id": "m-1" } },
+    { "op": "send", "key": "granted-r-2", "result": { "kind": "Accepted", "id": "m-2" } },
+    { "op": "send", "key": "ended-g-1", "result": { "kind": "Accepted", "id": "m-3" } },
+    { "op": "send", "key": "denied-r-1", "result": { "kind": "Accepted", "id": "m-4" } },
+    { "op": "send", "key": "unanswered-r-1", "result": { "kind": "Accepted", "id": "m-5" } },
+    { "op": "send", "key": "waiting-2026-10-16", "result": { "kind": "Accepted", "id": "m-6" } },
+    { "op": "send", "key": "waiting-2026-10-19", "result": { "kind": "Accepted", "id": "m-7" } }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    {
+      "op": "generate",
+      "result": {
+        "text": "Ann wants two hours on the production database to fix a stuck migration.",
+        "risk": { "kind": "High", "reason": "write access to production data" }
+      }
+    },
+    {
+      "op": "generate",
+      "result": { "text": "Bob wants an hour of billing access to check an invoice.", "risk": { "kind": "Medium" } }
+    }
+  ]
+}

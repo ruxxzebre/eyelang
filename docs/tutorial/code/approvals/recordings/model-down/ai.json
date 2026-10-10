@@ -1,0 +1,7 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    { "op": "generate", "result": { "summary": "Ann wants the database." } },
+    { "op": "generate", "result": { "summary": "Ann wants the database." } }
+  ]
+}
