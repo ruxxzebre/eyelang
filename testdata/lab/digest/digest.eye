@@ -334,6 +334,16 @@ test "/digest sends today's briefing again without writing it" {
   expect(Day(2026-10-12).sent == toSet(["digest-7"]))
 }
 
+test "the morning's briefing goes at 07:40 Irish time, for the Irish day" {
+  with fakes(notify, from: "recordings/")
+  with clock(2026-10-12 06:30 in "UTC")  # 07:30 in Dublin, on summer time
+  Day(2026-10-12).keep(today)
+  advance(9 min)
+  expect(Day(2026-10-12).sent == {})
+  advance(1 min)
+  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+}
+
 test "/digest in a group chat gets silence" {
   with fakes(notify, from: "recordings/")
   with clock(2026-10-12 09:00 in dublin)

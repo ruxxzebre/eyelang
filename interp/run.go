@@ -2,8 +2,6 @@ package interp
 
 import (
 	"bytes"
-	"fmt"
-	"io"
 	"strings"
 	"time"
 	_ "time/tzdata" // zones such as Europe/Dublin, whatever the host has installed
@@ -46,6 +44,7 @@ func RunTests(prog *ir.Program, filter string) []TestResult {
 func runTest(prog *ir.Program, t *ir.Test) (res TestResult) {
 	var log bytes.Buffer
 	in := New(prog, &log, &log)
+	in.rt.module = t.Module // only the test's own module's schedules fire
 	start := time.Now()
 	res = TestResult{Name: t.Name, Pos: t.Pos}
 	defer func() {
@@ -64,45 +63,4 @@ func runTest(prog *ir.Program, t *ir.Test) (res TestResult) {
 	}()
 	in.callFunc(t.Func, nil, nil, nil, t.Pos)
 	return res
-}
-
-// RunMain runs the program's main function with args, and returns the exit
-// status: 0, or 1 if main returned an Err or the program faulted.
-func RunMain(prog *ir.Program, args []string, stdout, stderr io.Writer) (code int) {
-	main := prog.Root.Main
-	if main == nil {
-		fmt.Fprintln(stderr, "the program has no main function: add `pub fn main(args: List(String))`")
-		return 1
-	}
-	in := New(prog, stdout, stderr)
-	in.rt.real = true
-	in.rt.now = time.Now()
-	defer func() {
-		if r := recover(); r != nil {
-			f, ok := r.(*Fault)
-			if !ok {
-				panic(r)
-			}
-			fmt.Fprintln(stderr, f.Error())
-			code = 1
-		}
-	}()
-	var argv []argVal
-	if len(main.Params) > 0 {
-		list := &List{}
-		for _, a := range args {
-			list.Elems = append(list.Elems, a)
-		}
-		argv = []argVal{{v: list}}
-	}
-	result, _, _ := in.callFunc(main, nil, nil, argv, main.Pos)
-	if e, ok := isVariant(result, "Err"); ok {
-		fmt.Fprintln(stderr, show(e.Vals[0]))
-		return 1
-	}
-	for _, f := range in.rt.failures {
-		fmt.Fprintln(stderr, f.Error())
-		code = 1
-	}
-	return code
 }

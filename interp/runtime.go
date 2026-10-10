@@ -3,45 +3,11 @@ package interp
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
 	"time"
 
 	"eyelang/ir"
 )
-
-// Store keeps entities and job runs as bytes. Programs don't change when the
-// store does: the in-memory store is the default, and a durable store
-// implements the same interface.
-type Store interface {
-	// Load returns an entity's saved state and version.
-	Load(key string) (state []byte, version int64, ok bool)
-	// Keys lists the saved entities of one entity type, oldest first.
-	Keys(entity string) []string
-	// Run returns a saved job run.
-	Run(id int64) ([]byte, bool)
-	// Runs lists the saved runs, oldest first.
-	Runs() []int64
-	// Commit applies a transaction's writes all at once.
-	Commit(c *Commit)
-}
-
-// Commit is what one transaction writes.
-type Commit struct {
-	Writes []Write
-	Runs   []RunWrite
-}
-
-// Write saves an entity's state.
-type Write struct {
-	Key, Entity string
-	State       []byte
-	Version     int64
-}
-
-// RunWrite saves a job run.
-type RunWrite struct {
-	ID   int64
-	Data []byte
-}
 
 // runtime holds what a running program keeps beyond its values: entities,
 // job runs, views, the clock and the fakes of other services.
@@ -65,6 +31,20 @@ type runtime struct {
 	aiReplies []json.RawMessage
 	// fastRetries makes retries of unreachable services immediate, in tests.
 	fastRetries bool
+	// scheduled holds the jobs started by schedules, once computed.
+	scheduled []*schedule
+	// index is the store's index of waiting runs.
+	index *indexed
+	// module, in a test, is the test's module: only its schedules fire.
+	module *ir.Module
+	// eventBase is the number of events dropped: events[0] is event
+	// eventBase + 1.
+	eventBase int64
+	// retry holds the runs whose step couldn't be saved, and commitErr why.
+	retry     []int64
+	commitErr *CommitError
+	// warned holds the runs already reported for their many steps.
+	warned map[int64]bool
 }
 
 // event is a published event, saved as bytes.
@@ -76,11 +56,19 @@ type event struct {
 func eventName(e *ir.Event) string { return e.Contract.Module.Path + "." + e.Name }
 
 func newRuntime(in *Interp) *runtime {
-	return &runtime{
-		in: in, store: newMemStore(), now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	rt := &runtime{
+		in: in, now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		members: map[*ir.View]map[string]bool{}, fakes: map[*ir.Contract]*fakeSet{}, nextRun: 1,
-		seen: map[string]bool{}, uncertain: map[string]sentCommand{},
+		seen: map[string]bool{}, uncertain: map[string]sentCommand{}, warned: map[int64]bool{},
 	}
+	rt.useStore(newMemStore())
+	return rt
+}
+
+// useStore makes s the runtime's store.
+func (rt *runtime) useStore(s Store) {
+	rt.index = indexStore(s)
+	rt.store = rt.index
 }
 
 // ---------------------------------------------------------------- entities
@@ -297,14 +285,24 @@ func (rt *runtime) publish(e *ir.Event, v Value) {
 // answer records a person's answer to an approval request and wakes the runs
 // waiting for one.
 func (rt *runtime) answer(v *Record) {
-	rt.events = append(rt.events, event{name: approvalEvent, data: rt.in.encode(v, ir.Pos{})})
+	rt.record(&Commit{}, approvalEvent, rt.in.encode(v, ir.Pos{}))
 	rt.wake(approvalEvent)
 	rt.drain()
 }
 
+// record adds an event to the log, in the store with the rest of c.
+func (rt *runtime) record(c *Commit, name string, data []byte) {
+	c.Events = append(c.Events, EventRecord{Name: name, Data: data})
+	rt.store.Commit(c)
+	rt.events = append(rt.events, event{name: name, data: data})
+}
+
 // wake makes ready the runs waiting for an event named name.
 func (rt *runtime) wake(name string) {
-	for _, id := range rt.store.Runs() {
+	for _, id := range rt.index.sleeping() {
+		if rt.index.waiting[id].event != name {
+			continue
+		}
 		data, _ := rt.store.Run(id)
 		run := decodeRun(data)
 		if run.Status == "sleeping" && run.WaitEvent == name {
@@ -320,29 +318,40 @@ func (rt *runtime) wake(name string) {
 // repeat, and does nothing.
 func (rt *runtime) deliver(e *ir.Event, v Value) {
 	name := eventName(e)
+	c := &Commit{}
+	seen := ""
 	if e.Key != "" {
 		if r, ok := v.(*Record); ok {
 			if k, ok := r.get(e.Key); ok {
-				id := name + "/" + keyOf(k)
-				if rt.seen[id] {
+				seen = name + "/" + keyOf(k)
+				if rt.seen[seen] {
 					return
 				}
-				rt.seen[id] = true
+				// The key is kept, with when it was seen, for keepSeen.
+				c.Meta = append(c.Meta, MetaWrite{Key: "seen/" + seen, Data: []byte(strconv.FormatInt(rt.now.UnixNano(), 10))})
 			}
 		}
 	}
-	rt.events = append(rt.events, event{name: name, data: rt.in.encode(v, ir.Pos{})})
+	// The event, the key that marks it seen and the runs it starts are saved
+	// together, so a restart neither loses nor repeats them.
+	var started []int64
 	for _, m := range rt.in.prog.Modules {
 		for _, j := range m.Jobs {
 			for _, t := range j.Triggers {
 				if t.Event == e {
 					run := rt.newRun(j, []Value{v}, nil, j.Pos)
-					rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}})
-					rt.queue = append(rt.queue, run.ID)
+					run.Since++ // the event that starts it isn't one it waits for
+					c.Runs = append(c.Runs, RunWrite{ID: run.ID, Data: run.encode()})
+					started = append(started, run.ID)
 				}
 			}
 		}
 	}
+	rt.record(c, name, rt.in.encode(v, ir.Pos{}))
+	if seen != "" {
+		rt.seen[seen] = true
+	}
+	rt.queue = append(rt.queue, started...)
 	rt.wake(name)
 }
 
@@ -461,13 +470,21 @@ type jobRun struct {
 	// run ended with; empty is Unreachable(Fault).
 	FaultKind string `json:",omitempty"`
 	FaultArg  string `json:",omitempty"`
-	cursor    int
+	// When the run started and finished, in Unix nanoseconds.
+	Started int64 `json:",omitempty"`
+	Ended   int64 `json:",omitempty"`
+	// A run that finished long ago keeps only a summary: how many steps it
+	// took instead of the steps.
+	Summarized bool `json:",omitempty"`
+	Steps      int  `json:",omitempty"`
+	cursor     int
 }
 
 // step is a durable step: a recorded result, a timer still running, or a
 // wait for an event. Seq is the number of events published when it was
 // taken, so that next! after it sees every event published since.
 type step struct {
+	Call   string `json:",omitempty"` // what the step called, for eye runs: "notify.send", "sleep"
 	Timer  bool   `json:",omitempty"`
 	WakeAt int64  `json:",omitempty"`
 	Value  []byte `json:",omitempty"`
@@ -495,7 +512,7 @@ func decodeRun(data []byte) *jobRun {
 func jobName(j *ir.Job) string { return j.Module.Path + "." + j.Name }
 
 func (rt *runtime) newRun(job *ir.Job, args []Value, named map[string]Value, at ir.Pos) *jobRun {
-	run := &jobRun{ID: rt.nextRun, Job: jobName(job), Status: "ready", Since: int64(len(rt.events))}
+	run := &jobRun{ID: rt.nextRun, Job: jobName(job), Status: "ready", Since: rt.seq(), Started: rt.now.UnixNano()}
 	rt.nextRun++
 	for _, a := range args {
 		run.Args = append(run.Args, rt.in.encode(a, at))
@@ -557,11 +574,15 @@ func (rt *runtime) step(id int64) {
 	if run.Status != "ready" {
 		return
 	}
+	if rt.real {
+		rt.now = time.Now()
+	}
 	job := rt.in.jobs[run.Job]
 	var args []argVal
 	for _, a := range run.Args {
 		args = append(args, argVal{v: rt.in.decode(a, job.Pos)})
 	}
+	var failed *CommitError
 	func() {
 		rt.in.run = run
 		defer func() {
@@ -574,7 +595,10 @@ func (rt *runtime) step(id int64) {
 					run.Status = "failed"
 					run.Fault = x.Error()
 					run.FaultKind, run.FaultArg = x.Kind, x.Arg
+					run.Ended = rt.now.UnixNano()
 					rt.failures = append(rt.failures, &Fault{Pos: x.Pos, Msg: "job " + job.Name + ": " + x.Msg})
+				case *CommitError:
+					failed = x
 				default:
 					panic(r)
 				}
@@ -583,94 +607,90 @@ func (rt *runtime) step(id int64) {
 		result, _, _ := rt.in.callFunc(job.Func, nil, nil, args, job.Pos)
 		run.Status = "done"
 		run.Result = rt.in.encode(result, job.Pos)
+		run.Ended = rt.now.UnixNano()
 	}()
-	rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}})
-	if run.Status == "done" || run.Status == "failed" {
-		// Runs that join this one wake to its outcome.
-		name := runEvent(run.ID)
-		rt.events = append(rt.events, event{name: name, data: rt.in.encode(rt.in.outcome(run, job.Pos), job.Pos)})
-		rt.wake(name)
+	if failed == nil {
+		// A finished run's outcome is an event, saved with it: runs that
+		// join this one wake to it, even after a restart.
+		c := &Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}}
+		var name string
+		var outcome []byte
+		if run.Status == "done" || run.Status == "failed" {
+			name, outcome = runEvent(run.ID), rt.in.encode(rt.in.outcome(run, job.Pos), job.Pos)
+			c.Events = []EventRecord{{Name: name, Data: outcome}}
+		}
+		if err := guard(func() { rt.store.Commit(c) }); err != nil {
+			failed = err.(*CommitError)
+		} else if name != "" {
+			rt.events = append(rt.events, event{name: name, data: outcome})
+			rt.wake(name)
+		}
+		rt.warnLong(run)
+	}
+	if failed != nil {
+		// The store still holds the run at its last checkpoint.
+		rt.blocked(id, failed)
 	}
 }
 
 // save writes a run after it recorded a step.
 func (rt *runtime) save(run *jobRun) {
 	rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}})
+	rt.warnLong(run)
 }
 
 // advance moves a test's clock forward, waking each sleeping run when its
 // time comes.
 func (rt *runtime) advance(d ir.Duration) {
 	target := rt.now.Add(time.Duration(d))
-	for {
-		var next *jobRun
-		for _, id := range rt.store.Runs() {
-			data, _ := rt.store.Run(id)
-			run := decodeRun(data)
-			if run.Status != "sleeping" || run.WakeAt > target.UnixNano() {
-				continue
-			}
-			if next == nil || run.WakeAt < next.WakeAt {
-				next = run
-			}
-		}
-		if next == nil {
-			break
-		}
-		if wake := time.Unix(0, next.WakeAt).In(rt.now.Location()); wake.After(rt.now) {
-			rt.now = wake
-		}
-		next.Status = "ready"
-		rt.save(next)
-		rt.queue = append(rt.queue, next.ID)
-		rt.drain()
+	rt.schedules() // schedules count from the clock as it was before it moved
+	for rt.wakeNext(target) {
 	}
 	rt.now = target
 }
 
-// ---------------------------------------------------------------- the in-memory store
-
-type memStore struct {
-	rows  map[string]memRow
-	kinds map[string][]string
-	runs  map[int64][]byte
-	order []int64
-}
-
-type memRow struct {
-	state   []byte
-	version int64
-}
-
-func newMemStore() *memStore {
-	return &memStore{rows: map[string]memRow{}, kinds: map[string][]string{}, runs: map[int64][]byte{}}
-}
-
-func (s *memStore) Load(key string) ([]byte, int64, bool) {
-	r, ok := s.rows[key]
-	return r.state, r.version, ok
-}
-
-func (s *memStore) Keys(entity string) []string { return s.kinds[entity] }
-
-func (s *memStore) Run(id int64) ([]byte, bool) {
-	d, ok := s.runs[id]
-	return d, ok
-}
-
-func (s *memStore) Runs() []int64 { return s.order }
-
-func (s *memStore) Commit(c *Commit) {
-	for _, w := range c.Writes {
-		if _, ok := s.rows[w.Key]; !ok {
-			s.kinds[w.Entity] = append(s.kinds[w.Entity], w.Key)
-		}
-		s.rows[w.Key] = memRow{state: w.State, version: w.Version}
+// wakeNext runs what comes first, up to target: a sleeping run whose time
+// has come, or a schedule's firing. The clock moves to that time. It reports
+// whether there was one.
+func (rt *runtime) wakeNext(target time.Time) bool {
+	run := rt.nextSleeper()
+	s, firing := rt.nextFiring()
+	runDue := run != nil && run.WakeAt <= target.UnixNano()
+	fireDue := s != nil && !firing.After(target)
+	if runDue && fireDue && firing.UnixNano() < run.WakeAt {
+		runDue = false
 	}
-	for _, r := range c.Runs {
-		if _, ok := s.runs[r.ID]; !ok {
-			s.order = append(s.order, r.ID)
+	switch {
+	case runDue:
+		if wake := time.Unix(0, run.WakeAt).In(rt.now.Location()); wake.After(rt.now) {
+			rt.now = wake
 		}
-		s.runs[r.ID] = r.Data
+		run.Status = "ready"
+		rt.save(run)
+		rt.queue = append(rt.queue, run.ID)
+	case fireDue:
+		if firing.After(rt.now) {
+			rt.now = firing.In(rt.now.Location())
+		}
+		rt.fire(s, firing)
+	default:
+		return false
 	}
+	rt.drain()
+	return true
+}
+
+// nextSleeper returns the sleeping run that wakes first, if any.
+func (rt *runtime) nextSleeper() *jobRun {
+	first := int64(-1)
+	for _, id := range rt.index.sleeping() {
+		if first < 0 || rt.index.waiting[id].wakeAt < rt.index.waiting[first].wakeAt {
+			first = id
+		}
+	}
+	if first < 0 {
+		return nil
+	}
+	data, _ := rt.store.Run(first)
+	return decodeRun(data)
 }

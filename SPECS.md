@@ -698,8 +698,15 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
 
 - `main` returns `()` or `Result((), e)`. An `Err` is printed with `Show`, and the program exits
   with status 1.
-- `eye run` also starts the job runtime when the program declares entities or jobs, using the
-  in-memory store unless another is configured.
+- **`eye run` keeps a program's jobs going.** It runs `main`, if the program has one, every time
+  it starts; then, if the program declares jobs, it stays up: sleeping runs wake when their time
+  comes, schedules fire, and it stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.
+  Entities, runs and events are kept in the program's journal (`.eye/journal`), so a restart
+  carries on where the last one stopped: a run that was due while the program was down runs at
+  once, and a schedule that missed firings fires once, for the latest. Because `main` runs on every
+  start, it starts long-lived work through an entity, which exists once (`Alarm("a").arm()` starts
+  its job only if it isn't armed), or leaves it to schedules. `eye runs` lists the runs in the
+  journal: their status, what each waits for and until when, and their steps.
 - **Modules.** A module is a directory: its `.eye` files share one namespace and one set of
   imports. A program is the module in its directory and the modules it imports. `import lab.notify`
   names the directory `lab/notify` below the program's directory; its public names are then used as
@@ -817,8 +824,9 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   started or embedded. The default store keeps them in memory and is itself written in Eyelang: it is
   an immutable value, each transaction is a pure function from one store value to the next, and the
   runtime holds the only reference, so updates happen in place. It is what tests, the REPL and
-  embedders use; on its own it doesn't survive a restart. The Postgres store survives restarts and
-  serves several runners. Both implement the `Store` trait from the standard library, and programs
+  embedders use; on its own it doesn't survive a restart. For one machine, the journal (question 9)
+  appends each commit to a file and syncs it before the commit counts, which is what `eye run`
+  uses. The Postgres store survives restarts and serves several runners. Both implement the `Store` trait from the standard library, and programs
   don't change when the store does.
 - **Calls to other services** carry a key. If the outcome is `Uncertain`, `.reconcile!()` asks the
   owner with the same key until it knows. Nothing is resent automatically.
@@ -1175,10 +1183,15 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
 
 ## 20. Time, secrets, tests
 
-**Time.** Schedules carry their zone: `daily(07:40, in: "Europe/Dublin")`. Daylight-saving gaps and
-overlaps follow a declared policy (`onGap: shift`, `onOverlap: first`), so there are never two UTC
-crons and an hour check. Dates in another zone are asked for by name, never taken from the host's
-clock:
+**Time.** Schedules carry their zone: `daily(07:40, in: "Europe/Dublin")`, and `weekdays(…)` is the
+same from Monday to Friday. `every(15 min)` fires at each multiple of its interval since midnight
+UTC: :00, :15, :30, :45. A time that a daylight-saving change skips fires as far after the change
+as it was meant to be (`01:30` on the night the clock jumps from 01:00 to 02:00 fires at 02:30),
+and a time a change repeats fires the first time it comes, so there are never two UTC crons and
+an hour check. (The policies are to be choosable, as `onGap:` and `onOverlap:`; these two are the
+defaults and the only ones so far.) A schedule counts from when the program first starts; each
+firing is saved with the run it starts, so a restart neither repeats nor skips one. Dates in
+another zone are asked for by name, never taken from the host's clock:
 
 | Call | Gives |
 |---|---|
@@ -1206,7 +1219,8 @@ program, the modules it imports from its own directory included. `with` applies 
 `fakes(…)`, `clock(…)` with `advance(…)`, `memory(…)`. In tests, jobs run against an in-memory
 store, so every run is deterministic and fast. The clock starts at `clock(…)`'s time (2026-01-01
 00:00 UTC without one) and moves only when the test calls `advance(…)`; each run that wakes on the
-way runs before `advance` goes on. Jobs started by a call run as soon as the call returns, until
+way runs before `advance` goes on, and so does each schedule that fires, if its job is in the
+test's own module (a test of the reminders doesn't start the NetBird sync). Jobs started by a call run as soon as the call returns, until
 they finish or wait, and so do runs that an event a test publishes starts or wakes:
 `notify.answered.publish(answer)` stands in for a person pressing a button, and
 `approve("delete 3 backups")` or `decline(…)` answers the `approval!` whose text contains it.
@@ -1428,10 +1442,28 @@ operator. All binary operators associate to the left except `??`, which associat
    would stay unchanged because macros would only appear as attributes.
 8. **Multi-line strings:** decided on 2026-10-10: `"""`, with the closing line's indentation as
    the margin (section 4).
-9. **Durability without a database:** the in-memory store could append each commit (entity changes
-   and checkpoints) to a journal file, fsynced before the commit is acknowledged, and replay it on
-   start, with periodic snapshots to bound replay time. Is that enough for single-machine
-   deployments, and what is the file format?
+9. **Durability without a database:** decided on 2026-10-10: the journal. Each commit (entity
+   writes, runs, events, schedule firings, event keys seen, commands whose reply was lost) is one
+   line of JSON appended to `.eye/journal` and synced before it counts. A commit that can't be
+   written, on a full disk or otherwise, changes nothing: the journal is cut back, memory isn't
+   touched, and the run stays at its last checkpoint and is tried again later. The journal is
+   rewritten as one snapshot when it is opened and when it grows past four times its live data,
+   and a 4 MiB reserve file beside it is given up when a write fails, so that compaction can still
+   finish. Events no unfinished run can still see are dropped, an event's key is forgotten after
+   30 days, and a run that finished more than 7 days ago keeps a summary (job, arguments, outcome,
+   times, step count) instead of its steps; waiting runs and unsettled lost commands are never
+   dropped. Still open:
+   - The retention times are fixed; should a program set them, and should `eye runs` show what
+     was summarised?
+   - A run that never ends, such as the lab's reminders watcher (`while true { …; sleep!(45 s) }`),
+     keeps every step: four or more per loop, so 7,700 or more a day per person, each wake
+     replaying all of them, so its cost
+     grows with the square of its age. `eye run` warns past 1,000 steps and `eye runs` flags such
+     runs. The fix is the model section 15 describes, saving the live variables at each `!`
+     instead of the history, which compiled jobs will do; until then, a loop can end by starting
+     its job again (`watch.start(t)`) so that each run stays short. Should the language say so,
+     or offer `continue`-as-new for jobs?
+   - One process per journal (a file lock); several runners need the Postgres store.
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
     a reply as it arrives want partial results; should `ai.stream` yield an `Iter` of partial
     values, checked as far as they go?

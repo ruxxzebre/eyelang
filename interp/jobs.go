@@ -54,6 +54,7 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		if v, ok := in.replay(run, w.Pos); ok {
 			return v
 		}
+		in.call = callName(callee)
 		if b, ok := callee.(*BuiltinFn); ok && (b.Name == "sleep" || b.Name == "sleepUntil") {
 			pos, _ := split(args)
 			if b.Name == "sleep" {
@@ -80,6 +81,7 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		if v, ok := in.replay(run, w.Pos); ok {
 			return v
 		}
+		in.call = methodName(recv, c.Name)
 		if ref, ok := recv.(*EntityRef); ok && c.Name != "read" {
 			meth, ok := ref.Entity.Methods[c.Name]
 			if !ok {
@@ -107,12 +109,13 @@ func (in *Interp) join(run *jobRun, target *RunVal, at ir.Pos) Value {
 		}
 		return in.resolveWait(run, s, match, nil, at)
 	}
+	in.call = fmt.Sprintf("join #%d", target.ID)
 	if data, ok := in.rt.store.Run(target.ID); ok {
 		if r := decodeRun(data); r.Status == "done" || r.Status == "failed" {
 			return in.record(run, in.outcome(r, at), at)
 		}
 	}
-	s := in.waitStep(run, runEvent(target.ID), ir.Duration(100*365*24*time.Hour))
+	s := in.waitStep(run, runEvent(target.ID), in.call, ir.Duration(100*365*24*time.Hour))
 	return in.resolveWait(run, s, match, nil, at)
 }
 
@@ -149,7 +152,8 @@ func (in *Interp) replay(run *jobRun, at ir.Pos) (Value, bool) {
 			run.WakeAt = s.WakeAt
 			panic(parkSignal{})
 		}
-		s.Timer, s.WakeAt, s.Value = false, 0, in.encode(ir.Unit{}, at)
+		// The timer has run out; its wake time stays, for eye runs.
+		s.Timer, s.Value = false, in.encode(ir.Unit{}, at)
 		run.cursor++
 		in.rt.save(run)
 		return ir.Unit{}, true
@@ -158,8 +162,29 @@ func (in *Interp) replay(run *jobRun, at ir.Pos) (Value, bool) {
 	return in.decode(s.Value, at), true
 }
 
+// callName and methodName name what a step calls, for eye runs.
+func callName(callee Value) string {
+	switch c := callee.(type) {
+	case *BuiltinFn:
+		return c.Name
+	case *OpVal:
+		return c.Op.Contract.Module.Name + "." + c.Op.Name
+	}
+	return kindName(callee)
+}
+
+func methodName(recv Value, name string) string {
+	switch r := recv.(type) {
+	case *EntityRef:
+		return r.Entity.Name + "(" + show(r.ID) + ")." + name
+	case *EventVal:
+		return r.Event.Contract.Module.Name + "." + r.Event.Name + "." + name
+	}
+	return name
+}
+
 func (in *Interp) record(run *jobRun, v Value, at ir.Pos) Value {
-	run.Log = append(run.Log, step{Value: in.encode(v, at), Seq: int64(len(in.rt.events))})
+	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: in.rt.seq()})
 	run.cursor++
 	in.rt.save(run)
 	return v
@@ -184,6 +209,7 @@ func (in *Interp) poll(run *jobRun, args []argVal, at ir.Pos) Value {
 			return false
 		}
 		if _, ok := in.replay(run, at); !ok {
+			in.call = "poll"
 			in.sleep(run, in.rt.now.Add(time.Duration(every)))
 		}
 	}
@@ -212,7 +238,7 @@ func (in *Interp) next(run *jobRun, args []argVal, at ir.Pos) Value {
 		}
 		return in.resolveWait(run, s, in.matchEvent(where, at), in.none(), at)
 	}
-	s := in.waitStep(run, eventName(ev.Event), within)
+	s := in.waitStep(run, eventName(ev.Event), "next", within)
 	return in.resolveWait(run, s, in.matchEvent(where, at), in.none(), at)
 }
 
@@ -230,12 +256,13 @@ func (in *Interp) matchEvent(where Value, at ir.Pos) func(Value) (Value, bool) {
 
 // waitStep adds a step that waits for an event named name, counting those
 // published since the run's previous step, for at most within.
-func (in *Interp) waitStep(run *jobRun, name string, within ir.Duration) *step {
+func (in *Interp) waitStep(run *jobRun, name, call string, within ir.Duration) *step {
 	since := run.Since
 	if n := len(run.Log); n > 0 {
 		since = run.Log[n-1].Seq
 	}
 	run.Log = append(run.Log, step{
+		Call:   call,
 		Event:  name,
 		Since:  since,
 		WakeAt: in.rt.now.Add(time.Duration(within)).UnixNano(),
@@ -285,7 +312,7 @@ func (in *Interp) approval(run *jobRun, args []argVal, at ir.Pos) Value {
 		}
 		return in.resolveWait(run, s, match, expired, at)
 	}
-	return in.resolveWait(run, in.waitStep(run, approvalEvent, within), match, expired, at)
+	return in.resolveWait(run, in.waitStep(run, approvalEvent, "approval: "+what, within), match, expired, at)
 }
 
 // resolveWait ends a waiting step with what match makes of the first event
@@ -293,13 +320,13 @@ func (in *Interp) approval(run *jobRun, args []argVal, at ir.Pos) Value {
 // until one of them happens.
 func (in *Interp) resolveWait(run *jobRun, s *step, match func(Value) (Value, bool), timeout Value, at ir.Pos) Value {
 	finish := func(v Value) Value {
-		*s = step{Value: in.encode(v, at), Seq: int64(len(in.rt.events))}
+		*s = step{Call: s.Call, Value: in.encode(v, at), Seq: in.rt.seq()}
 		run.cursor++
 		run.WaitEvent = ""
 		in.rt.save(run)
 		return v
 	}
-	for _, e := range in.rt.events[s.Since:] {
+	for _, e := range in.rt.eventsAfter(s.Since) {
 		if e.name != s.Event {
 			continue
 		}
@@ -321,7 +348,7 @@ func (in *Interp) sleep(run *jobRun, wake time.Time) Value {
 	if !wake.After(in.rt.now) {
 		return in.record(run, ir.Unit{}, ir.Pos{})
 	}
-	run.Log = append(run.Log, step{Timer: true, WakeAt: wake.UnixNano(), Seq: int64(len(in.rt.events))})
+	run.Log = append(run.Log, step{Call: in.call, Timer: true, WakeAt: wake.UnixNano(), Seq: in.rt.seq()})
 	run.WakeAt = wake.UnixNano()
 	in.rt.save(run)
 	panic(parkSignal{})
@@ -338,7 +365,7 @@ func (in *Interp) entityStep(run *jobRun, ref *EntityRef, meth *ir.Func, args []
 		}
 	}()
 	result := rt.callIn(tx, ref, meth, args, at)
-	run.Log = append(run.Log, step{Value: in.encode(result, at), Seq: int64(len(in.rt.events))})
+	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(result, at), Seq: in.rt.seq()})
 	run.cursor++
 	tx.run = run
 	rt.tx = nil

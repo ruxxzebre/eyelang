@@ -220,7 +220,7 @@ func (in *Interp) readValue(r *bytes.Reader, at ir.Pos) Value {
 		return ir.TimeOfDay{Hour: int(in.readVarint(r, at)), Minute: int(in.readVarint(r, at)), Second: int(in.readVarint(r, at))}
 	case 'W':
 		ns := in.readVarint(r, at)
-		loc, err := time.LoadLocation(in.readString(r, at))
+		loc, err := loadLocation(in.readString(r, at))
 		if err != nil {
 			loc = time.UTC
 		}

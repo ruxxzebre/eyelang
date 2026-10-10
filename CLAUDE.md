@@ -132,11 +132,12 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
 | `check/` | Loads a program's modules, resolves names, checks types, matches and effects, reports errors; `prelude.eye` and `std/` are the standard library written in Eyelang |
 | `ir/` | The resolved form programs are lowered to |
-| `interp/` | Reference interpreter and in-memory runtime: entities, views, jobs, clock, fakes |
+| `interp/` | Reference interpreter and runtime: entities, views, jobs, events, schedules, clock, fakes; the journal store and the runner behind `eye run` and `eye runs` |
 | `testdata/programs/` | Programs whose tests `go test ./interp` runs; `tour/tour.eye` is generated from SPECS.md |
 | `testdata/lab/` | The homelab's real workloads in Eyelang (digest, Notify, train reminders, NetBird access): the programs that decide what the language needs |
 | `repl/` | Line editor with history, for `eye repl` |
 
 Commands: `task check` (everything), `task generate` (after editing the grammar or a spec
 example), `task conformance`, `task grammar`, `task vscode`,
-`go run ./cmd/eye parse|check|fmt FILE`, `go run ./cmd/eye test|run DIR`.
+`go run ./cmd/eye parse|check|fmt FILE`, `go run ./cmd/eye test|run|runs DIR` (`eye run` keeps
+its state in `DIR/.eye/journal`; `--memory` keeps nothing).

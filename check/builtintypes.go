@@ -134,6 +134,13 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	case "sleepUntil":
 		b.arg(0, tInstant)
 		return tUnit
+	case "daily", "weekdays":
+		b.arg(0, con("Time"))
+		b.name("in", tZone)
+		return con("Schedule")
+	case "every":
+		b.arg(0, tDuration)
+		return con("Schedule")
 	case "now":
 		x.top.effect("clock")
 		return tInstant

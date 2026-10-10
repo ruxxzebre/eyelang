@@ -185,15 +185,24 @@ test "the operator lets someone new in as a member" {
 
 test "a doubtful change stops the sync until the operator has checked it" {
   with fakes(authentik, netbird, from: "recordings/")
-  reconcile.start()
+  advance(1 min)  # the sync runs every minute
   expect(netbirdSync.doubtful == Some(Join(user: PeerUserId("p1"), group: "net-people")))
   expect(netbirdSync.applied == 0)
   decline("NetBird may or may not have applied")
-  advance(2 h)
+  advance(2 h)  # each minute's sync stops at the doubt
   expect(netbirdSync.doubtful != None)
+  advance(22 h)  # a day after the decline, the operator is asked again
   approve("NetBird may or may not have applied", by: operator)
-  advance(1 day)
   expect(netbirdSync.doubtful == None)
+}
+
+test "the sync runs every minute, on the minute" {
+  with fakes(authentik, netbird, from: "recordings/")
+  with clock(2026-10-12 09:00:30 in "Europe/Dublin")
+  advance(29 s)
+  expect(netbirdSync.doubtful == None)
+  advance(1 s)
+  expect(netbirdSync.doubtful != None)
 }
 
 test "someone no longer active leaves, and service users are left alone" {

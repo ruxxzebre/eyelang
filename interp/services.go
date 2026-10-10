@@ -207,7 +207,7 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		if key == nil {
 			u.Vals = []Value{fmt.Sprintf("%s-%d", name, time.Now().UnixNano())}
 		}
-		rt.uncertain[keyOf(u.Vals[0])] = sentCommand{op, args, named}
+		rt.lost(keyOf(u.Vals[0]), sentCommand{op, args, named}) // kept in the journal until settled
 		return u
 	}
 	httpErr := httpErrorType(op.Return)

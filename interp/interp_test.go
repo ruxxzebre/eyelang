@@ -61,11 +61,22 @@ func TestLab(t *testing.T) {
 }
 
 // load checks a program made of one file.
-func load(t *testing.T, src string) *ir.Program {
+func load(t *testing.T, src string, modules ...map[string]string) *ir.Program {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "main.eye"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	for _, files := range modules {
+		for name, text := range files {
+			path := filepath.Join(dir, name)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	prog, diags := check.Program(dir)
 	for _, d := range diags {
@@ -132,7 +143,8 @@ job count(id: Int) {
 
 	// A new interpreter on the same store, as after a restart, finishes the run.
 	again := New(prog, &strings.Builder{}, &strings.Builder{})
-	again.rt.store, again.rt.now, again.rt.nextRun = in.rt.store, in.rt.now, in.rt.nextRun
+	again.rt.useStore(in.rt.index.Store)
+	again.rt.now, again.rt.nextRun = in.rt.now, in.rt.nextRun
 	again.rt.advance(ir.Duration(60e9))
 	in = again
 	expectState(2, "done")

@@ -55,9 +55,17 @@ traits and their bounds (2.5: `where` is read but not enforced, and only the ope
 types and declared `add`, `sub`… methods are known), `mut` and aliasing (2.8), function types kept in
 data, `dyn`, and NonZero divisors, which are their number type.
 
-Still missing before v0.1: the rest of phase 2 (traits, mutation, diagnostics for every class), the store written in Eyelang (4.2),
-schedules and time zones in triggers, a runner that keeps jobs across restarts, migrations (4.6),
-and the REPL. `approval!` is answered only by tests so far.
+**The durable runner, 2026-10-10.** `eye run` keeps a program's jobs going on the system clock and
+across restarts, in a journal file (SPECS.md open question 9): sleeping runs wake on time,
+`daily`, `weekdays` and `every` fire in their zone (also on a test's clock), a full disk stops
+nothing for good, and `eye runs` shows every run with its status, what it waits for and its steps.
+Its exit test kills `eye run` in the middle of a job's sleep and checks the job finishes on time
+after a restart (`cmd/eye`, `TestRunSurvivesKill`). Part of 4.3, 4.4 and 4.5; the in-memory store
+is still written in Go (4.2), and `@concurrency` and `@limit` aren't enforced yet.
+
+Still missing before v0.1: the rest of phase 2 (traits, mutation, diagnostics for every class),
+the store written in Eyelang (4.2), `@concurrency` and `@limit`, migrations (4.6), and the REPL.
+`approval!` is answered only by tests so far.
 
 ## Phases
 

@@ -24,6 +24,7 @@ type Interp struct {
 	jobs     map[string]*ir.Job
 	rt       *runtime
 	run      *jobRun      // the job run being executed, if any
+	call     string       // what the waiting call being recorded calls, for its step
 	scope    *viewScope   // while a view is evaluated for one entity
 	want     *ir.TypeExpr // while a call runs: the type its value is wanted as (ir.Call.Want)
 }
@@ -493,7 +494,7 @@ func (in *Interp) lit(x *ir.Lit) Value {
 // instant resolves a date and time in a zone, or, without a date, the next
 // time that time of day comes round.
 func (in *Interp) instant(v ir.Instant, at ir.Pos) time.Time {
-	loc, err := time.LoadLocation(v.Zone)
+	loc, err := loadLocation(v.Zone)
 	if err != nil {
 		in.faultf(at, "unknown time zone %q", v.Zone)
 	}

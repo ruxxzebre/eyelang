@@ -19,6 +19,7 @@ type builtinFunc = func(in *Interp, args []Value, named map[string]Value, at ir.
 func builtinTable() map[string]*BuiltinFn {
 	t := map[string]*BuiltinFn{}
 	add := func(name string, fn builtinFunc) { t[name] = &BuiltinFn{Name: name, Fn: fn} }
+	scheduleBuiltins(add)
 
 	add("print", func(in *Interp, args []Value, _ map[string]Value, _ ir.Pos) Value {
 		if in.replaying() {

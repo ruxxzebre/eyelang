@@ -160,6 +160,11 @@ func (c *checker) checkTypes() {
 		}
 		for _, j := range m.Jobs {
 			bodies = append(bodies, body{fn: j.Func, kind: kindJob})
+			for _, t := range j.Triggers {
+				if t.Schedule != nil {
+					bodies = append(bodies, body{fn: t.Schedule, kind: kindGlobal, want: con("Schedule")})
+				}
+			}
 		}
 		for _, v := range m.Views {
 			if v.Func != nil {

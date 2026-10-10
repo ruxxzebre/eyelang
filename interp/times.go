@@ -3,10 +3,27 @@ package interp
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"eyelang/ir"
 )
+
+// zones caches the zones loaded so far: loading one reads the system's zone
+// files, which saved instants would otherwise do on every decode.
+var zones sync.Map // name → *time.Location
+
+func loadLocation(name string) (*time.Location, error) {
+	if loc, ok := zones.Load(name); ok {
+		return loc.(*time.Location), nil
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, err
+	}
+	zones.Store(name, loc)
+	return loc, nil
+}
 
 // timeMethod calls a method of a time value (SPECS.md §20):
 //
@@ -23,7 +40,7 @@ func (in *Interp) timeMethod(recv Value, name string, args []argVal, at ir.Pos) 
 		if !ok {
 			in.faultf(at, "%s takes a zone: %s(in: dublin)", name, name)
 		}
-		loc, err := time.LoadLocation(z)
+		loc, err := loadLocation(z)
 		if err != nil {
 			in.faultf(at, "unknown time zone %q", z)
 		}

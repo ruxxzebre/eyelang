@@ -26,3 +26,6 @@ go.work
 
 # direnv
 /.direnv/
+
+# A program's journal, written by eye run
+.eye/

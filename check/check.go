@@ -943,8 +943,17 @@ func (c *checker) triggers(m *module, f *ir.File, d *syntax.Node, job *ir.Job) {
 				continue
 			}
 		}
-		// Schedules and events come with phase 4; they are checked as names
-		// only for now.
+		if call.Kind == syntax.CallExpression {
+			switch text(f, call.ChildByField(syntax.FieldFunction)) {
+			case "daily", "weekdays", "every":
+				// A schedule is computed once, when the program starts.
+				l := c.newFunc(m, f, "schedule of "+job.Name, pos(f, call), ctxGlobal)
+				l.fn.Body = l.expr(call)
+				job.Triggers = append(job.Triggers, ir.Trigger{Kind: "schedule", Schedule: l.done()})
+				continue
+			}
+		}
+		c.errorf(pos(f, call), "@on takes a schedule, such as daily(07:40, in: zone), or enters(view), leaves(view) or event(contract.event)")
 	}
 }
 

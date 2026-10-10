@@ -175,7 +175,7 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 	for _, e := range fs.exchanges {
 		if e.op == op.Name && (key == "" || e.key == key) {
 			if v, ok := e.result.(*Variant); ok && v.V.Name == "Uncertain" && len(v.Vals) == 1 {
-				rt.uncertain[keyOf(v.Vals[0])] = sentCommand{op, args, named}
+				rt.lost(keyOf(v.Vals[0]), sentCommand{op, args, named})
 			}
 			return e.result
 		}
@@ -200,8 +200,17 @@ type sentCommand struct {
 // command's outcome, and None means the command never arrived, so it is sent
 // again with the same key, which can't do it twice.
 func (rt *runtime) reconcile(v *Variant, at ir.Pos) Value {
+	var keys []string // settled once the outcome is known
+	defer func() {
+		if v.V.Name != "Uncertain" {
+			for _, k := range keys {
+				rt.settled(k)
+			}
+		}
+	}()
 	for tries := 0; v.V.Name == "Uncertain"; tries++ {
 		key := v.Vals[0]
+		keys = append(keys, keyOf(key))
 		sent, ok := rt.uncertain[keyOf(key)]
 		if !ok || sent.op.Reconcile == "" {
 			rt.in.faultf(at, "this outcome can't be reconciled: its command names no @reconcile query, so match Uncertain(key) instead")
@@ -226,7 +235,8 @@ func (rt *runtime) reconcile(v *Variant, at ir.Pos) Value {
 		found, ok := rt.callOp(query, nil, map[string]Value{"key": key}, at).(*Variant)
 		switch {
 		case ok && found.V == rt.in.pre.some:
-			return found.Vals[0]
+			v = found.Vals[0].(*Variant)
+			return v
 		case ok && found.V == rt.in.pre.none:
 			next, ok := rt.callOp(sent.op, sent.args, sent.named, at).(*Variant)
 			if !ok {

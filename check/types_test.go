@@ -59,6 +59,9 @@ func TestTypeDiagnostics(t *testing.T) {
 	}{
 		{"a value of the wrong type", `fn f() -> Int = "seven"`,
 			[]string{"1:17: expected Int, found String"}},
+		{"a schedule's time", `@on(daily("07:40", in: "Europe/Dublin"))
+job morning(day: Date) { log.info("{day}") }`,
+			[]string{"1:11: expected Time, found String"}},
 		{"an argument of the wrong type", `fn f(n: Int) = n
 fn g() = f("three")`,
 			[]string{"2:12: expected Int, found String"}},
@@ -235,7 +238,7 @@ test "t" {
 func TestPrograms(t *testing.T) {
 	for _, dir := range []string{
 		"../testdata/programs/core", "../testdata/programs/jobs", "../testdata/programs/events",
-		"../testdata/programs/tour", "../testdata/lab",
+		"../testdata/programs/tour", "../testdata/programs/schedules", "../testdata/lab",
 	} {
 		_, diags := Program(dir)
 		for _, d := range diags {

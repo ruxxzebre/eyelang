@@ -198,9 +198,10 @@ type Job struct {
 
 // Trigger starts a job: `@on(enters(view))` or `@on(leaves(view))`.
 type Trigger struct {
-	Kind  string // "enters", "leaves" or "event"
-	View  *View
-	Event *Event
+	Kind     string // "enters", "leaves", "event" or "schedule"
+	View     *View
+	Event    *Event
+	Schedule *Func // computes the Schedule: daily(07:40, in: dublin), every(15 min)
 }
 
 // View is a named pipeline over entities, kept up to date by the runtime.
@@ -592,6 +593,9 @@ var BuiltinDocs = []BuiltinDoc{
 	{"sleepUntil", "fn sleepUntil(at: Instant)", "In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until that time comes. Outside jobs it blocks; in tests it advances the clock.", "Time"},
 	{"secret", "fn secret(name: String) -> Secret(String)", "The secret of that name: the environment variable of the name in upper case, with `-` and `.` as `_` (`notify-token` is NOTIFY_TOKEN), or the file of that name in the directory $EYE_SECRETS. It can't be shown or saved.", "Configuration"},
 	{"env.get", "fn env.get(name: String) -> Option(String)", "The environment variable of that name, if it is set: for configuration that isn't secret, such as a proxy's address.", "Configuration"},
+	{"daily", "fn daily(at: Time, in: Zone) -> Schedule", "Every day at that time on the zone's clock: `@on(daily(07:40, in: dublin))`. A time a daylight-saving change skips fires as far after the change as it was meant to be; a time it repeats fires the first time. A job that takes a Date gets the firing's date in the zone.", "Time"},
+	{"weekdays", "fn weekdays(at: Time, in: Zone) -> Schedule", "Like daily, Monday to Friday.", "Time"},
+	{"every", "fn every(interval: Duration) -> Schedule", "At every multiple of the interval since midnight UTC: `@on(every(15 min))` fires at :00, :15, :30 and :45.", "Time"},
 	{"now", "fn now() -> Instant", "The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run sees the same time.", "Time"},
 
 	{"poll", "fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool", "In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls check every interval until it returns true, and returns false if `within` runs out first. For a service that can't send an event when it is ready. Only the outcome is kept, so a long poll doesn't grow the run's history.", "Waiting"},
