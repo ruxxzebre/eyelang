@@ -26,6 +26,11 @@ binary offers to build it for you (it needs Go).
 
 To work on the extension itself, open this directory in VS Code and press F5.
 
+`.eye` files get the eye icon from `icons/eye-file.svg` in file icon themes that don't have one of
+their own, such as the default Seti. The Marketplace needs the extension's icon as a PNG, so
+`icons/eyelang.png` is rendered from `icons/eyelang.svg`:
+`rsvg-convert -w 256 -h 256 icons/eyelang.svg -o icons/eyelang.png`.
+
 ## Without an editor
 
 `eye check [dir]` reports a program's errors as `file:line:column: message` and exits 1 if there

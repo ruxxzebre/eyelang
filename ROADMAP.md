@@ -61,10 +61,16 @@ across restarts, in a journal file (SPECS.md open question 9): sleeping runs wak
 nothing for good, and `eye runs` shows every run with its status, what it waits for and its steps.
 Its exit test kills `eye run` in the middle of a job's sleep and checks the job finishes on time
 after a restart (`cmd/eye`, `TestRunSurvivesKill`). Part of 4.3, 4.4 and 4.5; the in-memory store
-is still written in Go (4.2), and `@concurrency` and `@limit` aren't enforced yet.
+is still written in Go (4.2).
+
+**Attributes and limits, 2026-10-10.** Every attribute is declared with where it goes and what it
+takes, and checked; `@concurrency` (queued in order, scheduled starts skipped at the limit),
+`@limit` and `@deadline` are enforced; a job started with `key:` starts once per key, and `main`
+must give one (`testdata/programs/limits`).
 
 Still missing before v0.1: the rest of phase 2 (traits, mutation, diagnostics for every class),
-the store written in Eyelang (4.2), `@concurrency` and `@limit`, migrations (4.6), and the REPL.
+the store written in Eyelang (4.2), `@memory`, `@priority` and `@budget` at run time, migrations
+(4.6), and the REPL.
 `approval!` is answered only by tests so far.
 
 ## Phases

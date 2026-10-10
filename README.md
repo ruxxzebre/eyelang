@@ -20,7 +20,8 @@ phase 2.
 
 | Command | What it does |
 |---|---|
-| `eye run [dir] [-- args]` | runs a program's `main` |
+| `eye run [dir] [-- args]` | runs a program's `main`, then keeps its jobs going: sleeping runs wake on time, schedules fire, and everything is kept in `.eye/journal` across restarts |
+| `eye runs [dir] [id] [--json]` | lists a program's runs from its journal: status, what each waits for, its steps, and the journal's size |
 | `eye test [--run text] [dir]` | runs a program's `test` blocks, each with a fresh in-memory store and its own clock |
 | `eye check [dir]` | reports errors in a program as `file:line:column: message`; `--syntax` checks only the syntax of any files |
 | `eye fmt [--check] [paths]` | formats files in the one canonical style |

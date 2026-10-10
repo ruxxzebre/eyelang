@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 
 	"strings"
@@ -175,10 +176,19 @@ func (rt *runtime) restore() {
 			rt.nextRun = id + 1
 		}
 		data, _ := rt.store.Run(id)
-		if decodeRun(data).Status == "ready" {
+		run := decodeRun(data)
+		if run.Status == "ready" {
 			rt.queue = append(rt.queue, id)
 		}
+		if job := rt.in.jobs[run.Job]; job != nil && job.Limit != nil && run.Begun > 0 {
+			key := run.Job + "/" + run.RateGroup
+			rt.rate[key] = append(rt.rate[key], run.Begun)
+		}
 	}
+	for _, starts := range rt.rate {
+		sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
+	}
+	rt.fillPlaces()
 	for _, m := range rt.in.prog.Modules {
 		for _, v := range sortedViews(m) {
 			if v.Entity == nil {

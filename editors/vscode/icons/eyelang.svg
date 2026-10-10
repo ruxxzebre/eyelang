@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2e1065"/>
+      <stop offset="1" stop-color="#120a2e"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <radialGradient id="iris" cx="0.4" cy="0.35" r="0.8">
+      <stop offset="0" stop-color="#99f6e4"/>
+      <stop offset="0.55" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8b5cf6" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <circle cx="64" cy="64" r="58" fill="url(#glow)"/>
+  <path d="M12 64C29 34 46 22 64 22s35 12 52 42C99 94 82 106 64 106S29 94 12 64Z" fill="url(#lid)"/>
+  <path d="M22 64C36 41 50 32 64 32s28 9 42 32C92 87 78 96 64 96S36 87 22 64Z" fill="#f5f3ff"/>
+  <circle cx="64" cy="64" r="26" fill="url(#iris)"/>
+  <g stroke="#0f766e" stroke-opacity="0.45" stroke-width="1.5" stroke-linecap="round">
+    <path d="M64 44v6M64 78v6M44 64h6M78 64h6M50 50l4 4M74 74l4 4M78 50l-4 4M50 78l4-4"/>
+  </g>
+  <circle cx="64" cy="64" r="12" fill="#1e1b4b"/>
+  <circle cx="71" cy="56" r="5.5" fill="#fff"/>
+  <circle cx="57" cy="70" r="2.2" fill="#fff" fill-opacity="0.7"/>
+</svg>

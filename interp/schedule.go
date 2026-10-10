@@ -191,10 +191,19 @@ func (rt *runtime) fire(s *schedule, at time.Time) {
 	if len(s.job.Func.Params) == 1 {
 		args = []Value{s.val.date(at)}
 	}
+	fired := MetaWrite{Key: firedKey(s.job), Data: []byte(strconv.FormatInt(at.UnixNano(), 10))}
 	run := rt.newRun(s.job, args, nil, s.job.Pos)
+	if c := s.job.Concurrency; c != nil && rt.index.running(jobName(s.job), run.Group) >= c.N {
+		// A firing that finds the limit reached is skipped, not queued:
+		// the next one will do the work (SPECS.md §15).
+		rt.nextRun--
+		rt.store.Commit(&Commit{Meta: []MetaWrite{fired}})
+		s.last = at
+		return
+	}
 	rt.store.Commit(&Commit{
 		Runs: []RunWrite{{ID: run.ID, Data: run.encode()}},
-		Meta: []MetaWrite{{Key: firedKey(s.job), Data: []byte(strconv.FormatInt(at.UnixNano(), 10))}},
+		Meta: []MetaWrite{fired},
 	})
 	s.last = at
 	rt.queue = append(rt.queue, run.ID)

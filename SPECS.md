@@ -98,7 +98,8 @@ construct that also works outside that domain.
 | Mutation | **Mutable value semantics**: `var` locals, `mut` parameters and `mut self` methods, field assignment and `+=`. Callers write `mut` too: `unify(mut subst, a, b)`. Values never alias; there are no references or pointers | Systems code reads naturally, every place a value can change is visible in the diff, and without aliasing there are no cycles, so reference counting stays enough |
 | Generics and methods | Lower-case **type variables** (`List(a)`), requirements with `where a: Ord`, and methods on a type with `impl Type { … }` | Generic code without new brackets; types get their own operations |
 | Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing and saving are derived for data types | One mechanism for generic code |
-| Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts | One general mechanism instead of special syntax per feature |
+| Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts. Each attribute is declared with where it goes and what it takes, and the checker holds every use to that: `@concurency isn't an attribute; did you mean @concurrency?` | One general mechanism instead of special syntax per feature, and a program can't say "one at a time" and quietly get five. From the lab: a misspelt attribute was ignored, and `@concurrency(1)` wasn't enforced |
+| Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
 | Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn open(config) -> dyn Store`, `List(dyn Handler)`) | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
@@ -704,8 +705,8 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   Entities, runs and events are kept in the program's journal (`.eye/journal`), so a restart
   carries on where the last one stopped: a run that was due while the program was down runs at
   once, and a schedule that missed firings fires once, for the latest. Because `main` runs on every
-  start, it starts long-lived work through an entity, which exists once (`Alarm("a").arm()` starts
-  its job only if it isn't armed), or leaves it to schedules. `eye runs` lists the runs in the
+  start, a job it starts takes a key, which starts it once (`ring.start("kitchen", key:
+  "kitchen")`); without one, the checker refuses the call. `eye runs` lists the runs in the
   journal: their status, what each waits for and until when, and their steps.
 - **Modules.** A module is a directory: its `.eye` files share one namespace and one set of
   imports. A program is the module in its directory and the modules it imports. `import lab.notify`
@@ -861,7 +862,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction) and from jobs, where it starts a child run. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
-  `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`.
+  `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
+  a later start with the same key returns the run the first one started, finished or not.
 - **Attributes:**
 
   | Attribute | Meaning |
@@ -869,9 +871,12 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `@on(trigger)` | `daily(…)`, `weekdays(…)`, `every(15 min)`, `cron("…", in: zone)`, `enters(view)`, `leaves(view)`, `event(contract.event)`. A schedule passes the job the date of the firing in the schedule's zone, if the job takes one; a view, the entity's `Ref`; an event, the event |
   | `@memory(size)` | budget admitted before the run starts; the runtime enforces it |
   | `@priority(p)` | `interactive`, `normal`, `background` or `batch`; under memory pressure, lower priorities pause at their next checkpoint |
-  | `@deadline(time or duration)` | after this the run ends as `Failed(DeadlinePassed)` |
-  | `@concurrency(n, by: param)` | at most `n` runs at once, or per value of the parameter named; a waiting run keeps its place, so `@concurrency(1)` asks one question at a time, in order. A scheduled start that finds the limit reached is skipped |
-  | `@limit(n, per: duration, by: param)` | rate limit, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)` |
+  | `@deadline(duration)`, `@deadline(13:40, in: zone)` | how long after its start, or by what time, a run must finish; after that it ends as `Failed(DeadlinePassed)`, even while it sleeps or waits |
+  | `@concurrency(n, by: param)` | at most `n` runs at once, or per value of the parameter named. A run over the limit waits in a queue and begins when a run of its group finishes, in the order they were started; a waiting run keeps its place, so `@concurrency(1)` asks one question at a time, in order. A scheduled start that finds the limit reached is skipped, not queued |
+  | `@limit(n, per: duration, by: param)` | at most `n` runs begin in any window of that length, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)`. A run over the rate waits until the window lets it begin |
+
+  `@concurrency`, `@limit` and `@deadline` are enforced by the runtime; the others are checked, and
+  enforced as the runtime grows (`@memory`, `@priority` and `@budget` are not yet).
 
 ## 16. Views and triggers
 
@@ -1225,7 +1230,10 @@ they finish or wait, and so do runs that an event a test publishes starts or wak
 `notify.answered.publish(answer)` stands in for a person pressing a button, and
 `approve("delete 3 backups")` or `decline(…)` answers the `approval!` whose text contains it.
 `expect(cond)` fails the test, and for a comparison shows the value it got:
-`expected w.phase == Asleep, but w.phase is Running`.
+`expected w.phase == Asleep, but w.phase is Running`. A run that stops on a bug (`unreachable`, a
+fake with no recorded answer) fails the test too; one that ends as an outcome the program
+declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
+by joining the run.
 
 ## 21. What happens to Eyelang 1
 

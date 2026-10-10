@@ -4,6 +4,7 @@
   "description": "Eyelang: highlighting, plus errors as you type, formatting and an outline from eye lsp.",
   "version": "0.0.1",
   "publisher": "eyelang",
+  "icon": "icons/eyelang.png",
   "private": true,
   "repository": {
     "type": "git",
@@ -28,7 +29,11 @@
         "extensions": [
           ".eye"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/eye-file.svg",
+          "dark": "./icons/eye-file.svg"
+        }
       }
     ],
     "grammars": [

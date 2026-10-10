@@ -44,7 +44,7 @@ job nap() {
 }
 
 pub fn main() {
-  nap.start()
+  nap.start(key: "nap")
 }
 `})
 	cmd, out := eyeProcess(t, "run", dir)
@@ -67,25 +67,14 @@ pub fn main() {
 // when its sleep was meant to end.
 func TestRunSurvivesKill(t *testing.T) {
 	dir := program(t, map[string]string{"main.eye": `
-entity Alarm(name: String) {
-  state armed: Bool = false
-
-  ## Starts ring once, however often main runs.
-  pub fn arm() {
-    if !armed {
-      armed = true
-      ring.start(name)
-    }
-  }
-}
-
 job ring(name: String) -> String {
   sleep!(3 s)
   "{name} rang"
 }
 
-pub fn main() uses {entity Alarm} {
-  Alarm("kitchen").arm()
+## main runs on every start; the key makes it start ring once.
+pub fn main() {
+  ring.start("kitchen", key: "kitchen")
 }
 `})
 	journal := filepath.Join(dir, ".eye", "journal")

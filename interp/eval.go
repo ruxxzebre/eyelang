@@ -544,6 +544,16 @@ func (in *Interp) ref(x *ir.Ref) Value {
 	return nil
 }
 
+// evalGlobalFunc computes a function with no parameters that the checker
+// made for a declaration's value, such as a job's @deadline.
+func (in *Interp) evalGlobalFunc(fn *ir.Func) Value {
+	prev := in.run
+	in.run = nil
+	defer func() { in.run = prev }()
+	v, _, _ := in.callFunc(fn, nil, nil, nil, fn.Pos)
+	return v
+}
+
 // global returns a module-level let, computing it the first time.
 func (in *Interp) global(g *ir.Global, at ir.Pos) Value {
 	if v, ok := in.globals[g]; ok {

@@ -25,6 +25,9 @@ type runtime struct {
 	failures []*Fault // job runs that faulted
 	events   []event  // every event published, in order; an event's sequence number is its index + 1
 	seen     map[string]bool
+	// rate holds, for each job and @limit group, when its recent runs
+	// began, oldest first.
+	rate map[string][]int64
 	// uncertain holds the commands whose reply was lost, by key.
 	uncertain map[string]sentCommand
 	// aiReplies are recorded model replies, when a test applies fakes(ai, …).
@@ -59,7 +62,7 @@ func newRuntime(in *Interp) *runtime {
 	rt := &runtime{
 		in: in, now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		members: map[*ir.View]map[string]bool{}, fakes: map[*ir.Contract]*fakeSet{}, nextRun: 1,
-		seen: map[string]bool{}, uncertain: map[string]sentCommand{}, warned: map[int64]bool{},
+		seen: map[string]bool{}, uncertain: map[string]sentCommand{}, rate: map[string][]int64{}, warned: map[int64]bool{},
 	}
 	rt.useStore(newMemStore())
 	return rt
@@ -477,6 +480,18 @@ type jobRun struct {
 	// took instead of the steps.
 	Summarized bool `json:",omitempty"`
 	Steps      int  `json:",omitempty"`
+	// Key is the key the run was started with: a job starts once per key.
+	Key string `json:",omitempty"`
+	// Group and RateGroup are the values of the job's @concurrency and
+	// @limit by: parameters, which the limits count separately.
+	Group     string `json:",omitempty"`
+	RateGroup string `json:",omitempty"`
+	// Begun is when the run got past @concurrency and @limit, in Unix
+	// nanoseconds; 0 while it waits for them.
+	Begun int64 `json:",omitempty"`
+	// DeadlineAt is when the run ends as Failed(DeadlinePassed), from the
+	// job's @deadline.
+	DeadlineAt int64 `json:",omitempty"`
 	cursor     int
 }
 
@@ -526,11 +541,59 @@ func (rt *runtime) newRun(job *ir.Job, args []Value, named map[string]Value, at 
 	if len(args) != len(job.Func.Params) {
 		rt.in.faultf(at, "%s takes %d arguments", job.Name, len(job.Func.Params))
 	}
+	if k, ok := named["key"]; ok {
+		run.Key = show(k)
+	}
+	group := func(by int) string {
+		if by < 0 || by >= len(args) {
+			return ""
+		}
+		return keyOf(args[by])
+	}
+	if c := job.Concurrency; c != nil {
+		run.Group = group(c.By)
+	}
+	if l := job.Limit; l != nil {
+		run.RateGroup = group(l.By)
+	}
+	if job.Deadline != nil {
+		switch d := rt.in.evalGlobalFunc(job.Deadline).(type) {
+		case ir.Duration:
+			run.DeadlineAt = rt.now.Add(time.Duration(d)).UnixNano()
+		case time.Time:
+			run.DeadlineAt = d.UnixNano()
+		}
+	}
 	return run
+}
+
+// keyed returns the run a job was already started with under a key, if
+// any: a job starts once per key, so main can start one on every start of
+// eye run, and a repeated event or command starts nothing new.
+func (rt *runtime) keyed(job *ir.Job, named map[string]Value) (Value, bool) {
+	k, ok := named["key"]
+	if !ok {
+		return nil, false
+	}
+	key := show(k)
+	if id, ok := rt.index.keys[jobName(job)+"/"+key]; ok {
+		return &RunVal{ID: id}, true
+	}
+	if rt.tx != nil {
+		for _, run := range rt.tx.starts {
+			if run.Job == jobName(job) && run.Key == key {
+				return &RunVal{ID: run.ID}, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // start starts a job: when the current transaction commits, or now.
 func (rt *runtime) start(job *ir.Job, args []Value, named map[string]Value, at ir.Pos) Value {
+	if run, ok := rt.keyed(job, named); ok {
+		return run
+	}
 	if rt.tx != nil {
 		run := rt.newRun(job, args, named, at)
 		rt.tx.starts = append(rt.tx.starts, run)
@@ -540,6 +603,9 @@ func (rt *runtime) start(job *ir.Job, args []Value, named map[string]Value, at i
 }
 
 func (rt *runtime) startNow(job *ir.Job, args []Value, named map[string]Value, at ir.Pos) Value {
+	if run, ok := rt.keyed(job, named); ok {
+		return run
+	}
 	run := rt.newRun(job, args, named, at)
 	rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}})
 	if run.Status == "ready" {
@@ -583,6 +649,13 @@ func (rt *runtime) step(id int64) {
 		args = append(args, argVal{v: rt.in.decode(a, job.Pos)})
 	}
 	var failed *CommitError
+	if run.Begun == 0 && !rt.admit(run, job) {
+		// It waits for a place or for the rate to allow it.
+		if err := guard(func() { rt.save(run) }); err != nil {
+			rt.blocked(id, err.(*CommitError))
+		}
+		return
+	}
 	func() {
 		rt.in.run = run
 		defer func() {
@@ -591,12 +664,19 @@ func (rt *runtime) step(id int64) {
 				switch x := r.(type) {
 				case parkSignal:
 					run.Status = "sleeping"
+					if run.DeadlineAt > 0 && (run.WakeAt == 0 || run.WakeAt > run.DeadlineAt) {
+						run.WakeAt = run.DeadlineAt // to end it then
+					}
 				case *Fault:
 					run.Status = "failed"
 					run.Fault = x.Error()
 					run.FaultKind, run.FaultArg = x.Kind, x.Arg
 					run.Ended = rt.now.UnixNano()
-					rt.failures = append(rt.failures, &Fault{Pos: x.Pos, Msg: "job " + job.Name + ": " + x.Msg})
+					if x.Kind == "" {
+						// A bug, not an outcome the program asked for (a
+						// deadline, a budget): it fails the test it ran in.
+						rt.failures = append(rt.failures, &Fault{Pos: x.Pos, Msg: "job " + job.Name + ": " + x.Msg})
+					}
 				case *CommitError:
 					failed = x
 				default:
@@ -604,6 +684,9 @@ func (rt *runtime) step(id int64) {
 				}
 			}
 		}()
+		if run.DeadlineAt > 0 && rt.now.UnixNano() >= run.DeadlineAt {
+			panic(&Fault{Pos: job.Pos, Msg: job.Name + " passed its @deadline", Kind: "DeadlinePassed"})
+		}
 		result, _, _ := rt.in.callFunc(job.Func, nil, nil, args, job.Pos)
 		run.Status = "done"
 		run.Result = rt.in.encode(result, job.Pos)
@@ -624,12 +707,82 @@ func (rt *runtime) step(id int64) {
 		} else if name != "" {
 			rt.events = append(rt.events, event{name: name, data: outcome})
 			rt.wake(name)
+			rt.release(job, run)
 		}
 		rt.warnLong(run)
 	}
 	if failed != nil {
 		// The store still holds the run at its last checkpoint.
 		rt.blocked(id, failed)
+	}
+}
+
+// admit lets a run begin if the job's @concurrency and @limit allow it. If
+// not, the run is queued for a place, or sleeps until the rate allows it.
+func (rt *runtime) admit(run *jobRun, job *ir.Job) bool {
+	name := jobName(job)
+	if c := job.Concurrency; c != nil && rt.index.running(name, run.Group) >= c.N {
+		run.Status = "queued"
+		return false
+	}
+	if l := job.Limit; l != nil {
+		window := rt.rate[name+"/"+run.RateGroup]
+		since := rt.now.Add(-time.Duration(l.Per)).UnixNano()
+		for len(window) > 0 && window[0] <= since {
+			window = window[1:]
+		}
+		rt.rate[name+"/"+run.RateGroup] = window
+		if len(window) >= l.N {
+			run.Status = "sleeping"
+			run.WakeAt = window[len(window)-l.N] + int64(l.Per)
+			return false
+		}
+	}
+	run.Begun = rt.now.UnixNano()
+	if job.Limit != nil {
+		key := name + "/" + run.RateGroup
+		rt.rate[key] = append(rt.rate[key], run.Begun)
+	}
+	return true
+}
+
+// release gives a finished run's place to the earliest run of its group
+// that waits for one.
+func (rt *runtime) release(job *ir.Job, finished *jobRun) {
+	if job.Concurrency == nil || (finished.Status != "done" && finished.Status != "failed") {
+		return
+	}
+	id, ok := rt.index.firstQueued(jobName(job), finished.Group)
+	if !ok {
+		return
+	}
+	data, _ := rt.store.Run(id)
+	next := decodeRun(data)
+	next.Status = "ready"
+	rt.save(next)
+	rt.queue = append(rt.queue, id)
+}
+
+// fillPlaces starts queued runs where their group has a free place: after a
+// restart, a run that finished just before the stop may not have passed its
+// place on.
+func (rt *runtime) fillPlaces() {
+	for id, r := range rt.index.open {
+		job := rt.in.jobs[r.job]
+		if !r.queued || job == nil || job.Concurrency == nil {
+			continue
+		}
+		if rt.index.running(r.job, r.group) >= job.Concurrency.N {
+			continue
+		}
+		if first, ok := rt.index.firstQueued(r.job, r.group); !ok || first != id {
+			continue
+		}
+		data, _ := rt.store.Run(id)
+		next := decodeRun(data)
+		next.Status = "ready"
+		rt.save(next)
+		rt.queue = append(rt.queue, id)
 	}
 }
 

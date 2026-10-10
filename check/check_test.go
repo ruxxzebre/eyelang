@@ -57,6 +57,46 @@ pub fn main() { sleep!(1 min) }`, []string{
 			"6:17: `!` marks a durable step",
 		}},
 		{"durable steps in jobs need !", `job j() { sleep(1 min) }`, []string{"1:11: in a job, sleep is a durable step: write sleep!(…)"}},
+		{"attributes are declared", `@concurency(4)
+job a() {}
+@memory(64 MiB)
+entity E(id: Int) {}
+@concurrency(1)
+@concurrency(2)
+job b() {}`, []string{
+			"1:1: @concurency isn't an attribute; did you mean @concurrency?",
+			"3:1: @memory goes on a job, not on an entity",
+			"6:1: @concurrency is given twice",
+		}},
+		{"attribute arguments", `@concurrency(0)
+job a() {}
+@limit(1)
+job b() {}
+@memory("lots")
+job c() {}
+@priority(urgent)
+job d() {}
+@concurrency(1, by: chat)
+job e(room: String) {}
+@limit(1, every: 1 s)
+job f() {}
+@fresh(now)
+contract C {}`, []string{
+			"1:14: @concurrency takes a whole number above zero here, not 0",
+			"3:1: @limit needs per:",
+			"5:9: @memory takes a size, such as 64 MiB here",
+			"7:11: @priority takes interactive, normal, background or batch here",
+			"9:21: @concurrency's by: names a parameter of e, and it has no parameter chat",
+			"11:11: @limit has no argument every:",
+			"13:1: @fresh goes on a command, not on a contract",
+		}},
+		{"a deadline at a time of day needs its zone", `@deadline(13:40)
+job a() {}`, []string{"1:11: @deadline at a time of day needs its zone"}},
+		{"main starts a job once, by key", `job j(n: Int) {}
+pub fn main() {
+  j.start(1)
+  j.start(2, key: "two")
+}`, []string{"3:3: eye run runs main every time it starts, so this would start j again after each restart"}},
 		{"break outside a loop", `fn f() { break }`, []string{"1:10: break outside a loop"}},
 		{"state can change in entity methods, the identity can't", `entity E(id: Int) {
   state n: Int = 0

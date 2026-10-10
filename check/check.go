@@ -256,6 +256,7 @@ func (c *checker) define(m *module, f *ir.File, at *syntax.Node, name string, de
 // of its body.
 func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 	nameNode := d.ChildByField(syntax.FieldName)
+	c.checkAttributes(f, d)
 	switch d.Kind {
 	case syntax.ImportDeclaration, syntax.EOF:
 	case syntax.LetStatement:
@@ -302,6 +303,7 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 		m.decls = append(m.decls, func() {
 			c.lowerFunc(m, f, d, job.Func, ctxJob, nil, nil)
 			c.triggers(m, f, d, job)
+			c.jobLimits(m, f, d, job)
 		})
 	case syntax.ViewDeclaration:
 		v := &ir.View{Name: text(f, nameNode), Module: m.mod, Pos: pos(f, d)}

@@ -73,6 +73,18 @@ type MetaWrite struct {
 type indexed struct {
 	Store
 	waiting map[int64]waitingRun
+	// open holds the unfinished runs, for @concurrency: those that have
+	// begun (ready or sleeping), and those queued for a free place.
+	open map[int64]openRun
+	// keys finds a run by the key it was started with: job/key → run.
+	keys map[string]int64
+}
+
+type openRun struct {
+	job    string
+	group  string // the value of the job's @concurrency by: parameter
+	queued bool
+	begun  bool // past @concurrency and @limit
 }
 
 type waitingRun struct {
@@ -81,7 +93,7 @@ type waitingRun struct {
 }
 
 func indexStore(s Store) *indexed {
-	ix := &indexed{Store: s, waiting: map[int64]waitingRun{}}
+	ix := &indexed{Store: s, waiting: map[int64]waitingRun{}, open: map[int64]openRun{}, keys: map[string]int64{}}
 	for _, id := range s.Runs() {
 		data, _ := s.Run(id)
 		ix.note(id, data)
@@ -98,15 +110,54 @@ func (ix *indexed) Commit(c *Commit) {
 
 func (ix *indexed) note(id int64, data []byte) {
 	var r struct {
+		Job       string
 		Status    string
 		WakeAt    int64
 		WaitEvent string
+		Group     string
+		Key       string
+		Begun     int64
 	}
-	if json.Unmarshal(data, &r) == nil && r.Status == "sleeping" {
+	if json.Unmarshal(data, &r) != nil {
+		return
+	}
+	if r.Status == "sleeping" {
 		ix.waiting[id] = waitingRun{r.WakeAt, r.WaitEvent}
 	} else {
 		delete(ix.waiting, id)
 	}
+	switch r.Status {
+	case "ready", "sleeping", "queued":
+		ix.open[id] = openRun{job: r.Job, group: r.Group, queued: r.Status == "queued", begun: r.Begun > 0}
+	default:
+		delete(ix.open, id)
+	}
+	if r.Key != "" {
+		ix.keys[r.Job+"/"+r.Key] = id
+	}
+}
+
+// running counts a job's unfinished runs in a group that have begun.
+func (ix *indexed) running(job, group string) int {
+	n := 0
+	for _, r := range ix.open {
+		if r.job == job && r.group == group && r.begun {
+			n++
+		}
+	}
+	return n
+}
+
+// firstQueued returns the earliest run of a job's group that waits for a
+// place, if any.
+func (ix *indexed) firstQueued(job, group string) (int64, bool) {
+	first := int64(-1)
+	for id, r := range ix.open {
+		if r.job == job && r.group == group && r.queued && (first < 0 || id < first) {
+			first = id
+		}
+	}
+	return first, first >= 0
 }
 
 // sleeping lists the waiting runs, in the order they were started.

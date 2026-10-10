@@ -1024,7 +1024,19 @@ func (x *fnCheck) applyFunc(fn *ir.Func, env typeEnv, args []ir.Arg, name string
 // start checks `job.start(args…, after: d)` or `at: instant`.
 func (x *fnCheck) start(job *ir.Job, e *ir.MethodCall) typ {
 	f := x.c.funcType(job.Func, nil)
-	f.params = append(f.params, fparam{name: "after", t: tDuration, hasDefault: true}, fparam{name: "at", t: tInstant, hasDefault: true})
+	f.params = append(f.params,
+		fparam{name: "after", t: tDuration, hasDefault: true},
+		fparam{name: "at", t: tInstant, hasDefault: true},
+		fparam{name: "key", t: tKey, hasDefault: true})
+	if main := x.top.fn; main.Module != nil && main.Module.Main == main && x.top.kind == kindPlain {
+		keyed := false
+		for _, a := range e.Args {
+			keyed = keyed || a.Name == "key"
+		}
+		if !keyed {
+			x.c.typeErrorf(e.Pos, "eye run runs main every time it starts, so this would start %s again after each restart; give the run a key, which starts it once: %s.start(…, key: \"…\")", job.Name, job.Name)
+		}
+	}
 	x.args(f, e.Args, job.Name+".start", e.Pos)
 	return con("Run", f.ret)
 }

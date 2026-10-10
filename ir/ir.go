@@ -194,6 +194,26 @@ type Job struct {
 	Func     *Func
 	Triggers []Trigger
 	Pos      Pos
+
+	Concurrency *Concurrency // @concurrency
+	Limit       *RateLimit   // @limit
+	Deadline    *Func        // @deadline: a Duration from the run's start, or an Instant
+}
+
+// Concurrency is @concurrency(n, by: param): at most N runs at once, for
+// each value of the parameter at index By, or for the job when By is -1.
+type Concurrency struct {
+	N  int
+	By int
+}
+
+// RateLimit is @limit(n, per: duration, by: param): at most N runs start in
+// any window of Per, for each value of the parameter at index By, or for the
+// job when By is -1.
+type RateLimit struct {
+	N   int
+	Per Duration
+	By  int
 }
 
 // Trigger starts a job: `@on(enters(view))` or `@on(leaves(view))`.
