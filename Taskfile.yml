@@ -11,6 +11,14 @@ tasks:
     cmds:
       - go test ./...
 
+  quick:
+    desc: The fast check while you work - build eye, test the checker, interpreter and parser, then check and test the lab's programs
+    deps: [build]
+    cmds:
+      - go test ./check ./interp ./syntax
+      - bin/eye check testdata/lab
+      - bin/eye test testdata/lab
+
   vet:
     desc: Run go vet
     cmds:
@@ -37,17 +45,44 @@ tasks:
       - go run ./tools/spechtml -o bin/spec.html
 
   vscode:
-    desc: Test the VS Code extension (its grammar, and the extension running in a real VS Code against eye lsp) and package it into bin/eyelang.vsix (needs Node)
+    desc: Test the VS Code extension and package it into bin/eyelang.vsix - vscode:unit, vscode:e2e and vscode:package (needs Node)
+    cmds:
+      - task: vscode:unit
+      - task: vscode:e2e
+      - task: vscode:package
+
+  vscode:npm:
+    desc: Install the extension's npm packages, unless package-lock.json is unchanged since the last install
     dir: editors/vscode
-    deps: [build]
+    run: once
+    status:
+      - cmp -s package-lock.json node_modules/.eyelang-lock
     cmds:
       # npm ci can't remove a directory that holds a file it didn't install, such as a .DS_Store
       # Finder left in node_modules, so clear it first.
       - rm -rf node_modules
       - npm ci --no-fund --no-audit
+      - cp package-lock.json node_modules/.eyelang-lock
+
+  vscode:unit:
+    desc: Check the extension's grammar scopes, and that eye lsp answers the extension's client
+    dir: editors/vscode
+    deps: [build, vscode:npm]
+    cmds:
       - npm test
-      # The extension in a real VS Code. Set VSCODE_EXECUTABLE to use an installed one.
+
+  vscode:e2e:
+    desc: Run the extension in a real VS Code against eye lsp (set VSCODE_EXECUTABLE to use an installed one)
+    dir: editors/vscode
+    deps: [build, vscode:npm]
+    cmds:
       - if [ "$(uname)" = Linux ] && command -v xvfb-run > /dev/null; then xvfb-run -a npm run test:vscode; else npm run test:vscode; fi
+
+  vscode:package:
+    desc: Package the extension into bin/eyelang.vsix
+    dir: editors/vscode
+    deps: [vscode:npm]
+    cmds:
       - npm run package
 
   generate:

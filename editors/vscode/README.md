@@ -72,3 +72,10 @@ VS Code (downloaded once into `.vscode-test/`, or `VSCODE_EXECUTABLE`): it start
 starts one when `bin/eye` appears, restarts it when `bin/eye` changes, and checks errors,
 formatting, the outline, semantic tokens and go-to-definition through it. On Linux without a
 display, run it under `xvfb-run`.
+
+It runs beside a VS Code you have open: the test copy gets a short user data directory of its own,
+and a `PATH` without any directory that holds an `eye` (such as `scripts/`, which direnv adds).
+
+From the repository root, `task vscode:unit`, `task vscode:e2e` and `task vscode:package` run one
+step each, and `task vscode` runs all three. They run `npm ci` only when `package-lock.json` has
+changed since the last install.
