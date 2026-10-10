@@ -1,76 +1,41 @@
 # eyelang
 
-> **Eyelang 2 is being designed.** The language is described in [SPECS.md](SPECS.md) and the plan in
-> [ROADMAP.md](ROADMAP.md), with progress tracked in GitHub issues. Everything below describes
-> Eyelang 1, the current interpreter. Eyelang 1 is preserved at the git tag
-> [`eyelang-1`](https://github.com/ruxxzebre/eyelang/tree/eyelang-1): `git checkout eyelang-1`.
+Eyelang 2 is a statically typed, compiled language for programs that manage data across many
+entities and run jobs that mostly wait. It is being designed and built now:
 
-# REPL
+- [SPECS.md](SPECS.md) is the language design (draft).
+- [ROADMAP.md](ROADMAP.md) lists the phases, versions and exit criteria. Progress is tracked in
+  [GitHub issues](https://github.com/ruxxzebre/eyelang/issues).
 
-Binaries are available for Windows, Mac, and Linux.
-```sh
-> ./bin/eyelang_windows_amd64
-> ./bin/eyelang_darwin_amd64
-> ./bin/eyelang_linux_arm64
+Nothing in the spec runs yet. The `eye` command exists as a skeleton, and its subcommands arrive
+phase by phase.
 
-Hey username! Welcome to Eye Language REPL
->>> 2 + 3
-5
->> puts("Hello, World!")
-"Hello, World!"
-null
-```
-
-# Running a script
+## Building
 
 ```sh
-> eyelang "./example.eye"
-15
+go build -o eye ./cmd/eye
+./eye help
 ```
 
-Examples for syntax, data types and others are available in the `examples` directory.
+With [Task](https://taskfile.dev): `task build` writes `bin/eye`, and `task test` runs the tests.
 
-# Pipe operator
+## Repository layout
 
-`x |> f` calls `f` with `x` as its **last** argument, so it works together with partial application:
+| Path | Contents |
+|---|---|
+| `cmd/eye/` | The `eye` command |
+| `syntax/` | Lexer, lossless parser, syntax tree and formatter (phase 1) |
+| `check/` | Name resolution, type and effect checking, diagnostics (phase 2) |
+| `ir/` | Typed intermediate representation (phase 3) |
+| `interp/` | Reference interpreter and in-memory runtime (phases 3 and 4) |
+| `repl/` | Line editor with history, reused by `eye repl` |
 
-```
-let sub = fn(a, b) { a - b }
-2 |> sub(10)            # sub(10, 2) -> 8
+## Eyelang 1
 
-let add = fn(a, b) { a + b }
-let square = fn a: a * a
-2 |> add(3) |> square   # square(add(3, 2)) -> 25
-```
-
-`|>` binds looser than arithmetic and tighter than comparison:
-`"a" + "b" |> len` is `("a" + "b") |> len`, and `xs |> len > 3` is `(xs |> len) > 3`.
-
-Shorthand function bodies extend as far right as possible, so wrap a lambda in parentheses to keep piping after it:
-`5 |> (fn a: a + 1) |> square`.
-
-# Commands
+The previous implementation, a Monkey-style tree-walking interpreter, is preserved at the git tag
+[`eyelang-1`](https://github.com/ruxxzebre/eyelang/tree/eyelang-1). To run it:
 
 ```sh
-# run all tests
-> go test ./...
+git checkout eyelang-1
+go run . examples/fib.eye
 ```
-
-# TODOs (from highest)
-
-- MORE EXAMPLES
-- ~~Support for Floats~~
-- Debugging (line numbers, print ast, objects)
-- Decide on approach for environments (global, local, etc, pure functions) (scopes)
-- Figure out "symbols"
-- Error handling
-- keyword arguments (strings as keys)
-- EBNF
-- Option<type> instead on NULL (implies Void type)
-- ~~PIPE operator~~
-- REPL (history, multiline, completion)
-- Tests for REPL
-- Syntax highlighting for editors (nvim and vscode)
-- LSP (Language Server Protocol), syntax highlighting, autocompletion, etc
-- Type system
-- Immutable Environments (memo if unchanged)

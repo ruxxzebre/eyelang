@@ -1,55 +1,28 @@
 version: "3"
 
 tasks:
-  run:
+  build:
+    desc: Build the eye command into bin/
     cmds:
-      - go run .
-    silent: true
+      - go build -o bin/eye ./cmd/eye
+
   test:
+    desc: Run all Go tests
     cmds:
       - go test ./...
-    silent: true
-  build_linux:
-    cmds:
-      - GOOS=linux GOARCH=amd64 go build -o bin/$(basename $(pwd))_linux_amd64
-    silent: true
-  build_darwin:
-    cmds:
-      - GOOS=darwin GOARCH=amd64 go build -o bin/$(basename $(pwd))_darwin_amd64
-    silent: true
-  build_darwin_default:
-    cmds:
-      - GOOS=darwin GOARCH=amd64 go build -o bin/$(basename $(pwd))
-    silent: true
-  build_windows:
-    cmds:
-      - GOOS=windows GOARCH=amd64 go build -o bin/$(basename $(pwd))_windows_amd64.exe
-    silent: true
-  build:
-    cmds:
-      - task: build_linux
-      - task: build_darwin
-      - task: build_windows
-  run_example:
-    cmds:
-      - go run . ./examples/helloworld.eye:w
-    silent: true
-  test_supressed:
-    cmds:
-      - go test ./... | { grep -v 'no test files'; true; }
-    silent: true
+
   coverage:
+    desc: Show test coverage per package
     cmds:
       - go test -cover ./...
-    silent: true
+
   coverage_profile:
+    desc: Open an HTML coverage report
     cmds:
       - go test -coverprofile=coverage.out ./...
       - go tool cover -html=coverage.out
-    silent: true
-  benchmark_save:
-    cmds:
-      - go test -bench=. -benchmem -cpuprofile=cpu.out -memprofile=mem.out -benchtime=5s {{ .CLI_ARGS }} ./...
+
   benchmark:
+    desc: Run benchmarks
     cmds:
       - go test -bench=. -benchmem -benchtime=5s ./... {{ .CLI_ARGS }}
