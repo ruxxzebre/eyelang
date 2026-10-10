@@ -2,7 +2,8 @@
 
 > **Eyelang 2 is being designed.** The language is described in [SPECS.md](SPECS.md) and the plan in
 > [ROADMAP.md](ROADMAP.md), with progress tracked in GitHub issues. Everything below describes
-> Eyelang 1, the current interpreter.
+> Eyelang 1, the current interpreter. Eyelang 1 is preserved at the git tag
+> [`eyelang-1`](https://github.com/ruxxzebre/eyelang/tree/eyelang-1): `git checkout eyelang-1`.
 
 # REPL
 
