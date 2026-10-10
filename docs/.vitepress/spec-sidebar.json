@@ -1,0 +1,102 @@
+[
+  {
+    "text": "Language reference",
+    "link": "/reference/language/",
+    "items": [
+      {
+        "text": "A tour",
+        "link": "/reference/language/a-tour"
+      },
+      {
+        "text": "Lexical structure",
+        "link": "/reference/language/lexical-structure"
+      },
+      {
+        "text": "Values and types",
+        "link": "/reference/language/values-and-types"
+      },
+      {
+        "text": "Bindings, functions and pipes",
+        "link": "/reference/language/bindings-functions-and-pipes"
+      },
+      {
+        "text": "Mutation",
+        "link": "/reference/language/mutation"
+      },
+      {
+        "text": "Methods and generics",
+        "link": "/reference/language/methods-and-generics"
+      },
+      {
+        "text": "Pattern matching",
+        "link": "/reference/language/pattern-matching"
+      },
+      {
+        "text": "Errors: Result only",
+        "link": "/reference/language/errors-result-only"
+      },
+      {
+        "text": "Traits",
+        "link": "/reference/language/traits"
+      },
+      {
+        "text": "Effects and signatures",
+        "link": "/reference/language/effects-and-signatures"
+      },
+      {
+        "text": "Programs and concurrency",
+        "link": "/reference/language/programs-and-concurrency"
+      },
+      {
+        "text": "Entities",
+        "link": "/reference/language/entities"
+      },
+      {
+        "text": "Jobs and waiting",
+        "link": "/reference/language/jobs-and-waiting"
+      },
+      {
+        "text": "Views and triggers",
+        "link": "/reference/language/views-and-triggers"
+      },
+      {
+        "text": "Contracts: talking to other services",
+        "link": "/reference/language/contracts-talking-to-other-services"
+      },
+      {
+        "text": "Calling C and Go",
+        "link": "/reference/language/calling-c-and-go"
+      },
+      {
+        "text": "AI models and agents",
+        "link": "/reference/language/ai-models-and-agents"
+      },
+      {
+        "text": "Time, secrets, tests",
+        "link": "/reference/language/time-secrets-tests"
+      },
+      {
+        "text": "Grammar sketch",
+        "link": "/reference/language/grammar-sketch"
+      }
+    ]
+  },
+  {
+    "text": "Design",
+    "link": "/design/",
+    "items": [
+      {
+        "text": "Goals",
+        "link": "/design/goals"
+      },
+      {
+        "text": "Decision log",
+        "link": "/design/decision-log"
+      },
+      {
+        "text": "Open questions",
+        "link": "/design/open-questions"
+      }
+    ]
+  }
+]

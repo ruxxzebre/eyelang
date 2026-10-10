@@ -204,3 +204,42 @@ func TestBuiltinsAreImplemented(t *testing.T) {
 		}
 	}
 }
+
+// TestDocsPrograms runs the tests of every program on the docs site: each
+// directory under docs/ that has an eye.toml. The site's pages show code from
+// these programs, so a change that breaks a page fails here.
+func TestDocsPrograms(t *testing.T) {
+	var dirs []string
+	err := filepath.WalkDir("../docs", func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && (d.Name() == "node_modules" || strings.HasPrefix(d.Name(), ".")) && path != "../docs" {
+			return filepath.SkipDir
+		}
+		if d.Name() == "eye.toml" {
+			dirs = append(dirs, filepath.Dir(path))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range dirs {
+		t.Run(strings.TrimPrefix(dir, "../docs/"), func(t *testing.T) {
+			prog, diags := check.Program(dir)
+			for _, diag := range diags {
+				t.Fatal(diag)
+			}
+			results := RunTests(prog, "")
+			if len(results) == 0 {
+				t.Fatal("the program has no tests; every program on the site tests what its page shows")
+			}
+			for _, r := range results {
+				if r.Failure != "" {
+					t.Errorf("%s: %s\n%s", r.Name, r.Failure, r.Log)
+				}
+			}
+		})
+	}
+}
