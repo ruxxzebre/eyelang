@@ -39,10 +39,18 @@ editor with an LSP client can run `eye lsp`.
 
 ## Building
 
+You need Go 1.25 or later. With [direnv](https://direnv.net), run `direnv allow` once in the
+repository; `eye` is then on your PATH whenever you are in it, rebuilt from the sources whenever they
+change (`.envrc` adds `scripts/` to PATH):
+
 ```sh
-go build -o eye ./cmd/eye
-./eye help
+direnv allow
+eye help
+eye test testdata/programs/tour
 ```
+
+Without direnv, `go run ./cmd/eye help` does the same, or build a binary with
+`go build -o bin/eye ./cmd/eye`.
 
 With [Task](https://taskfile.dev): `task build` writes `bin/eye`, and `task test` runs the tests.
 `task check` runs everything CI runs; besides Go and golangci-lint it needs
