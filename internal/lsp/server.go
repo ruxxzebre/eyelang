@@ -20,6 +20,7 @@ func Serve(in io.Reader, out io.Writer) error {
 type server struct {
 	conn     *conn
 	docs     map[string]*document
+	folders  []string // the workspace's folders, where trimmed Go paths are looked up
 	shutdown bool
 }
 
@@ -64,6 +65,23 @@ func (s *server) handle(m *message) (any, *responseError) {
 	}
 	switch m.Method {
 	case "initialize":
+		var p struct {
+			RootURI          string `json:"rootUri"`
+			WorkspaceFolders []struct {
+				URI string `json:"uri"`
+			} `json:"workspaceFolders"`
+		}
+		if err := decode(&p); err != nil {
+			return nil, err
+		}
+		for _, f := range p.WorkspaceFolders {
+			if dir, ok := uriPath(f.URI); ok {
+				s.folders = append(s.folders, dir)
+			}
+		}
+		if dir, ok := uriPath(p.RootURI); ok && len(s.folders) == 0 {
+			s.folders = append(s.folders, dir)
+		}
 		return s.initialize(), nil
 	case "initialized", "$/cancelRequest", "$/setTrace", "workspace/didChangeConfiguration":
 		return nil, nil
@@ -131,6 +149,15 @@ func (s *server) handle(m *message) (any, *responseError) {
 			return nil, err
 		}
 		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) { return foldingRanges(d), nil })
+	case "textDocument/definition":
+		var p struct {
+			textDocumentParams
+			Position Position `json:"position"`
+		}
+		if err := decode(&p); err != nil {
+			return nil, err
+		}
+		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) { return s.definition(d, p.Position) })
 	case "textDocument/semanticTokens/full":
 		var p textDocumentParams
 		if err := decode(&p); err != nil {
@@ -172,6 +199,7 @@ func (s *server) initialize() any {
 			"documentFormattingProvider": true,
 			"documentSymbolProvider":     true,
 			"foldingRangeProvider":       true,
+			"definitionProvider":         true,
 			"semanticTokensProvider": map[string]any{
 				"legend": map[string]any{"tokenTypes": tokenTypes, "tokenModifiers": tokenModifiers},
 				"full":   true,

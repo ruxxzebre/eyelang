@@ -42,11 +42,17 @@ func (d Diagnostic) String() string { return d.Pos.String() + ": " + d.Message }
 // are diagnostics, so that tools can use what resolved.
 func Program(dir string) (*ir.Program, []Diagnostic) {
 	c := &checker{root: dir, modules: map[string]*module{}}
+	return c.program("")
+}
+
+// program checks the module at path, "" for the program's own, and what it
+// imports.
+func (c *checker) program(path string) (*ir.Program, []Diagnostic) {
 	c.prog = &ir.Program{}
 	prelude := c.parse("prelude", "", []*ir.File{parseFile("<prelude>", preludeSrc)})
 	c.prog.Prelude = prelude.mod
 	c.prelude = prelude
-	root := c.load("", dir)
+	root := c.load(path, filepath.Join(append([]string{c.root}, strings.Split(path, ".")...)...))
 	if root == nil {
 		return c.prog, c.diags
 	}
@@ -79,6 +85,8 @@ type checker struct {
 	diags   []Diagnostic
 	ts      *typeState
 	nextVar int
+	overlay map[string][]byte // unsaved files, by path
+	index   *Index            // nil unless a tool asked for it
 }
 
 // module is a module being checked, with its namespaces.
@@ -112,7 +120,7 @@ func (c *checker) load(path, dir string) *module {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
-		src, err := os.ReadFile(p)
+		src, err := c.readFile(p)
 		if err != nil {
 			c.errorf(ir.Pos{}, "%v", err)
 			continue
@@ -215,6 +223,7 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 	}
 	// Every file that uses a module imports it; the module's files share
 	// the imports.
+	c.use(pos(f, pathNode.NamedChildren()[len(parts)-1]), imp.mod)
 	if existing, ok := m.values[name]; !ok || existing != imp.mod {
 		m.imports = append(m.imports, imp)
 		c.define(m, f, pathNode, name, imp.mod)
@@ -232,6 +241,7 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 			c.errorf(pos(f, item), "module %s has no %s", path, n)
 			continue
 		}
+		c.use(pos(f, item), decl)
 		if m.types[n] == decl || m.values[n] == decl {
 			continue
 		}
@@ -464,7 +474,11 @@ func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string)
 	case syntax.TypeIdent:
 		name := text(f, n)
 		t := &ir.TypeExpr{Name: name}
-		switch d := c.lookupType(m, name).(type) {
+		d := c.lookupType(m, name)
+		if _, ok := d.(ambiguous); !ok {
+			c.use(pos(f, n), d)
+		}
+		switch d := d.(type) {
 		case *ir.Type:
 			t.Decl = d
 		case *ir.Variant:
@@ -498,6 +512,8 @@ func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string)
 			c.errorf(pos(f, n), "undefined module %s", mod)
 			return t
 		}
+		c.use(pos(f, n.ChildByField(syntax.FieldModule)), imp)
+		c.use(pos(f, n.ChildByField(syntax.FieldName)), c.modules[imp.Path].types[name])
 		switch d := c.modules[imp.Path].types[name].(type) {
 		case *ir.Type:
 			t.Decl = d
@@ -830,6 +846,7 @@ func (c *checker) serve(m *module, f *ir.File, d *syntax.Node, ct *ir.Contract) 
 			continue
 		}
 		served[name] = true
+		c.use(pos(f, mn), op)
 		fn := &ir.Func{Name: ct.Name + "." + name, Module: m.mod, Pos: pos(f, member)}
 		op.Impl = fn
 		member := member
@@ -871,6 +888,7 @@ func (c *checker) serve(m *module, f *ir.File, d *syntax.Node, ct *ir.Contract) 
 func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
 	typeNode := d.ChildByField(syntax.FieldType)
 	if ct := c.contractNamed(m, f, typeNode); ct != nil && d.ChildByField(syntax.FieldTrait) == nil {
+		c.use(pos(f, typeNode), ct)
 		c.serve(m, f, d, ct)
 		return
 	}
@@ -887,6 +905,11 @@ func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
 	if t == nil {
 		c.errorf(pos(f, typeNode), "impl for %s, which isn't a type declared in this module", name)
 		return
+	}
+	if typeNode.Kind == syntax.GenericType {
+		c.use(pos(f, typeNode.ChildByField(syntax.FieldName)), t)
+	} else {
+		c.use(pos(f, typeNode), t)
 	}
 	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
 		if member.Kind != syntax.FunctionDeclaration {
@@ -932,6 +955,7 @@ func (c *checker) triggers(m *module, f *ir.File, d *syntax.Node, job *ir.Job) {
 					c.errorf(pos(f, viewArgs[0]), "%s(…) takes a view", kind)
 					continue
 				}
+				c.use(pos(f, viewArgs[0]), v)
 				job.Triggers = append(job.Triggers, ir.Trigger{Kind: kind, View: v})
 				continue
 			}
@@ -970,6 +994,10 @@ func (c *checker) eventNamed(m *module, f *ir.File, n *syntax.Node) *ir.Event {
 		return nil
 	}
 	ev, _ := c.modules[imp.Path].values[text(f, n.ChildByField(syntax.FieldField))].(*ir.Event)
+	if ev != nil {
+		c.use(pos(f, recv), imp)
+		c.use(pos(f, n.ChildByField(syntax.FieldField)), ev)
+	}
 	return ev
 }
 

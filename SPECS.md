@@ -116,6 +116,7 @@ construct that also works outside that domain.
 | Memory | Reference counting with in-place reuse of uniquely owned values; immutable values; entities referenced by ID | No GC pauses, and no reference cycles by construction |
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
 | Metaprogramming | **No user-defined macros before v1.0.** `entity`, `job`, `contract` and `view` are built in, each lowered by its own compiler pass. Deriving is limited to the built-in traits; rare code generation goes through a build step (`eye generate`) | Fixed constructs give clearer errors and are easier for agents to work with; a macro system would delay v0.1; separate passes keep the option open |
+| Program root | **`eye.toml` marks the directory a program starts from**; a file belongs to the nearest one above it, else to its own directory | Tools given one file, such as an editor jumping to a definition, must find the modules it imports: `lab/digest/digest.eye` imports `lab/home`. A marker file says so once, and it is the file that packages (open question 5) need anyway |
 
 ## 3. A tour
 
@@ -712,6 +713,12 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   imports. A program is the module in its directory and the modules it imports. `import lab.notify`
   names the directory `lab/notify` below the program's directory; its public names are then used as
   `notify.Delivery`, or brought in by name with `import lab.notify.{Delivery}`.
+- **A program's root is marked by `eye.toml`.** A file belongs to the program of the nearest
+  directory, from the file upward, that holds an `eye.toml`; without one, it belongs to the
+  program in its own directory. So `lab/digest/digest.eye` belongs to the program in `lab/` when
+  `lab/eye.toml` exists, and its `import home` finds `lab/home`. `eye check file.eye` and the
+  editor's go-to-definition use this rule. The file may be empty for now; what else it holds is
+  open question 5.
 
 **Concurrency** is structured. Tasks start inside one call, and all of them finish (or are
 cancelled) before that call returns, so no task outlives the code that started it.
@@ -1442,7 +1449,8 @@ operator. All binary operators associate to the left except `??`, which associat
 4. **Job code upgrades:** when a new version changes what is live at a checkpoint, do paused runs
    finish on the old version, or must the change come with a migration?
 5. **Packages:** `eye.toml` and an `eye.lock` that carries hashes (so Nix needs no placeholder
-   hash); registry or git only?
+   hash); registry or git only? `eye.toml` already marks a program's root (section 13); what it
+   holds beyond that is open.
 6. **REPL behaviour for jobs:** run them against the in-memory store with a controllable clock?
 7. **Metaprogramming after v1.0:** if real code keeps repeating the same patterns, add attribute
    macros (compile-time Eyelang functions that inspect a declaration's types and generate code).

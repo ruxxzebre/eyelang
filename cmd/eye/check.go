@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 
@@ -21,8 +20,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "usage: eye check [--syntax] [program-directory | file.eye]...")
 		fmt.Fprintln(stderr)
-		fmt.Fprintln(stderr, "Checks programs: a directory and the modules it imports, or the directory of a")
-		fmt.Fprintln(stderr, "file. Reports errors as file:line:column: message and exits 1 if there are any.")
+		fmt.Fprintln(stderr, "Checks programs: a directory and the modules it imports, or the program a file")
+		fmt.Fprintln(stderr, "belongs to: the nearest directory above it with an eye.toml, else its own.")
+		fmt.Fprintln(stderr, "Reports errors as file:line:column: message and exits 1 if there are any.")
 		fmt.Fprintln(stderr, "With no paths, checks the program in the current directory. Names, imports,")
 		fmt.Fprintln(stderr, "types, exhaustive matches, effects and where waiting calls may appear are checked.")
 		flags.PrintDefaults()
@@ -46,7 +46,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 			code = exitErrors
 			continue
 		} else if !info.IsDir() {
-			dir = filepath.Dir(p)
+			dir = check.Root(p) // the nearest directory above with an eye.toml
 		}
 		if seen[dir] {
 			continue

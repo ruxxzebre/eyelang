@@ -19,6 +19,11 @@ async function main() {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'eyelang-vscode-'));
   fs.mkdirSync(path.join(workspace, 'bin'));
   fs.writeFileSync(path.join(workspace, 'a.eye'), 'let a = (1\n');
+  // A program of two modules, for go-to-definition.
+  fs.writeFileSync(path.join(workspace, 'eye.toml'), '');
+  fs.mkdirSync(path.join(workspace, 'util'));
+  fs.writeFileSync(path.join(workspace, 'util', 'util.eye'), 'pub fn twice(n: Int) -> Int = n * 2\n');
+  fs.writeFileSync(path.join(workspace, 'b.eye'), 'import util\n\nfn main() {\n  print(util.twice(2))\n}\n');
   // Nowhere the extension looks may already hold an eye binary.
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'eyelang-empty-'));
   try {

@@ -1,11 +1,13 @@
 // Package lsp is Eyelang's language server: `eye lsp` speaks the Language
 // Server Protocol over standard input and output. It has no dependencies
-// beyond the parser, so it starts instantly and answers in a millisecond or
-// two.
+// beyond the parser, the checker and the interpreter's table of built-ins, so
+// it starts instantly and answers in a few milliseconds.
 //
 // It offers diagnostics as you type, formatting, an outline of declarations,
-// folding, and semantic highlighting. Hover, completion and go-to-definition
-// need name resolution and come with phase 2.
+// folding, semantic highlighting, and go-to-definition. Go-to-definition
+// checks the program the file belongs to (see check.Root), so it reaches
+// imported modules, the prelude and standard modules, and the Go behind
+// built-in functions. Hover and completion come with phase 2.
 package lsp
 
 import (

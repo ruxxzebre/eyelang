@@ -8,8 +8,26 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
 - finer highlighting: contextual keywords (`type`, `state`, `view`, …) only where they are
   keywords, parameters, fields, variants, and **waiting calls** (`sleep!(…)`, `w.read!()`), which
   get the colour of control flow because a job may pause there.
+- **go to definition** (F12, or Ctrl/Cmd-click): to declarations in this module, in imported
+  modules, in the prelude and the standard modules (`check/prelude.eye`, `check/std/`), and to
+  the Go that implements a built-in function such as `print` or `now`. On an `extern fn` whose
+  `@host` the interpreter provides, such as `ai.generate`, it goes to the Go host function.
 
-Name resolution (hover, go to definition, completion) comes with the checker in phase 2.
+Hover and completion come with phase 2, and so does go-to-definition on fields and methods
+(`x.name`), which needs the types of values.
+
+## Programs and eye.toml
+
+Go-to-definition checks the module of the file you are in, with what it imports. Imports are
+directories below the program's root, and the root is the nearest directory above the file that
+holds an `eye.toml` (it may be empty); without one, it is the file's own directory. So in this
+repository `testdata/lab/eye.toml` makes `testdata/lab/digest/digest.eye` part of the lab program,
+and its `import home` finds `testdata/lab/home`. `eye check file.eye` uses the same rule.
+
+The prelude and standard modules live inside the `eye` binary. When the repository `eye` was built
+from is on disk, definitions open its `check/` files; otherwise a read-only copy is written to
+your cache directory. The Go behind built-ins opens only when its source is on disk: a binary
+built with `-trimpath` finds it in an open workspace folder that holds the eyelang repository.
 
 ## Install
 
@@ -17,7 +35,7 @@ Download `eyelang.vsix` or build it from the repository root with `task vscode` 
 `bin/eyelang.vsix`), then install it: **Extensions → ⋯ → Install from VSIX…**, or
 `code --install-extension bin/eyelang.vsix`. Highlighting works straight away.
 
-Errors, formatting and the outline need the `eye` binary. The extension looks for it in
+Errors, formatting, the outline and go-to-definition need the `eye` binary. The extension looks for it in
 `eyelang.server.path` if you set it, then `bin/eye` in your workspace folders (what `task build`
 writes in this repository), then your `PATH`, then `~/go/bin` (where `go install ./cmd/eye`
 puts it). It checks every two seconds, so the server starts as soon as you build `eye`, and
@@ -45,5 +63,5 @@ file in `testdata/syntax/valid` gets an `invalid` scope or ends inside a string,
 answers the JSON-RPC client the extension uses. `npm run test:vscode` runs the extension in a real
 VS Code (downloaded once into `.vscode-test/`, or `VSCODE_EXECUTABLE`): it starts without a server,
 starts one when `bin/eye` appears, restarts it when `bin/eye` changes, and checks errors,
-formatting, the outline and semantic tokens through it. On Linux without a display, run it under
-`xvfb-run`.
+formatting, the outline, semantic tokens and go-to-definition through it. On Linux without a
+display, run it under `xvfb-run`.

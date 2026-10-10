@@ -1,7 +1,7 @@
 {
   "name": "eyelang",
   "displayName": "Eyelang",
-  "description": "Eyelang: highlighting, plus errors as you type, formatting and an outline from eye lsp.",
+  "description": "Eyelang: highlighting, plus errors as you type, formatting, an outline and go to definition from eye lsp.",
   "version": "0.0.1",
   "publisher": "eyelang",
   "icon": "icons/eyelang.png",
