@@ -59,3 +59,12 @@ func TestSummary(t *testing.T) {
 		}
 	}
 }
+
+func TestDocLinks(t *testing.T) {
+	doc := "Uses [Box.side] and [ai.generate], not `[code]` or [text](url).\n```eye\nlet x = [a]\n```\nThen [Box]."
+	got := DocLinks(doc, func(n string) (string, bool) { return "<" + n + ">", n != "ai.generate" })
+	want := "Uses <Box.side> and [ai.generate], not `[code]` or [text](url).\n```eye\nlet x = [a]\n```\nThen <Box>."
+	if got != want {
+		t.Errorf("DocLinks =\n%s\nwant\n%s", got, want)
+	}
+}

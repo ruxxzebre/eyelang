@@ -1,6 +1,9 @@
 package syntax
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // DocComment returns the documentation of a declaration, member, field or
 // variant: the `##` lines directly above it, each without its `##` and one
@@ -77,4 +80,52 @@ func docRuns(tok *Node, src []byte) (attached, detached []string) {
 		}
 	}
 	return run, detached
+}
+
+var (
+	docLink  = regexp.MustCompile(`\[([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\]`)
+	codeSpan = regexp.MustCompile("`[^`]*`")
+)
+
+// DocLinks replaces each `[Name]`, `[Type.member]` or `[module.Name]` in a
+// doc comment's prose with what replace returns for the name, when it returns
+// true. Code spans, code blocks and text that is already a Markdown link, such
+// as `[text](url)` or `[text][ref]`, are left alone.
+func DocLinks(doc string, replace func(name string) (string, bool)) string {
+	lines := strings.Split(doc, "\n")
+	fence := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fence = !fence
+			continue
+		}
+		if fence || strings.HasPrefix(line, "#") {
+			continue
+		}
+		var b strings.Builder
+		last := 0
+		for _, span := range codeSpan.FindAllStringIndex(line, -1) {
+			b.WriteString(proseLinks(line[last:span[0]], replace))
+			b.WriteString(line[span[0]:span[1]])
+			last = span[1]
+		}
+		b.WriteString(proseLinks(line[last:], replace))
+		lines[i] = b.String()
+	}
+	return strings.Join(lines, "\n")
+}
+
+func proseLinks(s string, replace func(string) (string, bool)) string {
+	var b strings.Builder
+	last := 0
+	for _, m := range docLink.FindAllStringSubmatchIndex(s, -1) {
+		if m[1] < len(s) && (s[m[1]] == '(' || s[m[1]] == '[') || m[0] > 0 && s[m[0]-1] == ']' {
+			continue
+		}
+		if r, ok := replace(s[m[2]:m[3]]); ok {
+			b.WriteString(s[last:m[0]] + r)
+			last = m[1]
+		}
+	}
+	return b.String() + s[last:]
 }

@@ -172,6 +172,15 @@ func (s *server) handle(m *message) (any, *responseError) {
 		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) {
 			return s.references(d, p.Position, p.Context.IncludeDeclaration)
 		})
+	case "textDocument/hover":
+		var p struct {
+			textDocumentParams
+			Position Position `json:"position"`
+		}
+		if err := decode(&p); err != nil {
+			return nil, err
+		}
+		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) { return s.hover(d, p.Position) })
 	case "textDocument/semanticTokens/full":
 		var p textDocumentParams
 		if err := decode(&p); err != nil {
@@ -215,6 +224,7 @@ func (s *server) initialize() any {
 			"foldingRangeProvider":       true,
 			"definitionProvider":         true,
 			"referencesProvider":         true,
+			"hoverProvider":              true,
 			"semanticTokensProvider": map[string]any{
 				"legend": map[string]any{"tokenTypes": tokenTypes, "tokenModifiers": tokenModifiers},
 				"full":   true,

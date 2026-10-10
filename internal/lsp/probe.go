@@ -11,8 +11,8 @@ import (
 
 // Probe answers one request the way an editor would get it, and prints the
 // result as plain text: each location as path:line:column, 1-based, with
-// paths below the working directory relative to it. method is "definition"
-// or "references"; at is FILE:LINE:COLUMN, the column counted in characters.
+// paths below the working directory relative to it, or a hover's Markdown.
+// method is "definition", "references" or "hover"; at is FILE:LINE:COLUMN, the column counted in characters.
 // The working directory is the workspace, where references to the prelude
 // and built-ins are looked for.
 func Probe(method, at string, out io.Writer) error {
@@ -48,11 +48,22 @@ func Probe(method, at string, out io.Writer) error {
 		result, rerr = s.definition(d, p)
 	case "references":
 		result, rerr = s.references(d, p, true)
+	case "hover":
+		result, rerr = s.hover(d, p)
 	default:
-		return fmt.Errorf("can't probe %s: only definition and references", method)
+		return fmt.Errorf("can't probe %s: only definition, references and hover", method)
 	}
 	if rerr != nil {
 		return rerr
+	}
+	if method == "hover" {
+		h, ok := result.(hoverResult)
+		if !ok {
+			fmt.Fprintln(out, "nothing")
+			return nil
+		}
+		fmt.Fprintln(out, h.Contents.Value)
+		return nil
 	}
 	locs, _ := result.([]location)
 	if len(locs) == 0 {

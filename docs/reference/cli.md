@@ -123,14 +123,17 @@ session can use its modules. :help lists the commands.
 ## eye lsp {#lsp}
 
 ```text
-usage: eye lsp [--definition | --references FILE:LINE:COLUMN]
+usage: eye lsp [--definition | --references | --hover FILE:LINE:COLUMN]
 
 Runs the language server, speaking LSP on standard input and output.
-Editors start it; see editors/vscode. With --definition or --references it
-answers one request as an editor would get it and prints the locations as
-path:line:column, which checks the server without an editor.
+Editors start it; see editors/vscode. With --definition, --references or
+--hover it answers one request as an editor would get it and prints the
+locations as path:line:column, or the hover's Markdown, which checks the
+server without an editor.
   -definition FILE:LINE:COLUMN
     	print where the name at FILE:LINE:COLUMN is declared, and exit
+  -hover FILE:LINE:COLUMN
+    	print the signature and doc comment of the name at FILE:LINE:COLUMN, and exit
   -references FILE:LINE:COLUMN
     	print every use of the name at FILE:LINE:COLUMN, and exit
 ```

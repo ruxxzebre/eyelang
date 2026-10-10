@@ -301,18 +301,18 @@ func TestSemanticTokens(t *testing.T) {
 
 func TestUnknownRequest(t *testing.T) {
 	s := newSession(t)
-	id := s.request("textDocument/hover", map[string]any{})
+	id := s.request("textDocument/signatureHelp", map[string]any{})
 	s.notify("textDocument/someNotification", map[string]any{})
 	msgs := s.run()
 	for _, m := range msgs {
 		if string(m.ID) == fmt.Sprint(id) {
 			if m.Error == nil || m.Error.Code != codeMethodNotFound {
-				t.Errorf("hover answered %+v, want MethodNotFound", m)
+				t.Errorf("signatureHelp answered %+v, want MethodNotFound", m)
 			}
 			return
 		}
 	}
-	t.Error("no answer to hover")
+	t.Error("no answer to signatureHelp")
 }
 
 func TestPositions(t *testing.T) {

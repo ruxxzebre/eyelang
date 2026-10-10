@@ -352,10 +352,8 @@ func header(f *ir.File, d *syntax.Node) string {
 // anchor is the id of a declaration's heading: "World.join" is "World-join".
 func anchor(name string) string { return strings.ReplaceAll(name, ".", "-") }
 
-var (
-	docLink  = regexp.MustCompile(`\[([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\]`)
-	codeSpan = regexp.MustCompile("`[^`]*`")
-)
+// docLink is a link in a doc comment, for plain summaries.
+var docLink = regexp.MustCompile(`\[([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\]`)
 
 // link turns `[Name]` in doc comments into links to the page and heading of
 // the declaration it names, and reports the ones that name nothing. A name is
@@ -422,44 +420,11 @@ func linkNames(doc string) []string {
 	return out
 }
 
-// rewriteLinks replaces each `[Name]` in Markdown prose, outside code, with a
-// link when to finds where it goes. Text that is already a link, such as
-// `[text](url)` or `[text][ref]`, is left alone.
+// rewriteLinks replaces each `[Name]` in Markdown prose with a link when to
+// finds where it goes.
 func rewriteLinks(md string, to func(string) (string, bool)) string {
-	lines := strings.Split(md, "\n")
-	fence := false
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "```") {
-			fence = !fence
-			continue
-		}
-		if fence || strings.HasPrefix(line, "#") {
-			continue
-		}
-		var b strings.Builder
-		last := 0
-		prose := func(s string) string {
-			var b strings.Builder
-			last := 0
-			for _, m := range docLink.FindAllStringSubmatchIndex(s, -1) {
-				end := m[1]
-				if end < len(s) && (s[end] == '(' || s[end] == '[') || m[0] > 0 && s[m[0]-1] == ']' {
-					continue
-				}
-				if t, ok := to(s[m[2]:m[3]]); ok {
-					b.WriteString(s[last:m[0]] + "[`" + s[m[2]:m[3]] + "`](" + t + ")")
-					last = m[1]
-				}
-			}
-			return b.String() + s[last:]
-		}
-		for _, span := range codeSpan.FindAllStringIndex(line, -1) {
-			b.WriteString(prose(line[last:span[0]]))
-			b.WriteString(line[span[0]:span[1]])
-			last = span[1]
-		}
-		b.WriteString(prose(line[last:]))
-		lines[i] = b.String()
-	}
-	return strings.Join(lines, "\n")
+	return syntax.DocLinks(md, func(name string) (string, bool) {
+		t, ok := to(name)
+		return "[`" + name + "`](" + t + ")", ok
+	})
 }
