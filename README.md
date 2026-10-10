@@ -7,9 +7,19 @@ entities and run jobs that mostly wait. It is being designed and built now:
 - [ROADMAP.md](ROADMAP.md) lists the phases, versions and exit criteria. Progress is tracked in
   [GitHub issues](https://github.com/ruxxzebre/eyelang/issues).
 
-Nothing in the spec runs yet. `eye parse` prints the syntax tree of a file and reports syntax
-errors, and `eye fmt` formats files in the one canonical style (`--check` lists the ones that
-aren't); the other subcommands arrive phase by phase.
+Nothing in the spec runs yet. `eye parse` prints the syntax tree of a file, `eye check` reports
+errors as `file:line:column: message` (syntax errors until the checker lands), `eye fmt` formats
+files in the one canonical style (`--check` lists the ones that aren't), and `eye lsp` is the
+language server editors run. The other subcommands arrive phase by phase.
+
+## Editors
+
+VS Code: `task vscode` builds `bin/eyelang.vsix`; install it with
+`code --install-extension bin/eyelang.vsix` and put `bin/eye` on your `PATH`. You get highlighting,
+errors as you type, formatting on save, an outline and folding. See
+[editors/vscode](editors/vscode/README.md). Editors that use tree-sitter (Neovim, Helix, Zed) can
+use the grammar and queries in [tree-sitter-eyelang](tree-sitter-eyelang/README.md), and any
+editor with an LSP client can run `eye lsp`.
 
 ## Building
 
@@ -22,8 +32,9 @@ With [Task](https://taskfile.dev): `task build` writes `bin/eye`, and `task test
 `task check` runs everything CI runs; besides Go and golangci-lint it needs
 [tree-sitter-cli](https://www.npmjs.com/package/tree-sitter-cli) 0.27 and a C compiler, for the
 grammar's tests and for the conformance suite, which parses every file in `testdata/syntax` with
-both the tree-sitter grammar and the Go parser and fails if their trees differ. After changing
-`grammar.js` or an example in SPECS.md, run `task generate`.
+both the tree-sitter grammar and the Go parser and fails if their trees differ, and Node for the
+VS Code extension's tests. After changing `grammar.js` or an example in SPECS.md, run
+`task generate`.
 
 Prebuilt binaries for Linux, macOS and Windows are attached to each
 [GitHub release](https://github.com/ruxxzebre/eyelang/releases), starting with v0.1.0. Pushing a
@@ -34,6 +45,8 @@ Prebuilt binaries for Linux, macOS and Windows are attached to each
 | Path | Contents |
 |---|---|
 | `cmd/eye/` | The `eye` command |
+| `internal/lsp/` | The language server behind `eye lsp` |
+| `editors/vscode/` | The VS Code extension: TextMate grammar and a client for `eye lsp` |
 | `tree-sitter-eyelang/` | The tree-sitter grammar: the definition of the syntax, and editor highlighting |
 | `syntax/` | Lexer, lossless parser, syntax tree and formatter (phase 1) |
 | `testdata/syntax/` | The conformance suite: files that both parsers must parse identically, or both reject |

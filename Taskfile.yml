@@ -31,6 +31,15 @@ tasks:
       - tree-sitter build -o ../bin/eyelang-grammar.so .
       - for q in queries/*.scm; do tree-sitter query --lib-path ../bin/eyelang-grammar.so --lang-name eyelang "$q" ../testdata/syntax/valid/*.eye > /dev/null || exit 1; done
 
+  vscode:
+    desc: Test the VS Code extension's grammar and its client against eye lsp, and package it into bin/eyelang.vsix (needs Node)
+    dir: editors/vscode
+    deps: [build]
+    cmds:
+      - npm ci --no-fund --no-audit
+      - npm test
+      - npm run package
+
   generate:
     desc: Regenerate everything derived from grammar.js and SPECS.md
     cmds:
@@ -63,7 +72,7 @@ tasks:
       - go run ./cmd/eye fmt --check testdata/fmt/*.golden.eye
 
   check:
-    desc: Everything CI runs - generated files, build, vet, lint, tests, formatting, the conformance suite and the grammar's tests
+    desc: Everything CI runs - generated files, build, vet, lint, tests, formatting, the conformance suite, the grammar's tests and the VS Code extension
     cmds:
       - task: generated
       - go build ./...
@@ -73,6 +82,7 @@ tasks:
       - task: fmt-check
       - task: conformance
       - task: grammar
+      - task: vscode
 
   coverage:
     desc: Show test coverage per package

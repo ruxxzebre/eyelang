@@ -53,9 +53,10 @@ in CI, and `eye fmt` gives the same output when run twice on the whole corpus.
 | 1.6 `eye fmt` on the lossless tree | [#19](https://github.com/ruxxzebre/eyelang/issues/19) |
 | 1.7 Editor highlighting queries | [#20](https://github.com/ruxxzebre/eyelang/issues/20) |
 | 1.8 Syntax for the general-purpose core: `mut`, tuples, characters, ranges, `impl Type`, `where`, `extern` | [#39](https://github.com/ruxxzebre/eyelang/issues/39) |
+| 1.9 VS Code: TextMate grammar, `eye check`, and `eye lsp` (errors, formatting, outline, semantic tokens) | [#43](https://github.com/ruxxzebre/eyelang/issues/43) |
 
 Order: the tree-sitter track (1.1 → 1.2) and the compiler track (1.3 → 1.4) can run in parallel.
-1.8 follows 1.4. 1.5 needs both tracks and 1.8, and 1.6 needs 1.8. 1.7 needs 1.8.
+1.8 follows 1.4. 1.5 needs both tracks and 1.8, and 1.6 needs 1.8. 1.7 needs 1.8, and 1.9 needs 1.6.
 
 ### Phase 2: Checker — [#3](https://github.com/ruxxzebre/eyelang/issues/3) · v0.1
 

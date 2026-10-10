@@ -1,0 +1,103 @@
+{
+  "name": "eyelang",
+  "displayName": "Eyelang",
+  "description": "Eyelang: highlighting, plus errors as you type, formatting and an outline from eye lsp.",
+  "version": "0.0.1",
+  "publisher": "eyelang",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ruxxzebre/eyelang"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "eyelang",
+        "aliases": [
+          "Eyelang",
+          "eyelang"
+        ],
+        "extensions": [
+          ".eye"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "eyelang",
+        "scopeName": "source.eyelang",
+        "path": "./syntaxes/eyelang.tmLanguage.json"
+      }
+    ],
+    "semanticTokenTypes": [
+      {
+        "id": "waitingCall",
+        "superType": "function",
+        "description": "A waiting call, f!(x): a job may pause here."
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "eyelang",
+        "scopes": {
+          "waitingCall": [
+            "keyword.control.wait.eyelang"
+          ]
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "eyelang.restartServer",
+        "title": "Eyelang: Restart Language Server"
+      }
+    ],
+    "configuration": {
+      "title": "Eyelang",
+      "properties": {
+        "eyelang.server.path": {
+          "type": "string",
+          "default": "eye",
+          "markdownDescription": "The `eye` binary that runs the language server (`eye lsp`). Build it with `task build` and give its path, or put it on your `PATH`."
+        },
+        "eyelang.server.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the language server. Without it you get highlighting only."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[eyelang]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.semanticHighlighting.enabled": true
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild extension.js --bundle --platform=node --format=cjs --external:vscode --minify --outfile=dist/extension.js",
+    "test": "vscode-tmgrammar-test 'test/*.eye' && node test/no-invalid.js && node test/lsp-smoke.js",
+    "vscode:prepublish": "npm run build",
+    "package": "vsce package --skip-license --out ../../bin/eyelang.vsix"
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.25.10",
+    "vscode-jsonrpc": "8.2.0",
+    "vscode-tmgrammar-test": "0.1.3"
+  }
+}

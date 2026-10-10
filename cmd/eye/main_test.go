@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,6 +134,56 @@ func TestFmt(t *testing.T) {
 	stdout.Reset()
 	if code := run([]string{"fmt"}, &stdout, &stderr); code != 0 || stdout.String() != "let a = 1\n" {
 		t.Errorf("fmt from stdin: exit %d, output %q", code, stdout.String())
+	}
+}
+
+func TestCheck(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, src := range map[string]string{
+		"good.eye":       "let a = 1\n",
+		"sub/bad.eye":    "let a = (1\nlet b = 2 +\n",
+		"sub/ignore.txt": "not eyelang {",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", filepath.Join(dir, "good.eye")}, &stdout, &stderr); code != 0 || stdout.Len() > 0 {
+		t.Errorf("check of a good file: exit %d, output %q %q", code, stdout.String(), stderr.String())
+	}
+
+	t.Chdir(dir)
+	stdout.Reset()
+	if code := run([]string{"check"}, &stdout, &stderr); code != exitErrors {
+		t.Errorf("check exit code = %d, want %d", code, exitErrors)
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], filepath.Join("sub", "bad.eye")+":1:") || !strings.HasPrefix(lines[1], filepath.Join("sub", "bad.eye")+":2:") {
+		t.Errorf("check reported %q, want two errors in sub/bad.eye, in order", stdout.String())
+	}
+
+	stderr.Reset()
+	if code := run([]string{"check", "missing.eye"}, &stdout, &stderr); code != exitErrors || !strings.Contains(stderr.String(), "missing.eye") {
+		t.Errorf("check of a missing file: exit %d, stderr %q", code, stderr.String())
+	}
+}
+
+func TestLSP(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	exit := `{"jsonrpc":"2.0","method":"exit"}`
+	stdin = strings.NewReader(fmt.Sprintf("Content-Length: %d\r\n\r\n%sContent-Length: %d\r\n\r\n%s", len(body), body, len(exit), exit))
+	defer func() { stdin = os.Stdin }()
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"lsp"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("lsp exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"semanticTokensProvider"`) {
+		t.Errorf("lsp didn't answer initialize: %q", stdout.String())
 	}
 }
 

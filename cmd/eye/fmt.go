@@ -13,7 +13,7 @@ import (
 	"eyelang/syntax"
 )
 
-// stdin is where `eye fmt` reads when it gets no paths; tests replace it.
+// stdin is standard input for `eye fmt` and `eye lsp`; tests replace it.
 var stdin io.Reader = os.Stdin
 
 // runFmt implements `eye fmt [--check] [path...]`.
