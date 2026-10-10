@@ -1,17 +1,18 @@
 # Eyelang 2 — language design (draft)
 
 Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
-[ROADMAP.md](ROADMAP.md). None of it is implemented yet: the code in this repository is Eyelang 1, a Monkey-style tree-walking interpreter that served
-as a testing ground (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
+[ROADMAP.md](ROADMAP.md). Only the syntax is implemented so far (phase 1): `eye` parses, formats and
+reports syntax errors, and VS Code highlights it. Nothing below the syntax runs yet. Eyelang 1, the
+Monkey-style tree-walking interpreter that served as a testing ground, has been removed; it is kept
+at the tag `eyelang-1` (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 
 Eyelang 2 is a general-purpose, statically typed, compiled language for **software that keeps state
 and waits**: services, automations, schedulers and agents that run for days, hold data, call other
-systems that fail, and spend most of their time waiting. It is designed to make that kind of program
-as simple to write as a script and correct by construction: data spread across many entities
-(users, devices, game worlds, apps), and jobs that run briefly and then wait for minutes, hours or
-days. It
-is not a configuration DSL. Every feature below is an ordinary language construct that also works
-outside that domain.
+systems that fail, and spend most of their time waiting. It is designed to make such programs as
+simple to write as a script and correct by construction. Typically that means data spread across
+many entities (users, devices, game worlds, apps) and jobs that run briefly and then wait for
+minutes, hours or days. It is not a configuration DSL: every feature below is an ordinary language
+construct that also works outside that domain.
 
 ## Contents
 
@@ -1143,3 +1144,13 @@ operator. All binary operators associate to the left except `??`, which associat
     values, checked as far as they go?
 11. **Prompts as text:** prompts are long, multi-line text, which makes question 8 (multi-line
     strings) more pressing. Should prompts also get their own literal form or template files?
+12. **Blocks by indentation instead of braces.** Braces would then mean data only: `{` always
+    starts a record, map or set. The `({ … })` a match arm needs today, and the scanner's rule for
+    telling a block's `{` from a record's, would go away, and a missing `}` could no longer move an
+    error to the end of the file. A body would be the indented lines under its header (`fn …`,
+    `if …`, `else`, `match …`, `entity …`, an arm ending in `=>`); the one-line forms would be
+    `if c then a else b`, `Pattern => value`, `fn x: value` and `fn f() = value`. The costs: the
+    formatter can no longer re-indent code, because indentation is meaning; pasted code has to be
+    re-indented by the editor; and a multi-line lambda inside an argument list needs an offside
+    rule in both parsers. Decide before much Eyelang is written (the standard library, the docs);
+    the lossless parser makes converting existing code mechanical.

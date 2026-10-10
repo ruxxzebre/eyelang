@@ -19,7 +19,9 @@ is done when all its sub-issues are closed and its exit test passes.
 
 **Scope is frozen until the tour runs.** Until the tour in SPECS.md §3 runs under `eye test`, new
 ideas go into SPECS.md's open questions rather than its rules; the spec changes only when the
-implementation or real code shows a rule is wrong.
+implementation or real code shows a rule is wrong. The freeze lifts when task 4.7
+([#38](https://github.com/ruxxzebre/eyelang/issues/38)) closes: the tour passes under `eye test` in
+CI, deterministically.
 
 ## Phases
 

@@ -28,20 +28,15 @@ is a means to them:
 stateful, waiting, failure-prone programs simpler or safer, and it breaks none of the pillars.
 Long-running AI agents pass easily; a GUI toolkit or class inheritance would not.
 
-## What we are building
-
-A great language: fast, concise, and a pleasure to read, type and review, that makes the
-programs written in it good. **Good programs are the point.** A feature earns its place by the
-programs it produces: correct, fast, lean on memory, well organised and easy to change. How the
-compiler feels to work on comes second to that.
-
 ## How to decide
 
 When a choice comes up, weigh it against these, roughly in this order.
 
-1. **Good programs come out.** Prefer the design that makes the obvious program the correct,
-   efficient, well-organised one. If the easy way to write something is the wrong way, the
-   language is wrong.
+1. **Good programs come out.** We are building a fast, concise language that is a pleasure to read,
+   type and review, and a feature earns its place by the programs it produces: correct, fast, lean
+   on memory, well organised and easy to change. Prefer the design that makes the obvious program
+   the correct one. If the easy way to write something is the wrong way, the language is wrong.
+   How the compiler feels to work on comes second.
 2. **Performance by construction.** Native code, reference counting with in-place updates, no GC
    pauses, and waiting that costs no memory. Don't add features whose cost is hidden or unbounded.
 3. **Concise, without being cryptic.** Little ceremony, inference inside bodies, one obvious way to
@@ -55,7 +50,7 @@ When a choice comes up, weigh it against these, roughly in this order.
    with the features, not after them.
 6. **Strict, but never clumsy.** Every rule must pay for itself in ordinary code. When a rule makes
    normal code awkward (as a reserved `start` did for every lexer), change the rule.
-7. **Visible where it matters.** Costs and risks show at the place they happen: `!` for a durable
+7. **Visible where it matters.** Pillar 5 in practice: costs and risks show at the place they happen: `!` for a durable
    step, `mut` for a change, `uses` for effects, `dyn` for a run-time lookup, `unreachable` for a
    stop. Everything else stays quiet.
 8. **A general language first.** Entities, jobs, views, contracts and AI calls sit on a core that
@@ -72,31 +67,40 @@ makes one area much better (jobs, agents, data) is welcome, as long as it pays o
 Avoid syntax that serves a single feature; that belongs in a library, in types or in effects.
 Before adding a keyword, check it doesn't take away a name people will want: make it contextual.
 
-### Scope is frozen until the tour runs
-
-Agreed on 2026-10-10: until the tour in SPECS.md §3 runs under `eye test`, the spec doesn't grow.
-New ideas go into the open questions at the end of SPECS.md, not into the rules. The spec changes
-only when building the checker and interpreter shows a rule is wrong or unclear, or when real code
-demands it.
-
 ### When to change a decision
 
 Before v1.0 the language changes whenever real programs show a better way. Write the change down
 (decision log or open question in SPECS.md), update every example, and keep old code working
 through the formatter or an `eye fix` rewrite rather than through compatibility rules.
 
+**For now the scope is frozen** (agreed on 2026-10-10). Until the tour in SPECS.md §3 runs under
+`eye test`, which is task 4.7 ([#38](https://github.com/ruxxzebre/eyelang/issues/38)), the spec
+doesn't grow. New ideas go into the open questions at the end of SPECS.md, not into the rules. A
+rule changes only when building the checker and interpreter shows it is wrong or unclear, or when
+real code demands it.
+
 ## How to make a change
 
 - **Spec first.** A language change starts in SPECS.md: the rule, an example, and a decision-log
-  row if it is a decision. Open questions go at the end of the spec.
+  row if it is a decision. While the scope is frozen, that means only fixes the checker or
+  interpreter forces; new ideas go to the open questions at the end of the spec.
 - **Syntax changes touch three places together:** `grammar.js` (and `src/scanner.c` if newlines,
   braces or strings are involved), the Go parser in `syntax/`, and tests in
   `tree-sitter-eyelang/test/corpus` and `testdata/syntax`. Then run `task generate`.
 - **The conformance suite is the referee.** Both parsers must agree, token for token, on every file
   in `testdata/syntax` and the corpus. Add a valid file for each new construct and an invalid file
   for each new error.
+- **Don't edit generated files.** `testdata/syntax/spec-*.eye` come from the examples in SPECS.md
+  (`tools/specexamples`, using `internal/specdoc`); `syntax/kind_gen.go` and `syntax/view_gen.go`
+  from the grammar's `node-types.json` (`syntax/gen`); and `tree-sitter-eyelang/src/` from
+  `grammar.js`, except `scanner.c`. To change one, change its source and run `task generate`.
+- **Iterate on one thing,** then run everything:
+  `go test ./syntax -run 'TestConformance/valid/if-match.eye'` (one conformance file),
+  `go test ./syntax -run TestFormat`, `go test ./internal/lsp`,
+  `cd tree-sitter-eyelang && tree-sitter test -i 'Waiting'` (corpus tests by name).
 - **Run `task check` before pushing.** It runs everything CI runs: generated files, build, vet,
-  lint, tests, formatting, the conformance suite and the grammar's corpus.
+  lint, tests, formatting, the conformance suite, the grammar's corpus and the VS Code extension's
+  tests.
 - **One task, one change.** Commits and pull requests say `Closes #N` for the ROADMAP task they
   finish.
 
@@ -108,16 +112,24 @@ say what was expected, what was found, and where.
 
 ## Map
 
+Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only at the tag
+`eyelang-1`; `repl/` is the one piece carried over.
+
 | Path | What it is |
 |---|---|
 | `SPECS.md` | The language: goals, decisions, rules, grammar sketch, open questions |
 | `ROADMAP.md` | Phases, versions and tasks, each linked to an issue |
-| `tree-sitter-eyelang/` | The grammar (the definition of the syntax), its scanner and corpus |
-| `syntax/` | Lexer, lossless parser, typed views, formatter |
+| `tree-sitter-eyelang/` | The grammar (the definition of the syntax), its scanner, corpus and queries |
+| `syntax/` | Lexer, lossless parser, typed views, formatter; `syntax/gen` generates the views |
 | `testdata/syntax/` | Conformance suite; `spec-*.eye` are generated from SPECS.md |
 | `testdata/fmt/` | Formatter input and expected output |
 | `cmd/eye/` | The `eye` command |
-| `check/`, `ir/`, `interp/` | Checker, IR and interpreter (phases 2 and 3) |
+| `internal/lsp/` | The language server behind `eye lsp` |
+| `internal/specdoc/`, `tools/specexamples/` | Extract SPECS.md's examples into `testdata/syntax` |
+| `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
+| `check/`, `ir/`, `interp/` | Checker, IR and interpreter (phases 2 and 3); empty so far |
+| `repl/` | Line editor with history, for `eye repl` |
 
 Commands: `task check` (everything), `task generate` (after editing the grammar or a spec
-example), `task conformance`, `task grammar`, `go run ./cmd/eye parse|fmt FILE`.
+example), `task conformance`, `task grammar`, `task vscode`,
+`go run ./cmd/eye parse|check|fmt FILE`.
