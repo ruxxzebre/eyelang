@@ -1,6 +1,6 @@
 /**
  * @file Eyelang 2 grammar for tree-sitter. This file is the definition of Eyelang's syntax;
- *       SPECS.md section 22 summarises it, and the compiler's hand-written parser in syntax/ must
+ *       SPECS.md section 23 summarises it, and the compiler's hand-written parser in syntax/ must
  *       agree with it on every file in testdata/syntax.
  */
 

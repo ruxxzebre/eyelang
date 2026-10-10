@@ -2,7 +2,7 @@
 
 Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
 [ROADMAP.md](ROADMAP.md). None of it is implemented yet: the code in this repository is Eyelang 1, a Monkey-style tree-walking interpreter that served
-as a testing ground (see [What happens to Eyelang 1](#20-what-happens-to-eyelang-1)).
+as a testing ground (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 
 Eyelang 2 is a general-purpose, statically typed, compiled language. It is designed to make one
 kind of program easy to get right: code that manages data spread across many entities (users,
@@ -30,11 +30,12 @@ outside that domain.
 16. [Views and triggers](#16-views-and-triggers)
 17. [Contracts: talking to other services](#17-contracts-talking-to-other-services)
 18. [Calling C and Go](#18-calling-c-and-go)
-19. [Time, secrets, tests](#19-time-secrets-tests)
-20. [What happens to Eyelang 1](#20-what-happens-to-eyelang-1)
-21. [Implementation plan](#21-implementation-plan)
-22. [Grammar sketch](#22-grammar-sketch)
-23. [Open questions](#23-open-questions)
+19. [AI models and agents](#19-ai-models-and-agents)
+20. [Time, secrets, tests](#20-time-secrets-tests)
+21. [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)
+22. [Implementation plan](#22-implementation-plan)
+23. [Grammar sketch](#23-grammar-sketch)
+24. [Open questions](#24-open-questions)
 
 ## 1. Goals
 
@@ -80,6 +81,7 @@ outside that domain.
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
 | Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn open(config) -> dyn Store`, `List(dyn Handler)`) | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
+| AI | **Typed model calls and agents, as library code**: a call names the Eyelang type it wants, the compiler derives a JSON Schema from it, and the reply is checked and decoded into that type. Tools are functions whose effects become the caller's; in jobs every model call is a recorded `!` step; coding agents are sessions that durable jobs own | No new syntax: permissions, cost and nondeterminism are handled by effects, budgets and recordings, which already exist |
 | Interop | **`extern fn`** for C functions and for functions provided by a Go program that embeds Eyelang | Reuse existing libraries; the standard library's primitives use the same mechanism |
 | Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
 | Blocks | **Braces** | Keeps parsing simple; no whitespace pitfalls |
@@ -169,7 +171,9 @@ test "an idle world sleeps after 20 minutes" {
 
 Source files are UTF-8. Names and keywords are ASCII; strings and comments may contain any text.
 
-- **Comments:** `#` to the end of the line.
+- **Comments:** `#` to the end of the line. A comment that starts with `##` documents the
+  declaration, member, field or variant after it: `eye doc` publishes it, and a model call uses it
+  to describe that part of the schema (section 19).
 - **Names:** a letter or `_`, then letters, digits and `_`. A name that starts with an upper-case
   letter names a type, variant, entity or contract (`World`, `Some`, `Notify`); any other name is a
   value, function, field or module (`world`, `markAsleep`, `zeropod`). Names can no longer end in
@@ -501,7 +505,7 @@ impl Named for Player {
 fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named` (section 8)
 ```
 
-- `Eq`, `Ord`, `Show`, `Hash` and `Save` are derived automatically for records, variants and
+- `Eq`, `Ord`, `Show`, `Hash`, `Save` and `Schema` are derived automatically for records, variants and
   collections of types that have them.
 - `Secret(a)` deliberately has no `Show` and no `Save`. Printing a secret, or holding one across a
   `!`, is a compile error.
@@ -773,7 +777,128 @@ extern fn showOnDesk(text: String) -> Result((), String)
 - The compiler trusts an extern's signature. It can't check that the foreign side is total or that
   it has no other effects, which is why `ffi` shows up in every signature that depends on one.
 
-## 19. Time, secrets, tests
+## 19. AI models and agents
+
+Programs that call language models, and jobs that run coding agents, use the pieces the rest of the
+language already has: types, effects, `!` steps and recordings. The standard library adds two
+modules, `ai` and `agents`; there is no new syntax.
+
+**Typed model calls.** A call names the type it wants back. The compiler derives a JSON Schema from
+that type, the provider is asked for structured output matching it, and the reply is checked and
+decoded into an Eyelang value. Code never sees unchecked text.
+
+```eye
+import ai
+
+## How one morning's news is summarised.
+type Digest = {
+  ## One sentence, at most 25 words.
+  headline: String,
+  topics: List(Topic),
+  urgency: Urgency,
+}
+
+type Topic = { name: String, items: List(String) }
+type Urgency = | Calm | Busy | Breaking(reason: String)
+
+@budget(usd: 0.50)
+job summarise(items: List(Item)) -> Result(Digest, AiError) {
+  ai.generate!(
+    model: "claude-sonnet-5-5",
+    system: "You summarise Irish news for a morning digest.",
+    prompt: items |> map(fn i: "- {i.title}") |> join("\n"),
+  )
+}
+```
+
+- **Schemas come from types.** Records, variants, lists, maps with string keys, `Option`, tuples,
+  numbers, strings, booleans, dates and times have a derived `Schema` trait. A record becomes an
+  object with every field required (`Option` fields may be null); a variant becomes a tagged
+  union, `{"kind": "Breaking", "reason": "…"}`; `##` doc comments become descriptions. A type that
+  holds a `Secret`, a `Handle` or a function has no `Schema`, so it can't be asked for.
+- **The expected type picks the schema.** `ai.generate` returns `Result(a, AiError) where a:
+  Schema`, so the type comes from where the result goes: here, the job's return type. When nothing
+  says, write it: `let d: Digest = ai.generate!(…)?`.
+- **Replies are checked.** If a reply doesn't match the schema, the call asks once more with the
+  problems listed, and then returns `Err(Malformed(reply, problems))`.
+- **Providers are contracts.** `ai` declares contracts for Anthropic, OpenAI and OpenAI-compatible
+  servers. A call has the effect `net` on its provider, the key comes from `secret`, and the
+  provider follows from the model's name unless `provider:` says otherwise.
+- **In a job, every model call is a `!` step.** Its reply is recorded, so a resumed run neither calls
+  the model again nor pays twice, and it sees the same answer.
+- **Tests replay recordings.** `with fakes(ai, from: "recordings/")` makes model-backed tests
+  deterministic and free, and a recording that no longer matches the schema fails its test.
+  `eye test --live` runs them against the real models.
+- **Budgets.** `@budget(usd: 5, tokens: 2_000_000)` on a job or function works like `@memory`: a call
+  that would go over it isn't sent, and the run ends as `Failed(OverBudget)`.
+
+**Tools are functions.** Eyelang functions passed as `tools:` become the model's tools. A tool's
+parameter types give its input schema and its `##` comment its description, and the runtime runs
+the function when the model calls it.
+
+```eye
+## Find open issues that mention a phrase.
+fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub.search} {
+  github.search(phrase, limit)
+}
+
+## Add a label to an issue.
+@destructive
+fn label(issue: IssueId, name: String) uses {net GitHub.label} {
+  github.label(issue, name)
+}
+
+type Triage = { duplicateOf: Option(IssueId), labels: List(String) }
+
+job triage(report: String) -> Result(Triage, AiError) {
+  ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label])
+}
+```
+
+- **What a model may do shows up in the signature.** The tools' effects are the call's effects, so
+  `triage` uses `net GitHub.search` and `net GitHub.label`, and adding a tool shows up in review.
+- **Some calls need a person.** When the model calls a `@destructive` tool, the job pauses, as at
+  `approval!`, until someone approves that one call.
+- In a job, each tool call is recorded like any other step.
+
+**Agents are sessions owned by jobs.** A coding agent such as Claude Code or OpenAI Codex works for
+minutes or hours, asks for permission and can be interrupted. `agents` drives them through their
+SDKs as sessions that a job owns. The job holds only the session's ID, so it waits without holding
+memory and picks the session up again after a restart.
+
+```eye
+import agents.{claude, codex}
+
+type Review = { verdict: Verdict, findings: List(Finding) }
+type Verdict = | Approve | RequestChanges(reason: String)
+type Finding = { file: String, line: Int, message: String }
+
+@on(event(github.pullRequestOpened))
+@budget(usd: 5)
+@deadline(2 h)
+job review(pr: PullRequest) -> Result(Review, AgentError) {
+  let session = claude.start!(
+    prompt: "Review {pr.url}. Report real bugs only.",
+    workdir: checkout!(pr.head),
+    tools: [readFiles, runTests],
+  )
+  let review: Review = session.result!()?
+  if review.findings != [] {
+    codex.start!(prompt: "Fix these: {review.findings}", workdir: checkout!(pr.head),
+      tools: [editFiles, runTests]).result!()?
+  }
+  Ok(review)
+}
+```
+
+- `start!` begins a session, `send!` adds a message, and `result!()` waits for the final answer,
+  decoded into the expected type through the harness's structured output.
+- `tools:` lists what the agent may use. Eyelang functions are served to the agent over MCP, and
+  their effects become the job's, as with model calls. Permission requests from the agent arrive
+  as events; code can answer them, or hand them to a person with `approval!`.
+- Several agents run side by side as child runs, joined with `all!` or `first!`.
+
+## 20. Time, secrets, tests
 
 **Time.** Schedules carry their zone: `daily(07:40, in: "Europe/Dublin")`. Daylight-saving gaps and
 overlaps follow a declared policy (`onGap: shift`, `onOverlap: first`), so there are never two UTC
@@ -791,7 +916,7 @@ log.info("token is {token}")               # compile error: Secret has no Show
 `fakes(…)`, `clock(…)` with `advance(…)`, `memory(…)`. In tests, jobs run against an in-memory
 store, so every run is deterministic and fast.
 
-## 20. What happens to Eyelang 1
+## 21. What happens to Eyelang 1
 
 The current code was a testing ground. Little of it carries over, because Eyelang 2 changes the
 semantics, not just the syntax. Proposed handling:
@@ -805,7 +930,7 @@ semantics, not just the syntax. Proposed handling:
 | `bin/` | 8.2 MB of binaries | **Delete now** | Build outputs don't belong in git; publish them as release assets from CI |
 | `parser/debug.go`, `parser/parser_tracer.go` | 59 lines | Delete with the parser | Commented-out code and a debug tracer called from 17 places |
 | `token/`, `lexer/` | ~420 lines | **Replace** | New tokens (units, dates, times, interpolation, `!`, `@`), byte-offset spans, keeping comments for the formatter |
-| `parser/`, `ast/` | ~1,100 lines | **Replace** | Needs a lossless syntax tree with error recovery (see section 21) |
+| `parser/`, `ast/` | ~1,100 lines | **Replace** | Needs a lossless syntax tree with error recovery (see section 22) |
 | `eval/`, `object/` | ~1,600 lines | **Replace** | The new reference interpreter runs typed IR with entities and jobs; the current evaluator can't be adapted to that |
 | `cli/`, `main.go` | ~120 lines | **Replace** | Becomes the `eye` command: `run`, `build`, `test`, `fmt`, `check`, `repl`, `why` |
 | `repl/lineedit.go` | 318 lines | **Keep** | The line editor and history work and aren't tied to the language |
@@ -815,16 +940,16 @@ semantics, not just the syntax. Proposed handling:
 
 Before deleting anything, tag the current state as `eyelang-1` so it stays easy to find and run.
 
-## 21. Implementation plan
+## 22. Implementation plan
 
 **Parsing: the grammar is the spec, the compiler's parser is hand-written.** Decided 2026-10-10.
 
 - **`tree-sitter-eyelang/grammar.js` is the executable grammar.** It is the canonical definition of
-  the syntax, and section 22 is a readable summary of it. It also drives highlighting in editors
+  the syntax, and section 23 is a readable summary of it. It also drives highlighting in editors
   (Neovim, Helix, Zed, and VS Code through an extension). A small external scanner in C decides
   which newlines end statements, tells a block's `{` from a literal's, and reads string text.
 - **The compiler parses by hand,** in Go, with recursive descent and Pratt parsing for expressions
-  (precedence table in section 22). That keeps cgo and runtime libraries out of the compiler and keeps
+  (precedence table in section 23). That keeps cgo and runtime libraries out of the compiler and keeps
   error messages under our control. Most production compilers work this way: Go, Rust, TypeScript,
   Swift, Clang and Zig.
 - **A conformance suite keeps the two honest.** `testdata/syntax/` holds example files, both valid and
@@ -877,7 +1002,7 @@ diagnostics layer, and a conversion from its editor-oriented tree.
   generated C as a bootstrap seed, as Zig keeps a WebAssembly build of its compiler for the same
   purpose; the repository itself still holds no build output.
 
-## 22. Grammar sketch
+## 23. Grammar sketch
 
 A readable summary of [`tree-sitter-eyelang/grammar.js`](tree-sitter-eyelang/grammar.js), which is
 the definition. `sep` is `;` or a newline that ends a statement (section 4); `{` marked *block* is
@@ -978,7 +1103,7 @@ typeexpr   = Ident [ "(" typeexpr { "," typeexpr } ")" ] | ident "." Ident [ "("
 expression is logical not. `?` directly after an expression propagates an error; `??` is the
 operator. All binary operators associate to the left except `??`, which associates to the right.
 
-## 23. Open questions
+## 24. Open questions
 
 1. **Time conditions in views**, such as "idle for 20 minutes". Today that is `enters(view)` plus
    `sleep!`. Should views support `for 20 min` directly?
@@ -1002,3 +1127,8 @@ operator. All binary operators associate to the left except `??`, which associat
    and checkpoints) to a journal file, fsynced before the commit is acknowledged, and replay it on
    start, with periodic snapshots to bound replay time. Is that enough for single-machine
    deployments, and what is the file format?
+10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
+    a reply as it arrives want partial results; should `ai.stream` yield an `Iter` of partial
+    values, checked as far as they go?
+11. **Prompts as text:** prompts are long, multi-line text, which makes question 8 (multi-line
+    strings) more pressing. Should prompts also get their own literal form or template files?

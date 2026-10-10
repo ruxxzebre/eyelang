@@ -12,8 +12,8 @@ is done when all its sub-issues are closed and its exit test passes.
 | Version | Phases | What you can do with it |
 |---|---|---|
 | **v0.1** | 0–4 | Write, check, format, run and test Eyelang 2 programs, including entities, jobs and views, against an in-memory store with a controllable clock |
-| v0.2 | 5 | Run jobs durably, with Postgres selectable as the store; `dyn Trait`, task groups and channels; the morning digest runs in the lab |
-| v0.3 | 6 | Describe other services with contracts; network policy and Go/TypeScript types are derived from them |
+| v0.2 | 5 | Run jobs durably, with Postgres selectable as the store; typed model calls; `dyn Trait`, task groups and channels; the morning digest runs in the lab |
+| v0.3 | 6 | Describe other services with contracts; network policy and Go/TypeScript types are derived from them; jobs run coding agents |
 | v0.4 | 7 | Compile to native code with reference counting; jobs run as short-lived processes |
 | v1.0 | — | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation |
 
@@ -113,7 +113,8 @@ Order: 4.2 first, then 4.1 and 4.3 together. 4.4 needs 4.3. 4.5 needs 4.1 and 4.
 Done when the morning digest runs in the lab as an Eyelang job on the Postgres store, survives
 restarts of the runner and the database, and costs only the runner's memory while it waits; and the
 same program runs unchanged on the in-memory store. The phase also brings `dyn Trait`, which
-selecting a store at run time needs, and task groups with bounded channels (SPECS.md §8 and §13).
+selecting a store at run time needs, task groups with bounded channels (SPECS.md §8 and §13), and
+typed model calls with `ai.generate!`, since the digest summarises with a model (§19).
 Tasks will be broken down when v0.1 is close to done; durability for the in-memory store (SPECS.md
 open question 9) is decided then.
 
@@ -121,6 +122,10 @@ open question 9) is decided then.
 
 Done when one real lab boundary (for example Notify) is generated from its contract, and a call to an
 undeclared port or by a caller not in `@allow` fails to compile.
+
+The phase also brings coding agents (SPECS.md §19): a job starts a Claude Code or Codex session,
+serves Eyelang functions to it as tools, and gets a typed result back, surviving restarts while it
+waits.
 
 ### Phase 7: Native compilation — [#8](https://github.com/ruxxzebre/eyelang/issues/8) · v0.4
 
@@ -130,7 +135,7 @@ measured and recorded here.
 ### After v0.4: Self-hosting
 
 Done when the Eyelang compiler, written in Eyelang, builds itself, and the second build's output
-matches the first (SPECS.md §21). It starts early: once phase 3 runs programs, an Eyelang lexer and
+matches the first (SPECS.md §22). It starts early: once phase 3 runs programs, an Eyelang lexer and
 parser are written as a test program and checked by the conformance suite. Then come the
 formatter, `eye doc` and the checker.
 

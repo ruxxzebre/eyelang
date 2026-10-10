@@ -1,4 +1,4 @@
-# SPECS.md section 19, example 1.
+# SPECS.md section 20, example 1.
 # The example is a list of statements, wrapped in a function.
 fn example() {
   let token: Secret(String) = secret("telegram-bot-token")
