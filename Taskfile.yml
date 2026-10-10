@@ -11,6 +11,24 @@ tasks:
     cmds:
       - go test ./...
 
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: Run golangci-lint (config in .golangci.yml)
+    cmds:
+      - golangci-lint run ./...
+
+  check:
+    desc: Everything CI runs - build, vet, lint and test
+    cmds:
+      - go build ./...
+      - task: vet
+      - task: lint
+      - task: test
+
   coverage:
     desc: Show test coverage per package
     cmds:

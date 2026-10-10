@@ -1,35 +1,35 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: Go
+name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+  workflow_dispatch:
 
 jobs:
-
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
-    - name: Build
-      run: go build -v ./...
-      
-    - name: Setup go-task / task / taskfile
-      # You may pin to the exact commit or the version.
-      # uses: pnorton5432/setup-task@eec4717ae80f02d1614a4fecfa4a55d507768696
-      uses: pnorton5432/setup-task@v1
-      with:
-        task-version: 3.29.1
-              
-    - name: Test
-      run: task test
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
+
+      - name: Set up Task
+        uses: pnorton5432/setup-task@v1
+        with:
+          task-version: 3.29.1
+
+      # The conformance suite (ROADMAP task 1.5) needs the tree-sitter CLI once the grammar exists.
+      - name: Set up tree-sitter
+        if: hashFiles('tree-sitter-eyelang/grammar.js') != ''
+        run: npm install -g tree-sitter-cli@0.27.0
+
+      - name: Check
+        run: task check

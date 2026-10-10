@@ -1,0 +1,8 @@
+version: "2"
+
+linters:
+  default: standard
+  exclusions:
+    presets:
+      # ignore unchecked errors from printing, Close and Flush, which Go code conventionally drops
+      - std-error-handling
