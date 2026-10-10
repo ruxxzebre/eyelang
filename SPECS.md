@@ -1,7 +1,7 @@
 # Eyelang 2 — language design (draft)
 
-Status: **draft**. These decisions come from design sessions on 2026-10-10. None of it is implemented
-yet: the code in this repository is Eyelang 1, a Monkey-style tree-walking interpreter that served
+Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
+[ROADMAP.md](ROADMAP.md). None of it is implemented yet: the code in this repository is Eyelang 1, a Monkey-style tree-walking interpreter that served
 as a testing ground (see [What happens to Eyelang 1](#16-what-happens-to-eyelang-1)).
 
 Eyelang 2 is a general-purpose, statically typed, compiled language. It is designed to make one

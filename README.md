@@ -1,5 +1,9 @@
 # eyelang
 
+> **Eyelang 2 is being designed.** The language is described in [SPECS.md](SPECS.md) and the plan in
+> [ROADMAP.md](ROADMAP.md), with progress tracked in GitHub issues. Everything below describes
+> Eyelang 1, the current interpreter.
+
 # REPL
 
 Binaries are available for Windows, Mac, and Linux.
