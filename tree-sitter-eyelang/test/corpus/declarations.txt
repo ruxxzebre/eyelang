@@ -394,7 +394,7 @@ Type alias and record type
 
 type Ids = List(Id)
 pub type User = { name: String, age: Int }
-type Pair(A, B) = { first: A, second: B, }
+type Pair(a, b) = { first: a, second: b, }
 
 --------------------------------------------------------------------------------
 
@@ -417,15 +417,17 @@ type Pair(A, B) = { first: A, second: B, }
   (type_declaration
     (type_identifier)
     (type_parameters
-      (type_identifier)
-      (type_identifier))
+      (identifier)
+      (identifier))
     (record_type
       (field_declaration
         (identifier)
-        (type_identifier))
+        (type_variable
+          (identifier)))
       (field_declaration
         (identifier)
-        (type_identifier)))))
+        (type_variable
+          (identifier))))))
 
 ================================================================================
 Variant lists
@@ -433,7 +435,7 @@ Variant lists
 
 type Phase = Asleep | Waking | Running
 type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)
-type Option(T) = Some(T) | None
+type Option(a) = Some(a) | None
 type Wrapper = | Wrapped(Int)
 type Delivery =
   | Sent(receipt: ReceiptId, at: Instant)
@@ -475,12 +477,13 @@ type Delivery =
   (type_declaration
     (type_identifier)
     (type_parameters
-      (type_identifier))
+      (identifier))
     (variant_list
       (variant
         (type_identifier)
         (variant_payload
-          (type_identifier)))
+          (type_variable
+            (identifier))))
       (variant
         (type_identifier))))
   (type_declaration
@@ -517,8 +520,8 @@ trait Named {
   fn name(self) -> String
   fn label(self) -> String = "<{self.name()}>"
 }
-pub trait Store(T) {
-  fn get(self, key: Key) -> Option(T) uses {wait}
+pub trait Store(a) {
+  fn get(self, key: Key) -> Option(a) uses {wait}
 }
 
 --------------------------------------------------------------------------------
@@ -551,7 +554,7 @@ pub trait Store(T) {
   (trait_declaration
     (type_identifier)
     (type_parameters
-      (type_identifier))
+      (identifier))
     (trait_body
       (function_signature
         (identifier)
@@ -564,7 +567,8 @@ pub trait Store(T) {
         (generic_type
           (type_identifier)
           (type_arguments
-            (type_identifier)))
+            (type_variable
+              (identifier))))
         (uses_clause
           (effect
             (identifier)))))))
@@ -576,7 +580,7 @@ Impl
 impl Named for Player {
   fn name(self) = self.nick
 }
-impl Show for List(T) { fn show(self) = join(self) }
+impl Show for List(a) { fn show(self) = join(self) }
 
 --------------------------------------------------------------------------------
 
@@ -598,7 +602,8 @@ impl Show for List(T) { fn show(self) = join(self) }
     (generic_type
       (type_identifier)
       (type_arguments
-        (type_identifier)))
+        (type_variable
+          (identifier))))
     (impl_body
       (function_declaration
         (identifier)

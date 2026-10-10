@@ -19,35 +19,48 @@ func (p *parser) sourceFile() *Node {
 // item parses a top-level declaration with its attributes and `pub`.
 func (p *parser) item() *Node {
 	attrs := p.attributes()
-	var pub *Node
+	var pub, opaque *Node
 	if p.at(KwPub) {
 		pub = p.bump()
+		if p.atWord("opaque") {
+			opaque = p.bumpAs(Keyword)
+		}
 	}
-	switch p.kind() {
-	case KwFn:
+	word := ""
+	if p.at(Ident) {
+		word = p.text(p.tok())
+	}
+	if opaque != nil && word != "type" {
+		p.errorExpected("'type'")
+		return errorNode(nonNil(append(attrs, pub, opaque)))
+	}
+	switch {
+	case p.at(KwFn):
 		return p.function(attrs, pub, false)
-	case KwJob:
+	case word == "extern":
+		return p.extern(attrs, pub)
+	case word == "job":
 		return p.job(attrs, pub)
-	case KwEntity:
+	case word == "entity":
 		return p.entity(attrs, pub)
-	case KwView:
+	case word == "view":
 		return p.view(attrs, pub)
-	case KwType:
-		return p.typeDeclaration(attrs, pub)
-	case KwTrait:
+	case word == "type":
+		return p.typeDeclaration(attrs, pub, opaque)
+	case word == "trait":
 		return p.trait(attrs, pub)
-	case KwContract:
+	case word == "contract":
 		return p.contract(attrs, pub)
-	case KwImpl, KwTest:
+	case word == "impl", word == "test":
 		if pub != nil {
-			p.errorAt(pub.Span, "%s declarations can't be pub", p.text(p.tok()))
+			p.errorAt(pub.Span, "%s declarations can't be pub", word)
 			attrs = append(attrs, errorNode([]*Node{pub}))
 		}
-		if p.at(KwImpl) {
+		if word == "impl" {
 			return p.impl(attrs)
 		}
 		return p.test(attrs)
-	case KwImport, KwLet:
+	case word == "import", p.at(KwLet):
 		if len(attrs) > 0 || pub != nil {
 			first := pub
 			if len(attrs) > 0 {
@@ -65,7 +78,7 @@ func (p *parser) item() *Node {
 }
 
 func (p *parser) itemWithoutPrefix() *Node {
-	if p.at(KwImport) {
+	if p.atWord("import") {
 		return p.importDeclaration()
 	}
 	return p.let()
@@ -114,7 +127,7 @@ func (p *parser) declaration(k Kind, attrs []*Node, pub *Node) *builder {
 
 func (p *parser) importDeclaration() *Node {
 	b := p.start(ImportDeclaration)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	path := p.start(ImportPath)
 	path.add(p.expect(Ident))
 	for p.at(Dot) {
@@ -166,6 +179,9 @@ func (p *parser) function(attrs []*Node, pub *Node, inTrait bool) *Node {
 		if p.atWord("uses") && !p.atBreak() {
 			b.field(FieldEffects, p.usesClause())
 		}
+		if p.atWord("where") && !p.atBreak() {
+			b.field(FieldRequirements, p.whereClause())
+		}
 		switch {
 		case p.at(Assign):
 			b.add(p.bump())
@@ -184,6 +200,45 @@ func (p *parser) function(attrs []*Node, pub *Node, inTrait bool) *Node {
 	return b.done(p)
 }
 
+// extern parses `extern fn name(params) -> T uses {…}`, a function implemented
+// by C or by the Go program that embeds Eyelang.
+func (p *parser) extern(attrs []*Node, pub *Node) *Node {
+	b := p.declaration(ExternDeclaration, attrs, pub)
+	b.add(p.bumpAs(Keyword))
+	b.add(p.expect(KwFn))
+	b.field(FieldName, p.expect(Ident))
+	b.field(FieldParameters, p.parameters())
+	if p.at(Arrow) {
+		b.add(p.bump())
+		b.field(FieldReturnType, p.typeExpr())
+	}
+	if p.atWord("uses") && !p.atBreak() {
+		b.field(FieldEffects, p.usesClause())
+	}
+	return b.done(p)
+}
+
+// whereClause parses `where a: Ord + Show, b: Hash`.
+func (p *parser) whereClause() *Node {
+	b := p.start(WhereClause)
+	b.add(p.bumpAs(Keyword))
+	for {
+		r := p.start(Requirement)
+		r.field(FieldName, p.expect(Ident))
+		r.add(p.expect(Colon))
+		r.field(FieldTrait, p.typeExpr())
+		for p.at(Plus) {
+			r.add(p.bump())
+			r.field(FieldTrait, p.typeExpr())
+		}
+		b.add(r.done(p))
+		if !p.at(Comma) {
+			return b.done(p)
+		}
+		b.add(p.bump())
+	}
+}
+
 func (p *parser) parameters() *Node {
 	b := p.start(Parameters)
 	p.delimited(b, LParen, RParen, "", false, p.parameter)
@@ -192,6 +247,9 @@ func (p *parser) parameters() *Node {
 
 func (p *parser) parameter() *Node {
 	b := p.start(Parameter)
+	if p.at(KwMut) {
+		b.add(p.bump())
+	}
 	b.field(FieldName, p.expect(Ident))
 	if p.at(Colon) {
 		b.add(p.bump())
@@ -216,15 +274,11 @@ func (p *parser) usesClause() *Node {
 
 func (p *parser) effect() *Node {
 	b := p.start(Effect)
-	switch {
-	case p.at(Ident):
-		b.field(FieldKind, p.bump())
-	case p.at(KwEntity):
-		b.field(FieldKind, p.bumpAs(Ident))
-	default:
+	if !p.at(Ident) {
 		p.errorExpected("an effect")
 		return b.done(p)
 	}
+	b.field(FieldKind, p.bump())
 	if p.at(Ident) || p.at(TypeIdent) {
 		path := p.start(Path)
 		path.add(p.bump())
@@ -238,7 +292,7 @@ func (p *parser) effect() *Node {
 
 func (p *parser) job(attrs []*Node, pub *Node) *Node {
 	b := p.declaration(JobDeclaration, attrs, pub)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	b.field(FieldName, p.expect(Ident))
 	b.field(FieldParameters, p.parameters())
 	p.withNewlines(false, func() {
@@ -256,7 +310,7 @@ func (p *parser) job(attrs []*Node, pub *Node) *Node {
 
 func (p *parser) entity(attrs []*Node, pub *Node) *Node {
 	b := p.declaration(EntityDeclaration, attrs, pub)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	b.field(FieldName, p.expect(TypeIdent))
 	b.field(FieldParameters, p.parameters())
 	body := p.start(EntityBody)
@@ -270,9 +324,9 @@ func (p *parser) entity(attrs []*Node, pub *Node) *Node {
 func (p *parser) entityMember() *Node {
 	attrs := p.attributes()
 	switch {
-	case p.at(KwState):
+	case p.atWord("state"):
 		b := p.declaration(StateDeclaration, attrs, nil)
-		b.add(p.bump())
+		b.add(p.bumpAs(Keyword))
 		b.field(FieldName, p.expect(Ident))
 		b.add(p.expect(Colon))
 		b.field(FieldType, p.typeExpr())
@@ -308,7 +362,7 @@ func (p *parser) entityMember() *Node {
 
 func (p *parser) view(attrs []*Node, pub *Node) *Node {
 	b := p.declaration(ViewDeclaration, attrs, pub)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	b.field(FieldName, p.expect(Ident))
 	b.add(p.expect(Assign))
 	b.field(FieldValue, p.expr())
@@ -318,14 +372,13 @@ func (p *parser) view(attrs []*Node, pub *Node) *Node {
 // typeDeclaration parses `type Name(T) = …`. The value is a variant list if it
 // has a `|`, and otherwise a type: `type T = A(Int)` is an alias of a generic
 // type, and `type T = | A(Int)` declares one variant.
-func (p *parser) typeDeclaration(attrs []*Node, pub *Node) *Node {
+func (p *parser) typeDeclaration(attrs []*Node, pub, opaque *Node) *Node {
 	b := p.declaration(TypeDeclaration, attrs, pub)
-	b.add(p.bump())
+	b.add(opaque)
+	b.add(p.bumpAs(Keyword))
 	b.field(FieldName, p.expect(TypeIdent))
 	if p.at(LParen) {
-		params := p.start(TypeParameters)
-		p.delimited(params, LParen, RParen, "a type parameter", true, func() *Node { return p.expect(TypeIdent) })
-		b.field(FieldTypeParameters, params.done(p))
+		b.field(FieldTypeParameters, p.typeParameters())
 	}
 	b.add(p.expect(Assign))
 
@@ -344,6 +397,13 @@ func (p *parser) typeDeclaration(attrs []*Node, pub *Node) *Node {
 		b.field(FieldValue, p.typeExpr())
 	}
 	return b.done(p)
+}
+
+// typeParameters parses `(a, b)`.
+func (p *parser) typeParameters() *Node {
+	params := p.start(TypeParameters)
+	p.delimited(params, LParen, RParen, "a type parameter", true, func() *Node { return p.expect(Ident) })
+	return params.done(p)
 }
 
 // variantList parses `A | B(Int) | C(x: Int)`, starting after first if it
@@ -410,12 +470,10 @@ func (p *parser) fieldDeclaration() *Node {
 
 func (p *parser) trait(attrs []*Node, pub *Node) *Node {
 	b := p.declaration(TraitDeclaration, attrs, pub)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	b.field(FieldName, p.expect(TypeIdent))
 	if p.at(LParen) {
-		params := p.start(TypeParameters)
-		p.delimited(params, LParen, RParen, "a type parameter", true, func() *Node { return p.expect(TypeIdent) })
-		b.field(FieldTypeParameters, params.done(p))
+		b.field(FieldTypeParameters, p.typeParameters())
 	}
 	body := p.start(TraitBody)
 	body.add(p.expect(LBrace))
@@ -439,13 +497,19 @@ func (p *parser) member(inTrait bool) *Node {
 	return errorNode(append(nonNil(append(attrs, pub)), p.skipLineNodes()...))
 }
 
+// impl parses `impl Trait for Type { … }` and `impl Type { … }`.
 func (p *parser) impl(attrs []*Node) *Node {
 	b := p.declaration(ImplDeclaration, attrs, nil)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	p.withNewlines(false, func() {
-		b.field(FieldTrait, p.typeExpr())
-		b.add(p.expect(KwFor))
-		b.field(FieldType, p.typeExpr())
+		first := p.typeExpr()
+		if p.at(KwFor) {
+			b.field(FieldTrait, first)
+			b.add(p.bump())
+			b.field(FieldType, p.typeExpr())
+		} else {
+			b.field(FieldType, first)
+		}
 	})
 	body := p.start(ImplBody)
 	body.add(p.expect(LBrace))
@@ -457,7 +521,7 @@ func (p *parser) impl(attrs []*Node) *Node {
 
 func (p *parser) contract(attrs []*Node, pub *Node) *Node {
 	b := p.declaration(ContractDeclaration, attrs, pub)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	b.field(FieldName, p.expect(TypeIdent))
 	body := p.start(ContractBody)
 	body.add(p.expect(LBrace))
@@ -498,7 +562,7 @@ func (p *parser) contractMember() *Node {
 
 func (p *parser) test(attrs []*Node) *Node {
 	b := p.declaration(TestDeclaration, attrs, nil)
-	b.add(p.bump())
+	b.add(p.bumpAs(Keyword))
 	b.field(FieldName, p.stringLiteral())
 	b.field(FieldBody, p.block())
 	return b.done(p)

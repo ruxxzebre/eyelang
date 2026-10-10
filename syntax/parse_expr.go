@@ -7,9 +7,10 @@ const (
 	precAnd      = 3 // &&
 	precEquality = 4 // == !=
 	precCompare  = 5 // < <= > >=
-	precPipe     = 6 // |>
-	precAdd      = 7 // + -
-	precMultiply = 8 // * / %
+	precRange    = 6 // .. ..=
+	precPipe     = 7 // |>
+	precAdd      = 8 // + -
+	precMultiply = 9 // * / %
 )
 
 func binaryPrec(k Kind) (prec int, rightAssoc bool) {
@@ -24,6 +25,8 @@ func binaryPrec(k Kind) (prec int, rightAssoc bool) {
 		return precEquality, false
 	case Lt, LtEq, Gt, GtEq:
 		return precCompare, false
+	case DotDot, DotDotEq:
+		return precRange, false
 	case PipeGt:
 		return precPipe, false
 	case Plus, Minus:
@@ -37,37 +40,48 @@ func binaryPrec(k Kind) (prec int, rightAssoc bool) {
 // startsExpr reports whether the current token can start an expression.
 func (p *parser) startsExpr() bool {
 	switch p.kind() {
-	case Ident, TypeIdent, Underscore, Int, Float, Date, Time, StringStart, KwTrue, KwFalse,
-		LParen, LBracket, LBrace, KwFn, KwIf, KwMatch, KwStart, Minus, Bang:
+	case Ident, TypeIdent, Underscore, Int, Float, Date, Time, Char, StringStart, KwTrue, KwFalse,
+		LParen, LBracket, LBrace, KwFn, KwIf, KwMatch, Minus, Bang:
 		return true
 	}
 	return false
 }
 
 // expr parses an expression.
-func (p *parser) expr() *Node { return p.binary(precDefault) }
+func (p *parser) expr() *Node { return p.binary(precDefault, false) }
 
-// binary parses operators that bind at least as tightly as minPrec.
-func (p *parser) binary(minPrec int) *Node {
+// binary parses operators that bind at least as tightly as minPrec. With
+// openRange, a `..` directly before `]` is left for a slice like `xs[i..]`;
+// that only applies at the top of an index, where no looser operator is
+// waiting for its right side.
+func (p *parser) binary(minPrec int, openRange bool) *Node {
 	left := p.unary()
 	for {
-		prec, rightAssoc := binaryPrec(p.kind())
+		k := p.kind()
+		prec, rightAssoc := binaryPrec(k)
 		if prec == 0 || prec < minPrec || p.atBreak() {
 			return left
 		}
-		b := wrap(BinaryExpression, FieldLeft, left)
+		if openRange && k == DotDot && p.peek(1).Kind == RBracket {
+			return left
+		}
+		kind, leftField, rightField := BinaryExpression, FieldLeft, FieldRight
+		if k == DotDot || k == DotDotEq {
+			kind, leftField, rightField = RangeExpression, FieldStart, FieldEnd
+		}
+		b := wrap(kind, leftField, left)
 		b.field(FieldOperator, p.bump())
 		next := prec + 1
 		if rightAssoc {
 			next = prec
 		}
-		b.field(FieldRight, p.binary(next))
+		b.field(rightField, p.binary(next, false))
 		left = b.done(p)
 	}
 }
 
-// unary parses prefix operators and `start`, which bind looser than postfix
-// operators and tighter than binary ones.
+// unary parses prefix operators, which bind looser than postfix operators and
+// tighter than binary ones.
 func (p *parser) unary() *Node {
 	switch p.kind() {
 	case Minus, Bang:
@@ -75,29 +89,8 @@ func (p *parser) unary() *Node {
 		b.field(FieldOperator, p.bump())
 		b.field(FieldOperand, p.unary())
 		return b.done(p)
-	case KwStart:
-		return p.startExpression()
 	}
 	return p.postfix(p.primary(), func(*Node) bool { return true })
-}
-
-// startExpression parses `start job(args)` with an optional `after d` or
-// `at t`. The operand must be a call; until it is one, the start can't end, so
-// a line break doesn't stop it.
-func (p *parser) startExpression() *Node {
-	b := p.start(StartExpression)
-	b.add(p.bump())
-	call := p.postfix(p.primary(), func(n *Node) bool { return n.Kind == CallExpression })
-	if call.Kind != CallExpression {
-		p.errorAt(call.Span, "start needs a job call, such as start digest(day)")
-		call = errorNode([]*Node{call})
-	}
-	b.field(FieldCall, call)
-	if (p.atWord("after") || p.atWord("at")) && !p.atBreak() {
-		b.field(FieldTiming, p.bumpAs(Keyword))
-		b.field(FieldTime, p.unary())
-	}
-	return b.done(p)
 }
 
 // postfix parses calls, waiting calls, field access, indexing and `?` after
@@ -126,7 +119,7 @@ func (p *parser) postfix(e *Node, canEnd func(*Node) bool) *Node {
 		case t.Kind == LBracket && !brk:
 			b := wrap(IndexExpression, FieldValue, e)
 			b.add(p.bump())
-			p.withNewlines(false, func() { b.field(FieldIndex, p.expr()) })
+			p.withNewlines(false, func() { b.field(FieldIndex, p.index()) })
 			b.add(p.expectClose(RBracket))
 			e = b.done(p)
 		case t.Kind == Question && t.Flags&SpaceBefore == 0:
@@ -139,17 +132,41 @@ func (p *parser) postfix(e *Node, canEnd func(*Node) bool) *Node {
 	}
 }
 
-// arguments parses `(a, name: b)`. `in` and `for` may be labels.
+// index parses what goes between the brackets of `xs[…]`: an index, a range,
+// or an open range `..n`, `..=n` or `i..`.
+func (p *parser) index() *Node {
+	if p.at(DotDot) || p.at(DotDotEq) {
+		b := p.start(RangeExpression)
+		b.field(FieldOperator, p.bump())
+		b.field(FieldEnd, p.expr())
+		return b.done(p)
+	}
+	e := p.binary(precDefault, true)
+	if p.at(DotDot) && p.peek(1).Kind == RBracket {
+		b := wrap(RangeExpression, FieldStart, e)
+		b.field(FieldOperator, p.bump())
+		return b.done(p)
+	}
+	return e
+}
+
+// arguments parses `(a, mut b, name: c)`. `in` and `for` may be labels.
 func (p *parser) arguments() *Node {
 	b := p.start(Arguments)
 	p.delimited(b, LParen, RParen, "", false, func() *Node {
 		switch p.kind() {
+		case KwMut:
+			return p.mutArgument()
 		case Ident, KwIn, KwFor:
 			if p.peek(1).Kind == Colon {
 				arg := p.start(NamedArgument)
 				arg.field(FieldName, p.bumpAs(Ident))
 				arg.add(p.bump())
-				arg.field(FieldValue, p.expr())
+				if p.at(KwMut) {
+					arg.field(FieldValue, p.mutArgument())
+				} else {
+					arg.field(FieldValue, p.expr())
+				}
 				return arg.done(p)
 			}
 		}
@@ -158,9 +175,17 @@ func (p *parser) arguments() *Node {
 	return b.done(p)
 }
 
+// mutArgument parses `mut x`: a variable the call may change.
+func (p *parser) mutArgument() *Node {
+	b := p.start(MutArgument)
+	b.add(p.bump())
+	b.field(FieldValue, p.expr())
+	return b.done(p)
+}
+
 func (p *parser) primary() *Node {
 	switch p.kind() {
-	case Ident, TypeIdent:
+	case Ident, TypeIdent, Char:
 		return p.bump()
 	case Underscore:
 		b := p.start(Placeholder)
@@ -199,9 +224,28 @@ func (p *parser) primary() *Node {
 			b.add(p.bump(), p.bump())
 			return b.done(p)
 		}
+		// `(e)` groups; `(a, b)` is a tuple, which needs at least two elements.
 		b := p.start(ParenthesizedExpression)
 		b.add(p.bump())
-		p.withNewlines(false, func() { b.add(p.expr()) })
+		p.withNewlines(false, func() {
+			b.add(p.expr())
+			if !p.at(Comma) {
+				return
+			}
+			b.kind = Tuple
+			more := 0
+			for p.at(Comma) {
+				b.add(p.bump())
+				if p.at(RParen) {
+					break
+				}
+				b.add(p.expr())
+				more++
+			}
+			if more == 0 {
+				p.errorExpected("a second element; a tuple has at least two")
+			}
+		})
 		b.add(p.expectClose(RParen))
 		return b.done(p)
 	case LBracket:
@@ -304,11 +348,11 @@ func (p *parser) braces() *Node {
 		}
 		first := p.expr()
 		switch {
-		case p.at(KwWith):
+		case p.atWord("with"):
 			b := p.start(RecordUpdate)
 			b.add(open)
 			b.field(FieldBase, first)
-			b.add(p.bump())
+			b.add(p.bumpAs(Keyword))
 			if p.commaList(b, RBrace, p.fieldInitializer) == 0 {
 				p.errorExpected("a field")
 			}

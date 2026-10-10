@@ -3,18 +3,48 @@ package syntax
 // typeExpr parses a type: `Int`, `List(T)`, `notify.Delivery`, `()`,
 // `{ name: String }` or `fn(Int) -> Bool`.
 func (p *parser) typeExpr() *Node {
+	if p.atWord("dyn") {
+		b := p.start(DynType)
+		b.add(p.bumpAs(Keyword))
+		b.field(FieldTrait, p.typeExpr())
+		return b.done(p)
+	}
 	switch p.kind() {
 	case TypeIdent:
 		return p.typeArguments(p.bump())
 	case Ident:
+		if p.peek(1).Kind != Dot {
+			b := p.start(TypeVariable)
+			b.add(p.bump())
+			return b.done(p)
+		}
 		b := p.start(QualifiedType)
 		b.field(FieldModule, p.bump())
-		b.add(p.expect(Dot))
+		b.add(p.bump())
 		b.field(FieldName, p.expect(TypeIdent))
 		return p.typeArguments(b.done(p))
 	case LParen:
+		// `()` is the unit type; `(A, B)` a tuple type, with at least two.
 		b := p.start(UnitType)
 		b.add(p.bump())
+		if !p.at(RParen) {
+			b.kind = TupleType
+			p.withNewlines(false, func() {
+				b.add(p.typeExpr())
+				more := 0
+				for p.at(Comma) {
+					b.add(p.bump())
+					if p.at(RParen) {
+						break
+					}
+					b.add(p.typeExpr())
+					more++
+				}
+				if more == 0 {
+					p.errorExpected("',' and a second type; a tuple type has at least two")
+				}
+			})
+		}
 		b.add(p.expectClose(RParen))
 		return b.done(p)
 	case LBrace:
@@ -63,7 +93,9 @@ func (p *parser) pattern() *Node {
 
 func (p *parser) primaryPattern() *Node {
 	switch p.kind() {
-	case Ident, Int, Float:
+	case Int, Char:
+		return p.rangePattern(p.bump())
+	case Ident, Float:
 		return p.bump()
 	case Underscore:
 		b := p.start(Wildcard)
@@ -76,8 +108,27 @@ func (p *parser) primaryPattern() *Node {
 		b.add(p.bump())
 		return b.done(p)
 	case LParen:
+		// `()` matches unit; `(a, b)` a tuple, with at least two elements.
 		b := p.start(Unit)
 		b.add(p.bump())
+		if !p.at(RParen) {
+			b.kind = TuplePattern
+			p.withNewlines(false, func() {
+				b.add(p.pattern())
+				more := 0
+				for p.at(Comma) {
+					b.add(p.bump())
+					if p.at(RParen) {
+						break
+					}
+					b.add(p.pattern())
+					more++
+				}
+				if more == 0 {
+					p.errorExpected("',' and a second pattern; a tuple has at least two elements")
+				}
+			})
+		}
 		b.add(p.expectClose(RParen))
 		return b.done(p)
 	case Minus:
@@ -88,7 +139,7 @@ func (p *parser) primaryPattern() *Node {
 		} else {
 			p.errorExpected("a number")
 		}
-		return b.done(p)
+		return p.rangePattern(b.done(p))
 	case TypeIdent:
 		b := p.start(VariantPattern)
 		b.field(FieldName, p.bump())
@@ -135,6 +186,32 @@ func (p *parser) primaryPattern() *Node {
 	}
 	p.errorExpected("a pattern")
 	return p.missing(Ident)
+}
+
+// rangePattern parses the rest of `'a'..='z'` or `0..10` after its start, if
+// a range follows. Bounds are integers, characters and negative numbers.
+func (p *parser) rangePattern(start *Node) *Node {
+	if !p.at(DotDot) && !p.at(DotDotEq) {
+		return start
+	}
+	b := wrap(RangePattern, FieldStart, start)
+	b.field(FieldOperator, p.bump())
+	switch p.kind() {
+	case Int, Char:
+		b.field(FieldEnd, p.bump())
+	case Minus:
+		end := p.start(NegativeLiteral)
+		end.add(p.bump())
+		if p.at(Int) || p.at(Float) {
+			end.add(p.bump())
+		} else {
+			p.errorExpected("a number")
+		}
+		b.field(FieldEnd, end.done(p))
+	default:
+		p.errorExpected("the end of the range")
+	}
+	return b.done(p)
 }
 
 func (p *parser) fieldPattern() *Node {

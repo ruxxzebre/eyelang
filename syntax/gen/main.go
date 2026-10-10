@@ -44,6 +44,7 @@ var tokens = map[string]string{
 	"float":           "Float",
 	"date":            "Date",
 	"time":            "Time",
+	"char":            "Char",
 	"string_content":  "StringText",
 	"escape_sequence": "StringEscape",
 	"comment":         "Comment",

@@ -17,11 +17,13 @@ const (
 	ContractBody                                        // contract_body
 	ContractDeclaration                                 // contract_declaration
 	Duration                                            // duration
+	DynType                                             // dyn_type
 	Effect                                              // effect
 	EmptyBraces                                         // empty_braces
 	EntityBody                                          // entity_body
 	EntityDeclaration                                   // entity_declaration
 	EventDeclaration                                    // event_declaration
+	ExternDeclaration                                   // extern_declaration
 	FieldDeclaration                                    // field_declaration
 	FieldExpression                                     // field_expression
 	FieldInitializer                                    // field_initializer
@@ -51,6 +53,7 @@ const (
 	MatchBody                                           // match_body
 	MatchExpression                                     // match_expression
 	Migration                                           // migration
+	MutArgument                                         // mut_argument
 	NamedArgument                                       // named_argument
 	NegativeLiteral                                     // negative_literal
 	OrPattern                                           // or_pattern
@@ -62,26 +65,32 @@ const (
 	Placeholder                                         // placeholder
 	QualifiedType                                       // qualified_type
 	QueryDeclaration                                    // query_declaration
+	RangeExpression                                     // range_expression
+	RangePattern                                        // range_pattern
 	Record                                              // record
 	RecordPattern                                       // record_pattern
 	RecordType                                          // record_type
 	RecordUpdate                                        // record_update
+	Requirement                                         // requirement
 	RestPattern                                         // rest_pattern
 	ReturnStatement                                     // return_statement
 	ShorthandField                                      // shorthand_field
 	ShorthandFieldPattern                               // shorthand_field_pattern
 	Size                                                // size
 	SourceFile                                          // source_file
-	StartExpression                                     // start_expression
 	StateDeclaration                                    // state_declaration
 	String                                              // string
 	TestDeclaration                                     // test_declaration
 	TraitBody                                           // trait_body
 	TraitDeclaration                                    // trait_declaration
 	TryExpression                                       // try_expression
+	Tuple                                               // tuple
+	TuplePattern                                        // tuple_pattern
+	TupleType                                           // tuple_type
 	TypeArguments                                       // type_arguments
 	TypeDeclaration                                     // type_declaration
 	TypeParameters                                      // type_parameters
+	TypeVariable                                        // type_variable
 	UnaryExpression                                     // unary_expression
 	Unit                                                // unit
 	UnitType                                            // unit_type
@@ -93,6 +102,7 @@ const (
 	VariantPayload                                      // variant_payload
 	ViewDeclaration                                     // view_declaration
 	WaitingCallExpression                               // waiting_call_expression
+	WhereClause                                         // where_clause
 	WhileStatement                                      // while_statement
 	Wildcard                                            // wildcard
 	WithStatement                                       // with_statement
@@ -114,11 +124,13 @@ var nodeNames = map[Kind]string{
 	ContractBody:            "contract_body",
 	ContractDeclaration:     "contract_declaration",
 	Duration:                "duration",
+	DynType:                 "dyn_type",
 	Effect:                  "effect",
 	EmptyBraces:             "empty_braces",
 	EntityBody:              "entity_body",
 	EntityDeclaration:       "entity_declaration",
 	EventDeclaration:        "event_declaration",
+	ExternDeclaration:       "extern_declaration",
 	FieldDeclaration:        "field_declaration",
 	FieldExpression:         "field_expression",
 	FieldInitializer:        "field_initializer",
@@ -148,6 +160,7 @@ var nodeNames = map[Kind]string{
 	MatchBody:               "match_body",
 	MatchExpression:         "match_expression",
 	Migration:               "migration",
+	MutArgument:             "mut_argument",
 	NamedArgument:           "named_argument",
 	NegativeLiteral:         "negative_literal",
 	OrPattern:               "or_pattern",
@@ -159,26 +172,32 @@ var nodeNames = map[Kind]string{
 	Placeholder:             "placeholder",
 	QualifiedType:           "qualified_type",
 	QueryDeclaration:        "query_declaration",
+	RangeExpression:         "range_expression",
+	RangePattern:            "range_pattern",
 	Record:                  "record",
 	RecordPattern:           "record_pattern",
 	RecordType:              "record_type",
 	RecordUpdate:            "record_update",
+	Requirement:             "requirement",
 	RestPattern:             "rest_pattern",
 	ReturnStatement:         "return_statement",
 	ShorthandField:          "shorthand_field",
 	ShorthandFieldPattern:   "shorthand_field_pattern",
 	Size:                    "size",
 	SourceFile:              "source_file",
-	StartExpression:         "start_expression",
 	StateDeclaration:        "state_declaration",
 	String:                  "string",
 	TestDeclaration:         "test_declaration",
 	TraitBody:               "trait_body",
 	TraitDeclaration:        "trait_declaration",
 	TryExpression:           "try_expression",
+	Tuple:                   "tuple",
+	TuplePattern:            "tuple_pattern",
+	TupleType:               "tuple_type",
 	TypeArguments:           "type_arguments",
 	TypeDeclaration:         "type_declaration",
 	TypeParameters:          "type_parameters",
+	TypeVariable:            "type_variable",
 	UnaryExpression:         "unary_expression",
 	Unit:                    "unit",
 	UnitType:                "unit_type",
@@ -190,6 +209,7 @@ var nodeNames = map[Kind]string{
 	VariantPayload:          "variant_payload",
 	ViewDeclaration:         "view_declaration",
 	WaitingCallExpression:   "waiting_call_expression",
+	WhereClause:             "where_clause",
 	WhileStatement:          "while_statement",
 	Wildcard:                "wildcard",
 	WithStatement:           "with_statement",
@@ -203,12 +223,12 @@ const (
 	FieldArguments
 	FieldBase
 	FieldBody
-	FieldCall
 	FieldCondition
 	FieldConsequence
 	FieldDate
 	FieldDefault
 	FieldEffects
+	FieldEnd
 	FieldField
 	FieldFunction
 	FieldGuard
@@ -226,11 +246,12 @@ const (
 	FieldPath
 	FieldPattern
 	FieldPayload
+	FieldRequirements
 	FieldReturnType
 	FieldRight
+	FieldStart
 	FieldTarget
 	FieldTime
-	FieldTiming
 	FieldTopic
 	FieldTrait
 	FieldType
@@ -247,12 +268,12 @@ var fieldNames = [...]string{
 	FieldArguments:      "arguments",
 	FieldBase:           "base",
 	FieldBody:           "body",
-	FieldCall:           "call",
 	FieldCondition:      "condition",
 	FieldConsequence:    "consequence",
 	FieldDate:           "date",
 	FieldDefault:        "default",
 	FieldEffects:        "effects",
+	FieldEnd:            "end",
 	FieldField:          "field",
 	FieldFunction:       "function",
 	FieldGuard:          "guard",
@@ -270,11 +291,12 @@ var fieldNames = [...]string{
 	FieldPath:           "path",
 	FieldPattern:        "pattern",
 	FieldPayload:        "payload",
+	FieldRequirements:   "requirements",
 	FieldReturnType:     "return_type",
 	FieldRight:          "right",
+	FieldStart:          "start",
 	FieldTarget:         "target",
 	FieldTime:           "time",
-	FieldTiming:         "timing",
 	FieldTopic:          "topic",
 	FieldTrait:          "trait",
 	FieldType:           "type",
@@ -288,7 +310,7 @@ var fieldNames = [...]string{
 // IsExpression reports whether nodes of this kind are expressions (_expression in the grammar).
 func (k Kind) IsExpression() bool {
 	switch k {
-	case BinaryExpression, Boolean, CallExpression, Date, Duration, EmptyBraces, FieldExpression, Float, Ident, IfExpression, IndexExpression, Instant, Int, Lambda, List, Map, MatchExpression, ParenthesizedExpression, Placeholder, Record, RecordUpdate, Size, StartExpression, String, Time, TryExpression, TypeIdent, UnaryExpression, Unit, WaitingCallExpression, ZonedTime:
+	case BinaryExpression, Boolean, CallExpression, Char, Date, Duration, EmptyBraces, FieldExpression, Float, Ident, IfExpression, IndexExpression, Instant, Int, Lambda, List, Map, MatchExpression, ParenthesizedExpression, Placeholder, RangeExpression, Record, RecordUpdate, Size, String, Time, TryExpression, Tuple, TypeIdent, UnaryExpression, Unit, WaitingCallExpression, ZonedTime:
 		return true
 	}
 	return false
@@ -297,7 +319,7 @@ func (k Kind) IsExpression() bool {
 // IsPattern reports whether nodes of this kind are patterns (_pattern in the grammar).
 func (k Kind) IsPattern() bool {
 	switch k {
-	case Boolean, Float, Ident, Int, ListPattern, NegativeLiteral, OrPattern, RecordPattern, String, Unit, VariantPattern, Wildcard:
+	case Boolean, Char, Float, Ident, Int, ListPattern, NegativeLiteral, OrPattern, RangePattern, RecordPattern, String, TuplePattern, Unit, VariantPattern, Wildcard:
 		return true
 	}
 	return false
@@ -306,7 +328,7 @@ func (k Kind) IsPattern() bool {
 // IsType reports whether nodes of this kind are types (_type in the grammar).
 func (k Kind) IsType() bool {
 	switch k {
-	case FunctionType, GenericType, QualifiedType, RecordType, TypeIdent, UnitType:
+	case DynType, FunctionType, GenericType, QualifiedType, RecordType, TupleType, TypeIdent, TypeVariable, UnitType:
 		return true
 	}
 	return false

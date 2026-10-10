@@ -27,7 +27,7 @@ var extraNames = map[Kind]string{
 // tree-sitter grammar. Punctuation, keywords and quotes are anonymous.
 func (k Kind) IsNamed() bool {
 	switch k {
-	case Ident, TypeIdent, Int, Float, Date, Time, StringText, StringEscape, UnitName, Comment, Illegal:
+	case Ident, TypeIdent, Int, Float, Date, Time, Char, StringText, StringEscape, UnitName, Comment, Illegal:
 		return true
 	}
 	return k >= firstNode

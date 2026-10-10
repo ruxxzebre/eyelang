@@ -16,7 +16,7 @@ func AsArguments(n *Node) (ArgumentsView, bool) {
 	return ArgumentsView{n}, true
 }
 
-// Items returns the named children that have no field (_expression, named_argument).
+// Items returns the named children that have no field (_expression, mut_argument, named_argument).
 func (v ArgumentsView) Items() []*Node { return v.Node.unfielded() }
 
 // AssignmentView is a typed view of an assignment node.
@@ -30,8 +30,11 @@ func AsAssignment(n *Node) (AssignmentView, bool) {
 	return AssignmentView{n}, true
 }
 
-// Left returns the left child (identifier).
+// Left returns the left child (_expression).
 func (v AssignmentView) Left() *Node { return v.Node.ChildByField(FieldLeft) }
+
+// Operator returns the operator child ().
+func (v AssignmentView) Operator() *Node { return v.Node.ChildByField(FieldOperator) }
 
 // Right returns the right child (_expression).
 func (v AssignmentView) Right() *Node { return v.Node.ChildByField(FieldRight) }
@@ -211,6 +214,20 @@ func (v DurationView) Unit() *Node { return v.Node.ChildByField(FieldUnit) }
 // Value returns the value child (float, integer).
 func (v DurationView) Value() *Node { return v.Node.ChildByField(FieldValue) }
 
+// DynTypeView is a typed view of a dyn_type node.
+type DynTypeView struct{ Node *Node }
+
+// AsDynType returns a view of n if it is a dyn_type.
+func AsDynType(n *Node) (DynTypeView, bool) {
+	if n == nil || n.Kind != DynType {
+		return DynTypeView{}, false
+	}
+	return DynTypeView{n}, true
+}
+
+// Trait returns the trait child (_type).
+func (v DynTypeView) Trait() *Node { return v.Node.ChildByField(FieldTrait) }
+
 // EffectView is a typed view of an effect node.
 type EffectView struct{ Node *Node }
 
@@ -298,6 +315,32 @@ func (v EventDeclarationView) Type() *Node { return v.Node.ChildByField(FieldTyp
 
 // Items returns the named children that have no field (attribute).
 func (v EventDeclarationView) Items() []*Node { return v.Node.unfielded() }
+
+// ExternDeclarationView is a typed view of an extern_declaration node.
+type ExternDeclarationView struct{ Node *Node }
+
+// AsExternDeclaration returns a view of n if it is an extern_declaration.
+func AsExternDeclaration(n *Node) (ExternDeclarationView, bool) {
+	if n == nil || n.Kind != ExternDeclaration {
+		return ExternDeclarationView{}, false
+	}
+	return ExternDeclarationView{n}, true
+}
+
+// Effects returns the effects child (uses_clause), or nil.
+func (v ExternDeclarationView) Effects() *Node { return v.Node.ChildByField(FieldEffects) }
+
+// Name returns the name child (identifier).
+func (v ExternDeclarationView) Name() *Node { return v.Node.ChildByField(FieldName) }
+
+// Parameters returns the parameters child (parameters).
+func (v ExternDeclarationView) Parameters() *Node { return v.Node.ChildByField(FieldParameters) }
+
+// ReturnType returns the return_type child (_type), or nil.
+func (v ExternDeclarationView) ReturnType() *Node { return v.Node.ChildByField(FieldReturnType) }
+
+// Items returns the named children that have no field (attribute).
+func (v ExternDeclarationView) Items() []*Node { return v.Node.unfielded() }
 
 // FieldDeclarationView is a typed view of a field_declaration node.
 type FieldDeclarationView struct{ Node *Node }
@@ -410,6 +453,9 @@ func (v FunctionDeclarationView) Name() *Node { return v.Node.ChildByField(Field
 // Parameters returns the parameters child (parameters).
 func (v FunctionDeclarationView) Parameters() *Node { return v.Node.ChildByField(FieldParameters) }
 
+// Requirements returns the requirements child (where_clause), or nil.
+func (v FunctionDeclarationView) Requirements() *Node { return v.Node.ChildByField(FieldRequirements) }
+
 // ReturnType returns the return_type child (_type), or nil.
 func (v FunctionDeclarationView) ReturnType() *Node { return v.Node.ChildByField(FieldReturnType) }
 
@@ -435,6 +481,9 @@ func (v FunctionSignatureView) Name() *Node { return v.Node.ChildByField(FieldNa
 
 // Parameters returns the parameters child (parameters).
 func (v FunctionSignatureView) Parameters() *Node { return v.Node.ChildByField(FieldParameters) }
+
+// Requirements returns the requirements child (where_clause), or nil.
+func (v FunctionSignatureView) Requirements() *Node { return v.Node.ChildByField(FieldRequirements) }
 
 // ReturnType returns the return_type child (_type), or nil.
 func (v FunctionSignatureView) ReturnType() *Node { return v.Node.ChildByField(FieldReturnType) }
@@ -538,7 +587,7 @@ func AsImplDeclaration(n *Node) (ImplDeclarationView, bool) {
 // Body returns the body child (impl_body).
 func (v ImplDeclarationView) Body() *Node { return v.Node.ChildByField(FieldBody) }
 
-// Trait returns the trait child (_type).
+// Trait returns the trait child (_type), or nil.
 func (v ImplDeclarationView) Trait() *Node { return v.Node.ChildByField(FieldTrait) }
 
 // Type returns the type child (_type).
@@ -754,7 +803,7 @@ func AsMapEntry(n *Node) (MapEntryView, bool) {
 	return MapEntryView{n}, true
 }
 
-// Key returns the key child (integer, parenthesized_expression, string).
+// Key returns the key child (date, integer, parenthesized_expression, string, time).
 func (v MapEntryView) Key() *Node { return v.Node.ChildByField(FieldKey) }
 
 // Value returns the value child (_expression).
@@ -834,6 +883,20 @@ func (v MigrationView) Version() *Node { return v.Node.ChildByField(FieldVersion
 // Items returns the named children that have no field (attribute).
 func (v MigrationView) Items() []*Node { return v.Node.unfielded() }
 
+// MutArgumentView is a typed view of a mut_argument node.
+type MutArgumentView struct{ Node *Node }
+
+// AsMutArgument returns a view of n if it is a mut_argument.
+func AsMutArgument(n *Node) (MutArgumentView, bool) {
+	if n == nil || n.Kind != MutArgument {
+		return MutArgumentView{}, false
+	}
+	return MutArgumentView{n}, true
+}
+
+// Value returns the value child (_expression).
+func (v MutArgumentView) Value() *Node { return v.Node.ChildByField(FieldValue) }
+
 // NamedArgumentView is a typed view of a named_argument node.
 type NamedArgumentView struct{ Node *Node }
 
@@ -848,7 +911,7 @@ func AsNamedArgument(n *Node) (NamedArgumentView, bool) {
 // Name returns the name child (identifier).
 func (v NamedArgumentView) Name() *Node { return v.Node.ChildByField(FieldName) }
 
-// Value returns the value child (_expression).
+// Value returns the value child (_expression, mut_argument).
 func (v NamedArgumentView) Value() *Node { return v.Node.ChildByField(FieldValue) }
 
 // NegativeLiteralView is a typed view of a negative_literal node.
@@ -1009,6 +1072,46 @@ func (v QueryDeclarationView) ReturnType() *Node { return v.Node.ChildByField(Fi
 // Items returns the named children that have no field (attribute).
 func (v QueryDeclarationView) Items() []*Node { return v.Node.unfielded() }
 
+// RangeExpressionView is a typed view of a range_expression node.
+type RangeExpressionView struct{ Node *Node }
+
+// AsRangeExpression returns a view of n if it is a range_expression.
+func AsRangeExpression(n *Node) (RangeExpressionView, bool) {
+	if n == nil || n.Kind != RangeExpression {
+		return RangeExpressionView{}, false
+	}
+	return RangeExpressionView{n}, true
+}
+
+// End returns the end child (_expression), or nil.
+func (v RangeExpressionView) End() *Node { return v.Node.ChildByField(FieldEnd) }
+
+// Operator returns the operator child ().
+func (v RangeExpressionView) Operator() *Node { return v.Node.ChildByField(FieldOperator) }
+
+// Start returns the start child (_expression), or nil.
+func (v RangeExpressionView) Start() *Node { return v.Node.ChildByField(FieldStart) }
+
+// RangePatternView is a typed view of a range_pattern node.
+type RangePatternView struct{ Node *Node }
+
+// AsRangePattern returns a view of n if it is a range_pattern.
+func AsRangePattern(n *Node) (RangePatternView, bool) {
+	if n == nil || n.Kind != RangePattern {
+		return RangePatternView{}, false
+	}
+	return RangePatternView{n}, true
+}
+
+// End returns the end child (char, integer, negative_literal).
+func (v RangePatternView) End() *Node { return v.Node.ChildByField(FieldEnd) }
+
+// Operator returns the operator child ().
+func (v RangePatternView) Operator() *Node { return v.Node.ChildByField(FieldOperator) }
+
+// Start returns the start child (char, integer, negative_literal).
+func (v RangePatternView) Start() *Node { return v.Node.ChildByField(FieldStart) }
+
 // RecordView is a typed view of a record node.
 type RecordView struct{ Node *Node }
 
@@ -1067,6 +1170,23 @@ func (v RecordUpdateView) Base() *Node { return v.Node.ChildByField(FieldBase) }
 
 // Items returns the named children that have no field (field_initializer).
 func (v RecordUpdateView) Items() []*Node { return v.Node.unfielded() }
+
+// RequirementView is a typed view of a requirement node.
+type RequirementView struct{ Node *Node }
+
+// AsRequirement returns a view of n if it is a requirement.
+func AsRequirement(n *Node) (RequirementView, bool) {
+	if n == nil || n.Kind != Requirement {
+		return RequirementView{}, false
+	}
+	return RequirementView{n}, true
+}
+
+// Name returns the name child (identifier).
+func (v RequirementView) Name() *Node { return v.Node.ChildByField(FieldName) }
+
+// Trait returns the trait children (_type).
+func (v RequirementView) Trait() []*Node { return v.Node.ChildrenByField(FieldTrait) }
 
 // RestPatternView is a typed view of a rest_pattern node.
 type RestPatternView struct{ Node *Node }
@@ -1152,28 +1272,8 @@ func AsSourceFile(n *Node) (SourceFileView, bool) {
 	return SourceFileView{n}, true
 }
 
-// Items returns the named children that have no field (contract_declaration, entity_declaration, function_declaration, impl_declaration, import_declaration, job_declaration, let_statement, test_declaration, trait_declaration, type_declaration, view_declaration).
+// Items returns the named children that have no field (contract_declaration, entity_declaration, extern_declaration, function_declaration, impl_declaration, import_declaration, job_declaration, let_statement, test_declaration, trait_declaration, type_declaration, view_declaration).
 func (v SourceFileView) Items() []*Node { return v.Node.unfielded() }
-
-// StartExpressionView is a typed view of a start_expression node.
-type StartExpressionView struct{ Node *Node }
-
-// AsStartExpression returns a view of n if it is a start_expression.
-func AsStartExpression(n *Node) (StartExpressionView, bool) {
-	if n == nil || n.Kind != StartExpression {
-		return StartExpressionView{}, false
-	}
-	return StartExpressionView{n}, true
-}
-
-// Call returns the call child (call_expression).
-func (v StartExpressionView) Call() *Node { return v.Node.ChildByField(FieldCall) }
-
-// Time returns the time child (_expression), or nil.
-func (v StartExpressionView) Time() *Node { return v.Node.ChildByField(FieldTime) }
-
-// Timing returns the timing child (), or nil.
-func (v StartExpressionView) Timing() *Node { return v.Node.ChildByField(FieldTiming) }
 
 // StateDeclarationView is a typed view of a state_declaration node.
 type StateDeclarationView struct{ Node *Node }
@@ -1283,6 +1383,48 @@ func AsTryExpression(n *Node) (TryExpressionView, bool) {
 // Value returns the value child (_expression).
 func (v TryExpressionView) Value() *Node { return v.Node.ChildByField(FieldValue) }
 
+// TupleView is a typed view of a tuple node.
+type TupleView struct{ Node *Node }
+
+// AsTuple returns a view of n if it is a tuple.
+func AsTuple(n *Node) (TupleView, bool) {
+	if n == nil || n.Kind != Tuple {
+		return TupleView{}, false
+	}
+	return TupleView{n}, true
+}
+
+// Items returns the named children that have no field (_expression).
+func (v TupleView) Items() []*Node { return v.Node.unfielded() }
+
+// TuplePatternView is a typed view of a tuple_pattern node.
+type TuplePatternView struct{ Node *Node }
+
+// AsTuplePattern returns a view of n if it is a tuple_pattern.
+func AsTuplePattern(n *Node) (TuplePatternView, bool) {
+	if n == nil || n.Kind != TuplePattern {
+		return TuplePatternView{}, false
+	}
+	return TuplePatternView{n}, true
+}
+
+// Items returns the named children that have no field (_pattern).
+func (v TuplePatternView) Items() []*Node { return v.Node.unfielded() }
+
+// TupleTypeView is a typed view of a tuple_type node.
+type TupleTypeView struct{ Node *Node }
+
+// AsTupleType returns a view of n if it is a tuple_type.
+func AsTupleType(n *Node) (TupleTypeView, bool) {
+	if n == nil || n.Kind != TupleType {
+		return TupleTypeView{}, false
+	}
+	return TupleTypeView{n}, true
+}
+
+// Items returns the named children that have no field (_type).
+func (v TupleTypeView) Items() []*Node { return v.Node.unfielded() }
+
 // TypeArgumentsView is a typed view of a type_arguments node.
 type TypeArgumentsView struct{ Node *Node }
 
@@ -1331,8 +1473,22 @@ func AsTypeParameters(n *Node) (TypeParametersView, bool) {
 	return TypeParametersView{n}, true
 }
 
-// Items returns the named children that have no field (type_identifier).
+// Items returns the named children that have no field (identifier).
 func (v TypeParametersView) Items() []*Node { return v.Node.unfielded() }
+
+// TypeVariableView is a typed view of a type_variable node.
+type TypeVariableView struct{ Node *Node }
+
+// AsTypeVariable returns a view of n if it is a type_variable.
+func AsTypeVariable(n *Node) (TypeVariableView, bool) {
+	if n == nil || n.Kind != TypeVariable {
+		return TypeVariableView{}, false
+	}
+	return TypeVariableView{n}, true
+}
+
+// Items returns the named children that have no field (identifier).
+func (v TypeVariableView) Items() []*Node { return v.Node.unfielded() }
 
 // UnaryExpressionView is a typed view of an unary_expression node.
 type UnaryExpressionView struct{ Node *Node }
@@ -1505,6 +1661,20 @@ func (v WaitingCallExpressionView) Arguments() *Node { return v.Node.ChildByFiel
 
 // Function returns the function child (_expression).
 func (v WaitingCallExpressionView) Function() *Node { return v.Node.ChildByField(FieldFunction) }
+
+// WhereClauseView is a typed view of a where_clause node.
+type WhereClauseView struct{ Node *Node }
+
+// AsWhereClause returns a view of n if it is a where_clause.
+func AsWhereClause(n *Node) (WhereClauseView, bool) {
+	if n == nil || n.Kind != WhereClause {
+		return WhereClauseView{}, false
+	}
+	return WhereClauseView{n}, true
+}
+
+// Items returns the named children that have no field (requirement).
+func (v WhereClauseView) Items() []*Node { return v.Node.unfielded() }
 
 // WhileStatementView is a typed view of a while_statement node.
 type WhileStatementView struct{ Node *Node }

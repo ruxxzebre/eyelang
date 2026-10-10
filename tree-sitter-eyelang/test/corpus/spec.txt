@@ -18,7 +18,7 @@ entity World(id: WorldId) {
     players = players |> add(p)
     if phase == Asleep {
       phase = Waking
-      start wake(id)                 # starting a job is part of this transaction
+      wake.start(id)                 # starting a job is part of this transaction
     }
   }
 
@@ -139,11 +139,12 @@ test "an idle world sleeps after 20 minutes" {
               (assignment
                 (identifier)
                 (type_identifier))
-              (start_expression
-                (call_expression
+              (call_expression
+                (field_expression
                   (identifier)
-                  (arguments
-                    (identifier))))
+                  (identifier))
+                (arguments
+                  (identifier)))
               (comment)))))
       (function_declaration
         (identifier)
@@ -493,8 +494,8 @@ SPECS 6. Bindings, functions and pipes (2)
 
 fn example() {
   let x = 5                    # immutable, block-scoped; a later `let x` shadows it
-  var total = 0                # mutable local; closures can't capture a `var`
-  total = total + x
+  var total = 0                # mutable local; closures can't capture a `var` (section 7)
+  total += x
 
   let inc = fn n: n + 1                                    # lambdas
   let add = fn (a, b): a + b
@@ -502,13 +503,15 @@ fn example() {
     let label = item.name
     "<{label}>"
   }
-  let later = fn { notify.send!(owner, "done", key: k) }       # no parameters
+  let later = fn { log.info("done") }                       # no parameters
 
   let sizes = urls |> map(fetchSize) |> filter(fn s: s > 0)   # data-first pipe
   let diff = 2 |> sub(10, _)                                   # _ places the value: sub(10, 2)
 
   if n < 2 { n } else { fib(n - 1) + fib(n - 2) }          # if is an expression; no parentheses
   for item in items { log.info(item.name) }
+  for (i, item) in items |> enumerate { log.info("{i}: {item.name}") }
+  for i in 0..n { log.info("{i}") }
 }
 
 --------------------------------------------------------------------------------
@@ -528,9 +531,7 @@ fn example() {
       (comment)
       (assignment
         (identifier)
-        (binary_expression
-          (identifier)
-          (identifier)))
+        (identifier))
       (let_statement
         (identifier)
         (lambda
@@ -569,17 +570,13 @@ fn example() {
         (identifier)
         (lambda
           (block
-            (waiting_call_expression
+            (call_expression
               (field_expression
                 (identifier)
                 (identifier))
               (arguments
-                (identifier)
                 (string
-                  (string_content))
-                (named_argument
-                  (identifier)
-                  (identifier)))))))
+                  (string_content)))))))
       (comment)
       (let_statement
         (identifier)
@@ -641,10 +638,380 @@ fn example() {
             (arguments
               (field_expression
                 (identifier)
-                (identifier)))))))))
+                (identifier))))))
+      (for_statement
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (binary_expression
+          (identifier)
+          (identifier))
+        (block
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (string
+                (interpolation
+                  (identifier))
+                (string_content)
+                (interpolation
+                  (field_expression
+                    (identifier)
+                    (identifier))))))))
+      (for_statement
+        (identifier)
+        (range_expression
+          (integer)
+          (identifier))
+        (block
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (string
+                (interpolation
+                  (identifier))))))))))
 
 ================================================================================
-SPECS 7. Pattern matching (1)
+SPECS 7. Mutation (1)
+================================================================================
+
+type Counter = { hits: Int, last: Option(Instant) }
+
+fn record(mut c: Counter, at: Instant) {      # may change the caller's counter
+  c.hits += 1
+  c.last = Some(at)
+}
+
+impl Counter {
+  fn reset(mut self) { self.hits = 0 }
+}
+
+fn tally(times: List(Instant)) -> Counter {
+  var counter = { hits: 0, last: None }
+  for t in times {
+    record(mut counter, t)                    # `mut` at the call: this call may change counter
+  }
+  let snapshot = counter                      # a copy; later changes to counter don't reach it
+  counter.reset()                             # a `mut self` method needs a `var` receiver
+  snapshot
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier))))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (block
+      (comment)
+      (assignment
+        (field_expression
+          (identifier)
+          (identifier))
+        (integer))
+      (assignment
+        (field_expression
+          (identifier)
+          (identifier))
+        (call_expression
+          (type_identifier)
+          (arguments
+            (identifier))))))
+  (impl_declaration
+    (type_identifier)
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (block
+          (assignment
+            (field_expression
+              (identifier)
+              (identifier))
+            (integer))))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (type_identifier)
+    (block
+      (var_statement
+        (identifier)
+        (record
+          (field_initializer
+            (identifier)
+            (integer))
+          (field_initializer
+            (identifier)
+            (type_identifier))))
+      (for_statement
+        (identifier)
+        (identifier)
+        (block
+          (call_expression
+            (identifier)
+            (arguments
+              (mut_argument
+                (identifier))
+              (identifier)))
+          (comment)))
+      (let_statement
+        (identifier)
+        (identifier))
+      (comment)
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments))
+      (comment)
+      (identifier))))
+
+================================================================================
+SPECS 8. Methods and generics (1)
+================================================================================
+
+pub opaque type Lexer = { src: Bytes, pos: Int, tokens: List(Token) }
+
+impl Lexer {
+  pub fn new(src: Bytes) -> Lexer = { src, pos: 0, tokens: [] }
+  pub fn peek(self) -> Byte = self.src[self.pos] ?? 0
+  pub fn advance(mut self) { self.pos += 1 }
+}
+
+fn skipSpaces(mut lexer: Lexer) {
+  while lexer.peek() == ' ' { lexer.advance() }
+}
+
+fn largest(xs: List(a)) -> Option(a) where a: Ord {
+  var best = first(xs)?                      # ? on an Option returns None
+  for x in xs {
+    if x > best { best = x }
+  }
+  Some(best)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier))))))
+  (impl_declaration
+    (type_identifier)
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (type_identifier)
+        (record
+          (shorthand_field
+            (identifier))
+          (field_initializer
+            (identifier)
+            (integer))
+          (field_initializer
+            (identifier)
+            (list))))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (type_identifier)
+        (binary_expression
+          (index_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (field_expression
+              (identifier)
+              (identifier)))
+          (integer)))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (block
+          (assignment
+            (field_expression
+              (identifier)
+              (identifier))
+            (integer))))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (block
+      (while_statement
+        (binary_expression
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments))
+          (char))
+        (block
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments))))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_variable
+              (identifier))))))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_variable
+          (identifier))))
+    (where_clause
+      (requirement
+        (identifier)
+        (type_identifier)))
+    (block
+      (var_statement
+        (identifier)
+        (try_expression
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier)))))
+      (comment)
+      (for_statement
+        (identifier)
+        (identifier)
+        (block
+          (if_expression
+            (binary_expression
+              (identifier)
+              (identifier))
+            (block
+              (assignment
+                (identifier)
+                (identifier))))))
+      (call_expression
+        (type_identifier)
+        (arguments
+          (identifier))))))
+
+================================================================================
+SPECS 8. Methods and generics (2)
+================================================================================
+
+fn open(config: Config) -> dyn Store =
+  if config.postgres { PgStore.connect(config.url) } else { MemoryStore.new() }
+
+let handlers: List(dyn Handler) = [Logger.new(), Metrics.new(port: 9100)]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (dyn_type
+      (type_identifier))
+    (if_expression
+      (field_expression
+        (identifier)
+        (identifier))
+      (block
+        (call_expression
+          (field_expression
+            (type_identifier)
+            (identifier))
+          (arguments
+            (field_expression
+              (identifier)
+              (identifier)))))
+      (block
+        (call_expression
+          (field_expression
+            (type_identifier)
+            (identifier))
+          (arguments)))))
+  (let_statement
+    (identifier)
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (dyn_type
+          (type_identifier))))
+    (list
+      (call_expression
+        (field_expression
+          (type_identifier)
+          (identifier))
+        (arguments))
+      (call_expression
+        (field_expression
+          (type_identifier)
+          (identifier))
+        (arguments
+          (named_argument
+            (identifier)
+            (integer)))))))
+
+================================================================================
+SPECS 9. Pattern matching (1)
 ================================================================================
 
 fn example() {
@@ -657,6 +1024,14 @@ fn example() {
 
   let { name, age } = user                     # destructuring
   let [first, ..rest] = items else { return Err(Empty) }
+  let (key, value) = entry
+
+  match rest {                                 # rest: Bytes
+    ['-', '>', ..] => Arrow
+    ['0'..='9', ..] => number(rest)
+    [] => End
+    _ => Illegal
+  }
 }
 
 --------------------------------------------------------------------------------
@@ -731,10 +1106,107 @@ fn example() {
             (call_expression
               (type_identifier)
               (arguments
-                (type_identifier)))))))))
+                (type_identifier))))))
+      (let_statement
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (identifier))
+      (match_expression
+        (identifier)
+        (match_body
+          (comment)
+          (match_arm
+            (list_pattern
+              (char)
+              (char)
+              (rest_pattern))
+            (type_identifier))
+          (match_arm
+            (list_pattern
+              (range_pattern
+                (char)
+                (char))
+              (rest_pattern))
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))
+          (match_arm
+            (list_pattern)
+            (type_identifier))
+          (match_arm
+            (wildcard)
+            (type_identifier)))))))
 
 ================================================================================
-SPECS 8. Errors: Result only (1)
+SPECS 10. Errors: Result only (1)
+================================================================================
+
+type CountError = | Usage | Unreadable(FsError) | BadNumber(ParseError)
+
+fn count(path: String) -> Result(Int, CountError) uses {fs} {
+  let text = fs.readText(path)?        # an FsError becomes Unreadable(…)
+  let n = parseInt(text)?              # a ParseError becomes BadNumber(…)
+  Ok(n)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (type_identifier)))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (type_identifier)))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_identifier)
+        (type_identifier)))
+    (uses_clause
+      (effect
+        (identifier)))
+    (block
+      (let_statement
+        (identifier)
+        (try_expression
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (identifier)))))
+      (comment)
+      (let_statement
+        (identifier)
+        (try_expression
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier)))))
+      (comment)
+      (call_expression
+        (type_identifier)
+        (arguments
+          (identifier))))))
+
+================================================================================
+SPECS 10. Errors: Result only (2)
 ================================================================================
 
 fn example() {
@@ -777,7 +1249,7 @@ fn example() {
             (integer)))))))
 
 ================================================================================
-SPECS 9. Traits (1)
+SPECS 11. Traits (1)
 ================================================================================
 
 trait Named {
@@ -788,7 +1260,7 @@ impl Named for Player {
   fn name(self) = self.nick
 }
 
-fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named`
+fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named` (section 8)
 
 --------------------------------------------------------------------------------
 
@@ -833,7 +1305,7 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   (comment))
 
 ================================================================================
-SPECS 10. Effects and signatures (1)
+SPECS 12. Effects and signatures (1)
 ================================================================================
 
 pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
@@ -873,7 +1345,234 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
               (identifier))))))))
 
 ================================================================================
-SPECS 11. Entities (1)
+SPECS 13. Programs and concurrency (1)
+================================================================================
+
+import fs
+
+pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
+  for path in args |> drop(1) {
+    let text = fs.readText(path)?
+    print("{path}: {text |> lines |> size} lines")
+  }
+  Ok(())
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (import_declaration
+    (import_path
+      (identifier)))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (unit_type)
+        (type_identifier)))
+    (uses_clause
+      (effect
+        (identifier))
+      (effect
+        (identifier)))
+    (block
+      (for_statement
+        (identifier)
+        (binary_expression
+          (identifier)
+          (call_expression
+            (identifier)
+            (arguments
+              (integer))))
+        (block
+          (let_statement
+            (identifier)
+            (try_expression
+              (call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments
+                  (identifier)))))
+          (call_expression
+            (identifier)
+            (arguments
+              (string
+                (interpolation
+                  (identifier))
+                (string_content)
+                (interpolation
+                  (binary_expression
+                    (binary_expression
+                      (identifier)
+                      (identifier))
+                    (identifier)))
+                (string_content))))))
+      (call_expression
+        (type_identifier)
+        (arguments
+          (unit))))))
+
+================================================================================
+SPECS 13. Programs and concurrency (2)
+================================================================================
+
+let pages = urls |> parallelMap(fn u: http.get(u), limit: 8)    # results in input order
+let (user, orders) = both(fn { users.get(id) }, fn { orders.list(id) })
+let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (binary_expression
+      (identifier)
+      (call_expression
+        (identifier)
+        (arguments
+          (lambda
+            (identifier)
+            (call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (identifier))))
+          (named_argument
+            (identifier)
+            (integer))))))
+  (comment)
+  (let_statement
+    (tuple_pattern
+      (identifier)
+      (identifier))
+    (call_expression
+      (identifier)
+      (arguments
+        (lambda
+          (block
+            (call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (identifier)))))
+        (lambda
+          (block
+            (call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (identifier))))))))
+  (let_statement
+    (identifier)
+    (call_expression
+      (identifier)
+      (arguments
+        (list
+          (lambda
+            (block
+              (call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments
+                  (identifier)))))
+          (lambda
+            (block
+              (call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments
+                  (identifier))))))))))
+
+================================================================================
+SPECS 13. Programs and concurrency (3)
+================================================================================
+
+fn example() {
+  taskGroup(fn group {
+    let (send, receive) = channel(capacity: 64)
+    group.spawn(fn {
+      for line in fs.lines(path) { send.put(line) }
+      send.close()
+    })
+    for line in receive { handle(line) }
+  })
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (lambda
+            (identifier)
+            (block
+              (let_statement
+                (tuple_pattern
+                  (identifier)
+                  (identifier))
+                (call_expression
+                  (identifier)
+                  (arguments
+                    (named_argument
+                      (identifier)
+                      (integer)))))
+              (call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments
+                  (lambda
+                    (block
+                      (for_statement
+                        (identifier)
+                        (call_expression
+                          (field_expression
+                            (identifier)
+                            (identifier))
+                          (arguments
+                            (identifier)))
+                        (block
+                          (call_expression
+                            (field_expression
+                              (identifier)
+                              (identifier))
+                            (arguments
+                              (identifier)))))
+                      (call_expression
+                        (field_expression
+                          (identifier)
+                          (identifier))
+                        (arguments))))))
+              (for_statement
+                (identifier)
+                (identifier)
+                (block
+                  (call_expression
+                    (identifier)
+                    (arguments
+                      (identifier))))))))))))
+
+================================================================================
+SPECS 14. Entities (1)
 ================================================================================
 
 @version(3)
@@ -983,7 +1682,7 @@ entity Player(id: PlayerId) {
               (empty_braces))))))))
 
 ================================================================================
-SPECS 12. Jobs and waiting (1)
+SPECS 15. Jobs and waiting (1)
 ================================================================================
 
 @on(daily(07:40, in: "Europe/Dublin"))
@@ -1096,7 +1795,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
             (arguments)))))))
 
 ================================================================================
-SPECS 13. Views and triggers (1)
+SPECS 16. Views and triggers (1)
 ================================================================================
 
 view idleWorlds = World.all
@@ -1156,7 +1855,7 @@ job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
   (comment))
 
 ================================================================================
-SPECS 14. Contracts: talking to other services (1)
+SPECS 17. Contracts: talking to other services (1)
 ================================================================================
 
 @port(3001)
@@ -1257,12 +1956,61 @@ type Delivery =
             (type_identifier)))))))
 
 ================================================================================
-SPECS 15. Time, secrets, tests (1)
+SPECS 18. Calling C and Go (1)
+================================================================================
+
+@library("z")
+extern fn crc32(crc: UInt64, data: Bytes, length: UInt32) -> UInt64
+
+@host("lab.desk")                  # provided by the Go program that embeds Eyelang
+extern fn showOnDesk(text: String) -> Result((), String)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (extern_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (string
+          (string_content))))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (type_identifier))
+  (extern_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (string
+          (string_content))))
+    (comment)
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (unit_type)
+        (type_identifier)))))
+
+================================================================================
+SPECS 19. Time, secrets, tests (1)
 ================================================================================
 
 fn example() {
   let token: Secret(String) = secret("telegram-bot-token")
-  http.post!(url, auth: bearer(token))       # bearer() accepts a Secret
+  http.post(url, auth: bearer(token))        # bearer() accepts a Secret
   log.info("token is {token}")               # compile error: Secret has no Show
 }
 
@@ -1284,7 +2032,7 @@ fn example() {
           (arguments
             (string
               (string_content)))))
-      (waiting_call_expression
+      (call_expression
         (field_expression
           (identifier)
           (identifier))

@@ -874,9 +874,7 @@ diagnostics layer, and a conversion from its editor-oriented tree.
 ## 22. Grammar sketch
 
 A readable summary of [`tree-sitter-eyelang/grammar.js`](tree-sitter-eyelang/grammar.js), which is
-the definition. This sketch already includes the general-purpose additions decided on 2026-10-10
-(`mut`, tuples, characters, ranges and slices, `impl Type`, `where`, `extern`, `opaque`, contextual
-keywords, `job.start(…)` in place of `start`); the grammar catches up in ROADMAP task 1.8. `sep` is `;` or a newline that ends a statement (section 4); `{` marked *block* is
+the definition. `sep` is `;` or a newline that ends a statement (section 4); `{` marked *block* is
 the brace that opens a block. Lists in `( )`, `[ ]` and literal braces allow a trailing comma.
 Every `eye` example in this document is a whole file or the statements of a function body, and CI
 parses each one with both parsers.

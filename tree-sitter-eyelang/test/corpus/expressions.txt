@@ -799,60 +799,48 @@ let a = match x { Some(u) => ({ u with seen: true }), None => {} }
           (block))))))
 
 ================================================================================
-Start
+Starting jobs is a method call
 ================================================================================
 
-let a = start wake(id)
-let b = start digest(day) after 20 min
-let c = start digest(day) at 07:40 in "Europe/Dublin"
+let a = wake.start(id)
+let b = digest.start(day, after: 20 min)
+let c = digest.start(day, at: 07:40 in "Europe/Dublin")
 
 --------------------------------------------------------------------------------
 
 (source_file
   (let_statement
     (identifier)
-    (start_expression
-      (call_expression
+    (call_expression
+      (field_expression
         (identifier)
-        (arguments
-          (identifier)))))
+        (identifier))
+      (arguments
+        (identifier))))
   (let_statement
     (identifier)
-    (start_expression
-      (call_expression
+    (call_expression
+      (field_expression
         (identifier)
-        (arguments
-          (identifier)))
-      (duration
-        (integer)
-        (unit_name))))
-  (let_statement
-    (identifier)
-    (start_expression
-      (call_expression
+        (identifier))
+      (arguments
         (identifier)
-        (arguments
-          (identifier)))
-      (zoned_time
-        (time)
-        (string
-          (string_content))))))
-
-================================================================================
-Start binds tighter than binary operators
-================================================================================
-
-let a = start f(x) |> g
-
---------------------------------------------------------------------------------
-
-(source_file
-  (let_statement
-    (identifier)
-    (binary_expression
-      (start_expression
-        (call_expression
+        (named_argument
           (identifier)
-          (arguments
-            (identifier))))
-      (identifier))))
+          (duration
+            (integer)
+            (unit_name))))))
+  (let_statement
+    (identifier)
+    (call_expression
+      (field_expression
+        (identifier)
+        (identifier))
+      (arguments
+        (identifier)
+        (named_argument
+          (identifier)
+          (zoned_time
+            (time)
+            (string
+              (string_content))))))))

@@ -166,11 +166,12 @@ func (p *parser) atBreak() bool {
 // continues reports whether a line starting with t continues the previous
 // line. These are the tokens src/scanner.c recognises by their first
 // characters: binary operators other than `-`, `.`, `?`, `,`, `:`, `=`, `->`,
-// `!=` and `else`.
+// `!=`, the assignment operators and `else`.
 func (p *parser) continues(t Token) bool {
 	switch t.Kind {
-	case Dot, DotDot, DotBrace, Comma, Colon, Assign, Eq, FatArrow, Question, QuestionQuestion,
-		Pipe, PipeGt, OrOr, AndAnd, Plus, Star, Slash, Percent, Lt, LtEq, Gt, GtEq, NotEq, Arrow, KwElse:
+	case Dot, DotDot, DotDotEq, DotBrace, Comma, Colon, Assign, Eq, FatArrow, Question,
+		QuestionQuestion, Pipe, PipeGt, OrOr, AndAnd, Plus, Star, Slash, Percent, Lt, LtEq, Gt,
+		GtEq, NotEq, Arrow, PlusEq, MinusEq, StarEq, SlashEq, PercentEq, KwElse:
 		return true
 	case Illegal:
 		return p.src[t.Span.Start] == '&'
@@ -221,6 +222,12 @@ func (p *parser) errorExpected(what string) {
 	p.errorAt(t.Span, "expected %s, found %s", what, found)
 }
 
+// declarationWords are the contextual keywords that start a declaration.
+var declarationWords = map[string]bool{
+	"import": true, "type": true, "trait": true, "impl": true, "entity": true, "job": true,
+	"view": true, "contract": true, "test": true, "extern": true,
+}
+
 // atRecoveryPoint reports whether the current token starts a line with a
 // declaration or statement keyword, where error recovery stops skipping.
 func (p *parser) atRecoveryPoint() bool {
@@ -229,9 +236,10 @@ func (p *parser) atRecoveryPoint() bool {
 		return false
 	}
 	switch t.Kind {
-	case At, KwPub, KwFn, KwType, KwTrait, KwImpl, KwImport, KwEntity, KwJob, KwView, KwContract,
-		KwTest, KwLet, KwVar, KwReturn, KwFor, KwWhile:
+	case At, KwPub, KwFn, KwLet, KwVar, KwReturn, KwFor, KwWhile:
 		return true
+	case Ident:
+		return declarationWords[p.text(t)]
 	}
 	return false
 }

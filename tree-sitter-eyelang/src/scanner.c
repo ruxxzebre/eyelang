@@ -57,7 +57,8 @@ static bool is_identifier_char(int32_t c) {
 }
 
 // Reports whether the next line, ignoring blank lines and comment lines, starts with a token that
-// can only continue an expression: a binary operator, `.`, `?`, `,`, `:`, `=`, `->` or `else`.
+// can only continue an expression: a binary operator, `.`, `?`, `,`, `:`, `=`, `->`, an assignment
+// operator or `else`.
 // The lexer is only peeking here; the token has already been marked.
 static bool continues_expression(TSLexer *lexer) {
   for (;;) {
@@ -95,9 +96,9 @@ static bool continues_expression(TSLexer *lexer) {
       advance(lexer);
       return lexer->lookahead == '=';
     case '-':
-      // `->` continues; `-x` starts a new statement.
+      // `->` and `-=` continue; `-x` starts a new statement.
       advance(lexer);
-      return lexer->lookahead == '>';
+      return lexer->lookahead == '>' || lexer->lookahead == '=';
     case 'e': {
       static const char rest[] = "lse";
       advance(lexer);

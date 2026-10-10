@@ -1,0 +1,1010 @@
+================================================================================
+Mutable parameters and methods
+================================================================================
+
+fn record(mut c: Counter, at: Instant) {
+  c.hits += 1
+  c.last = Some(at)
+}
+impl Counter {
+  fn reset(mut self) { self.hits = 0 }
+  fn hits(self) -> Int = self.hits
+  pub fn new() -> Counter = { hits: 0, last: None }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (block
+      (assignment
+        (field_expression
+          (identifier)
+          (identifier))
+        (integer))
+      (assignment
+        (field_expression
+          (identifier)
+          (identifier))
+        (call_expression
+          (type_identifier)
+          (arguments
+            (identifier))))))
+  (impl_declaration
+    (type_identifier)
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (block
+          (assignment
+            (field_expression
+              (identifier)
+              (identifier))
+            (integer))))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (type_identifier)
+        (field_expression
+          (identifier)
+          (identifier)))
+      (function_declaration
+        (identifier)
+        (parameters)
+        (type_identifier)
+        (record
+          (field_initializer
+            (identifier)
+            (integer))
+          (field_initializer
+            (identifier)
+            (type_identifier)))))))
+
+================================================================================
+Mutable arguments
+================================================================================
+
+fn f() {
+  record(mut counter, now())
+  unify(mut subst, a, b)
+  push(into: mut l.tokens, t)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (mut_argument
+            (identifier))
+          (call_expression
+            (identifier)
+            (arguments))))
+      (call_expression
+        (identifier)
+        (arguments
+          (mut_argument
+            (identifier))
+          (identifier)
+          (identifier)))
+      (call_expression
+        (identifier)
+        (arguments
+          (named_argument
+            (identifier)
+            (mut_argument
+              (field_expression
+                (identifier)
+                (identifier))))
+          (identifier))))))
+
+================================================================================
+Assignment operators
+================================================================================
+
+fn f() {
+  x = 1
+  x += 1
+  x -= 1
+  x *= 2
+  x /= 2
+  x %= 3
+  a.b.c = d
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (assignment
+        (identifier)
+        (integer))
+      (assignment
+        (identifier)
+        (integer))
+      (assignment
+        (identifier)
+        (integer))
+      (assignment
+        (identifier)
+        (integer))
+      (assignment
+        (identifier)
+        (integer))
+      (assignment
+        (identifier)
+        (integer))
+      (assignment
+        (field_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (identifier))
+        (identifier)))))
+
+================================================================================
+Assignment operators continue on the next line
+================================================================================
+
+fn f() {
+  total
+    += 1
+  total
+    -= 1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (assignment
+        (identifier)
+        (integer))
+      (assignment
+        (identifier)
+        (integer)))))
+
+================================================================================
+Tuples
+================================================================================
+
+fn f() {
+  let pair = (1, "a")
+  let triple = (a, b, c,)
+  let nested = ((1, 2), 3)
+  let (n, s) = pair
+  let paren = (1)
+  let unit = ()
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (tuple
+          (integer)
+          (string
+            (string_content))))
+      (let_statement
+        (identifier)
+        (tuple
+          (identifier)
+          (identifier)
+          (identifier)))
+      (let_statement
+        (identifier)
+        (tuple
+          (tuple
+            (integer)
+            (integer))
+          (integer)))
+      (let_statement
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (identifier))
+      (let_statement
+        (identifier)
+        (parenthesized_expression
+          (integer)))
+      (let_statement
+        (identifier)
+        (unit)))))
+
+================================================================================
+Tuple types
+================================================================================
+
+fn f(a: (Int, String), b: (List(a), (Int, Int)), c: ()) -> (Bool, Int) = (true, 1)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (tuple_type
+          (type_identifier)
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (tuple_type
+          (generic_type
+            (type_identifier)
+            (type_arguments
+              (type_variable
+                (identifier))))
+          (tuple_type
+            (type_identifier)
+            (type_identifier))))
+      (parameter
+        (identifier)
+        (unit_type)))
+    (tuple_type
+      (type_identifier)
+      (type_identifier))
+    (tuple
+      (boolean)
+      (integer))))
+
+================================================================================
+Tuples in for loops
+================================================================================
+
+fn f() {
+  for (key, value) in entries { log.info(key) }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (for_statement
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (identifier)
+        (block
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (identifier))))))))
+
+================================================================================
+Characters
+================================================================================
+
+fn f() {
+  let a = ['a', ' ', '\n', '\'', '"', '\\', '\u{1F600}', 'é']
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (list
+          (char)
+          (char)
+          (char)
+          (char)
+          (char)
+          (char)
+          (char)
+          (char))))))
+
+================================================================================
+Ranges
+================================================================================
+
+fn f() {
+  let a = 0..n
+  let b = 0..=n
+  let c = 1..xs |> size
+  let d = a..b == c..d
+  for i in 0..10 { log.info(i) }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (range_expression
+          (integer)
+          (identifier)))
+      (let_statement
+        (identifier)
+        (range_expression
+          (integer)
+          (identifier)))
+      (let_statement
+        (identifier)
+        (range_expression
+          (integer)
+          (binary_expression
+            (identifier)
+            (identifier))))
+      (let_statement
+        (identifier)
+        (binary_expression
+          (range_expression
+            (identifier)
+            (identifier))
+          (range_expression
+            (identifier)
+            (identifier))))
+      (for_statement
+        (identifier)
+        (range_expression
+          (integer)
+          (integer))
+        (block
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (identifier))))))))
+
+================================================================================
+Slices
+================================================================================
+
+fn f() {
+  let a = xs[2..5]
+  let b = xs[..n]
+  let c = xs[..=n]
+  let d = bytes[i..]
+  let e = xs[i]
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (index_expression
+          (identifier)
+          (range_expression
+            (integer)
+            (integer))))
+      (let_statement
+        (identifier)
+        (index_expression
+          (identifier)
+          (range_expression
+            (identifier))))
+      (let_statement
+        (identifier)
+        (index_expression
+          (identifier)
+          (range_expression
+            (identifier))))
+      (let_statement
+        (identifier)
+        (index_expression
+          (identifier)
+          (range_expression
+            (identifier))))
+      (let_statement
+        (identifier)
+        (index_expression
+          (identifier)
+          (identifier))))))
+
+================================================================================
+Range patterns
+================================================================================
+
+fn f() {
+  match c {
+    '0'..='9' => 1
+    'a'..='z' | 'A'..='Z' | '_' => 2
+    0..10 => 3
+    -5..=-1 => 4
+    _ => 5
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (range_pattern
+              (char)
+              (char))
+            (integer))
+          (match_arm
+            (or_pattern
+              (or_pattern
+                (range_pattern
+                  (char)
+                  (char))
+                (range_pattern
+                  (char)
+                  (char)))
+              (char))
+            (integer))
+          (match_arm
+            (range_pattern
+              (integer)
+              (integer))
+            (integer))
+          (match_arm
+            (range_pattern
+              (negative_literal
+                (integer))
+              (negative_literal
+                (integer)))
+            (integer))
+          (match_arm
+            (wildcard)
+            (integer)))))))
+
+================================================================================
+Byte patterns
+================================================================================
+
+fn f() {
+  match rest {
+    ['-', '>', ..] => Arrow
+    ['0'..='9', ..] => number(rest)
+    [] => End
+    _ => Illegal
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (list_pattern
+              (char)
+              (char)
+              (rest_pattern))
+            (type_identifier))
+          (match_arm
+            (list_pattern
+              (range_pattern
+                (char)
+                (char))
+              (rest_pattern))
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))
+          (match_arm
+            (list_pattern)
+            (type_identifier))
+          (match_arm
+            (wildcard)
+            (type_identifier)))))))
+
+================================================================================
+Tuple patterns
+================================================================================
+
+fn f() {
+  match pair {
+    (0, _) => 1
+    (n, Some(x)) if n > x => 2
+    ((a, b), c) => 3
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (tuple_pattern
+              (integer)
+              (wildcard))
+            (integer))
+          (match_arm
+            (tuple_pattern
+              (identifier)
+              (variant_pattern
+                (type_identifier)
+                (pattern_arguments
+                  (identifier))))
+            (binary_expression
+              (identifier)
+              (identifier))
+            (integer))
+          (match_arm
+            (tuple_pattern
+              (tuple_pattern
+                (identifier)
+                (identifier))
+              (identifier))
+            (integer)))))))
+
+================================================================================
+Type variables and requirements
+================================================================================
+
+fn first(xs: List(a)) -> Option(a) = xs[0]
+fn largest(xs: List(a)) -> Option(a) where a: Ord { first(xs) }
+fn show(m: Map(k, v)) -> String where k: Show + Ord, v: Show = "{m}"
+fn qualified(x: notify.Delivery, y: notify.Page(a)) {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_variable
+              (identifier))))))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_variable
+          (identifier))))
+    (index_expression
+      (identifier)
+      (integer)))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_variable
+              (identifier))))))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_variable
+          (identifier))))
+    (where_clause
+      (requirement
+        (identifier)
+        (type_identifier)))
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (identifier)))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_variable
+              (identifier))
+            (type_variable
+              (identifier))))))
+    (type_identifier)
+    (where_clause
+      (requirement
+        (identifier)
+        (type_identifier)
+        (type_identifier))
+      (requirement
+        (identifier)
+        (type_identifier)))
+    (string
+      (interpolation
+        (identifier))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (qualified_type
+          (identifier)
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (generic_type
+          (qualified_type
+            (identifier)
+            (type_identifier))
+          (type_arguments
+            (type_variable
+              (identifier))))))
+    (block)))
+
+================================================================================
+Inherent impl
+================================================================================
+
+impl Lexer {
+  pub fn new(src: Bytes) -> Lexer = { src, pos: 0, tokens: [] }
+  pub fn peek(self) -> Byte = self.src[self.pos] ?? 0
+  pub fn advance(mut self) { self.pos += 1 }
+}
+impl Pair(a, b) {
+  fn swap(self) -> Pair(b, a) = { first: self.second, second: self.first }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (impl_declaration
+    (type_identifier)
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (type_identifier)
+        (record
+          (shorthand_field
+            (identifier))
+          (field_initializer
+            (identifier)
+            (integer))
+          (field_initializer
+            (identifier)
+            (list))))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (type_identifier)
+        (binary_expression
+          (index_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (field_expression
+              (identifier)
+              (identifier)))
+          (integer)))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (block
+          (assignment
+            (field_expression
+              (identifier)
+              (identifier))
+            (integer))))))
+  (impl_declaration
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_variable
+          (identifier))
+        (type_variable
+          (identifier))))
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_variable
+              (identifier))
+            (type_variable
+              (identifier))))
+        (record
+          (field_initializer
+            (identifier)
+            (field_expression
+              (identifier)
+              (identifier)))
+          (field_initializer
+            (identifier)
+            (field_expression
+              (identifier)
+              (identifier))))))))
+
+================================================================================
+Opaque types
+================================================================================
+
+pub opaque type Lexer = { src: Bytes, pos: Int }
+pub type Open = { a: Int }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (type_identifier))))
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_identifier)))))
+
+================================================================================
+Extern functions
+================================================================================
+
+@library("z")
+extern fn crc32(crc: UInt64, data: Bytes, length: UInt32) -> UInt64
+
+@host("lab.desk")
+pub extern fn showOnDesk(text: String) -> Result((), String) uses {ffi}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (extern_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (string
+          (string_content))))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (type_identifier))
+  (extern_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (string
+          (string_content))))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (unit_type)
+        (type_identifier)))
+    (uses_clause
+      (effect
+        (identifier)))))
+
+================================================================================
+Dynamic dispatch types
+================================================================================
+
+fn open(config: Config) -> dyn Store = MemoryStore.new()
+fn all(handlers: List(dyn Handler)) {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (dyn_type
+      (type_identifier))
+    (call_expression
+      (field_expression
+        (type_identifier)
+        (identifier))
+      (arguments)))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (dyn_type
+              (type_identifier))))))
+    (block)))
+
+================================================================================
+Declaration words are names elsewhere
+================================================================================
+
+fn f(type: Int, state: State) {
+  let view = state.view
+  let test = type + 1
+  let entity = job.start(contract)
+  let impl = trait.import
+  start(view, test)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (block
+      (let_statement
+        (identifier)
+        (field_expression
+          (identifier)
+          (identifier)))
+      (let_statement
+        (identifier)
+        (binary_expression
+          (identifier)
+          (integer)))
+      (let_statement
+        (identifier)
+        (call_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (arguments
+            (identifier))))
+      (let_statement
+        (identifier)
+        (field_expression
+          (identifier)
+          (identifier)))
+      (call_expression
+        (identifier)
+        (arguments
+          (identifier)
+          (identifier))))))
+
+================================================================================
+With is a keyword at the start of a statement
+================================================================================
+
+test "with" {
+  with clock(now)
+  let with2 = { a with b: 1 }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (test_declaration
+    (string
+      (string_content))
+    (block
+      (with_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier))))
+      (let_statement
+        (identifier)
+        (record_update
+          (identifier)
+          (field_initializer
+            (identifier)
+            (integer)))))))
+
+================================================================================
+Starting jobs
+================================================================================
+
+fn f() {
+  wake.start(id)
+  sleepWhenIdle.start(w, after: 20 min)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (identifier)))
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (identifier)
+          (named_argument
+            (identifier)
+            (duration
+              (integer)
+              (unit_name))))))))

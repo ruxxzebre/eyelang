@@ -15,23 +15,26 @@ const PREC = {
   and: 3, // &&
   equality: 4, // == !=
   compare: 5, // < <= > >=
-  pipe: 6, // |>
-  add: 7, // + -
-  multiply: 8, // * / %
-  unary: 9, // -x !x start
-  postfix: 10, // f(x) f!(x) x.y x[i] x?
+  range: 6, // .. ..=
+  pipe: 7, // |>
+  add: 8, // + -
+  multiply: 9, // * / %
+  unary: 10, // -x !x
+  postfix: 11, // f(x) f!(x) x.y x[i] x?
 };
 
 const DURATION_UNITS = ['ms', 's', 'min', 'h', 'day', 'days', 'week', 'weeks'];
 const SIZE_UNITS = ['B', 'KiB', 'MiB', 'GiB'];
 
-// Words that can never be identifiers. Contextual keywords (command, query, event, on, migrate,
-// from, after, at, uses and the unit names) are keywords only where the grammar expects them.
-const KEYWORDS = [
-  'let', 'var', 'fn', 'pub', 'return', 'if', 'else', 'match', 'for', 'in', 'while', 'break',
-  'continue', 'type', 'trait', 'impl', 'entity', 'state', 'job', 'view', 'contract', 'import',
-  'test', 'with', 'start', 'true', 'false', '_',
+// Words that can never be names. Every other keyword (type, entity, state, job, view, test, with,
+// where, dyn, extern, opaque, migrate, uses, command, … and the unit names) is a keyword only
+// where the grammar expects it.
+const RESERVED = [
+  'let', 'var', 'mut', 'fn', 'pub', 'return', 'if', 'else', 'match', 'for', 'in', 'while',
+  'break', 'continue', 'true', 'false', '_',
 ];
+
+const ASSIGNMENT_OPERATORS = ['=', '+=', '-=', '*=', '/=', '%='];
 
 module.exports = grammar({
   name: 'eyelang',
@@ -51,7 +54,7 @@ module.exports = grammar({
   extras: $ => [/[ \t\r\n\f\v]/, $.comment],
 
   reserved: {
-    global: _ => KEYWORDS,
+    global: _ => RESERVED,
   },
 
   supertypes: $ => [
@@ -72,6 +75,7 @@ module.exports = grammar({
     _item: $ => choice(
       $.import_declaration,
       $.function_declaration,
+      $.extern_declaration,
       $.job_declaration,
       $.entity_declaration,
       $.view_declaration,
@@ -111,6 +115,7 @@ module.exports = grammar({
       field('parameters', $.parameters),
       optional(seq('->', field('return_type', $._type))),
       optional(field('effects', $.uses_clause)),
+      optional(field('requirements', $.where_clause)),
       choice(
         seq('=', field('body', $._expression)),
         field('body', $.block),
@@ -125,11 +130,26 @@ module.exports = grammar({
       field('parameters', $.parameters),
       optional(seq('->', field('return_type', $._type))),
       optional(field('effects', $.uses_clause)),
+      optional(field('requirements', $.where_clause)),
+    ),
+
+    // A function implemented by C or by the Go program that embeds Eyelang.
+    extern_declaration: $ => seq(
+      repeat($.attribute),
+      optional('pub'),
+      'extern',
+      'fn',
+      field('name', $.identifier),
+      field('parameters', $.parameters),
+      optional(seq('->', field('return_type', $._type))),
+      optional(field('effects', $.uses_clause)),
     ),
 
     parameters: $ => seq('(', commaSep($.parameter), ')'),
 
+    // `mut` lets the function change the caller's variable.
     parameter: $ => seq(
+      optional('mut'),
       field('name', $.identifier),
       optional(seq(':', field('type', $._type))),
       optional(seq('=', field('default', $._expression))),
@@ -139,11 +159,21 @@ module.exports = grammar({
 
     // `wait`, `net Llm.complete`, `entity World`, `secret telegramToken`.
     effect: $ => seq(
-      field('kind', choice($.identifier, alias('entity', $.identifier))),
+      field('kind', $.identifier),
       optional(field('target', $.path)),
     ),
 
     path: $ => seq($._name, repeat(seq('.', $._name))),
+
+    // `where a: Ord + Show, b: Hash`.
+    where_clause: $ => seq('where', commaSep1($.requirement)),
+
+    requirement: $ => seq(
+      field('name', $.identifier),
+      ':',
+      field('trait', $._type),
+      repeat(seq('+', field('trait', $._type))),
+    ),
 
     job_declaration: $ => seq(
       repeat($.attribute),
@@ -200,9 +230,10 @@ module.exports = grammar({
       field('value', $._expression),
     ),
 
+    // `opaque` hides a public type's fields from other modules.
     type_declaration: $ => seq(
       repeat($.attribute),
-      optional('pub'),
+      optional(seq('pub', optional('opaque'))),
       'type',
       field('name', $.type_identifier),
       optional(field('type_parameters', $.type_parameters)),
@@ -210,7 +241,7 @@ module.exports = grammar({
       field('value', choice($._type, $.variant_list)),
     ),
 
-    type_parameters: $ => seq('(', commaSep1($.type_identifier), ')'),
+    type_parameters: $ => seq('(', commaSep1($.identifier), ')'),
 
     // At least one `|`: `A | B`, or `| A` for a type with a single variant.
     variant_list: $ => choice(
@@ -246,12 +277,14 @@ module.exports = grammar({
       '}',
     ),
 
+    // `impl Named for Player { … }` implements a trait; `impl Lexer { … }` gives a type methods.
     impl_declaration: $ => seq(
       repeat($.attribute),
       'impl',
-      field('trait', $._type),
-      'for',
-      field('type', $._type),
+      choice(
+        seq(field('trait', $._type), 'for', field('type', $._type)),
+        field('type', $._type),
+      ),
       field('body', $.impl_body),
     ),
 
@@ -340,9 +373,11 @@ module.exports = grammar({
       field('value', $._expression),
     ),
 
+    // `x = 1`, `c.hits += 1`. The checker makes sure the left side is a variable or a field
+    // of one.
     assignment: $ => seq(
-      field('left', $.identifier),
-      '=',
+      field('left', $._expression),
+      field('operator', choice(...ASSIGNMENT_OPERATORS)),
       field('right', $._expression),
     ),
 
@@ -376,6 +411,7 @@ module.exports = grammar({
       $.placeholder,
       $.integer,
       $.float,
+      $.char,
       $.string,
       $.boolean,
       $.unit,
@@ -386,6 +422,7 @@ module.exports = grammar({
       $.instant,
       $.zoned_time,
       $.list,
+      $.tuple,
       $.empty_braces,
       $.record,
       $.record_update,
@@ -394,7 +431,6 @@ module.exports = grammar({
       $.lambda,
       $.if_expression,
       $.match_expression,
-      $.start_expression,
       $.call_expression,
       $.waiting_call_expression,
       $.field_expression,
@@ -402,12 +438,15 @@ module.exports = grammar({
       $.try_expression,
       $.unary_expression,
       $.binary_expression,
+      $.range_expression,
     ),
 
     // `_` in an argument list: `2 |> sub(10, _)` calls `sub(10, 2)`.
     placeholder: _ => '_',
 
     parenthesized_expression: $ => seq('(', $._expression, ')'),
+
+    tuple: $ => seq('(', $._expression, repeat1(seq(',', $._expression)), optional(','), ')'),
 
     list: $ => seq('[', commaSep($._expression), ']'),
 
@@ -437,7 +476,7 @@ module.exports = grammar({
     map: $ => seq('{', commaSep1($.map_entry), '}'),
 
     map_entry: $ => seq(
-      field('key', choice($.string, $.integer, $.parenthesized_expression)),
+      field('key', choice($.string, $.integer, $.date, $.time, $.parenthesized_expression)),
       ':',
       field('value', $._expression),
     ),
@@ -479,16 +518,6 @@ module.exports = grammar({
       field('value', choice($.block, $._expression)),
     ),
 
-    // `start job(args)`, optionally `after 20 min` or `at 07:40 in "Europe/Dublin"`.
-    start_expression: $ => prec.right(PREC.unary, seq(
-      'start',
-      field('call', $.call_expression),
-      optional(seq(
-        field('timing', choice('after', 'at')),
-        field('time', $._expression),
-      )),
-    )),
-
     call_expression: $ => prec(PREC.postfix, seq(
       field('function', $._expression),
       field('arguments', $.arguments),
@@ -505,12 +534,15 @@ module.exports = grammar({
 
     _waiting_arguments: $ => seq(token.immediate('('), commaSep($._argument), ')'),
 
-    _argument: $ => choice($._expression, $.named_argument),
+    _argument: $ => choice($._expression, $.mut_argument, $.named_argument),
+
+    // `mut x` passes a variable the call may change.
+    mut_argument: $ => seq('mut', field('value', $._expression)),
 
     named_argument: $ => seq(
       field('name', $._label),
       ':',
-      field('value', $._expression),
+      field('value', choice($._expression, $.mut_argument)),
     ),
 
     // `in` and `for` are keywords, but library functions use them as argument labels:
@@ -523,12 +555,18 @@ module.exports = grammar({
       field('field', $._name),
     )),
 
+    // `xs[i]`, and slices `xs[a..b]`, `xs[..n]`, `xs[i..]`.
     index_expression: $ => prec(PREC.postfix, seq(
       field('value', $._expression),
       '[',
-      field('index', $._expression),
+      field('index', choice($._expression, alias($._open_range, $.range_expression))),
       ']',
     )),
+
+    _open_range: $ => choice(
+      seq(field('operator', choice('..', '..=')), field('end', $._expression)),
+      seq(field('start', $._expression), field('operator', '..')),
+    ),
 
     try_expression: $ => prec(PREC.postfix, seq(
       field('value', $._expression),
@@ -561,11 +599,21 @@ module.exports = grammar({
       ));
     },
 
+    // `0..n` stops before n; `0..=n` includes it.
+    range_expression: $ => prec.left(PREC.range, seq(
+      field('start', $._expression),
+      field('operator', choice('..', '..=')),
+      field('end', $._expression),
+    )),
+
     // ---------------------------------------------------------------- literals
 
     integer: _ => /[0-9](_?[0-9])*/,
 
     float: _ => /[0-9](_?[0-9])*\.[0-9](_?[0-9])*([eE][+-]?[0-9]+)?/,
+
+    // One Unicode scalar value: 'a', '\n', '\u{1F600}'.
+    char: _ => /'([^'\\\n]|\\([nrt0\\'"{}]|u\{[0-9a-fA-F]{1,6}\}))'/,
 
     boolean: _ => choice('true', 'false'),
 
@@ -617,11 +665,14 @@ module.exports = grammar({
       $.wildcard,
       $.integer,
       $.float,
+      $.char,
       $.string,
       $.boolean,
       $.unit,
       $.negative_literal,
+      $.range_pattern,
       $.variant_pattern,
+      $.tuple_pattern,
       $.record_pattern,
       $.list_pattern,
       $.or_pattern,
@@ -630,6 +681,15 @@ module.exports = grammar({
     wildcard: _ => '_',
 
     negative_literal: $ => seq('-', choice($.integer, $.float)),
+
+    // `'a'..='z'`, `0..10`.
+    range_pattern: $ => seq(
+      field('start', $._range_bound),
+      field('operator', choice('..', '..=')),
+      field('end', $._range_bound),
+    ),
+
+    _range_bound: $ => choice($.integer, $.char, $.negative_literal),
 
     variant_pattern: $ => seq(
       field('name', $.type_identifier),
@@ -647,6 +707,8 @@ module.exports = grammar({
       ':',
       field('pattern', $._pattern),
     ),
+
+    tuple_pattern: $ => seq('(', $._pattern, repeat1(seq(',', $._pattern)), optional(','), ')'),
 
     record_pattern: $ => seq(
       '{',
@@ -671,12 +733,18 @@ module.exports = grammar({
 
     _type: $ => choice(
       $.type_identifier,
+      $.type_variable,
       $.generic_type,
       $.qualified_type,
       $.unit_type,
+      $.tuple_type,
       $.record_type,
       $.function_type,
+      $.dyn_type,
     ),
+
+    // A lower-case name in a type: `List(a)`.
+    type_variable: $ => $.identifier,
 
     generic_type: $ => seq(
       field('name', choice($.type_identifier, $.qualified_type)),
@@ -694,6 +762,8 @@ module.exports = grammar({
 
     unit_type: _ => seq('(', ')'),
 
+    tuple_type: $ => seq('(', $._type, repeat1(seq(',', $._type)), optional(','), ')'),
+
     record_type: $ => seq('{', commaSep($.field_declaration), '}'),
 
     function_type: $ => prec.right(seq(
@@ -703,6 +773,9 @@ module.exports = grammar({
     )),
 
     function_type_parameters: $ => seq('(', commaSep($._type), ')'),
+
+    // A value of some type that implements the trait, chosen at run time.
+    dyn_type: $ => seq('dyn', field('trait', $._type)),
 
     // ---------------------------------------------------------------- names
 

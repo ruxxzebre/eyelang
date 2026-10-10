@@ -27,6 +27,7 @@ const (
 	Float     // 1.5, 6.02e23
 	Date      // 2026-10-10
 	Time      // 07:40, 23:59:30
+	Char      // 'a', '\n'
 
 	StringStart  // the opening "
 	StringText   // text between escapes and interpolations
@@ -46,11 +47,17 @@ const (
 	Semicolon // ;
 	Dot       // .
 	DotDot    // ..
+	DotDotEq  // ..=
 	DotBrace  // .{
 	At        // @
 	Arrow     // ->
 	FatArrow  // =>
 	Assign    // =
+	PlusEq    // +=
+	MinusEq   // -=
+	StarEq    // *=
+	SlashEq   // /=
+	PercentEq // %=
 	Eq        // ==
 	NotEq     // !=
 	Lt        // <
@@ -71,11 +78,13 @@ const (
 	AndAnd // &&
 	Underscore
 
-	// Reserved words. Contextual keywords (command, query, event, on, migrate,
-	// from, after, at, uses and the unit names) are lexed as Ident or TypeIdent
-	// and recognised by the parser where the grammar expects them.
+	// Reserved words. Every other keyword (type, entity, state, job, view,
+	// test, with, where, dyn, extern, opaque, migrate, uses, command, … and the
+	// unit names) is lexed as Ident or TypeIdent and recognised by the parser
+	// where the grammar expects it.
 	KwLet
 	KwVar
+	KwMut
 	KwFn
 	KwPub
 	KwReturn
@@ -87,18 +96,6 @@ const (
 	KwWhile
 	KwBreak
 	KwContinue
-	KwType
-	KwTrait
-	KwImpl
-	KwEntity
-	KwState
-	KwJob
-	KwView
-	KwContract
-	KwImport
-	KwTest
-	KwWith
-	KwStart
 	KwTrue
 	KwFalse
 
@@ -117,6 +114,7 @@ var tokenNames = [...]string{
 	Float:            "float",
 	Date:             "date",
 	Time:             "time",
+	Char:             "char",
 	StringStart:      `"`,
 	StringText:       "string_content",
 	StringEscape:     "escape_sequence",
@@ -134,11 +132,17 @@ var tokenNames = [...]string{
 	Semicolon:        ";",
 	Dot:              ".",
 	DotDot:           "..",
+	DotDotEq:         "..=",
 	DotBrace:         ".{",
 	At:               "@",
 	Arrow:            "->",
 	FatArrow:         "=>",
 	Assign:           "=",
+	PlusEq:           "+=",
+	MinusEq:          "-=",
+	StarEq:           "*=",
+	SlashEq:          "/=",
+	PercentEq:        "%=",
 	Eq:               "==",
 	NotEq:            "!=",
 	Lt:               "<",
@@ -160,6 +164,7 @@ var tokenNames = [...]string{
 	Underscore:       "_",
 	KwLet:            "let",
 	KwVar:            "var",
+	KwMut:            "mut",
 	KwFn:             "fn",
 	KwPub:            "pub",
 	KwReturn:         "return",
@@ -171,18 +176,6 @@ var tokenNames = [...]string{
 	KwWhile:          "while",
 	KwBreak:          "break",
 	KwContinue:       "continue",
-	KwType:           "type",
-	KwTrait:          "trait",
-	KwImpl:           "impl",
-	KwEntity:         "entity",
-	KwState:          "state",
-	KwJob:            "job",
-	KwView:           "view",
-	KwContract:       "contract",
-	KwImport:         "import",
-	KwTest:           "test",
-	KwWith:           "with",
-	KwStart:          "start",
 	KwTrue:           "true",
 	KwFalse:          "false",
 }
@@ -214,6 +207,7 @@ func (k Kind) IsToken() bool { return k < lastToken }
 var keywords = map[string]Kind{
 	"let":      KwLet,
 	"var":      KwVar,
+	"mut":      KwMut,
 	"fn":       KwFn,
 	"pub":      KwPub,
 	"return":   KwReturn,
@@ -225,18 +219,6 @@ var keywords = map[string]Kind{
 	"while":    KwWhile,
 	"break":    KwBreak,
 	"continue": KwContinue,
-	"type":     KwType,
-	"trait":    KwTrait,
-	"impl":     KwImpl,
-	"entity":   KwEntity,
-	"state":    KwState,
-	"job":      KwJob,
-	"view":     KwView,
-	"contract": KwContract,
-	"import":   KwImport,
-	"test":     KwTest,
-	"with":     KwWith,
-	"start":    KwStart,
 	"true":     KwTrue,
 	"false":    KwFalse,
 	"_":        Underscore,

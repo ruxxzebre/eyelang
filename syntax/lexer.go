@@ -13,8 +13,10 @@ import (
 //
 // The lexer follows the longest-match rule of the tree-sitter grammar's lexer,
 // so `2026-10-10` is a Date and `2026 - 10` is subtraction, `07:40` is a Time,
-// and `!=` is one token. Which newlines end a statement is decided by the
-// parser from the NewlineBefore flag.
+// and `!=` is one token. Only reserved words become keyword tokens; contextual
+// keywords such as `type` or `with` stay names, and the parser recognises them.
+// Which newlines end a statement is decided by the parser from the
+// NewlineBefore flag.
 func Lex(src []byte) ([]Token, []Diagnostic) {
 	l := lexer{src: src}
 	l.run()
@@ -144,6 +146,9 @@ func (l *lexer) next() {
 		l.emit(StringStart, start)
 		l.modes = append(l.modes, stringMode{start: start})
 		return
+	case c == '\'':
+		l.char()
+		return
 	}
 
 	kind := l.punctuation(c)
@@ -215,6 +220,10 @@ func (l *lexer) punctuation(c byte) Kind {
 	case '.':
 		switch l.peek(1) {
 		case '.':
+			if l.peek(2) == '=' {
+				l.pos += 3
+				return DotDotEq
+			}
 			l.pos += 2
 			return DotDot
 		case '{':
@@ -224,7 +233,16 @@ func (l *lexer) punctuation(c byte) Kind {
 		l.pos++
 		return Dot
 	case '-':
-		return two('>', Arrow, Minus)
+		switch l.peek(1) {
+		case '>':
+			l.pos += 2
+			return Arrow
+		case '=':
+			l.pos += 2
+			return MinusEq
+		}
+		l.pos++
+		return Minus
 	case '=':
 		switch l.peek(1) {
 		case '=':
@@ -243,17 +261,13 @@ func (l *lexer) punctuation(c byte) Kind {
 	case '>':
 		return two('=', GtEq, Gt)
 	case '+':
-		l.pos++
-		return Plus
+		return two('=', PlusEq, Plus)
 	case '*':
-		l.pos++
-		return Star
+		return two('=', StarEq, Star)
 	case '/':
-		l.pos++
-		return Slash
+		return two('=', SlashEq, Slash)
 	case '%':
-		l.pos++
-		return Percent
+		return two('=', PercentEq, Percent)
 	case '?':
 		return two('?', QuestionQuestion, Question)
 	case '|':
@@ -329,6 +343,43 @@ func (l *lexer) number() {
 	}
 	l.pos = end
 	l.emit(Int, start)
+}
+
+// char lexes a character literal: one character or escape between single
+// quotes. Anything else up to the next quote on the line is one Illegal token.
+func (l *lexer) char() {
+	start := l.pos
+	i := start + 1
+	switch c := byteAt(l.src, i); {
+	case c == '\\':
+		if end, ok := matchEscape(l.src, i); ok {
+			i = end
+		} else if byteAt(l.src, i+1) == '\'' {
+			i += 2
+		} else {
+			i = -1
+		}
+	case c == '\'' || c == '\n' || i >= len(l.src):
+		i = -1
+	default:
+		_, size := utf8.DecodeRune(l.src[i:])
+		i += size
+	}
+	if i > 0 && byteAt(l.src, i) == '\'' {
+		l.pos = i + 1
+		l.emit(Char, start)
+		return
+	}
+	end := start + 1
+	for end < len(l.src) && l.src[end] != '\n' {
+		end++
+		if l.src[end-1] == '\'' && end-1 > start {
+			break
+		}
+	}
+	l.pos = end
+	l.errorf(Span{start, end}, "a character literal holds one character or escape, such as 'a' or '\\n'")
+	l.emit(Illegal, start)
 }
 
 // stringPart lexes one token of a string's text: text, an escape, the start of
