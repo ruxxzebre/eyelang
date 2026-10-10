@@ -69,6 +69,7 @@ outside that domain.
 | Blocks | **Braces** | Keeps parsing simple; no whitespace pitfalls |
 | Pipes | Data-first: `x |> f(a)` is `f(x, a)`; `_` places the value elsewhere: `x |> f(a, _)` | Matches method-call intuition |
 | Memory | Reference counting with in-place reuse of uniquely owned values; immutable values; entities referenced by ID | No GC pauses, and no reference cycles by construction |
+| Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
 
 ## 3. A tour
 
@@ -485,29 +486,38 @@ Before deleting anything, tag the current state as `eyelang-1` so it stays easy 
 
 ## 17. Implementation plan
 
-**Parsing: hand-written, but done properly.** Most production compilers parse by hand: Go, Rust,
-TypeScript, Swift, Clang and Zig all use hand-written recursive descent. Ruby 3.4 switched its
-default to a hand-written parser (Prism), and CPython is the notable user of a generated (PEG)
-parser. What makes those parsers robust is what they produce, not the technique:
+**Parsing: the grammar is the spec, the compiler's parser is hand-written.** Decided 2026-10-10.
 
-- **Lossless syntax tree.** Every byte of the source, including comments and whitespace, is kept in
-  a concrete tree (as in Roslyn and rust-analyzer). That makes `eye fmt` and editor tooling
-  possible, and the formatter is needed anyway to insert signatures for agents.
-- **Spans everywhere.** Byte offsets on every node; lines and columns come from a line table.
-  Diagnostics point at exact source ranges.
-- **Error recovery.** One parse reports every syntax error and still produces a tree for the parts
-  that parse.
-- **Pratt parsing for expressions** with an explicit precedence table (section 18). This is the one
-  idea worth keeping from Eyelang 1.
-- **A tree-sitter grammar** for editor highlighting, kept separate from the compiler.
+- **`tree-sitter-eyelang/grammar.js` is the executable grammar.** It is the canonical definition of
+  the syntax, and section 18 is a readable summary of it. It also drives highlighting in editors
+  (Neovim, Helix, Zed, and VS Code through an extension). Interpolated strings and the `!` waiting
+  marker need a small external scanner in C.
+- **The compiler parses by hand,** in Go, with recursive descent and Pratt parsing for expressions
+  (precedence table in section 18). That keeps cgo and runtime libraries out of the compiler and keeps
+  error messages under our control. Most production compilers work this way: Go, Rust, TypeScript,
+  Swift, Clang and Zig.
+- **A conformance suite keeps the two honest.** `testdata/syntax/` holds example files, both valid and
+  invalid. CI parses each file with both parsers and fails if they disagree on whether it parses,
+  or if the trees differ in shape. Both parsers print the same normalised S-expression for the
+  comparison: `tree-sitter parse` on one side, `eye parse --sexp` on the other. A syntax change must
+  update the grammar, the parser and the suite together.
+- **What the compiler's parser produces:**
+  - a lossless syntax tree that keeps every byte, comments and whitespace included, as Roslyn and
+    rust-analyzer do; `eye fmt` is built on it, and agents need the formatter to insert signatures;
+  - byte-offset spans on every node, with lines and columns from a line table, so diagnostics point
+    at exact source ranges;
+  - error recovery, so one parse reports every syntax error and still builds a tree for the parts
+    that parse.
 
-Rejected options: parser generators such as goyacc and ANTLR, which give poor error messages and
-heavy runtimes; and tree-sitter as the compiler's own parser, which would need cgo and has a tree
-API built for editors, not compilers.
+Rejected: generating the compiler's parser from a grammar with goyacc, ANTLR or a PEG tool. They give
+weaker error messages, and string interpolation, the `!` marker and contextual keywords all need
+workarounds. Also rejected: tree-sitter as the compiler's own parser, which would need cgo, a separate
+diagnostics layer, and a conversion from its editor-oriented tree.
 
 **Front-end order**, all in Go:
 
-1. Lexer and lossless parser, with `eye fmt` and `eye check --syntax`.
+1. Tree-sitter grammar, hand-written lexer and lossless parser, and the conformance suite, with
+   `eye fmt` and `eye check --syntax`.
 2. Name resolution and modules (`import`, `pub`).
 3. Type checker: inference inside bodies, checked signatures, traits, exhaustiveness, total arithmetic.
 4. Effect inference and checks: `uses`, the `!` rules, and `Save` across checkpoints.
@@ -517,6 +527,9 @@ API built for editors, not compilers.
 7. Code generation to C with reference counting, as described in the compilation analysis.
 
 ## 18. Grammar sketch
+
+A readable summary. Once `tree-sitter-eyelang/grammar.js` exists, it is the definition, and this
+section follows it.
 
 ```ebnf
 file       = { import | decl } ;
