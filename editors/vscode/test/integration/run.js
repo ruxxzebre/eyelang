@@ -26,13 +26,25 @@ async function main() {
   fs.writeFileSync(path.join(workspace, 'b.eye'), 'import util\n\nfn main() {\n  print(util.twice(2))\n}\n');
   // Nowhere the extension looks may already hold an eye binary.
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'eyelang-empty-'));
+  // An empty HOME hides ~/.local/bin/eye. On macOS VS Code keeps a key in
+  // the login keychain under HOME, and without one asks for it in a dialog
+  // that outlives the test, so there HOME stays, and ~/.local/bin/eye must
+  // not exist.
+  let home = { HOME: empty };
+  if (process.platform === 'darwin') {
+    const local = path.join(os.homedir(), '.local', 'bin', 'eye');
+    if (fs.existsSync(local)) {
+      throw new Error(`${local} exists, and the test needs a machine where the extension finds no eye`);
+    }
+    home = {};
+  }
   try {
     await runTests({
       vscodeExecutablePath: process.env.VSCODE_EXECUTABLE || undefined,
       extensionDevelopmentPath: root,
       extensionTestsPath: path.join(__dirname, 'suite.js'),
       launchArgs: [workspace, '--disable-extensions', '--disable-workspace-trust', '--no-sandbox'],
-      extensionTestsEnv: { EYE_BINARY: eye, GOPATH: empty, GOBIN: empty, HOME: empty },
+      extensionTestsEnv: { EYE_BINARY: eye, GOPATH: empty, GOBIN: empty, ...home },
     });
   } finally {
     fs.rmSync(workspace, { recursive: true, force: true });

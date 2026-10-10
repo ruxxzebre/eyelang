@@ -45,6 +45,7 @@ type lowerer struct {
 	entity *ir.Entity
 	self   *ir.Type
 	wrap   *ir.Type // the error type `?` wraps into
+	selfAt ir.Pos   // where a method's self parameter is declared
 	loops  int
 }
 
@@ -69,6 +70,8 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 			nameNode := p.ChildByField(syntax.FieldName)
 			name := text(f, nameNode)
 			if i == 0 && fn.HasSelf && name == "self" {
+				l.selfAt = pos(f, nameNode)
+				c.use(l.selfAt, Local{At: l.selfAt})
 				continue // self, in an impl's or a trait's method
 			}
 			param := &ir.Param{Name: name, Mut: hasToken(f, p, "mut"), Type: c.typeExpr(m, f, p.ChildByField(syntax.FieldType), nil)}
@@ -130,6 +133,7 @@ func (l *lowerer) newSlot() int {
 func (l *lowerer) bind(n *syntax.Node, name string, mutable, isVar bool) int {
 	s := l.newSlot()
 	l.scopes[len(l.scopes)-1][name] = local{slot: s, mutable: mutable, isVar: isVar, at: l.pos(n)}
+	l.c.use(l.pos(n), Local{At: l.pos(n)})
 	return s
 }
 
@@ -184,6 +188,17 @@ func (l *lowerer) lookupLocal(name string, n *syntax.Node) (local, bool) {
 		return local{}, false
 	}
 	return local{}, false
+}
+
+// useSelf records what `self` at n refers to: the method's self parameter,
+// or the entity whose method it is.
+func (l *lowerer) useSelf(n *syntax.Node) {
+	m := l.method()
+	if m.selfAt.File != nil {
+		l.c.use(l.pos(n), Local{At: m.selfAt})
+	} else if m.entity != nil {
+		l.c.use(l.pos(n), m.entity)
+	}
 }
 
 // method returns the lowerer of the method this code is in, through lambdas.
@@ -318,18 +333,22 @@ func (l *lowerer) stmt(n *syntax.Node) ir.Expr {
 // place lowers the left side of an assignment or a `mut` argument.
 func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 	var path []string
+	var names []ir.Pos
 	root := n
 	for root.Kind == syntax.FieldExpression {
 		path = append([]string{l.text(root.ChildByField(syntax.FieldField))}, path...)
+		names = append([]ir.Pos{l.pos(root.ChildByField(syntax.FieldField))}, names...)
 		root = root.ChildByField(syntax.FieldValue)
 	}
 	p := ir.Place{Path: path, Pos: l.pos(n)}
+	l.c.placeAt(p.Pos, names)
 	if root.Kind != syntax.Ident {
 		l.errorf(n, "only a variable, a mut parameter, or a field of one, can be assigned")
 		return p, false
 	}
 	name := l.text(root)
 	if name == "self" {
+		l.useSelf(root)
 		m := l.method()
 		if !m.fn.MutSelf || l.parent != nil {
 			l.errorf(root, "self can change only in a `mut self` method")
@@ -363,6 +382,7 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 		}
 		p.Self = true
 		p.Path = append([]string{name}, path...)
+		l.c.placeAt(p.Pos, append([]ir.Pos{l.pos(root)}, names...))
 		return p, true
 	}
 	l.errorf(root, "undefined name %s", name)
@@ -455,25 +475,32 @@ func (l *lowerer) expr(n *syntax.Node) ir.Expr {
 		return t
 	case syntax.Record:
 		r := &ir.Record{At: at}
+		var names []ir.Pos
 		for _, fi := range n.NamedChildren() {
 			if fi.Kind == syntax.ShorthandField {
 				r.Names = append(r.Names, l.text(fi))
 				r.Values = append(r.Values, l.name(fi))
+				names = append(names, l.pos(fi))
 				continue
 			}
 			r.Names = append(r.Names, l.text(fi.ChildByField(syntax.FieldName)))
 			r.Values = append(r.Values, l.expr(fi.ChildByField(syntax.FieldValue)))
+			names = append(names, l.pos(fi.ChildByField(syntax.FieldName)))
 		}
+		l.c.fieldsAt(r, names)
 		return r
 	case syntax.RecordUpdate:
 		r := &ir.RecordUpdate{At: at, Base: l.expr(n.ChildByField(syntax.FieldBase))}
+		var names []ir.Pos
 		for _, fi := range n.NamedChildren() {
 			if fi.Kind != syntax.FieldInitializer {
 				continue
 			}
 			r.Names = append(r.Names, l.text(fi.ChildByField(syntax.FieldName)))
 			r.Values = append(r.Values, l.expr(fi.ChildByField(syntax.FieldValue)))
+			names = append(names, l.pos(fi.ChildByField(syntax.FieldName)))
 		}
+		l.c.fieldsAt(r, names)
 		return r
 	case syntax.Map:
 		mp := &ir.Map{At: at}
@@ -535,6 +562,9 @@ func (l *lowerer) expr(n *syntax.Node) ir.Expr {
 func (l *lowerer) name(n *syntax.Node) ir.Expr {
 	name := l.text(n)
 	at := l.at(n)
+	if name == "self" {
+		l.useSelf(n)
+	}
 	if v, ok := l.lookupLocal(name, n); ok {
 		l.c.use(at.Pos, Local{At: v.at})
 		return &ir.Local{At: at, Name: name, Slot: v.slot}
@@ -796,6 +826,12 @@ func (l *lowerer) arg(a *syntax.Node) ir.Arg {
 // `x.name` is a method call, unless x is a module or a type, in which case it
 // names a function.
 func (l *lowerer) call(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.Expr {
+	e := l.callee(n, fnNode, args, waiting)
+	l.c.argsAt(e, l.f, n.ChildByField(syntax.FieldArguments))
+	return e
+}
+
+func (l *lowerer) callee(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.Expr {
 	at := l.at(n)
 	if fnNode.Kind == syntax.FieldExpression {
 		recvNode := fnNode.ChildByField(syntax.FieldValue)
@@ -804,7 +840,9 @@ func (l *lowerer) call(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.E
 			l.c.use(l.pos(fnNode.ChildByField(syntax.FieldField)), decl)
 			return &ir.Call{At: at, Func: &ir.Ref{At: l.at(fnNode), Decl: decl}, Args: args}
 		}
-		return &ir.MethodCall{At: at, Recv: l.expr(recvNode), Name: name, Args: args, RecvPlace: l.quietPlace(recvNode)}
+		mc := &ir.MethodCall{At: at, Recv: l.expr(recvNode), Name: name, Args: args, RecvPlace: l.quietPlace(recvNode)}
+		l.c.nameAt(mc, l.pos(fnNode.ChildByField(syntax.FieldField)))
+		return mc
 	}
 	if fnNode.Kind == syntax.Ident && l.ownMethod(fnNode) {
 		// In an entity, a method is called by its name, as a state field
@@ -834,7 +872,9 @@ func (l *lowerer) pipedCall(n, fnNode *syntax.Node, args []ir.Arg, waiting bool)
 	}
 	l.checkDurable(n, d, waiting)
 	l.c.use(l.pos(fnNode), d)
-	return &ir.Call{At: l.at(n), Func: &ir.Ref{At: l.at(fnNode), Decl: d}, Args: args}
+	e := &ir.Call{At: l.at(n), Func: &ir.Ref{At: l.at(fnNode), Decl: d}, Args: args}
+	l.c.argsAt(e, l.f, n.ChildByField(syntax.FieldArguments))
+	return e
 }
 
 // ownMethod reports whether n names a method of the entity whose method is
@@ -890,6 +930,7 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 			return ir.Builtin{Name: "?"}
 		case ir.Builtin:
 			if fns, ok := ir.BuiltinModules[d.Name]; ok {
+				l.c.use(l.pos(recv), GoText{File: "ir/ir.go", Text: `"` + d.Name + `": {`})
 				for _, f := range fns {
 					if f == name {
 						return ir.Builtin{Name: d.Name + "." + name}
@@ -923,7 +964,9 @@ func (l *lowerer) field(n *syntax.Node) ir.Expr {
 		l.c.use(l.pos(n.ChildByField(syntax.FieldField)), decl)
 		return &ir.Ref{At: l.at(n), Decl: decl}
 	}
-	return &ir.Field{At: l.at(n), Value: l.expr(recv), Name: name}
+	f := &ir.Field{At: l.at(n), Value: l.expr(recv), Name: name}
+	l.c.nameAt(f, l.pos(n.ChildByField(syntax.FieldField)))
+	return f
 }
 
 func (l *lowerer) match(n *syntax.Node) ir.Expr {
@@ -1042,6 +1085,9 @@ func (l *lowerer) pattern(n *syntax.Node, binds map[string]int) ir.Pattern {
 					p.Rest = true
 				case syntax.NamedFieldPattern:
 					p.Names = append(p.Names, l.text(a.ChildByField(syntax.FieldName)))
+					if v, ok := l.c.lookupType(l.m, name).(*ir.Variant); ok {
+						l.c.use(l.pos(a.ChildByField(syntax.FieldName)), Member{Of: v, Name: l.text(a.ChildByField(syntax.FieldName))})
+					}
 					p.Args = append(p.Args, l.pattern(a.ChildByField(syntax.FieldPattern), binds))
 				default:
 					p.Names = append(p.Names, "")

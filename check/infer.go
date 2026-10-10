@@ -619,6 +619,9 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 	case *ir.RecordUpdate:
 		base := x.check(e.Base, want)
 		rec, ok := isRecord(base)
+		if ok {
+			c.useFields(e, rec, e.Names)
+		}
 		if !ok {
 			if _, isVar := prune(base).(*tvar); !isVar {
 				c.typeErrorf(e.Base.Position(), "only a record can be updated with `with`; this is %s", show(base))
@@ -855,6 +858,7 @@ func (c *checker) globalType(g *ir.Global) typ {
 func (x *fnCheck) call(e *ir.Call, want typ) typ {
 	c := x.c
 	if r, ok := e.Func.(*ir.Ref); ok {
+		c.useArgs(e, r.Decl)
 		switch d := r.Decl.(type) {
 		case ir.Builtin:
 			t := x.builtin(d.Name, e.Args, want, e.Pos)
@@ -1104,6 +1108,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	recv := x.check(e.Recv, nil)
 	if _, isSelf := e.Recv.(*ir.Self); isSelf && x.entity != nil {
 		if m, ok := x.entity.Methods[e.Name]; ok {
+			c.useMethod(e, m)
 			return x.applyFunc(m, nil, e.Args, e.Name, e.Pos)
 		}
 	}
@@ -1115,10 +1120,12 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				x.top.effect("entity " + s.entity.Name)
 				x.entityCall(e)
 				if e.Name == "read" {
+					c.useName(e, method("read"))
 					x.inferArgs(e.Args)
 					return s
 				}
 				if m, ok := s.entity.Methods[e.Name]; ok {
+					c.useMethod(e, m)
 					return x.applyFunc(m, nil, e.Args, s.entity.Name+"."+e.Name, e.Pos)
 				}
 				c.typeErrorf(e.Pos, "%s has no method %s", s.entity.Name, e.Name)
@@ -1126,12 +1133,15 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				return unknown
 			}
 		case r.name == "Run" && r.decl == nil && e.Name == "join":
+			c.useName(e, method("join"))
 			x.inferArgs(e.Args)
 			return &tcon{name: "Outcome", decl: c.ts.outcome, args: []typ{r.args[0]}}
 		case r.name == "Event" && r.decl == nil && e.Name == "publish":
+			c.useName(e, method("publish"))
 			x.args(&tfun{params: []fparam{{name: "value", t: r.args[0]}}, ret: tUnit}, e.Args, "publish", e.Pos)
 			return tUnit
 		case e.Name == "reconcile" && r.decl != nil:
+			c.useName(e, method("reconcile"))
 			x.inferArgs(e.Args)
 			if r.uncertain && !r.reconcilable {
 				c.typeErrorf(e.Pos, "this command names no @reconcile query, so its Uncertain outcome can't be reconciled: match Uncertain(key) instead")
@@ -1141,6 +1151,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return &cp
 		case r.decl != nil:
 			if m, ok := r.decl.Methods[e.Name]; ok && m.HasSelf {
+				c.useMethod(e, m)
 				x.top.callee(m)
 				if m.MutSelf && e.RecvPlace == nil {
 					what := placeText(e.Recv)
@@ -1154,11 +1165,15 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			}
 		case r.decl == nil && r.entity == nil:
 			if t, ok := x.timeMethod(r, e); ok {
+				c.useName(e, method(e.Name))
+				c.useArgs(e, method(e.Name))
 				return t
 			}
 		}
 	case *tjob:
 		if e.Name == "start" {
+			c.useName(e, method("start"))
+			c.useArgs(e, r.job)
 			return x.start(r.job, e)
 		}
 	case *tvar:
@@ -1166,6 +1181,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			// A type variable has the methods of the traits it requires.
 			for _, b := range c.ts.bounds[r] {
 				if m, ok := b.trait.Methods[e.Name]; ok && m.HasSelf {
+					c.useMethod(e, m)
 					env := typeEnv{}
 					for i, p := range b.trait.Params {
 						if i < len(b.args) {
@@ -1184,10 +1200,12 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	}
 	if r, ok := prune(recv).(*tcon); ok && r.decl == nil && r.entity == nil {
 		if m := c.implMethod(r, e.Name); m != nil {
+			c.useMethod(e, m)
 			return x.applyFunc(m, typeEnv{}, e.Args, r.name+"."+e.Name, e.Pos)
 		}
 	}
 	if isBuiltin(e.Name) {
+		c.useName(e, ir.Builtin{Name: e.Name})
 		args := append([]ir.Arg{{Value: e.Recv}}, e.Args...)
 		return x.builtinWith(e.Name, args, recv, want, e.Pos)
 	}
@@ -1272,6 +1290,7 @@ func (x *fnCheck) field(e *ir.Field) typ {
 	switch r := prune(recv).(type) {
 	case *tentity:
 		if e.Name == "all" {
+			c.useName(e, GoText{File: "check/infer.go", Text: `e.Name == "all"`})
 			x.top.effect("entity " + r.e.Name)
 			return con("List", &tcon{name: r.e.Name, entity: r.e})
 		}
@@ -1282,6 +1301,7 @@ func (x *fnCheck) field(e *ir.Field) typ {
 			}
 		}
 		if t, ok := c.fieldType(r, e.Name); ok {
+			c.useField(e, r, e.Name)
 			return t
 		}
 		if r.decl != nil || r.entity != nil {
@@ -1322,9 +1342,12 @@ func (x *fnCheck) index(e *ir.Index) typ {
 // placeType is the type of what an assignment changes.
 func (x *fnCheck) placeType(p ir.Place) typ {
 	var t typ
+	shift := 0 // names before p.Path in the target as written
 	if p.Self {
 		t = x.self
 		if x.entity != nil && len(p.Path) > 0 {
+			x.c.usePlace(p.Pos, 0, Member{Of: x.entity, Name: p.Path[0]})
+			shift = 1
 			st, ok := x.c.stateType(x.entity, p.Path[0])
 			if !ok {
 				return unknown
@@ -1338,7 +1361,10 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 	if t == nil {
 		return unknown
 	}
-	for _, name := range p.Path {
+	for i, name := range p.Path {
+		if owner := x.c.memberOwner(t, name); owner != nil {
+			x.c.usePlace(p.Pos, i+shift, Member{Of: owner, Name: name})
+		}
 		ft, ok := x.c.fieldType(t, name)
 		if !ok {
 			if r, isCon := prune(t).(*tcon); isCon && (r.decl != nil || r.entity != nil) {

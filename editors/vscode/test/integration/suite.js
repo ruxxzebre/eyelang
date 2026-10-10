@@ -86,4 +86,9 @@ exports.run = async function run() {
   assert.ok(twice && twice.fsPath.endsWith(path.join('util', 'util.eye')), `util.twice goes to ${twice}`);
   const [print] = await definition(3, 3);
   assert.ok(print && print.fsPath.endsWith(path.join('interp', 'builtins.go')), `print goes to ${print}`);
+
+  // Find references: twice is declared in util/ and used in b.eye.
+  const refs = await vscode.commands.executeCommand('vscode.executeReferenceProvider', b.uri, new vscode.Position(3, 14));
+  const files = refs.map((l) => path.relative(ws, l.uri.fsPath)).sort();
+  assert.deepStrictEqual(files, ['b.eye', path.join('util', 'util.eye')]);
 };

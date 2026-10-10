@@ -4,10 +4,10 @@
 // it starts instantly and answers in a few milliseconds.
 //
 // It offers diagnostics as you type, formatting, an outline of declarations,
-// folding, semantic highlighting, and go-to-definition. Go-to-definition
-// checks the program the file belongs to (see check.Root), so it reaches
-// imported modules, the prelude and standard modules, and the Go behind
-// built-in functions. Hover and completion come with phase 2.
+// folding, semantic highlighting, go-to-definition and find references. Both
+// check the program the file belongs to (see check.Root) and look names up
+// in the checker's index, so they reach imported modules, the prelude and
+// standard modules, and the Go behind built-ins.
 package lsp
 
 import (
