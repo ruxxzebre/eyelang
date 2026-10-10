@@ -73,17 +73,16 @@ Before v1.0 the language changes whenever real programs show a better way. Write
 (decision log or open question in SPECS.md), update every example, and keep old code working
 through the formatter or an `eye fix` rewrite rather than through compatibility rules.
 
-**For now the scope is frozen** (agreed on 2026-10-10). Until the tour in SPECS.md §3 runs under
-`eye test`, which is task 4.7 ([#38](https://github.com/ruxxzebre/eyelang/issues/38)), the spec
-doesn't grow. New ideas go into the open questions at the end of SPECS.md, not into the rules. A
-rule changes only when building the checker and interpreter shows it is wrong or unclear, or when
-real code demands it.
+**The scope is open again** (since 2026-10-10, when the tour started running under `eye test`).
+New rules and syntax are welcome when real programs ask for them: the lab's workloads (the digest,
+Notify, reminders, approvals) written in Eyelang are the test. Each change still goes through the
+scope test above and the steps below.
 
 ## How to make a change
 
 - **Spec first.** A language change starts in SPECS.md: the rule, an example, and a decision-log
-  row if it is a decision. While the scope is frozen, that means only fixes the checker or
-  interpreter forces; new ideas go to the open questions at the end of the spec.
+  row if it is a decision. Ideas that aren't settled yet go to the open questions at the end of
+  the spec.
 - **Syntax changes touch three places together:** `grammar.js` (and `src/scanner.c` if newlines,
   braces or strings are involved), the Go parser in `syntax/`, and tests in
   `tree-sitter-eyelang/test/corpus` and `testdata/syntax`. Then run `task generate`.
@@ -131,10 +130,11 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `tools/spechtml/`, `internal/highlight/` | Render SPECS.md as one HTML page (`task spec`), highlighted by the parser |
 | `internal/apidoc/` | The API reference `eye doc` writes from `##` comments |
 | `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
-| `check/` | Loads a program's modules, resolves names, reports errors (types come in phase 2) |
+| `check/` | Loads a program's modules, resolves names, reports errors (types come in phase 2); `prelude.eye` and `std/` are the standard library written in Eyelang |
 | `ir/` | The resolved form programs are lowered to |
 | `interp/` | Reference interpreter and in-memory runtime: entities, views, jobs, clock, fakes |
 | `testdata/programs/` | Programs whose tests `go test ./interp` runs; `tour/tour.eye` is generated from SPECS.md |
+| `testdata/lab/` | The homelab's real workloads in Eyelang (digest, Notify, train reminders, NetBird access): the programs that decide what the language needs |
 | `repl/` | Line editor with history, for `eye repl` |
 
 Commands: `task check` (everything), `task generate` (after editing the grammar or a spec

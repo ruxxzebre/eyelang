@@ -6,13 +6,14 @@ contract Notify {
   @reconcile(receipt)
   command send(to: UserId, text: String) -> Delivery
 
-  query receipt(key: Key) -> Delivery
+  query receipt(key: Key) -> Option(Delivery)
   query identity(user: UserId) -> Identity
 
+  @key(receipt)
   event delivered: Delivered on "notify.events"
 }
 
 type Delivery =
-  | Sent(receipt: ReceiptId, at: Instant)
+  | Accepted(receipt: ReceiptId, at: Instant)  # the outbox has it; quiet hours may hold it
   | Pending(receipt: ReceiptId)
   | Refused(reason: Refusal)

@@ -1,6 +1,7 @@
 package interp
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"sort"
@@ -93,6 +94,19 @@ func builtinTable() map[string]*BuiltinFn {
 		in.rt.advance(d)
 		return ir.Unit{}
 	})
+	add("sleepUntil", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 1, "sleepUntil", at)
+		t, ok := args[0].(time.Time)
+		if !ok {
+			in.faultf(at, "sleepUntil takes an Instant")
+		}
+		if in.rt.real {
+			time.Sleep(time.Until(t))
+		} else if t.After(in.rt.now) {
+			in.rt.advance(ir.Duration(t.Sub(in.rt.now)))
+		}
+		return ir.Unit{}
+	})
 	add("now", func(in *Interp, _ []Value, _ map[string]Value, _ ir.Pos) Value {
 		if in.rt.real {
 			return time.Now()
@@ -165,6 +179,12 @@ func builtinTable() map[string]*BuiltinFn {
 				in.faultf(at, "a string contains a String")
 			}
 			return strings.Contains(c, s)
+		case *RangeVal:
+			if t, ok := args[1].(ir.TimeOfDay); ok {
+				if in, ok := inTimeRange(c, t); ok {
+					return in
+				}
+			}
 		}
 		for _, e := range in.elems(args[0], at) {
 			if equal(e, args[1]) {
@@ -423,6 +443,91 @@ func builtinTable() map[string]*BuiltinFn {
 	add("trim", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		return strings.TrimSpace(in.str(args, "trim", at))
 	})
+	add("toJson", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 1, "toJson", at)
+		out, err := json.Marshal(in.jsonOf(args[0]))
+		if err != nil {
+			in.faultf(at, "toJson: %v", err)
+		}
+		return string(out)
+	})
+	// poll! in a job is handled by durable, which records its steps.
+	add("poll", func(in *Interp, args []Value, named map[string]Value, at ir.Pos) Value {
+		every, ok1 := named["every"].(ir.Duration)
+		within, ok2 := named["within"].(ir.Duration)
+		if len(args) != 1 || !ok1 || !ok2 || every <= 0 {
+			in.faultf(at, "poll(every: …, within: …, fn { … }) takes two Durations and a function")
+		}
+		for waited := ir.Duration(0); ; waited += every {
+			if r, _ := in.apply(args[0], nil, at); r == true {
+				return true
+			}
+			if waited+every > within {
+				return false
+			}
+			if in.rt.real {
+				time.Sleep(time.Duration(every))
+			} else {
+				in.rt.advance(every)
+			}
+		}
+	})
+	// next! in a job is handled by durable, which records the wait.
+	add("next", func(in *Interp, _ []Value, _ map[string]Value, at ir.Pos) Value {
+		in.faultf(at, "next waits for an event, so only a job can call it, as next!(…)")
+		return nil
+	})
+	// approval! in a job is handled by durable, which records the wait.
+	add("approval", func(in *Interp, _ []Value, _ map[string]Value, at ir.Pos) Value {
+		in.faultf(at, "approval waits for a person, so only a job can call it, as approval!(…)")
+		return nil
+	})
+	answer := func(name string, approved bool) {
+		add(name, func(in *Interp, args []Value, named map[string]Value, at ir.Pos) Value {
+			what, ok := "", false
+			if len(args) == 1 {
+				what, ok = args[0].(string)
+			}
+			if !ok {
+				in.faultf(at, "%s takes text from what was asked: %s(\"delete 3 backups\")", name, name)
+			}
+			by, ok := named["by"]
+			if !ok {
+				by = "test"
+			}
+			in.rt.answer(&Record{Names: []string{"what", "approved", "by"}, Vals: []Value{what, approved, by}})
+			return ir.Unit{}
+		})
+	}
+	answer("approve", true)
+	answer("decline", false)
+	add("lower", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		return strings.ToLower(in.str(args, "lower", at))
+	})
+	add("upper", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		return strings.ToUpper(in.str(args, "upper", at))
+	})
+	isVariant := func(name string, want func(in *Interp) *ir.Variant) {
+		add(name, func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+			in.need(args, 1, name, at)
+			v, ok := args[0].(*Variant)
+			return ok && v.V == want(in)
+		})
+	}
+	add("mapErr", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 2, "mapErr", at)
+		r, ok := args[0].(*Variant)
+		if !ok || (r.V != in.pre.ok && r.V != in.pre.err) {
+			in.faultf(at, "mapErr works on a Result")
+		}
+		if r.V == in.pre.ok {
+			return r
+		}
+		e, _ := in.apply(args[1], []argVal{{v: r.Vals[0]}}, at)
+		return in.errV(e)
+	})
+	isVariant("isOk", func(in *Interp) *ir.Variant { return in.pre.ok })
+	isVariant("isErr", func(in *Interp) *ir.Variant { return in.pre.err })
 	add("parseInt", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		s := in.str(args, "parseInt", at)
 		n, ok := new(big.Int).SetString(strings.TrimSpace(s), 10)

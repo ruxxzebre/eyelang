@@ -162,6 +162,10 @@ func (p *parser) arguments() *Node {
 				arg := p.start(NamedArgument)
 				arg.field(FieldName, p.bumpAs(Ident))
 				arg.add(p.bump())
+				if p.at(Comma) || p.at(RParen) {
+					// `key:` alone passes the variable named key.
+					return arg.done(p)
+				}
 				if p.at(KwMut) {
 					arg.field(FieldValue, p.mutArgument())
 				} else {
@@ -217,7 +221,7 @@ func (p *parser) primary() *Node {
 		b := wrap(Instant, FieldDate, date)
 		b.field(FieldTime, p.bump())
 		b.add(p.expect(KwIn))
-		b.field(FieldZone, p.stringLiteral())
+		b.field(FieldZone, p.zone())
 		return b.done(p)
 	case Time:
 		t := p.bump()
@@ -226,7 +230,7 @@ func (p *parser) primary() *Node {
 		}
 		b := wrap(ZonedTime, FieldTime, t)
 		b.add(p.bump())
-		b.field(FieldZone, p.stringLiteral())
+		b.field(FieldZone, p.zone())
 		return b.done(p)
 	case StringStart:
 		return p.stringLiteral()
@@ -309,6 +313,15 @@ func (p *parser) number() *Node {
 	b := wrap(kind, FieldValue, n)
 	b.field(FieldUnit, p.bumpAs(UnitName))
 	return b.done(p)
+}
+
+// zone parses the zone after `in` in a time: a zone's name, or a name for a
+// Zone value: `in "Europe/Dublin"`, `in dublin`.
+func (p *parser) zone() *Node {
+	if p.at(Ident) {
+		return p.bump()
+	}
+	return p.stringLiteral()
 }
 
 // stringLiteral parses a string with its escapes and interpolations. The
@@ -464,6 +477,10 @@ func (p *parser) lambda() *Node {
 	switch p.kind() {
 	case Ident:
 		b.field(FieldParameter, p.bump())
+	case Underscore:
+		w := p.start(Wildcard)
+		w.add(p.bump())
+		b.field(FieldParameter, w.done(p))
 	case LParen:
 		p.withNewlines(false, func() { b.field(FieldParameters, p.parameters()) })
 	}
@@ -490,10 +507,10 @@ func (p *parser) ifExpression() *Node {
 		if p.at(LBrace) && p.looksLikeBlock() {
 			p.errorAt(p.tok().Span, "after 'then' comes a single expression, so this '{' starts a record; for several statements, write 'if … { … }'")
 		}
-		b.field(FieldConsequence, p.expr())
+		b.field(FieldConsequence, p.branch())
 		if p.at(KwElse) {
 			b.add(p.bump())
-			b.field(FieldAlternative, p.expr())
+			b.field(FieldAlternative, p.branch())
 		}
 		return b.done(p)
 	}
@@ -536,7 +553,7 @@ func (p *parser) matchArm() *Node {
 	if p.at(LBrace) && !p.startsRecord() {
 		b.field(FieldValue, p.block())
 	} else {
-		b.field(FieldValue, p.expr())
+		b.field(FieldValue, p.branch())
 	}
 	return b.done(p)
 }

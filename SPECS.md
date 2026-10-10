@@ -2,7 +2,9 @@
 
 Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
 [ROADMAP.md](ROADMAP.md). The syntax is implemented (phase 1), and a reference interpreter runs
-programs, the tour in section 3 included, without checking types yet (phase 2). Eyelang 1, the
+programs, the tour in section 3 included, without checking types yet (phase 2). The lab's real
+workloads, written in Eyelang in [testdata/lab](testdata/lab), check and pass their tests; the rules
+they changed say "from the lab" in the decision log. Eyelang 1, the
 Monkey-style tree-walking interpreter that served as a testing ground, has been removed; it is kept
 at the tag `eyelang-1` (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 
@@ -82,7 +84,9 @@ construct that also works outside that domain.
 | Effects | **Inferred inside, stated at the boundary**: public functions list their effects with `uses` (none means pure); a callback's effects pass to the call that gives it; a function type kept in data states its effects | Permissions show up in the diff without annotating every helper, and higher-order functions work with any callback |
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
-| Consistency | **Atomic inside eyelang**; keyed commands and **reconcile** at the boundary with other services | One database makes real transactions cheap; outside services own their own state |
+| Consistency | **Atomic inside eyelang**; keyed commands and **reconcile** at the boundary with other services. A `@reconcile` query returns an `Option` of the command's outcome: `None` means the command never arrived, and only then is it sent again, with the same key | One database makes real transactions cheap; outside services own their own state; the one case where resending is safe is decided by the owner, never guessed. From the lab: a lookup that can't say "never arrived" leaves a lost command uncertain for good |
+| Serving contracts | **A program serves a contract with `impl Contract { … }`**: one function per operation, with the contract's types and defaults, run as one transaction; a command with `@key` takes the key last | A service written in Eyelang shares one contract with its callers, and a key can name an entity, so repeats need no dedupe table. From the lab: Notify, written in Eyelang |
+| Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
 | Reactions | **Views trigger jobs**: `@on(enters(view))`, `@on(leaves(view))` | Replaces most polling cron jobs |
 | Evolution | Adding a field with a default is automatic; anything else needs a **`migrate from N`** function; deploy is refused if any stored version has no path to the current one | Stored data outlives code |
@@ -97,7 +101,9 @@ construct that also works outside that domain.
 | Syntax | **Add syntax when it is generally useful and clearly better than a library function**; syntax that also makes one area (jobs, agents) much better is welcome if it pays off elsewhere too | Keeps the language small without making common code clumsy |
 | Interop | **`extern fn`** for C functions and for functions provided by a Go program that embeds Eyelang | Reuse existing libraries; the standard library's primitives use the same mechanism |
 | Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
-| Blocks | **Braces**, only where they hold several statements. A branch that is one expression needs none: `if c then a else b`, `Pattern => value`, `fn x: value`, `fn f() = value`. Layout is free; indentation means nothing | Keeps parsing simple and pasting safe, with no whitespace pitfalls, while one-liners stay light |
+| Blocks | **Braces**, only where they hold several statements. A branch that is one expression or one assignment needs none: `if c then a else b`, `Pattern => value`, `Ok(t) => found += [t]`, `fn x: value`, `fn f() = value`. Layout is free; indentation means nothing | Keeps parsing simple and pasting safe, with no whitespace pitfalls, while one-liners stay light. From the lab: sorting results into lists in a `match` needed braces on every arm |
+| Strings | **One line, or `"""` for many lines.** A multi-line string starts with `"""` and a line break and ends with `"""` on a line of its own, apart from what follows it; that line's indentation is removed from every line (section 4) | Prompts and messages read as text in the code, an unclosed `"` still can't swallow a file, and the formatter re-indents code without changing a string. From the lab: the digest's 40-line prompt |
+| Arguments | **`name:` alone passes the variable of that name**: `send(key:)` is `send(key: key)` | Keys, priorities and recipients pass through several layers under their own names, and the label still shows at each call. From the lab: `key: key` and `priority: priority` in every layer of the digest and the reminders |
 | Statements | **A newline ends a statement** unless the next line starts with an operator, `.`, `,`, `:`, `=` or `else`. `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
 | Braces in expressions | A `{` after `if … `, `else`, `for`, `while`, a signature or a lambda's parameters opens a block; anywhere else it starts a record or map. After `=>` it opens a block unless `name:`, `name,` or `name with` follows, which only a record can start. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found with at most two tokens of lookahead, in both parsers; a match arm returns a record without extra parentheses |
 | Pipes | Data-first: `x |> f(a)` is `f(x, a)`; `_` places the value elsewhere: `x |> f(a, _)` | Matches method-call intuition |
@@ -206,17 +212,33 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   | Size | `512 B`, `64 KiB`, `64 MiB`, `6 GiB` |
   | Time of day | `07:40`, `23:59:30` |
   | Date | `2026-10-10` |
-  | Instant | `2026-10-10 07:40 in "Europe/Dublin"` |
-  | Next time of day in a zone | `07:45 in "Europe/Dublin"` |
+  | Instant | `2026-10-10 07:40 in "Europe/Dublin"`, `2026-10-10 07:40 in dublin` |
+  | Next time of day in a zone | `07:45 in "Europe/Dublin"`, `07:45 in dublin` |
 
   A number followed by a unit name (`ms`, `s`, `min`, `h`, `day`, `days`, `week`, `weeks`, `B`,
   `KiB`, `MiB`, `GiB`) is a Duration or Size. A date or time of day is written without spaces;
-  `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time.
+  `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time. The zone
+  after `in` is a zone's name, or a name for a `Zone` value: `dublin` after
+  `pub let dublin: Zone = "Europe/Dublin"`.
 - **Characters:** `'a'` is a `Char`, one Unicode scalar value, with the escapes of strings plus
   `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`.
 - **Strings:** a string's text stays on one line, though an interpolated expression may break
   across lines. The escapes are `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\{`, `\}` and
   `\u{1F600}`. `{expression}` interpolates a value that has `Show`.
+
+  A **multi-line string** starts with `"""` at the end of a line and ends at a `"""` with only
+  spaces before it on its line. Those spaces are the margin: every line starts with it, or is
+  blank, and loses it, and the line breaks after the opening `"""` and before the closing line
+  aren't part of the string. One or two quotes inside are text; escapes and interpolation work as in other
+  strings.
+
+  ```eye
+  let prompt = """
+    You write a morning briefing for {reader}.
+      - this line keeps two spaces
+    Say "Nothing new." when nothing matters.
+    """
+  ```
 - **Keywords.** These are reserved and are never names: `let var mut fn pub return if else match
   for in while break continue true false _`. Every other keyword is a keyword only where the grammar
   expects it, and an ordinary name everywhere else, so `state`, `view`, `type` and `test` work as
@@ -302,7 +324,9 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   There is no null.
 - **Type variables** are lower-case names in types: `List(a)`, `Map(k, v)` (section 8).
 - **Ranges:** `0..n` counts up to but not including `n`, and `0..=n` includes it. Ranges drive `for`
-  loops, slices and patterns.
+  loops, slices and patterns. A range is a value of type `Range(a)` with fields `start` and `end`.
+  A range of times of day may wrap midnight: `23:00..08:00` holds 23:30 and 07:00, as quiet hours
+  need.
 - **Slices:** `xs[2..5]`, `xs[..n]` and `bytes[i..]` are views that share storage with what they
   come from. A slice is clamped to the elements that exist, so it never fails, while `xs[i]`
   returns an `Option`. Strings are sliced by byte offsets with `s.slice(2..5)`, an `Option(String)`
@@ -318,6 +342,9 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   owned by foreign code, section 18).
 - **Opaque types:** `pub opaque type Lexer = { … }` exports the type but not its fields, so other
   modules use it only through its functions and methods.
+- **String literals take the type expected,** as record literals do: where a `Key` or a `Zone` is
+  expected, `"ireland-{day}"` is a `Key` and `"Europe/Dublin"` a `Zone`. A zone's name is checked
+  against the time-zone database when the program is compiled.
 - **Maps** use literal or parenthesised keys: `{"a": 1}`, `{(key): 1}`. Records use names:
   `{a: 1}`, and `{ name, age }` is short for `{ name: name, age: age }`. `{}` is an empty map,
   set or record, depending on the type expected. Other sets are built from lists: `toSet([a, b])`.
@@ -360,6 +387,12 @@ for i in 0..n { log.info("{i}") }
 
 - A `?` after a piped call applies to that call: `xs |> find(isEven)?` is `find(xs, isEven)?`.
 - Named arguments with defaults: `fn page(size: Int = 50, after: Option(Cursor) = None)`.
+- **`name:` alone** passes the variable of that name: `page(size:, after:)` is
+  `page(size: size, after: after)`.
+- **A module-level `let`** binds a value computed once; `pub let dublin: Zone = "Europe/Dublin"`
+  exports it, and other modules import it by name like any other declaration.
+- **A branch that is one assignment** needs no braces, as one that is one expression doesn't:
+  `Ok(text) => found += [text]`, `if late then count += 1`.
 - No partial application by argument count. Use `_` or a lambda.
 
 ## 7. Mutation
@@ -392,7 +425,9 @@ fn tally(times: List(Instant)) -> Counter {
 ```
 
 - **What can change:** a `var`, a `mut` parameter, and fields of either (`c.last = …`). `+=`, `-=`,
-  `*=`, `/=` and `%=` combine an operation with an assignment. A `let` never changes.
+  `*=`, `/=` and `%=` combine an operation with an assignment, so `found += [text]` appends to a
+  list and `out += "\n"` to a string, in place when nothing else refers to them. A `let` never
+  changes.
 - **Visible at the call.** A `mut` argument is written `mut x` (or `mut x.field`) and must be a
   `var` or a `mut` parameter. A method that takes `mut self` can only be called on one.
 - **No aliasing.** The same variable can't be passed as `mut` twice in one call, or passed as `mut`
@@ -548,7 +583,8 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 - A type that wraps one value in a variant of its own name, such as `type WorldId = | WorldId(String)`,
   shows as the value it wraps: `"sleep-{w.id}"` is `sleep-survival`, not `sleep-WorldId("survival")`.
 - `Eq`, `Ord`, `Show`, `Hash`, `Save` and `Schema` are derived automatically for records, variants and
-  collections of types that have them.
+  collections of types that have them. Derived `Ord` orders a type's variants as they are declared,
+  then by their fields, so `type Priority = Low | Normal | High` has `Low < High`.
 - `Secret(a)` deliberately has no `Show` and no `Save`. Printing a secret, or holding one across a
   `!`, is a compile error.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
@@ -574,7 +610,8 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 
   The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
   `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,
-  `Size + Size`, and `Int / NonZero(Int)`. Nothing converts implicitly: `1 + 2.0` is an error.
+  `Size + Size`, `Int / NonZero(Int)`, and `String + String` and `List(a) + List(a)`, which join.
+  Nothing converts implicitly: `1 + 2.0` is an error.
 
 ## 12. Effects and signatures
 
@@ -625,8 +662,9 @@ A private function's effects are inferred and never need writing.
 
 **`!` in jobs.** Inside a job, every call with an outside effect (`net`, `fs`, `process`, `clock`,
 `random`, `ffi` and the rest) is a `!` call: it runs once and its result is recorded, so a resumed run
-never repeats it and sees the same values. Calls that only touch entities or compute are ordinary.
-Outside jobs the same functions are called without `!` (section 13).
+never repeats it and sees the same values. Entity calls are `!` calls too (`w.read!()`,
+`w.markAsleep!()`): each commits in the same transaction as its checkpoint (section 15). Calls that
+only compute are ordinary. Outside jobs the same functions are called without `!` (section 13).
 
 ## 13. Programs and concurrency
 
@@ -717,7 +755,9 @@ entity Player(id: PlayerId) {
 - **Methods are atomic transactions.** One writer at a time per entity, all or nothing. A method
   may call methods on other entities, and the whole call tree commits or rolls back together.
 - **State and `mut self`:** an entity method is a `mut self` method over the entity's state
-  (section 7), and a `state` field such as `devices` is short for `self.devices`. The state is
+  (section 7). A `state` field such as `devices` is short for `self.devices`, and a method is
+  called by its name too: `unpin(p)` in another method is `self.unpin(p)`, in the same
+  transaction. The state is
   loaded before the call and saved when the transaction commits; nothing outside the method sees a
   change until the commit.
 - **Methods never wait.** They can't use `!`, so they can't call other services; those calls
@@ -725,7 +765,8 @@ entity Player(id: PlayerId) {
   transaction commits.
   Because entity methods have no outside side effects, the runtime can safely retry one after a
   conflict.
-- **Reading from a job:** `w.read!()` returns a snapshot with a `version` field, which counts the
+- **Reading from a job:** `w.read!()` returns a snapshot, whose type is the entity's name
+  (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field, which counts the
   transactions that changed the entity: 0 when it is new, then one more for each. Snapshots go stale,
   and commands can name the version they were based on (see `@fresh` in section 17).
 - **Evolution:** adding a field with a default is automatic. Any other change to stored state needs
@@ -771,13 +812,29 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | Call | Waits for |
   |---|---|
   | `sleep!(20 min)`, `sleepUntil!(07:45 in "Europe/Dublin")` | time |
+  | `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` | a service that can't say when it is ready; `false` if time runs out |
   | `approval!("delete 3 backups", from: operator, within: 3 days)` | a human; returns `Approved(Approval) \| Declined \| Expired` |
-  | `next!(notify.delivered, where: fn e: e.key == k, within: 1 h)` | an event |
+  | `next!(notify.delivered, where: fn e: e.key == k, within: 1 h)` | an event; `None` if time runs out |
   | `reserve!(1 GiB, fn { … })` | memory from the host, released when the function returns |
   | `lock!("ci", for: 30 min, fn { … })` | a named lock that records its owner and expiry |
-  | `run.join!()` | a job started earlier |
+  | `run.join!()` | a job started earlier: `Completed(value)`, or `Failed(fault)` if it stopped first |
   | `all!([a, b])`, `first!([a, b])` | every one, or whichever finishes first, of several waits |
 
+- **`next!` misses nothing.** It counts every matching event published since the run's previous
+  step, so an answer that comes while the run is still sending its question, or sleeping, is found.
+  `poll!` keeps only its outcome, so a long poll doesn't grow the run's history.
+- **A run's outcome** is `Outcome(a) = Completed(a) | Failed(Fault)`, from the prelude. A fault
+  (`DeadlinePassed`, `OverBudget`, `OutOfMemory`, `Unavailable`, `Unreachable`, `Killed`) can't be
+  caught where it happens, so code that must report one starts the work as a child run and joins
+  it:
+
+  ```eye
+  fn written(day: Date) -> Result(Article, DigestError) =
+    match write.start(day).join!() {
+      Completed(result) => result
+      Failed(fault) => Err(Faulted(fault))
+    }
+  ```
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction) and from jobs, where it starts a child run. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
@@ -786,12 +843,12 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
   | Attribute | Meaning |
   |---|---|
-  | `@on(trigger)` | `daily(…)`, `weekdays(…)`, `every(15 min)`, `cron("…", in: zone)`, `enters(view)`, `leaves(view)`, `event(contract.event)` |
+  | `@on(trigger)` | `daily(…)`, `weekdays(…)`, `every(15 min)`, `cron("…", in: zone)`, `enters(view)`, `leaves(view)`, `event(contract.event)`. A schedule passes the job the date of the firing in the schedule's zone, if the job takes one; a view, the entity's `Ref`; an event, the event |
   | `@memory(size)` | budget admitted before the run starts; the runtime enforces it |
   | `@priority(p)` | `interactive`, `normal`, `background` or `batch`; under memory pressure, lower priorities pause at their next checkpoint |
   | `@deadline(time or duration)` | after this the run ends as `Failed(DeadlinePassed)` |
-  | `@concurrency(n, by: key)` | at most `n` runs at once, optionally per key |
-  | `@limit(n, per: duration)` | rate limit |
+  | `@concurrency(n, by: param)` | at most `n` runs at once, or per value of the parameter named; a waiting run keeps its place, so `@concurrency(1)` asks one question at a time, in order. A scheduled start that finds the limit reached is skipped |
+  | `@limit(n, per: duration, by: param)` | rate limit, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)` |
 
 ## 16. Views and triggers
 
@@ -824,27 +881,52 @@ contract Notify {
   @reconcile(receipt)
   command send(to: UserId, text: String) -> Delivery
 
-  query receipt(key: Key) -> Delivery
+  query receipt(key: Key) -> Option(Delivery)
   query identity(user: UserId) -> Identity
 
+  @key(receipt)
   event delivered: Delivered on "notify.events"
 }
 
 type Delivery =
-  | Sent(receipt: ReceiptId, at: Instant)
+  | Accepted(receipt: ReceiptId, at: Instant)  # the outbox has it; quiet hours may hold it
   | Pending(receipt: ReceiptId)
   | Refused(reason: Refusal)
 ```
 
 - **`import notify` is a typed edge.** Port, network policy, credentials and the allowed-caller check
   are derived from it, so a wrong port or an unapproved caller is a compile error.
-- **Commands** return their declared variants plus `Uncertain(key)`, which `.reconcile!()`
-  resolves through the declared query.
+- **Commands** return a variant type, and every command can also return `Uncertain(key)`: its
+  reply was lost, so the other service may or may not have acted. With `@reconcile(query)`,
+  `.reconcile!()` resolves it by asking the query, which returns `Option` of the command's outcome:
+  `Some` is the outcome, and `None` means the command never arrived, so it is sent again with the
+  same key, which can't do it twice. A command without `@reconcile`, such as one to a service that
+  takes no idempotency key, has no `.reconcile!()`: its caller matches `Uncertain(key)` and decides,
+  usually by stopping for a person. Nothing is ever resent on a guess.
+- **Queries** are safe to repeat: one that can't reach its service is retried, while the run
+  waits, and after a minute the run ends as `Failed(Unavailable(…))`. A query whose failures the
+  caller handles declares them in its result: `query page(url: String) -> Result(String, FetchError)`.
+- **Events** are published with `notify.delivered.publish(d)`: from an entity method or an
+  operation when the transaction commits, and from a job as a `!` step. `@key(field)` on an event
+  names the field that tells one event from another, so an event delivered twice starts one run of
+  each `@on(event(…))` job.
 - **`@fresh`** on a command adds a required `basedOn: Version` argument and `Stale`/`Expired`
   outcomes, so an old command can't act on newer state.
 - **`@destructive`** on a command adds a required `Approval` argument.
 - **A contract's operations are its module's functions.** A module that declares one contract offers
   its commands and queries by name: `notify.send!(…)` for `contract Notify { command send … }`.
+- **Serving a contract.** A program written in Eyelang serves a contract with `impl Contract { … }`:
+  one function per operation, named after it, with its parameters in order and `key` last for a
+  command with `@key`. Types and defaults come from the contract. Each runs as one transaction, as
+  an entity method does, so it can't wait, and it may start jobs. A key can name an entity, so a
+  repeated command finds the work it already did:
+
+  ```eye
+  impl notify.Notify {
+    fn send(to, text, key) = Message(key).queue({ text, to })
+    fn receipt(key) = Message(key).delivery()
+  }
+  ```
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
   error, unless it is marked `@unwitnessed("why")`. A recording is a JSON file per contract module,
@@ -853,12 +935,12 @@ type Delivery =
   ```json
   { "contract": "Notify",
     "exchanges": [{ "op": "send", "key": "ireland-2026-10-10",
-                    "result": { "Sent": { "receipt": "r-41", "at": "2026-10-10T07:40:02Z" } } }] }
+                    "result": { "Accepted": { "receipt": "r-41", "at": "2026-10-10T07:40:02Z" } } }] }
   ```
 
   A variant is an object with the variant's name as its only key and its fields as a list or, when
   they are named, an object; a type that wraps one value, such as `| ReceiptId(String)`, may be
-  written as the value.
+  written as the value. A command's lost reply is recorded as `{ "Uncertain": ["key"] }`.
 - **Generated code for other languages** (types, clients and server stubs for Go, TypeScript, Rust
   and Python) is a build output, never committed.
 
@@ -888,8 +970,8 @@ extern fn showOnDesk(text: String) -> Result((), String)
 Programs that call language models, and jobs that run coding agents, use the pieces the rest of the
 language already has: types, effects, `!` steps and recordings. The standard library adds two
 modules, `ai` and `agents`. Syntax that helps here and elsewhere is welcome: `##` doc comments
-describe schemas and tools as well as documentation, and prompts are the strongest case for
-multi-line strings (open question 8).
+describe schemas and tools as well as documentation, and prompts are written as multi-line
+strings (section 4).
 
 **Typed model calls.** A call names the type it wants back. The compiler derives a JSON Schema from
 that type, the provider is asked for structured output matching it, and the reply is checked and
@@ -913,7 +995,10 @@ type Urgency = | Calm | Busy | Breaking(reason: String)
 job summarise(items: List(Item)) -> Result(Digest, AiError) {
   ai.generate!(
     model: "claude-sonnet-5-5",
-    system: "You summarise Irish news for a morning digest.",
+    system: """
+      You summarise Irish news for a morning digest.
+      Use only facts in the input. Never guess dates, numbers or rules.
+      """,
     prompt: items |> map(fn i: "- {i.title}") |> join("\n"),
   )
 }
@@ -1010,7 +1095,15 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
 
 **Time.** Schedules carry their zone: `daily(07:40, in: "Europe/Dublin")`. Daylight-saving gaps and
 overlaps follow a declared policy (`onGap: shift`, `onOverlap: first`), so there are never two UTC
-crons and an hour check.
+crons and an hour check. Dates in another zone are asked for by name, never taken from the host's
+clock:
+
+| Call | Gives |
+|---|---|
+| `at.date(in: dublin)`, `at.time(in: dublin)` | the date or time of day the clock in that zone shows at instant `at` |
+| `08:00.next(in: dublin, after: at)` | the first instant after `at` when that clock shows 08:00 |
+| `day.at(07:40, in: dublin)` | the instant that day at that time |
+| `day.format("%A %-d %B")` | the date written out: `Monday 12 October` |
 
 **Secrets.**
 
@@ -1020,12 +1113,16 @@ http.post(url, auth: bearer(token))        # bearer() accepts a Secret
 log.info("token is {token}")               # compile error: Secret has no Show
 ```
 
-**Tests.** A `test` block is a declaration. `with` applies a handler to the rest of the block:
+**Tests.** A `test` block is a declaration. `eye test` runs the tests of every module of the
+program, the modules it imports from its own directory included. `with` applies a handler to the rest of the block:
 `fakes(…)`, `clock(…)` with `advance(…)`, `memory(…)`. In tests, jobs run against an in-memory
 store, so every run is deterministic and fast. The clock starts at `clock(…)`'s time (2026-01-01
 00:00 UTC without one) and moves only when the test calls `advance(…)`; each run that wakes on the
 way runs before `advance` goes on. Jobs started by a call run as soon as the call returns, until
-they finish or wait. `expect(cond)` fails the test, and for a comparison shows the value it got:
+they finish or wait, and so do runs that an event a test publishes starts or wakes:
+`notify.answered.publish(answer)` stands in for a person pressing a button, and
+`approve("delete 3 backups")` or `decline(…)` answers the `approval!` whose text contains it.
+`expect(cond)` fails the test, and for a comparison shows the value it got:
 `expected w.phase == Asleep, but w.phase is Running`.
 
 ## 21. What happens to Eyelang 1
@@ -1126,7 +1223,8 @@ parses each one with both parsers.
 
 ```ebnf
 file       = { sep } [ item { sep item } { sep } ] ;
-item       = import | fn | extern | job | entity | view | type | trait | impl | contract | test | let ;
+item       = import | fn | extern | job | entity | view | type | trait | impl | contract | test
+           | [ "pub" ] let ;
 import     = "import" ident { "." ident } [ ".{" name { "," name } "}" ] ;
 attribute  = "@" ident [ args ] ;
 fn         = { attribute } [ "pub" ] "fn" ident params [ "->" type ] [ uses ] [ where ]
@@ -1163,24 +1261,29 @@ place      = ident { "." ident } ;
 assign     = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 
 expr       = lambda | binary ;                              (* precedence table below *)
-lambda     = "fn" [ ident | params ] ( ":" expr | block ) ;
+lambda     = "fn" [ ident | "_" | params ] ( ":" expr | block ) ;
 unary      = ( "-" | "!" ) unary | postfix ;
 postfix    = primary { args | "!(" args… | "." name | "[" ( expr | slice ) "]" | "?" } ;
 slice      = [ expr ] ( ".." | "..=" ) [ expr ] ;
 args       = "(" [ arg { "," arg } ] ")" ;
-arg        = [ ( ident | "in" | "for" ) ":" ] ( expr | "mut" place ) ;
+arg        = [ ( ident | "in" | "for" ) ":" ] ( expr | "mut" place )
+           | ident ":" ;                                     (* `key:` is `key: key` *)
 primary    = ident | Ident | "_" | literal | "(" expr ")" | "(" expr "," expr { "," expr } ")"
            | "[" [ expr { "," expr } ] "]"
            | "{" "}" | "{" field { "," field } "}" | "{" expr "with" field { "," field } "}"
            | "{" key ":" expr { "," key ":" expr } "}"
            | "if" expr block [ "else" ( block | if ) ]
-           | "if" expr "then" expr [ "else" expr ]
+           | "if" expr "then" branch [ "else" branch ]
            | "match" expr "{" { arm ( "," | sep ) } "}" ;
 field      = ident ":" expr | ident ;
 key        = string | int | date | time | "(" expr ")" ;
-arm        = pattern [ "if" expr ] "=>" ( block | expr ) ;   (* "{" name ":"|","|"with" is a record *)
+arm        = pattern [ "if" expr ] "=>" ( block | branch ) ;  (* "{" name ":"|","|"with" is a record *)
+branch     = expr | place assign expr ;
 literal    = int | float | char | string | "true" | "false" | "()" | number unit
-           | date | time | date time "in" string | time "in" string ;
+           | date | time | date time "in" zone | time "in" zone ;
+zone       = string | ident ;
+string     = '"' { text | escape | "{" expr "}" } '"'
+           | '"""' newline { text | newline | escape | "{" expr "}" } newline indent '"""' ;
 
 pattern    = pattern "|" pattern | ident | "_" | literal | "-" number
            | bound ( ".." | "..=" ) bound                      (* bound: a number or char *)
@@ -1235,9 +1338,8 @@ operator. All binary operators associate to the left except `??`, which associat
    macros (compile-time Eyelang functions that inspect a declaration's types and generate code).
    The built-in constructs could then be re-expressed with them, and grammar and editor support
    would stay unchanged because macros would only appear as attributes.
-8. **Multi-line strings:** strings stay on one line for now, which keeps an unclosed quote from
-   swallowing the rest of a file in editors. Prompts and templates will want a multi-line form
-   (indented, with the margin stripped). Which delimiter?
+8. **Multi-line strings:** decided on 2026-10-10: `"""`, with the closing line's indentation as
+   the margin (section 4).
 9. **Durability without a database:** the in-memory store could append each commit (entity changes
    and checkpoints) to a journal file, fsynced before the commit is acknowledged, and replay it on
    start, with periodic snapshots to bound replay time. Is that enough for single-machine
@@ -1245,8 +1347,8 @@ operator. All binary operators associate to the left except `??`, which associat
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
     a reply as it arrives want partial results; should `ai.stream` yield an `Iter` of partial
     values, checked as far as they go?
-11. **Prompts as text:** prompts are long, multi-line text, which makes question 8 (multi-line
-    strings) more pressing. Should prompts also get their own literal form or template files?
+11. **Prompts as text:** prompts are multi-line strings now (question 8). Should long prompts also
+    live in template files next to the code, loaded and checked when the program is compiled?
 12. **Request-scoped values,** such as a trace ID or the current user. Go passes them in a
     `context.Context`. Eyelang has no such parameter: cancellation and deadlines come from
     structured concurrency, and capabilities from effects. Today such values are passed as
@@ -1254,3 +1356,16 @@ operator. All binary operators associate to the left except `??`, which associat
     in tests, with the dependency shown in signatures as an effect?
 13. **`eye fmt` and the two forms of `if`.** Should the formatter rewrite a one-line
     `if c { a } else { b }` to `if c then a else b`, so that each `if` has one canonical form?
+14. **`if let`.** Writing the lab, `if let Some(a) = answer then return Err(Taken(a))` came to hand
+    twice, where today a `match` with a `None => ()` arm does the same in four lines. `let … else`
+    covers the opposite case. Is a third form worth it, or does `match` stay the one way?
+15. **Typed choices.** A question's buttons are strings (`choice: "boarded"`), and the answer is
+    matched as a string. Could a variant type give the choices, with labels from `##` comments, and
+    the answer come back as that type?
+16. **What a fake received.** A test can't see which calls a fake answered, so the lab's digest
+    records the keys it sent with in an entity to make sending testable. Should a test be able to
+    ask `fakes(notify).sent(…)`, or fail when a recording has exchanges no call used?
+17. **Where approvals go.** Tests answer `approval!` with `approve(…)` and `decline(…)`. How does a
+    deployment say where requests go and who may answer (the lab would use Notify's buttons)?
+18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
+    contract; separate programs would each need a copy. This belongs with packages (question 5).

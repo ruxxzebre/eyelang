@@ -39,8 +39,9 @@ type lexer struct {
 }
 
 type stringMode struct {
-	start  int  // offset of the opening quote
-	interp bool // inside `{…}` rather than in the string's text
+	start     int  // offset of the opening quote
+	multiline bool // opened with `"""`, so it may span lines
+	interp    bool // inside `{…}` rather than in the string's text
 	open   int  // offset of the interpolation's `{`
 	depth  int
 }
@@ -142,9 +143,14 @@ func (l *lexer) next() {
 		l.number()
 		return
 	case c == '"':
-		l.pos++
+		multiline := l.peek(1) == '"' && l.peek(2) == '"'
+		if multiline {
+			l.pos += 3
+		} else {
+			l.pos++
+		}
 		l.emit(StringStart, start)
-		l.modes = append(l.modes, stringMode{start: start})
+		l.modes = append(l.modes, stringMode{start: start, multiline: multiline})
 		return
 	case c == '\'':
 		l.char()
@@ -387,6 +393,10 @@ func (l *lexer) char() {
 func (l *lexer) stringPart() {
 	start := l.pos
 	top := &l.modes[len(l.modes)-1]
+	if top.multiline {
+		l.multilinePart()
+		return
+	}
 	if l.pos >= len(l.src) || l.src[l.pos] == '\n' {
 		// Strings stay on one line. Close this one with a zero-width quote so the
 		// parser sees a complete string.
@@ -427,6 +437,37 @@ func (l *lexer) stringPart() {
 		}
 		l.emit(StringText, start)
 	}
+}
+
+// multilinePart is stringPart for a string opened with `"""`: its text may
+// hold line breaks and one or two quotes, and only `"""` ends it.
+func (l *lexer) multilinePart() {
+	start := l.pos
+	top := &l.modes[len(l.modes)-1]
+	switch {
+	case l.pos >= len(l.src):
+		l.errorf(Span{top.start, top.start + 3}, `unterminated string: missing """`)
+		l.modes = l.modes[:len(l.modes)-1]
+		l.emitMissing(StringEnd)
+	case l.closesMultiline(l.pos):
+		l.pos += 3
+		l.modes = l.modes[:len(l.modes)-1]
+		l.emit(StringEnd, start)
+	case l.src[l.pos] == '{', l.src[l.pos] == '\\':
+		// The same as in a one-line string, which leaves the mode in place.
+		top.multiline = false
+		l.stringPart()
+		top.multiline = true
+	default:
+		for l.pos < len(l.src) && l.src[l.pos] != '{' && l.src[l.pos] != '\\' && !l.closesMultiline(l.pos) {
+			l.pos++
+		}
+		l.emit(StringText, start)
+	}
+}
+
+func (l *lexer) closesMultiline(i int) bool {
+	return byteAt(l.src, i) == '"' && byteAt(l.src, i+1) == '"' && byteAt(l.src, i+2) == '"'
 }
 
 // matchEscape matches \n \r \t \0 \\ \" \{ \} or \u{X} with 1 to 6 hex digits.

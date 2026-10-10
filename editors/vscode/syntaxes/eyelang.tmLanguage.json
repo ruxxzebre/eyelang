@@ -68,6 +68,29 @@
     "strings": {
       "patterns": [
         {
+          "name": "string.quoted.triple.eyelang",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.eyelang"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.eyelang"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#escapes"
+            },
+            {
+              "include": "#interpolation"
+            }
+          ]
+        },
+        {
           "name": "string.quoted.double.eyelang",
           "begin": "\"",
           "end": "\"|$",

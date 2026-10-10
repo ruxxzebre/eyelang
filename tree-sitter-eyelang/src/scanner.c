@@ -8,7 +8,9 @@
 //   _block_open     the `{` that opens a block. Where both a block and an expression are allowed
 //                   (a match arm's body), a `{` opens a block unless it is followed by `name:`,
 //                   `name,` or `name with`, which only a record can start (see starts_record).
-//   string_content  the text of a string between its quotes, escapes and interpolations.
+//   string_content  the text of a string between its quotes, escapes and interpolations. In a
+//                   multi-line string (`"""`) it may hold line breaks and single or double quotes;
+//                   only `"""` ends it.
 //
 // syntax/lexer.go applies the same rules, and testdata/syntax checks that the two agree.
 
@@ -22,6 +24,7 @@ enum TokenType {
   BLOCK_OPEN,
   STRING_CONTENT,
   ERROR_SENTINEL,
+  MULTILINE_STRING_CONTENT,
 };
 
 void *tree_sitter_eyelang_external_scanner_create(void) { return NULL; }
@@ -131,6 +134,38 @@ static bool scan_string_content(TSLexer *lexer) {
   return has_content;
 }
 
+// scan_multiline_string_content reads a multi-line string's text up to an escape, an interpolation
+// or the closing `"""`. One or two quotes are text.
+static bool scan_multiline_string_content(TSLexer *lexer) {
+  bool has_content = false;
+  for (;;) {
+    int32_t c = lexer->lookahead;
+    if (c == '\\' || c == '{' || lexer->eof(lexer)) {
+      break;
+    }
+    if (c == '"') {
+      lexer->mark_end(lexer);
+      int quotes = 0;
+      while (lexer->lookahead == '"' && quotes < 3) {
+        advance(lexer);
+        quotes++;
+      }
+      if (quotes == 3) {
+        // The end was marked before the closing quotes.
+        lexer->result_symbol = MULTILINE_STRING_CONTENT;
+        return has_content;
+      }
+      has_content = true;
+      continue;
+    }
+    advance(lexer);
+    has_content = true;
+  }
+  lexer->mark_end(lexer);
+  lexer->result_symbol = MULTILINE_STRING_CONTENT;
+  return has_content;
+}
+
 // skip_space_and_comments moves past whitespace, line breaks and comments.
 static void skip_space_and_comments(TSLexer *lexer) {
   for (;;) {
@@ -188,6 +223,10 @@ bool tree_sitter_eyelang_external_scanner_scan(void *payload, TSLexer *lexer,
 
   if (valid_symbols[STRING_CONTENT]) {
     return scan_string_content(lexer);
+  }
+
+  if (valid_symbols[MULTILINE_STRING_CONTENT]) {
+    return scan_multiline_string_content(lexer);
   }
 
   while (is_horizontal_space(lexer->lookahead)) {

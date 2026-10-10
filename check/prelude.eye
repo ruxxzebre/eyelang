@@ -12,3 +12,33 @@ pub type Option(a) = Some(a) | None
 ## `?` returns the error to the caller, wrapping it in the caller's error
 ## type when exactly one of its variants holds the error's type.
 pub type Result(a, e) = Ok(a) | Err(e)
+
+## How a run of a job ended: `Completed` with what the job returned, or
+## `Failed` when it stopped first. `run.join!()` waits for it.
+pub type Outcome(a) = Completed(a) | Failed(Fault)
+
+## Why a run stopped before returning. A fault isn't an error: code can't
+## return or catch one, only see it in a run's outcome.
+pub type Fault =
+  ## The code reached `unreachable(why)`.
+  | Unreachable(String)
+  ## The run passed its `@deadline`.
+  | DeadlinePassed
+  ## A call would have gone over the run's `@budget`.
+  | OverBudget
+  ## The run needed more than its `@memory`.
+  | OutOfMemory
+  ## A service stayed out of reach for longer than its query is retried.
+  | Unavailable(String)
+  ## Someone stopped the run.
+  | Killed
+
+## A person's answer to `approval!(…)`. Only `Approved` holds an `Approval`,
+## which is what ending an entity or a `@destructive` command needs.
+pub type Decision = Approved(Approval) | Declined | Expired
+
+## A command whose reply was lost: the other service may or may not have
+## acted, and resending could do it twice. Every command can return it
+## besides the variants its contract declares; `.reconcile!()` resolves it
+## when the contract names a query for it.
+pub type Unconfirmed = | Uncertain(Key)

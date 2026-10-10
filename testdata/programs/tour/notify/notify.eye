@@ -6,8 +6,9 @@ pub type ReceiptId = | ReceiptId(String)
 
 pub type Refusal = | Blocked | UnknownUser
 
+## Accepted means the outbox has it, not that anyone has read it.
 pub type Delivery =
-  | Sent(receipt: ReceiptId, at: Instant)
+  | Accepted(receipt: ReceiptId, at: Instant)
   | Pending(receipt: ReceiptId)
   | Refused(reason: Refusal)
 
@@ -17,5 +18,5 @@ contract Notify {
   @reconcile(receipt)
   command send(to: UserId, text: String) -> Delivery
 
-  query receipt(key: Key) -> Delivery
+  query receipt(key: Key) -> Option(Delivery)
 }

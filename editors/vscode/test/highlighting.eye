@@ -68,6 +68,15 @@ job sleepWhenIdle(w: Ref(World)) -> Result((), SleepError) {
 #                                     ^^ constant.character.escape.eyelang
 #                                       ^^ invalid.illegal.escape.eyelang
 #                                         ^ punctuation.definition.string.end.eyelang
+  let prompt = """
+#              ^^^ punctuation.definition.string.begin.eyelang
+    Say "hi" to {name}.
+#   ^^^^^^^^^^^^ string.quoted.triple.eyelang
+#               ^ punctuation.section.interpolation.begin.eyelang
+    """
+#   ^^^ punctuation.definition.string.end.eyelang
+  let noon = 12:00 in dublin
+#                  ^^ keyword.control.eyelang
   let c = '\n'
 #         ^^^^ string.quoted.single.char.eyelang
 #          ^^ - constant.character.escape.eyelang

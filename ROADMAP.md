@@ -17,11 +17,9 @@ is done when all its sub-issues are closed and its exit test passes.
 | v0.4 | 7 | Compile to native code with reference counting; jobs run as short-lived processes |
 | v1.0 | — | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation |
 
-**Scope is frozen until the tour runs.** Until the tour in SPECS.md §3 runs under `eye test`, new
-ideas go into SPECS.md's open questions rather than its rules; the spec changes only when the
-implementation or real code shows a rule is wrong. The freeze lifts when task 4.7
-([#38](https://github.com/ruxxzebre/eyelang/issues/38)) closes: the tour passes under `eye test` in
-CI, deterministically.
+**Scope is open.** It was frozen until the tour in SPECS.md §3 ran under `eye test`; since the thin
+slice below runs it, the spec grows again where real programs show it should. The lab's workloads,
+written in Eyelang, are the programs that decide.
 
 **Thin slice, done 2026-10-10.** The tour runs under `eye test` (`testdata/programs/tour`), ahead of
 the phases, by taking a thin cut through them:
@@ -33,8 +31,15 @@ the phases, by taking a thin cut through them:
   saved as bytes (4.3), a test clock (4.4), and `enters`/`leaves` triggers (4.5);
 - fakes replayed from recordings, checked against the contract (part of phase 6).
 
+**The lab in Eyelang, 2026-10-10.** The homelab's stateful workloads are written in Eyelang in
+`testdata/lab` and pass `eye check` and their tests. They brought multi-line strings, `name:`
+arguments, `pub let`, zones by name and one-assignment branches into the syntax, and into the
+interpreter: events (`publish`, `@on(event(…))`, `next!`), `poll!`, `sleepUntil!`, reconciling
+through a query, and contracts served in Eyelang (part of 4.4, 4.5 and phase 6).
+
 Still missing before v0.1: type and effect checking (phase 2), the store written in Eyelang (4.2),
-schedules and time zones in triggers, migrations (4.6), and the REPL.
+schedules and time zones in triggers, a runner that keeps jobs across restarts, migrations (4.6),
+and the REPL. `approval!` is answered only by tests so far.
 
 ## Phases
 

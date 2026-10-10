@@ -188,3 +188,47 @@ test "time" {
   expect("{later}" == "2026-10-10 13:30 in \"Europe/Dublin\"")
   expect(2026-10-10 + 1 day == 2026-10-11)
 }
+
+test "multi-line strings lose their margin" {
+  let name = "Ann"
+  let text = """
+    Dear {name},
+
+      Say "hi" and ""quote"".
+    Bye\t!
+    """
+  expect(text == "Dear Ann,\n\n  Say \"hi\" and \"\"quote\"\".\nBye\t!")
+  let empty = """
+    """
+  expect(empty == "")
+}
+
+test "a branch can be one assignment" {
+  var found: List(Int) = []
+  var bad = 0
+  for r in [Ok(1), Err("x"), Ok(2)] {
+    match r {
+      Ok(n) => found += [n]
+      Err(_) => bad += 1
+    }
+  }
+  expect(found == [1, 2] && bad == 1)
+  var last = 0
+  for n in found {
+    if n > last then last = n
+  }
+  expect(last == 2)
+}
+
+test "label shorthand passes the variable of that name" {
+  let size = 10
+  let after = Some(3)
+  expect(page(size:, after:) == "10 after 3")
+}
+
+test "a time's zone can be a value" {
+  let dublin: Zone = "Europe/Dublin"
+  expect(2026-10-10 12:00 in dublin == 2026-10-10 12:00 in "Europe/Dublin")
+  let ignore = fn _: 1
+  expect(ignore("x") == 1)
+}

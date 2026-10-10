@@ -981,3 +981,98 @@ let c = digest.start(day, at: 07:40 in "Europe/Dublin")
             (time)
             (string
               (string_content))))))))
+
+================================================================================
+Argument label shorthand
+================================================================================
+
+fn f() {
+  send(key:, to: [a], priority:)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (named_argument
+            (identifier))
+          (named_argument
+            (identifier)
+            (list
+              (identifier)))
+          (named_argument
+            (identifier)))))))
+
+================================================================================
+A branch that is one assignment
+================================================================================
+
+fn f() {
+  match r {
+    Ok(t) => pages += [t]
+    Err(_) => problems += 1
+  }
+  if late then count += 1 else count = 0
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (identifier)))
+            (assignment
+              (identifier)
+              (list
+                (identifier))))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (wildcard)))
+            (assignment
+              (identifier)
+              (integer)))))
+      (if_expression
+        (identifier)
+        (assignment
+          (identifier)
+          (integer))
+        (assignment
+          (identifier)
+          (integer))))))
+
+================================================================================
+A lambda that ignores its parameter
+================================================================================
+
+let f = xs |> map(fn _: 0)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (binary_expression
+      (identifier)
+      (call_expression
+        (identifier)
+        (arguments
+          (lambda
+            (wildcard)
+            (integer)))))))

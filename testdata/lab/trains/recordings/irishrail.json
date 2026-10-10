@@ -1,0 +1,20 @@
+{
+  "contract": "IrishRail",
+  "exchanges": [
+    {
+      "op": "movement",
+      "result": {
+        "Some": [
+          {
+            "train": "E216",
+            "date": "2026-10-12",
+            "departures": { "PERSE": "2026-10-12T07:30:00Z" },
+            "arrivals": { "MHIDE": "2026-10-12T07:52:00Z" },
+            "delay": 0,
+            "cancelled": false
+          }
+        ]
+      }
+    }
+  ]
+}

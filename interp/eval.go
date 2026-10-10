@@ -210,6 +210,9 @@ func (in *Interp) apply(callee Value, args []argVal, at ir.Pos) (Value, []Value)
 		}
 		return &EntityRef{Entity: c.E, ID: pos[0]}, nil
 	case *OpVal:
+		if c.Op.Impl != nil && in.rt.fakes[c.Op.Contract] == nil {
+			return in.rt.serve(c.Op, args, at), nil
+		}
 		pos, named := split(args)
 		return in.rt.callOp(c.Op, pos, named, at), nil
 	case *JobVal:
@@ -266,6 +269,8 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 	switch x := e.(type) {
 	case *ir.Lit:
 		return in.lit(x)
+	case *ir.InZone:
+		return in.inZone(f, x)
 	case *ir.EmptyBraces:
 		return Empty{}
 	case *ir.Local:
@@ -453,6 +458,17 @@ type RangeVal struct {
 	Inclusive  bool
 }
 
+// inZone resolves a time whose zone is a value.
+func (in *Interp) inZone(f *frame, x *ir.InZone) Value {
+	zone, ok := in.eval(f, x.Zone).(string)
+	if !ok {
+		in.faultf(x.Pos, "a time's zone is a Zone, such as \"Europe/Dublin\"")
+	}
+	v := x.Instant
+	v.Zone = zone
+	return in.instant(v, x.Pos)
+}
+
 func (in *Interp) lit(x *ir.Lit) Value {
 	switch v := x.Value.(type) {
 	case *big.Int:
@@ -500,6 +516,8 @@ func (in *Interp) ref(x *ir.Ref) Value {
 		return &ViewVal{View: d}
 	case *ir.Op:
 		return &OpVal{Op: d}
+	case *ir.Event:
+		return &EventVal{Event: d}
 	case *ir.Module:
 		return &ModuleVal{Module: d}
 	case *ir.Type:
@@ -578,6 +596,15 @@ func sourceOf(e ir.Expr) string {
 func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 	recv := in.eval(f, m.Recv)
 	args := in.evalArgs(f, m.Args)
+	if _, isSelf := m.Recv.(*ir.Self); isSelf && f.fn.Entity != nil {
+		// An entity method calling another of the entity's methods, in the
+		// same transaction, on the same state.
+		if meth, ok := f.fn.Entity.Methods[m.Name]; ok {
+			r, self, _ := in.callFunc(meth, f.self, nil, args, m.Pos)
+			f.self = self
+			return r
+		}
+	}
 	result, newRecv := in.method(recv, m.Name, args, m.Pos, false)
 	if newRecv != nil && m.RecvPlace != nil {
 		in.writePlace(f, *m.RecvPlace, newRecv)
@@ -590,6 +617,18 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 // receiver.
 func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, durable bool) (Value, Value) {
 	switch r := recv.(type) {
+	case *EventVal:
+		if name == "publish" {
+			pos, _ := split(args)
+			if len(pos) != 1 {
+				in.faultf(at, "publish takes the event's value")
+			}
+			if in.run != nil && !durable {
+				in.faultf(at, "in a job, publishing is a durable step: write publish!(…)")
+			}
+			in.rt.publish(r.Event, pos[0])
+			return ir.Unit{}, nil
+		}
 	case *EntityRef:
 		if name == "read" {
 			if !durable {
@@ -625,6 +664,9 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 		if fn := in.recordMethod(r, name); fn != nil {
 			return in.callMethodFunc(fn, r, args, at)
 		}
+	}
+	if v, ok := in.timeMethod(recv, name, args, at); ok {
+		return v, nil
 	}
 	if b, ok := in.builtins[name]; ok {
 		pos, named := split(args)
@@ -693,6 +735,13 @@ func (in *Interp) field(v Value, name string, at ir.Pos) Value {
 	case *entityVal:
 		if name == "all" {
 			return &EntitySet{Entity: x.E}
+		}
+	case *RangeVal:
+		switch {
+		case name == "start" && x.Start != nil:
+			return x.Start
+		case name == "end" && x.End != nil:
+			return x.End
 		}
 	}
 	in.faultf(at, "%s has no field %s", kindName(v), name)
@@ -808,6 +857,15 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 		return r
 	}
 	switch x := a.(type) {
+	case string:
+		if y, ok := b.(string); ok && op == "+" {
+			return x + y
+		}
+	case *List:
+		if y, ok := b.(*List); ok && op == "+" {
+			elems := make([]Value, 0, len(x.Elems)+len(y.Elems))
+			return &List{Elems: append(append(elems, x.Elems...), y.Elems...)}
+		}
 	case float64:
 		if y, ok := b.(float64); ok {
 			switch op {

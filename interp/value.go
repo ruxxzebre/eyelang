@@ -63,8 +63,11 @@ type (
 	RunVal    struct{ ID int64 }
 	ModuleVal struct{ Module *ir.Module }
 	OpVal     struct{ Op *ir.Op }
-	TypeVal   struct{ Type *ir.Type }
-	ViewVal   struct{ View *ir.View }
+	EventVal  struct{ Event *ir.Event }
+	// ApprovalVal is an Approval: a person's yes to what a job asked.
+	ApprovalVal struct{ What, By string }
+	TypeVal     struct{ Type *ir.Type }
+	ViewVal     struct{ View *ir.View }
 	// handler is what a `with` statement applies in a test.
 	handler interface{ apply(in *Interp, at ir.Pos) }
 )
@@ -412,6 +415,25 @@ func equal(a, b Value) bool {
 // compare orders two values of the same ordered kind.
 func compare(a, b Value) (int, bool) {
 	switch x := a.(type) {
+	case *Variant:
+		// Variants of one type are ordered as they are declared, then by
+		// their fields: Low < Normal < High.
+		y, ok := b.(*Variant)
+		if !ok || x.V.Type != y.V.Type || x.V.Type == nil {
+			return 0, false
+		}
+		if x.V != y.V {
+			return variantIndex(x.V) - variantIndex(y.V), true
+		}
+		for i := range x.Vals {
+			if i >= len(y.Vals) {
+				break
+			}
+			if c, ok := compare(x.Vals[i], y.Vals[i]); !ok || c != 0 {
+				return c, ok
+			}
+		}
+		return 0, true
 	case int64, *big.Int:
 		if !isInt(b) {
 			return 0, false
@@ -727,4 +749,13 @@ func kindName(v Value) string {
 		return "a function"
 	}
 	return fmt.Sprintf("%T", v)
+}
+
+func variantIndex(v *ir.Variant) int {
+	for i, w := range v.Type.Variants {
+		if w == v {
+			return i
+		}
+	}
+	return -1
 }

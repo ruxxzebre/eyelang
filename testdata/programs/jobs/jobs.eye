@@ -69,3 +69,37 @@ test "a second brew while brewing starts nothing new" {
   advance(1 h)
   expect(k.brews == 1)
 }
+
+entity Feed(name: String) {
+  state up: Bool = false
+  state polls: Int = 0
+
+  pub fn check() -> Bool {
+    polls += 1
+    up
+  }
+
+  pub fn start() { up = true }
+}
+
+job waitForFeed(name: String) {
+  if poll!(every: 1 min, within: 10 min, fn { Feed(name).check!() }) {
+    log.info("{name} is up")
+  } else {
+    log.info("gave up on {name}")
+  }
+}
+
+test "poll! checks until the check passes, then stops" {
+  waitForFeed.start("news")
+  advance(3 min)
+  Feed("news").start()
+  advance(1 h)
+  expect(Feed("news").polls == 5)
+}
+
+test "poll! gives up when its time runs out" {
+  waitForFeed.start("dead")
+  advance(1 h)
+  expect(Feed("dead").polls == 11)
+}

@@ -60,6 +60,8 @@ func (p *parser) item() *Node {
 			return p.impl(attrs)
 		}
 		return p.test(attrs)
+	case p.at(KwLet) && len(attrs) == 0:
+		return p.let(pub) // `pub let` exports a module-level value
 	case word == "import", p.at(KwLet):
 		if len(attrs) > 0 || pub != nil {
 			first := pub
@@ -81,7 +83,7 @@ func (p *parser) itemWithoutPrefix() *Node {
 	if p.atWord("import") {
 		return p.importDeclaration()
 	}
-	return p.let()
+	return p.let(nil)
 }
 
 func nonNil(nodes []*Node) []*Node {

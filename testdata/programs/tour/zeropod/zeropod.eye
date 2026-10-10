@@ -28,5 +28,6 @@ contract Zeropod {
   @key(required)
   command restore(world: WorldId) -> RestoreOutcome
 
-  query checkpointStatus(key: Key) -> CheckpointOutcome
+  ## The outcome of a checkpoint; None if none with this key arrived.
+  query checkpointStatus(key: Key) -> Option(CheckpointOutcome)
 }

@@ -25,11 +25,20 @@ type TestResult struct {
 // when the test advances it.
 func RunTests(prog *ir.Program, filter string) []TestResult {
 	var results []TestResult
-	for _, t := range prog.Root.Tests {
-		if !strings.Contains(t.Name, filter) {
-			continue
+	for _, m := range prog.Modules {
+		if m != prog.Root && m.Dir == "" {
+			continue // the prelude and the standard modules
 		}
-		results = append(results, runTest(prog, t))
+		for _, t := range m.Tests {
+			if !strings.Contains(t.Name, filter) {
+				continue
+			}
+			r := runTest(prog, t)
+			if m != prog.Root {
+				r.Name = m.Path + ": " + r.Name
+			}
+			results = append(results, r)
+		}
 	}
 	return results
 }

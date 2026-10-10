@@ -17,6 +17,7 @@ const (
 	ctxPlain        ctxKind = iota // a function or method; it may wait, which makes it a waiting function
 	ctxJob                         // a job body
 	ctxEntityMethod                // an entity method: a transaction, which can't wait
+	ctxOperation                   // serves a contract's operation: a transaction, which can't wait
 	ctxTest                        // a test block
 	ctxView                        // a view's pipeline
 	ctxGlobal                      // a module-level let or a state default
@@ -196,6 +197,8 @@ func (l *lowerer) canWait() (bool, string) {
 		return true, ""
 	case ctxEntityMethod:
 		return false, "an entity method is a transaction and can't wait; start a job for this instead"
+	case ctxOperation:
+		return false, "serving an operation is a transaction and can't wait; start a job for this instead"
 	case ctxTest:
 		return false, "a test can't make waiting calls; start a job, then advance(…) the clock"
 	case ctxMain:
@@ -396,17 +399,17 @@ func (l *lowerer) expr(n *syntax.Node) ir.Expr {
 		return &ir.Lit{At: at, Value: parseDate(l.text(n))}
 	case syntax.Time:
 		return &ir.Lit{At: at, Value: parseTime(l.text(n))}
-	case syntax.Instant:
-		return &ir.Lit{At: at, Value: ir.Instant{
-			Date: parseDate(l.text(n.ChildByField(syntax.FieldDate))),
-			Time: parseTime(l.text(n.ChildByField(syntax.FieldTime))),
-			Zone: strings.Trim(l.text(n.ChildByField(syntax.FieldZone)), `"`),
-		}}
-	case syntax.ZonedTime:
-		return &ir.Lit{At: at, Value: ir.Instant{
-			Time: parseTime(l.text(n.ChildByField(syntax.FieldTime))),
-			Zone: strings.Trim(l.text(n.ChildByField(syntax.FieldZone)), `"`),
-		}}
+	case syntax.Instant, syntax.ZonedTime:
+		v := ir.Instant{Time: parseTime(l.text(n.ChildByField(syntax.FieldTime)))}
+		if d := n.ChildByField(syntax.FieldDate); d != nil {
+			v.Date = parseDate(l.text(d))
+		}
+		zone := n.ChildByField(syntax.FieldZone)
+		if zone.Kind == syntax.Ident {
+			return &ir.InZone{At: at, Instant: v, Zone: l.name(zone)}
+		}
+		v.Zone = strings.Trim(l.text(zone), `"`)
+		return &ir.Lit{At: at, Value: v}
 	case syntax.EmptyBraces:
 		return &ir.EmptyBraces{At: at}
 	case syntax.List:
@@ -489,8 +492,8 @@ func (l *lowerer) expr(n *syntax.Node) ir.Expr {
 		return l.match(n)
 	case syntax.Lambda:
 		return l.lambda(n)
-	case syntax.ReturnStatement, syntax.BreakStatement, syntax.ContinueStatement:
-		return l.stmt(n)
+	case syntax.ReturnStatement, syntax.BreakStatement, syntax.ContinueStatement, syntax.Assignment:
+		return l.stmt(n) // an assignment here is a branch: `Ok(t) => found += [t]`
 	case syntax.Placeholder:
 		l.errorf(n, "_ stands for the piped value, so it works only in the arguments of a call after |>")
 		return &ir.Lit{At: at, Value: ir.Unit{}}
@@ -553,10 +556,18 @@ func (l *lowerer) stringLit(n *syntax.Node) ir.Expr {
 	var parts []ir.Expr
 	var b strings.Builder
 	interpolated := false
+	var texts map[*syntax.Node]string
+	if len(n.Children) > 0 && l.text(n.Children[0]) == `"""` {
+		texts = l.multilineText(n)
+	}
 	for _, c := range n.NamedChildren() {
 		switch c.Kind {
 		case syntax.StringText:
-			b.WriteString(l.text(c))
+			if texts != nil {
+				b.WriteString(texts[c])
+			} else {
+				b.WriteString(l.text(c))
+			}
 		case syntax.StringEscape:
 			b.WriteString(unescape(l.text(c)))
 		case syntax.Interpolation:
@@ -575,6 +586,92 @@ func (l *lowerer) stringLit(n *syntax.Node) ir.Expr {
 		parts = append(parts, &ir.Lit{At: l.at(n), Value: b.String()})
 	}
 	return &ir.Interpolate{At: l.at(n), Parts: parts}
+}
+
+// multilineText strips the margin from a multi-line string's text. The
+// string starts on the line after its opening `"""` and ends at the line
+// break before its closing `"""`, whose indentation is the margin: every line
+// starts with it, or is blank, and loses it. It returns each text part of the
+// string as it is after stripping.
+func (l *lowerer) multilineText(n *syntax.Node) map[*syntax.Node]string {
+	children := n.NamedChildren()
+	out := map[*syntax.Node]string{}
+	errorAt := func(offset int, format string, args ...any) {
+		l.c.errorf(ir.Pos{File: l.f, Offset: offset, End: offset + 1}, format, args...)
+	}
+	first, last := children, children
+	if len(first) == 0 || first[0].Kind != syntax.StringText {
+		errorAt(n.Span.Start, `a multi-line string starts on the line after its """`)
+		return nil
+	}
+	head := l.text(first[0])
+	nl := strings.IndexByte(head, '\n')
+	if nl < 0 || strings.TrimLeft(head[:nl], " \t\r") != "" {
+		errorAt(n.Span.Start, `a multi-line string starts on the line after its """`)
+		return nil
+	}
+	tail := last[len(last)-1]
+	closing := l.text(tail)
+	if tail.Kind != syntax.StringText || strings.LastIndexByte(closing, '\n') < 0 ||
+		strings.Trim(closing[strings.LastIndexByte(closing, '\n')+1:], " \t") != "" {
+		errorAt(n.Span.End-3, `the closing """ of a multi-line string goes on a line of its own`)
+		return nil
+	}
+	margin := closing[strings.LastIndexByte(closing, '\n')+1:]
+	atLineStart := true
+	for i, c := range children {
+		if c.Kind != syntax.StringText {
+			if atLineStart && margin != "" {
+				errorAt(c.Span.Start, `this line is indented less than the closing """`)
+			}
+			atLineStart = false
+			continue
+		}
+		text := l.text(c)
+		start := c.Span.Start
+		if i == 0 {
+			text, start = text[nl+1:], start+nl+1
+		}
+		if c == tail {
+			cut := strings.LastIndexByte(text, '\n')
+			if cut < 0 {
+				// The string is empty: only the closing line is left.
+				out[c] = ""
+				continue
+			}
+			text = text[:cut]
+		}
+		var b strings.Builder
+		for pos := 0; pos < len(text); {
+			if atLineStart {
+				end := strings.IndexByte(text[pos:], '\n')
+				line := text[pos:]
+				if end >= 0 {
+					line = text[pos : pos+end]
+				}
+				switch {
+				case strings.TrimRight(line, " \t\r") == "" && (end >= 0 || c == tail):
+					pos += len(line) // a blank line keeps only its line break
+				case strings.HasPrefix(line, margin):
+					pos += len(margin)
+				default:
+					errorAt(start+pos, `this line is indented less than the closing """`)
+				}
+				atLineStart = false
+				continue
+			}
+			end := strings.IndexByte(text[pos:], '\n')
+			if end < 0 {
+				b.WriteString(text[pos:])
+				break
+			}
+			b.WriteString(text[pos : pos+end+1])
+			pos += end + 1
+			atLineStart = true
+		}
+		out[c] = b.String()
+	}
+	return out
 }
 
 func (l *lowerer) binary(n *syntax.Node) ir.Expr {
@@ -639,8 +736,18 @@ func (l *lowerer) args(n *syntax.Node) []ir.Arg {
 func (l *lowerer) arg(a *syntax.Node) ir.Arg {
 	switch a.Kind {
 	case syntax.NamedArgument:
-		arg := l.arg(a.ChildByField(syntax.FieldValue))
-		arg.Name = l.text(a.ChildByField(syntax.FieldName))
+		name := a.ChildByField(syntax.FieldName)
+		value := a.ChildByField(syntax.FieldValue)
+		if value == nil {
+			// `key:` alone passes the variable named key.
+			if n := l.text(name); n == "in" || n == "for" {
+				l.errorf(a, "%s is a keyword, not a variable, so %s: needs a value", n, n)
+				return ir.Arg{Name: n, Value: &ir.Lit{At: l.at(a), Value: ir.Unit{}}}
+			}
+			return ir.Arg{Name: l.text(name), Value: l.name(name)}
+		}
+		arg := l.arg(value)
+		arg.Name = l.text(name)
 		return arg
 	case syntax.MutArgument:
 		v := a.ChildByField(syntax.FieldValue)
@@ -665,11 +772,31 @@ func (l *lowerer) call(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.E
 		}
 		return &ir.MethodCall{At: at, Recv: l.expr(recvNode), Name: name, Args: args, RecvPlace: l.quietPlace(recvNode)}
 	}
+	if fnNode.Kind == syntax.Ident && l.ownMethod(fnNode) {
+		// In an entity, a method is called by its name, as a state field
+		// is read by its name: `unpin(p)` is `self.unpin(p)`.
+		return &ir.MethodCall{At: at, Recv: &ir.Self{At: at}, Name: l.text(fnNode), Args: args}
+	}
 	callee := l.expr(fnNode)
 	if r, ok := callee.(*ir.Ref); ok {
 		l.checkDurable(n, r.Decl, waiting)
 	}
 	return &ir.Call{At: at, Func: callee, Args: args}
+}
+
+// ownMethod reports whether n names a method of the entity whose method is
+// being lowered, and nothing nearer: a local or a state field.
+func (l *lowerer) ownMethod(n *syntax.Node) bool {
+	name := l.text(n)
+	m := l.method()
+	if m.entity == nil || l != m {
+		return false
+	}
+	if _, ok := l.lookupLocal(name, n); ok || l.selfField(name) {
+		return false
+	}
+	_, ok := m.entity.Methods[name]
+	return ok
 }
 
 // checkDurable reports a call that must be a durable step in a job but has no `!`.
@@ -764,7 +891,13 @@ func (l *lowerer) lambda(n *syntax.Node) ir.Expr {
 		scopes: []map[string]local{{}},
 	}
 	if p := n.ChildByField(syntax.FieldParameter); p != nil {
-		inner.fn.Params = append(inner.fn.Params, &ir.Param{Name: l.text(p), Slot: inner.bind(l.text(p), false, false)})
+		param := &ir.Param{Name: l.text(p)}
+		if p.Kind == syntax.Wildcard {
+			param.Slot = inner.newSlot()
+		} else {
+			param.Slot = inner.bind(param.Name, false, false)
+		}
+		inner.fn.Params = append(inner.fn.Params, param)
 	}
 	if ps := n.ChildByField(syntax.FieldParameters); ps != nil {
 		for _, p := range ps.NamedChildren() {

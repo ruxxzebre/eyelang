@@ -25,7 +25,7 @@ func (p *parser) statement() *Node {
 	}
 	switch p.kind() {
 	case KwLet:
-		return p.let()
+		return p.let(nil)
 	case KwVar:
 		b := p.start(VarStatement)
 		b.add(p.bump())
@@ -56,10 +56,18 @@ func (p *parser) statement() *Node {
 		p.errorExpected("a statement")
 		return errorNode(p.skipLineNodes())
 	}
-	e := p.expr()
+	return p.assignmentOr(p.expr())
+}
+
+// branch parses what a match arm or a `then` or `else` branch holds when it
+// isn't a block: an expression, or one assignment (`Ok(t) => pages += [t]`).
+func (p *parser) branch() *Node { return p.assignmentOr(p.expr()) }
+
+// assignmentOr returns the assignment that e starts, or e. The checker makes
+// sure the left side is a variable or a field of one.
+func (p *parser) assignmentOr(e *Node) *Node {
 	switch p.kind() {
 	case Assign, PlusEq, MinusEq, StarEq, SlashEq, PercentEq:
-		// The checker makes sure the left side is a variable or a field of one.
 		b := wrap(Assignment, FieldLeft, e)
 		b.field(FieldOperator, p.bump())
 		b.field(FieldRight, p.expr())
@@ -68,9 +76,13 @@ func (p *parser) statement() *Node {
 	return e
 }
 
-// let parses `let pattern: T = value else { … }`.
-func (p *parser) let() *Node {
+// let parses `let pattern: T = value else { … }`, after `pub` at the top
+// level.
+func (p *parser) let(pub *Node) *Node {
 	b := p.start(LetStatement)
+	if pub != nil {
+		b.add(pub)
+	}
 	b.add(p.bump())
 	b.field(FieldPattern, p.pattern())
 	if p.at(Colon) {

@@ -101,6 +101,12 @@ func (in *Interp) loadFakes(path string, ct *ir.Contract) (*fakeSet, error) {
 			return nil, fmt.Errorf("%s: exchange %d: %s has no operation %q", path, i+1, ct.Name, e.Op)
 		}
 		v, err := in.fromJSON(e.Result, op.Return)
+		if err != nil && op.Command {
+			// A command's reply may have been lost: {"Uncertain": ["key"]}.
+			if u, uerr := in.fromJSON(e.Result, &ir.TypeExpr{Name: "Unconfirmed", Decl: in.prog.Prelude.Types["Unconfirmed"]}); uerr == nil {
+				v, err = u, nil
+			}
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s: exchange %d (%s): %v", path, i+1, e.Op, err)
 		}
@@ -122,6 +128,9 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 	key, _ := named["key"].(string)
 	for _, e := range fs.exchanges {
 		if e.op == op.Name && (key == "" || e.key == key) {
+			if v, ok := e.result.(*Variant); ok && v.V.Name == "Uncertain" && len(v.Vals) == 1 {
+				rt.uncertain[keyOf(v.Vals[0])] = sentCommand{op, args, named}
+			}
 			return e.result
 		}
 	}
@@ -132,11 +141,45 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 	return nil
 }
 
+// sentCommand is a command whose reply was lost, kept so that reconcile can
+// ask about it and, if it never arrived, send it again with the same key.
+type sentCommand struct {
+	op    *ir.Op
+	args  []Value
+	named map[string]Value
+}
+
 // reconcile resolves an Uncertain outcome; any other outcome is already
-// known.
+// known. It asks the contract's @reconcile query by key: Some is the
+// command's outcome, and None means the command never arrived, so it is sent
+// again with the same key, which can't do it twice.
 func (rt *runtime) reconcile(v *Variant, at ir.Pos) Value {
-	if v.V.Name == "Uncertain" {
-		rt.in.faultf(at, "reconciling an Uncertain outcome comes with contracts in phase 6")
+	for tries := 0; v.V.Name == "Uncertain"; tries++ {
+		key := v.Vals[0]
+		sent, ok := rt.uncertain[keyOf(key)]
+		if !ok || sent.op.Reconcile == "" {
+			rt.in.faultf(at, "this outcome can't be reconciled: its command names no @reconcile query, so match Uncertain(key) instead")
+		}
+		query := sent.op.Contract.Ops[sent.op.Reconcile]
+		if query == nil {
+			rt.in.faultf(at, "%s's @reconcile names %s, which isn't a query of %s", sent.op.Name, sent.op.Reconcile, sent.op.Contract.Name)
+		}
+		if tries == 3 {
+			rt.in.faultf(at, "%s with key %s is still uncertain after asking %s three times", sent.op.Name, show(key), query.Name)
+		}
+		found, ok := rt.callOp(query, nil, map[string]Value{"key": key}, at).(*Variant)
+		switch {
+		case ok && found.V == rt.in.pre.some:
+			return found.Vals[0]
+		case ok && found.V == rt.in.pre.none:
+			next, ok := rt.callOp(sent.op, sent.args, sent.named, at).(*Variant)
+			if !ok {
+				rt.in.faultf(at, "%s returned something other than its outcome", sent.op.Name)
+			}
+			v = next
+		default:
+			rt.in.faultf(at, "%s, a @reconcile query, returns an Option of the command's outcome", query.Name)
+		}
 	}
 	return v
 }
@@ -236,11 +279,15 @@ func (in *Interp) fromAny(x any, t *ir.TypeExpr) (Value, error) {
 		if obj, ok := x.(map[string]any); ok {
 			var keys, vals []Value
 			for _, k := range sortedKeys(obj) {
+				key, err := in.fromAny(k, arg(0))
+				if err != nil {
+					return nil, fmt.Errorf("key %q: %v", k, err)
+				}
 				v, err := in.fromAny(obj[k], arg(1))
 				if err != nil {
 					return nil, err
 				}
-				keys, vals = append(keys, k), append(vals, v)
+				keys, vals = append(keys, key), append(vals, v)
 			}
 			return newMap(keys, vals), nil
 		}

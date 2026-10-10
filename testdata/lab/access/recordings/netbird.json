@@ -1,0 +1,13 @@
+{
+  "contract": "Netbird",
+  "exchanges": [
+    { "op": "approve", "result": "Changed" },
+    {
+      "op": "users",
+      "result": [
+        { "id": "p1", "email": "Ann@example.com", "groups": [], "service": false, "blocked": false }
+      ]
+    },
+    { "op": "join", "result": { "Uncertain": ["join-p1-net-people"] } }
+  ]
+}

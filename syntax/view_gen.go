@@ -553,13 +553,13 @@ func AsIfExpression(n *Node) (IfExpressionView, bool) {
 	return IfExpressionView{n}, true
 }
 
-// Alternative returns the alternative child (_expression, block), or nil.
+// Alternative returns the alternative child (_expression, assignment, block), or nil.
 func (v IfExpressionView) Alternative() *Node { return v.Node.ChildByField(FieldAlternative) }
 
 // Condition returns the condition child (_expression).
 func (v IfExpressionView) Condition() *Node { return v.Node.ChildByField(FieldCondition) }
 
-// Consequence returns the consequence child (_expression, block).
+// Consequence returns the consequence child (_expression, assignment, block).
 func (v IfExpressionView) Consequence() *Node { return v.Node.ChildByField(FieldConsequence) }
 
 // ImplBodyView is a typed view of an impl_body node.
@@ -664,7 +664,7 @@ func (v InstantView) Date() *Node { return v.Node.ChildByField(FieldDate) }
 // Time returns the time child (time).
 func (v InstantView) Time() *Node { return v.Node.ChildByField(FieldTime) }
 
-// Zone returns the zone child (string).
+// Zone returns the zone child (identifier, string).
 func (v InstantView) Zone() *Node { return v.Node.ChildByField(FieldZone) }
 
 // InterpolationView is a typed view of an interpolation node.
@@ -724,7 +724,7 @@ func AsLambda(n *Node) (LambdaView, bool) {
 // Body returns the body child (_expression, block).
 func (v LambdaView) Body() *Node { return v.Node.ChildByField(FieldBody) }
 
-// Parameter returns the parameter child (identifier), or nil.
+// Parameter returns the parameter child (identifier, wildcard), or nil.
 func (v LambdaView) Parameter() *Node { return v.Node.ChildByField(FieldParameter) }
 
 // Parameters returns the parameters child (parameters), or nil.
@@ -829,7 +829,7 @@ func (v MatchArmView) Guard() *Node { return v.Node.ChildByField(FieldGuard) }
 // Pattern returns the pattern child (_pattern).
 func (v MatchArmView) Pattern() *Node { return v.Node.ChildByField(FieldPattern) }
 
-// Value returns the value child (_expression, block).
+// Value returns the value child (_expression, assignment, block).
 func (v MatchArmView) Value() *Node { return v.Node.ChildByField(FieldValue) }
 
 // MatchBodyView is a typed view of a match_body node.
@@ -914,7 +914,7 @@ func AsNamedArgument(n *Node) (NamedArgumentView, bool) {
 // Name returns the name child (identifier).
 func (v NamedArgumentView) Name() *Node { return v.Node.ChildByField(FieldName) }
 
-// Value returns the value child (_expression, mut_argument).
+// Value returns the value child (_expression, mut_argument), or nil.
 func (v NamedArgumentView) Value() *Node { return v.Node.ChildByField(FieldValue) }
 
 // NegativeLiteralView is a typed view of a negative_literal node.
@@ -1735,5 +1735,5 @@ func AsZonedTime(n *Node) (ZonedTimeView, bool) {
 // Time returns the time child (time).
 func (v ZonedTimeView) Time() *Node { return v.Node.ChildByField(FieldTime) }
 
-// Zone returns the zone child (string).
+// Zone returns the zone child (identifier, string).
 func (v ZonedTimeView) Zone() *Node { return v.Node.ChildByField(FieldZone) }

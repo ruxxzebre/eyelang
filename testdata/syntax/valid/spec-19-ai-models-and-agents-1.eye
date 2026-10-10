@@ -16,7 +16,10 @@ type Urgency = | Calm | Busy | Breaking(reason: String)
 job summarise(items: List(Item)) -> Result(Digest, AiError) {
   ai.generate!(
     model: "claude-sonnet-5-5",
-    system: "You summarise Irish news for a morning digest.",
+    system: """
+      You summarise Irish news for a morning digest.
+      Use only facts in the input. Never guess dates, numbers or rules.
+      """,
     prompt: items |> map(fn i: "- {i.title}") |> join("\n"),
   )
 }

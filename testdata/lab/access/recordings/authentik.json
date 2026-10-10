@@ -1,0 +1,9 @@
+{
+  "contract": "Authentik",
+  "exchanges": [
+    {
+      "op": "members",
+      "result": [{ "id": "ann", "email": "ann@example.com", "active": true, "groups": [] }]
+    }
+  ]
+}

@@ -39,6 +39,27 @@ func TestPrograms(t *testing.T) {
 	}
 }
 
+// TestLab checks the lab's workloads in testdata/lab, written in Eyelang to
+// test the language on real programs, and runs their tests.
+func TestLab(t *testing.T) {
+	prog, diags := check.Program("../testdata/lab")
+	for _, diag := range diags {
+		t.Error(diag)
+	}
+	if t.Failed() {
+		return
+	}
+	results := RunTests(prog, "")
+	if len(results) < 10 {
+		t.Errorf("the lab has %d tests; expected its modules' tests too", len(results))
+	}
+	for _, r := range results {
+		if r.Failure != "" {
+			t.Errorf("%s: %s\n%s", r.Name, r.Failure, r.Log)
+		}
+	}
+}
+
 // load checks a program made of one file.
 func load(t *testing.T, src string) *ir.Program {
 	t.Helper()

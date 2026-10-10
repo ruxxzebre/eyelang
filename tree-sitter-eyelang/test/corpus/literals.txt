@@ -401,3 +401,47 @@ let b = { 1: "one", (key(x)): 2 }
             (arguments
               (identifier))))
         (integer)))))
+
+================================================================================
+Multi-line strings
+================================================================================
+
+let prompt = """
+  Say "hi" to {name}, and ""quote"" freely.
+    \t indented
+  """
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (string
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (escape_sequence)
+      (string_content))))
+
+================================================================================
+A zone given by name
+================================================================================
+
+let a = 07:40 in dublin
+let b = 2026-10-12 08:00 in dublin
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (zoned_time
+      (time)
+      (identifier)))
+  (let_statement
+    (identifier)
+    (instant
+      (date)
+      (time)
+      (identifier))))

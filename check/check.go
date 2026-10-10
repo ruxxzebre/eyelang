@@ -8,7 +8,7 @@
 package check
 
 import (
-	_ "embed"
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +21,12 @@ import (
 
 //go:embed prelude.eye
 var preludeSrc []byte
+
+// std holds the standard modules written in Eyelang, one file each:
+// `import ai` loads std/ai.eye.
+//
+//go:embed std/*.eye
+var std embed.FS
 
 // Diagnostic is a problem found in a program.
 type Diagnostic struct {
@@ -183,6 +189,9 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 		return // standard modules are always in scope
 	}
 	imp := c.modules[path]
+	if src, err := std.ReadFile("std/" + path + ".eye"); imp == nil && err == nil {
+		imp = c.parse(path, "", []*ir.File{parseFile("<std "+path+">", src)})
+	}
 	if imp == nil {
 		dir := filepath.Join(append([]string{c.root}, parts...)...)
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
@@ -409,7 +418,8 @@ var builtinTypes = map[string]bool{
 	"Int32": true, "Int64": true, "UInt32": true, "UInt64": true, "NonZero": true, "Instant": true,
 	"Date": true, "Time": true, "Duration": true, "Zone": true, "Schedule": true, "Size": true,
 	"List": true, "Map": true, "Set": true, "Iter": true, "Ref": true, "Run": true, "Key": true,
-	"Secret": true, "Approval": true, "Version": true, "Problem": true, "Handle": true,
+	"Secret": true, "Approval": true, "Version": true, "Problem": true, "Handle": true, "Range": true,
+	"Event": true,
 }
 
 // typeExpr resolves a type as written.
@@ -542,30 +552,46 @@ func (c *checker) entityDecl(m *module, f *ir.File, d *syntax.Node) {
 
 func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 	nameNode := d.ChildByField(syntax.FieldName)
-	ct := &ir.Contract{Name: text(f, nameNode), Module: m.mod, Ops: map[string]*ir.Op{}}
+	ct := &ir.Contract{Name: text(f, nameNode), Module: m.mod, Ops: map[string]*ir.Op{}, Events: map[string]*ir.Event{}}
 	m.mod.Contracts[ct.Name] = ct
 	c.define(m, f, nameNode, ct.Name, ct)
 	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
+		if member.Kind == syntax.EventDeclaration {
+			ev := &ir.Event{
+				Name:     text(f, member.ChildByField(syntax.FieldName)),
+				Contract: ct,
+				Topic:    strings.Trim(text(f, member.ChildByField(syntax.FieldTopic)), `"`),
+			}
+			if args := attributeArgs(f, member, "key"); len(args) == 1 {
+				ev.Key = text(f, args[0])
+			}
+			ct.Events[ev.Name] = ev
+			member := member
+			m.decls = append(m.decls, func() { ev.Type = c.typeExpr(m, f, member.ChildByField(syntax.FieldType), nil) })
+			continue
+		}
 		if member.Kind != syntax.CommandDeclaration && member.Kind != syntax.QueryDeclaration {
 			continue
 		}
 		mn := member.ChildByField(syntax.FieldName)
 		op := &ir.Op{Name: text(f, mn), Contract: ct, Command: member.Kind == syntax.CommandDeclaration, Pos: pos(f, member)}
-		for _, attr := range member.ChildrenByField(syntax.NoField) {
-			if attr.Kind == syntax.Attribute && text(f, attr.ChildByField(syntax.FieldName)) == "reconcile" {
-				if args := attr.ChildByField(syntax.FieldArguments); args != nil && len(args.NamedChildren()) == 1 {
-					op.Reconcile = text(f, args.NamedChildren()[0])
-				}
-			}
+		if args := attributeArgs(f, member, "reconcile"); len(args) == 1 {
+			op.Reconcile = text(f, args[0])
 		}
+		op.Key = hasAttribute(f, member, "key")
 		ct.Ops[op.Name] = op
 		member := member
 		m.decls = append(m.decls, func() {
 			for _, p := range member.ChildByField(syntax.FieldParameters).NamedChildren() {
-				op.Params = append(op.Params, &ir.Param{
+				param := &ir.Param{
 					Name: text(f, p.ChildByField(syntax.FieldName)),
 					Type: c.typeExpr(m, f, p.ChildByField(syntax.FieldType), nil),
-				})
+				}
+				if def := p.ChildByField(syntax.FieldDefault); def != nil {
+					l := c.newFunc(m, f, ct.Name+"."+op.Name, pos(f, p), ctxGlobal)
+					param.Default = l.expr(def)
+				}
+				op.Params = append(op.Params, param)
 			}
 			op.Return = c.typeExpr(m, f, member.ChildByField(syntax.FieldReturnType), nil)
 		})
@@ -581,11 +607,118 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 				m.values[name] = op
 			}
 		}
+		for name, ev := range ct.Events {
+			if _, taken := m.values[name]; !taken {
+				m.values[name] = ev
+			}
+		}
 	}}, m.decls...)
+}
+
+// attributeArgs returns the arguments of a declaration's attribute @name.
+func attributeArgs(f *ir.File, d *syntax.Node, name string) []*syntax.Node {
+	for _, attr := range d.Children {
+		if attr.Kind == syntax.Attribute && text(f, attr.ChildByField(syntax.FieldName)) == name {
+			if args := attr.ChildByField(syntax.FieldArguments); args != nil {
+				return args.NamedChildren()
+			}
+		}
+	}
+	return nil
+}
+
+func hasAttribute(f *ir.File, d *syntax.Node, name string) bool {
+	for _, attr := range d.Children {
+		if attr.Kind == syntax.Attribute && text(f, attr.ChildByField(syntax.FieldName)) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// contractNamed returns the contract a type expression names, if it names one.
+func (c *checker) contractNamed(m *module, f *ir.File, n *syntax.Node) *ir.Contract {
+	switch n.Kind {
+	case syntax.TypeIdent:
+		ct, _ := c.lookupType(m, text(f, n)).(*ir.Contract)
+		return ct
+	case syntax.QualifiedType:
+		imp, _ := m.values[text(f, n.ChildByField(syntax.FieldModule))].(*ir.Module)
+		if imp == nil {
+			return nil
+		}
+		ct, _ := c.modules[imp.Path].types[text(f, n.ChildByField(syntax.FieldName))].(*ir.Contract)
+		return ct
+	}
+	return nil
+}
+
+// serve lowers `impl Contract { … }`: this program serves the contract, with
+// one function per operation. A function takes the operation's parameters,
+// with their types and defaults from the contract, and `key` last for a
+// command with @key. It runs as one transaction, like an entity method.
+func (c *checker) serve(m *module, f *ir.File, d *syntax.Node, ct *ir.Contract) {
+	served := map[string]bool{}
+	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
+		if member.Kind != syntax.FunctionDeclaration {
+			continue
+		}
+		mn := member.ChildByField(syntax.FieldName)
+		name := text(f, mn)
+		op := ct.Ops[name]
+		if op == nil {
+			c.errorf(pos(f, mn), "contract %s has no operation %s", ct.Name, name)
+			continue
+		}
+		if served[name] {
+			c.errorf(pos(f, mn), "%s.%s is served twice", ct.Name, name)
+			continue
+		}
+		served[name] = true
+		fn := &ir.Func{Name: ct.Name + "." + name, Module: m.mod, Pos: pos(f, member)}
+		op.Impl = fn
+		member := member
+		m.decls = append(m.decls, func() {
+			// The contract's module is lowered first, so its parameters are known.
+			var want, got []string
+			for _, p := range op.Params {
+				want = append(want, p.Name)
+			}
+			if op.Key {
+				want = append(want, "key")
+			}
+			for _, p := range member.ChildByField(syntax.FieldParameters).NamedChildren() {
+				got = append(got, text(f, p.ChildByField(syntax.FieldName)))
+			}
+			if strings.Join(got, ", ") != strings.Join(want, ", ") {
+				c.errorf(pos(f, mn), "%s takes (%s), as contract %s declares it", name, strings.Join(want, ", "), ct.Name)
+			}
+			c.lowerFunc(m, f, member, fn, ctxOperation, nil, nil)
+			for i, p := range fn.Params {
+				if i < len(op.Params) && p.Default == nil {
+					p.Default = op.Params[i].Default
+				}
+			}
+		})
+	}
+	var missing []string
+	for name := range ct.Ops {
+		if !served[name] {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		c.errorf(pos(f, d), "a program that serves %s serves every operation; this one doesn't serve %s", ct.Name, strings.Join(missing, ", "))
+	}
 }
 
 func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
 	typeNode := d.ChildByField(syntax.FieldType)
+	if ct := c.contractNamed(m, f, typeNode); ct != nil && d.ChildByField(syntax.FieldTrait) == nil {
+		c.serve(m, f, d, ct)
+		return
+	}
 	name := text(f, typeNode)
 	if typeNode.Kind == syntax.GenericType {
 		name = text(f, typeNode.ChildByField(syntax.FieldName))
@@ -647,10 +780,33 @@ func (c *checker) triggers(m *module, f *ir.File, d *syntax.Node, job *ir.Job) {
 				job.Triggers = append(job.Triggers, ir.Trigger{Kind: kind, View: v})
 				continue
 			}
+			if kind == "event" && len(viewArgs) == 1 && viewArgs[0].Kind == syntax.FieldExpression {
+				ev := c.eventNamed(m, f, viewArgs[0])
+				if ev == nil {
+					c.errorf(pos(f, viewArgs[0]), "event(…) takes a contract's event, such as telegram.updates")
+					continue
+				}
+				job.Triggers = append(job.Triggers, ir.Trigger{Kind: kind, Event: ev})
+				continue
+			}
 		}
 		// Schedules and events come with phase 4; they are checked as names
 		// only for now.
 	}
+}
+
+// eventNamed resolves `module.event` to a contract's event.
+func (c *checker) eventNamed(m *module, f *ir.File, n *syntax.Node) *ir.Event {
+	recv := n.ChildByField(syntax.FieldValue)
+	if recv.Kind != syntax.Ident {
+		return nil
+	}
+	imp, _ := m.values[text(f, recv)].(*ir.Module)
+	if imp == nil {
+		return nil
+	}
+	ev, _ := c.modules[imp.Path].values[text(f, n.ChildByField(syntax.FieldField))].(*ir.Event)
+	return ev
 }
 
 // lookupValue finds a lower-case name at module level.

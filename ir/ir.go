@@ -184,8 +184,9 @@ type Job struct {
 
 // Trigger starts a job: `@on(enters(view))` or `@on(leaves(view))`.
 type Trigger struct {
-	Kind string // "enters" or "leaves"
-	View *View
+	Kind  string // "enters", "leaves" or "event"
+	View  *View
+	Event *Event
 }
 
 // View is a named pipeline over entities, kept up to date by the runtime.
@@ -202,6 +203,16 @@ type Contract struct {
 	Name   string
 	Module *Module
 	Ops    map[string]*Op
+	Events map[string]*Event
+}
+
+// Event is an event a contract publishes: `event answered: Answered on "notify.answers"`.
+type Event struct {
+	Name     string
+	Contract *Contract
+	Type     *TypeExpr
+	Topic    string
+	Key      string // the field that tells one event from another, from @key(field)
 }
 
 // Op is a command or query of a contract.
@@ -212,6 +223,8 @@ type Op struct {
 	Params    []*Param
 	Return    *TypeExpr
 	Reconcile string // the query that resolves an Uncertain outcome
+	Key       bool   // @key: the command takes a `key: Key` argument
+	Impl      *Func  // the function that serves it, when this program serves the contract
 	Pos       Pos
 }
 
@@ -376,6 +389,13 @@ type (
 		At
 		Elems []Expr
 	}
+	// InZone is a time in a zone named by a value: `07:40 in dublin`, or
+	// with a date, `2026-10-12 07:40 in dublin`. Instant's Zone is empty.
+	InZone struct {
+		At
+		Instant Instant
+		Zone    Expr
+	}
 	// Interpolate joins the shown values of its parts into a string.
 	Interpolate struct {
 		At
@@ -526,10 +546,17 @@ var BuiltinDocs = []BuiltinDoc{
 	{"expect", "fn expect(condition: Bool)", "Fails the test if the condition is false. For a comparison it shows the value it got: `expected w.phase == Asleep, but w.phase is Running`.", "Tests"},
 	{"advance", "fn advance(by: Duration)", "Moves the test's clock forward. Each job run that wakes on the way runs, in the order of its wake time, before `advance` returns.", "Tests"},
 	{"clock", "fn clock(at: Instant) -> Handler", "Used as `with clock(2026-10-10 12:00 in \"Europe/Dublin\")`: sets the test's clock. Without it, a test's clock starts at 2026-01-01 00:00 UTC.", "Tests"},
+	{"approve", "fn approve(what: String, by: who = \"test\")", "In a test, approves the request a job is waiting for in `approval!(…)` whose text contains what.", "Tests"},
+	{"decline", "fn decline(what: String, by: who = \"test\")", "In a test, declines the request a job is waiting for in `approval!(…)` whose text contains what.", "Tests"},
 	{"fakes", "fn fakes(modules…, from: String) -> Handler", "Used as `with fakes(notify, from: \"receipts/\")`: calls to the contract modules replay the exchanges recorded in `receipts/notify.json`, checked against the contract's types.", "Tests"},
 
 	{"sleep", "fn sleep(for: Duration)", "In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes when the time comes, even after a restart. Outside jobs, `sleep` blocks; in tests it advances the clock.", "Time"},
+	{"sleepUntil", "fn sleepUntil(at: Instant)", "In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until that time comes. Outside jobs it blocks; in tests it advances the clock.", "Time"},
 	{"now", "fn now() -> Instant", "The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run sees the same time.", "Time"},
+
+	{"poll", "fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool", "In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls check every interval until it returns true, and returns false if `within` runs out first. For a service that can't send an event when it is ready. Only the outcome is kept, so a long poll doesn't grow the run's history.", "Waiting"},
+	{"next", "fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a)", "In a job, waits for the first event that matches, counting every one published since the run's previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.", "Waiting"},
+	{"approval", "fn approval(what: String, from: who, within: Duration) -> Decision", "In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined` or `Expired`. Only this can make an `Approval`.", "Waiting"},
 
 	{"size", "fn size(c: Collection(a)) -> Int", "The number of elements.", "Collections"},
 	{"isEmpty", "fn isEmpty(c: Collection(a)) -> Bool", "Whether there are no elements.", "Collections"},
@@ -565,6 +592,12 @@ var BuiltinDocs = []BuiltinDoc{
 	{"lines", "fn lines(s: String) -> List(String)", "The lines of s, without their line breaks.", "Strings and numbers"},
 	{"split", "fn split(s: String, separator: String) -> List(String)", "The parts of s between separators.", "Strings and numbers"},
 	{"trim", "fn trim(s: String) -> String", "s without whitespace at either end.", "Strings and numbers"},
+	{"lower", "fn lower(s: String) -> String", "s with its letters in lower case.", "Strings and numbers"},
+	{"upper", "fn upper(s: String) -> String", "s with its letters in upper case.", "Strings and numbers"},
+	{"toJson", "fn toJson(v: a) -> String where a: Schema", "v as JSON, in the shape its type's schema describes (SPECS.md §19).", "Strings and numbers"},
+	{"isOk", "fn isOk(r: Result(a, e)) -> Bool", "Whether r is `Ok`.", "Strings and numbers"},
+	{"isErr", "fn isErr(r: Result(a, e)) -> Bool", "Whether r is `Err`.", "Strings and numbers"},
+	{"mapErr", "fn mapErr(r: Result(a, e), f: fn(e) -> f) -> Result(a, f)", "r with f applied to its error: `parse(s).mapErr(BadNumber)?` wraps the error in the caller's variant.", "Strings and numbers"},
 	{"parseInt", "fn parseInt(s: String) -> Result(Int, String)", "Reads a whole number written in decimal.", "Strings and numbers"},
 	{"nonzero", "fn nonzero(n: Int) -> Option(NonZero(Int))", "`Some(n)` unless n is 0: what `/` and `%` take as a divisor.", "Strings and numbers"},
 	{"min", "fn min(a: t, b: t) -> t where t: Ord", "The smaller of a and b.", "Strings and numbers"},

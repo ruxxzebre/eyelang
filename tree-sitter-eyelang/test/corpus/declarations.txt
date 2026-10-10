@@ -696,3 +696,18 @@ test "an idle world sleeps" {
         (identifier)
         (arguments
           (boolean))))))
+
+================================================================================
+Public module-level let
+================================================================================
+
+pub let dublin: Zone = "Europe/Dublin"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (type_identifier)
+    (string
+      (string_content))))

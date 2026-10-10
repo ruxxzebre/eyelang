@@ -48,6 +48,7 @@ module.exports = grammar({
     $._block_open,
     $.string_content,
     $._error_sentinel,
+    $._multiline_string_content,
   ],
 
   // ASCII whitespace only, as in the scanner and syntax/lexer.go.
@@ -85,6 +86,8 @@ module.exports = grammar({
       $.contract_declaration,
       $.test_declaration,
       $.let_statement,
+      // `pub let` exports a module-level value.
+      alias($._pub_let, $.let_statement),
     ),
 
     _separators: $ => repeat1(choice(';', $._newline)),
@@ -353,14 +356,9 @@ module.exports = grammar({
       $._expression,
     ),
 
-    let_statement: $ => seq(
-      'let',
-      field('pattern', $._pattern),
-      optional(seq(':', field('type', $._type))),
-      '=',
-      field('value', $._expression),
-      optional(seq('else', field('alternative', $.block))),
-    ),
+    let_statement: $ => seq('let', ...letRest($)),
+
+    _pub_let: $ => seq('pub', 'let', ...letRest($)),
 
     var_statement: $ => seq(
       'var',
@@ -486,7 +484,7 @@ module.exports = grammar({
     lambda: $ => prec.right(PREC.lambda, seq(
       'fn',
       optional(choice(
-        field('parameter', $.identifier),
+        field('parameter', choice($.identifier, $.wildcard)),
         field('parameters', $.parameters),
       )),
       choice(
@@ -507,8 +505,8 @@ module.exports = grammar({
         ),
         seq(
           'then',
-          field('consequence', $._expression),
-          optional(seq('else', field('alternative', $._expression))),
+          field('consequence', $._branch),
+          optional(seq('else', field('alternative', $._branch))),
         ),
       ),
     )),
@@ -529,8 +527,18 @@ module.exports = grammar({
       field('pattern', $._pattern),
       optional(seq('if', field('guard', $._expression))),
       '=>',
-      field('value', choice($.block, $._expression)),
+      field('value', choice($.block, $._branch)),
     ),
+
+    // A branch that is one expression or one assignment needs no braces:
+    // `Ok(text) => pages += [text]`, `if late then count += 1`.
+    _branch: $ => choice($._expression, alias($._branch_assignment, $.assignment)),
+
+    _branch_assignment: $ => prec.right(PREC.default, seq(
+      field('left', $._expression),
+      field('operator', choice(...ASSIGNMENT_OPERATORS)),
+      field('right', $._expression),
+    )),
 
     call_expression: $ => prec(PREC.postfix, seq(
       field('function', $._expression),
@@ -553,10 +561,11 @@ module.exports = grammar({
     // `mut x` passes a variable the call may change.
     mut_argument: $ => seq('mut', field('value', $._expression)),
 
+    // `key:` alone passes the variable of that name: `send(key:)` is `send(key: key)`.
     named_argument: $ => seq(
       field('name', $._label),
       ':',
-      field('value', choice($._expression, $.mut_argument)),
+      optional(field('value', choice($._expression, $.mut_argument))),
     ),
 
     // `in` and `for` are keywords, but library functions use them as argument labels:
@@ -652,20 +661,37 @@ module.exports = grammar({
       field('date', $.date),
       field('time', $.time),
       'in',
-      field('zone', $.string),
+      field('zone', $._zone),
     ),
 
     // The next time the clock in that zone shows this time: `07:45 in "Europe/Dublin"`.
     zoned_time: $ => seq(
       field('time', $.time),
       'in',
-      field('zone', $.string),
+      field('zone', $._zone),
     ),
 
-    string: $ => seq(
-      '"',
-      repeat(choice($.string_content, $.escape_sequence, $.interpolation)),
-      token.immediate('"'),
+    // A zone's name, or a name for a Zone value: `in "Europe/Dublin"`, `in dublin`.
+    _zone: $ => choice($.string, $.identifier),
+
+    // A string stays on one line. A multi-line string starts with `"""` and a line break and ends
+    // with `"""` on a line of its own; the checker strips the closing line's indentation from
+    // every line.
+    string: $ => choice(
+      seq(
+        '"',
+        repeat(choice($.string_content, $.escape_sequence, $.interpolation)),
+        token.immediate('"'),
+      ),
+      seq(
+        '"""',
+        repeat(choice(
+          alias($._multiline_string_content, $.string_content),
+          $.escape_sequence,
+          $.interpolation,
+        )),
+        token.immediate('"""'),
+      ),
     ),
 
     escape_sequence: _ => token.immediate(/\\([nrt0\\"{}]|u\{[0-9a-fA-F]{1,6}\})/),
@@ -803,6 +829,22 @@ module.exports = grammar({
     type_identifier: _ => /[A-Z][a-zA-Z0-9_]*/,
   },
 });
+
+/**
+ * What follows `let` (or `pub let`): `pattern: T = value else { … }`.
+ *
+ * @param {GrammarSymbols<string>} $
+ * @returns {RuleOrLiteral[]}
+ */
+function letRest($) {
+  return [
+    field('pattern', $._pattern),
+    optional(seq(':', field('type', $._type))),
+    '=',
+    field('value', $._expression),
+    optional(seq('else', field('alternative', $.block))),
+  ];
+}
 
 /**
  * Items separated by `separator`, with any number of separators before, between and after them.

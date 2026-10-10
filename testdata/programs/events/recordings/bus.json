@@ -1,0 +1,8 @@
+{
+  "contract": "Bus",
+  "exchanges": [
+    { "op": "send", "key": "send-a", "result": { "Sent": [1] } },
+    { "op": "send", "key": "send-b", "result": { "Uncertain": ["send-b"] } },
+    { "op": "sent", "key": "send-b", "result": { "Some": [{ "Sent": [2] }] } }
+  ]
+}

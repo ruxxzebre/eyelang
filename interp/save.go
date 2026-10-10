@@ -111,6 +111,29 @@ func (in *Interp) writeValue(b *bytes.Buffer, v Value, at ir.Pos) {
 	case *RunVal:
 		b.WriteByte('r')
 		putVarint(b, x.ID)
+	case *ApprovalVal:
+		b.WriteByte('A')
+		putString(b, x.What)
+		putString(b, x.By)
+	case *RangeVal:
+		b.WriteByte('g')
+		var flags byte
+		if x.Inclusive {
+			flags |= 1
+		}
+		if x.Start != nil {
+			flags |= 2
+		}
+		if x.End != nil {
+			flags |= 4
+		}
+		b.WriteByte(flags)
+		if x.Start != nil {
+			in.writeValue(b, x.Start, at)
+		}
+		if x.End != nil {
+			in.writeValue(b, x.End, at)
+		}
 	default:
 		in.faultf(at, "%s can't be saved", kindName(v))
 	}
@@ -238,6 +261,18 @@ func (in *Interp) readValue(r *bytes.Reader, at ir.Pos) Value {
 		return &EntityRef{Entity: e, ID: in.readValue(r, at)}
 	case 'r':
 		return &RunVal{ID: in.readVarint(r, at)}
+	case 'A':
+		return &ApprovalVal{What: in.readString(r, at), By: in.readString(r, at)}
+	case 'g':
+		flags, _ := r.ReadByte()
+		rv := &RangeVal{Inclusive: flags&1 != 0}
+		if flags&2 != 0 {
+			rv.Start = in.readValue(r, at)
+		}
+		if flags&4 != 0 {
+			rv.End = in.readValue(r, at)
+		}
+		return rv
 	}
 	in.faultf(at, "corrupt saved value")
 	return nil

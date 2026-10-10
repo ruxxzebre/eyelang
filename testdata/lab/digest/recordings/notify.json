@@ -1,0 +1,7 @@
+{
+  "contract": "Notify",
+  "exchanges": [
+    { "op": "identity", "result": { "Some": ["ann"] } },
+    { "op": "send", "key": "digest-7", "result": { "Accepted": { "message": "m-7", "deliveries": 1 } } }
+  ]
+}

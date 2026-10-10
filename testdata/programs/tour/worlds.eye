@@ -8,7 +8,10 @@ type PlayerId = | PlayerId(String)
 
 type SleepError = | SleepRefused(zeropod.Refusal)
 
-type WakeError = | WakeRefused(zeropod.Refusal)
+type WakeError =
+  | WakeRefused(zeropod.Refusal)
+  ## restore takes no reconcile query, so a lost reply is reported, not retried.
+  | WakeUncertain
 
 # Started when a player joins a sleeping world: restores it from its last
 # checkpoint. The world reports itself running once it has started.
@@ -16,6 +19,7 @@ job wake(id: WorldId) -> Result((), WakeError) {
   match zeropod.restore!(id, key: "wake-{id}") {
     Restored(_) | NothingToRestore => Ok(())
     RestoreRefused(reason) => Err(WakeRefused(reason))
+    Uncertain(_) => Err(WakeUncertain)
   }
 }
 

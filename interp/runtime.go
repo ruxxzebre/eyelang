@@ -57,12 +57,25 @@ type runtime struct {
 	members  map[*ir.View]map[string]bool
 	fakes    map[*ir.Contract]*fakeSet
 	failures []*Fault // job runs that faulted
+	events   []event  // every event published, in order; an event's sequence number is its index + 1
+	seen     map[string]bool
+	// uncertain holds the commands whose reply was lost, by key.
+	uncertain map[string]sentCommand
 }
+
+// event is a published event, saved as bytes.
+type event struct {
+	name string
+	data []byte
+}
+
+func eventName(e *ir.Event) string { return e.Contract.Module.Path + "." + e.Name }
 
 func newRuntime(in *Interp) *runtime {
 	return &runtime{
 		in: in, store: newMemStore(), now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		members: map[*ir.View]map[string]bool{}, fakes: map[*ir.Contract]*fakeSet{}, nextRun: 1,
+		seen: map[string]bool{}, uncertain: map[string]sentCommand{},
 	}
 }
 
@@ -78,7 +91,8 @@ type txn struct {
 	rows   map[string]*txRow
 	order  []string
 	starts []*jobRun
-	run    *jobRun // a job run whose step commits with this transaction
+	events []pending // published when the transaction commits
+	run    *jobRun   // a job run whose step commits with this transaction
 }
 
 type txRow struct {
@@ -191,6 +205,28 @@ func (rt *runtime) callEntity(ref *EntityRef, m *ir.Func, args []argVal, at ir.P
 	return result
 }
 
+// serve runs an operation of a contract the program serves, as one
+// transaction: the entity calls it makes commit together, or not at all.
+func (rt *runtime) serve(op *ir.Op, args []argVal, at ir.Pos) Value {
+	prevRun := rt.in.run
+	rt.in.run = nil // serving an operation never waits
+	defer func() { rt.in.run = prevRun }()
+	if rt.tx != nil {
+		r, _, _ := rt.in.callFunc(op.Impl, nil, nil, args, at)
+		return r
+	}
+	tx := rt.begin()
+	defer func() {
+		if rt.tx == tx {
+			rt.tx = nil // a fault rolls the transaction back
+		}
+	}()
+	r, _, _ := rt.in.callFunc(op.Impl, nil, nil, args, at)
+	rt.tx = nil
+	rt.commit(tx)
+	return r
+}
+
 func (rt *runtime) callIn(tx *txn, ref *EntityRef, m *ir.Func, args []argVal, at ir.Pos) Value {
 	row := tx.row(rt, ref, at)
 	prevRun := rt.in.run
@@ -233,7 +269,77 @@ func (rt *runtime) commit(tx *txn) {
 	for _, r := range changed {
 		rt.updateViews(r.ref, r.state, r.version)
 	}
+	for _, e := range tx.events {
+		rt.deliver(e.event, e.value)
+	}
 	rt.drain()
+}
+
+type pending struct {
+	event *ir.Event
+	value Value
+}
+
+// publish publishes an event: when the current transaction commits, or now.
+func (rt *runtime) publish(e *ir.Event, v Value) {
+	if rt.tx != nil {
+		rt.tx.events = append(rt.tx.events, pending{e, v})
+		return
+	}
+	rt.deliver(e, v)
+	rt.drain()
+}
+
+// answer records a person's answer to an approval request and wakes the runs
+// waiting for one.
+func (rt *runtime) answer(v *Record) {
+	rt.events = append(rt.events, event{name: approvalEvent, data: rt.in.encode(v, ir.Pos{})})
+	rt.wake(approvalEvent)
+	rt.drain()
+}
+
+// wake makes ready the runs waiting for an event named name.
+func (rt *runtime) wake(name string) {
+	for _, id := range rt.store.Runs() {
+		data, _ := rt.store.Run(id)
+		run := decodeRun(data)
+		if run.Status == "sleeping" && run.WaitEvent == name {
+			run.Status = "ready"
+			rt.save(run)
+			rt.queue = append(rt.queue, run.ID)
+		}
+	}
+}
+
+// deliver records an event, starts the jobs it triggers, and wakes the runs
+// waiting for one like it. An event whose @key field was seen before is a
+// repeat, and does nothing.
+func (rt *runtime) deliver(e *ir.Event, v Value) {
+	name := eventName(e)
+	if e.Key != "" {
+		if r, ok := v.(*Record); ok {
+			if k, ok := r.get(e.Key); ok {
+				id := name + "/" + keyOf(k)
+				if rt.seen[id] {
+					return
+				}
+				rt.seen[id] = true
+			}
+		}
+	}
+	rt.events = append(rt.events, event{name: name, data: rt.in.encode(v, ir.Pos{})})
+	for _, m := range rt.in.prog.Modules {
+		for _, j := range m.Jobs {
+			for _, t := range j.Triggers {
+				if t.Event == e {
+					run := rt.newRun(j, []Value{v}, nil, j.Pos)
+					rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}})
+					rt.queue = append(rt.queue, run.ID)
+				}
+			}
+		}
+	}
+	rt.wake(name)
 }
 
 // all returns snapshots of every entity of a type; while a view is checked
@@ -340,16 +446,26 @@ type jobRun struct {
 	Log    []step
 	Status string // ready, sleeping, done, failed
 	WakeAt int64  `json:",omitempty"` // Unix nanoseconds, while sleeping
+	// WaitEvent is the event a sleeping run waits for in next!; one wakes it.
+	WaitEvent string `json:",omitempty"`
+	// Since is the sequence number of the last event published before the
+	// run started.
+	Since  int64  `json:",omitempty"`
 	Result []byte `json:",omitempty"`
 	Fault  string `json:",omitempty"`
 	cursor int
 }
 
-// step is a durable step: a recorded result, or a timer still running.
+// step is a durable step: a recorded result, a timer still running, or a
+// wait for an event. Seq is the number of events published when it was
+// taken, so that next! after it sees every event published since.
 type step struct {
 	Timer  bool   `json:",omitempty"`
 	WakeAt int64  `json:",omitempty"`
 	Value  []byte `json:",omitempty"`
+	Seq    int64  `json:",omitempty"`
+	Event  string `json:",omitempty"` // next! is waiting for this event
+	Since  int64  `json:",omitempty"` // and looks at events after this one
 }
 
 func (r *jobRun) encode() []byte {
@@ -371,7 +487,7 @@ func decodeRun(data []byte) *jobRun {
 func jobName(j *ir.Job) string { return j.Module.Path + "." + j.Name }
 
 func (rt *runtime) newRun(job *ir.Job, args []Value, named map[string]Value, at ir.Pos) *jobRun {
-	run := &jobRun{ID: rt.nextRun, Job: jobName(job), Status: "ready"}
+	run := &jobRun{ID: rt.nextRun, Job: jobName(job), Status: "ready", Since: int64(len(rt.events))}
 	rt.nextRun++
 	for _, a := range args {
 		run.Args = append(run.Args, rt.in.encode(a, at))
