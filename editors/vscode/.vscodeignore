@@ -1,5 +1,6 @@
 test/**
 node_modules/**
+.vscode-test/**
 extension.js
 .gitignore
 **/*.map

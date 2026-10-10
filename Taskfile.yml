@@ -32,12 +32,14 @@ tasks:
       - for q in queries/*.scm; do tree-sitter query --lib-path ../bin/eyelang-grammar.so --lang-name eyelang "$q" ../testdata/syntax/valid/*.eye > /dev/null || exit 1; done
 
   vscode:
-    desc: Test the VS Code extension's grammar and its client against eye lsp, and package it into bin/eyelang.vsix (needs Node)
+    desc: Test the VS Code extension (its grammar, and the extension running in a real VS Code against eye lsp) and package it into bin/eyelang.vsix (needs Node)
     dir: editors/vscode
     deps: [build]
     cmds:
       - npm ci --no-fund --no-audit
       - npm test
+      # The extension in a real VS Code. Set VSCODE_EXECUTABLE to use an installed one.
+      - if [ "$(uname)" = Linux ] && command -v xvfb-run > /dev/null; then xvfb-run -a npm run test:vscode; else npm run test:vscode; fi
       - npm run package
 
   generate:

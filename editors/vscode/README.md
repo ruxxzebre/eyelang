@@ -13,16 +13,16 @@ Name resolution (hover, go to definition, completion) comes with the checker in 
 
 ## Install
 
-From the repository root:
+Download `eyelang.vsix` or build it from the repository root with `task vscode` (it lands in
+`bin/eyelang.vsix`), then install it: **Extensions → ⋯ → Install from VSIX…**, or
+`code --install-extension bin/eyelang.vsix`. Highlighting works straight away.
 
-```sh
-task vscode       # builds bin/eye and bin/eyelang.vsix
-code --install-extension bin/eyelang.vsix
-```
-
-The extension runs `eye lsp`, so put `bin/eye` on your `PATH` or set **Eyelang › Server: Path**
-(`eyelang.server.path`) to it. Without the server you still get highlighting. After rebuilding
-`eye`, run **Eyelang: Restart Language Server**.
+Errors, formatting and the outline need the `eye` binary. The extension looks for it in
+`eyelang.server.path` if you set it, then `bin/eye` in your workspace folders (what `task build`
+writes in this repository), then your `PATH`, then `~/go/bin` (where `go install ./cmd/eye`
+puts it). It checks every two seconds, so the server starts as soon as you build `eye`, and
+restarts when you rebuild it. If the eyelang repository is open, the warning about a missing
+binary offers to build it for you (it needs Go).
 
 To work on the extension itself, open this directory in VS Code and press F5.
 
@@ -34,5 +34,10 @@ a project. Until the checker lands it reports syntax errors only.
 
 ## Tests
 
-`npm test` checks the grammar's scopes against the assertions in `test/highlighting.eye`, and
-that no file in `testdata/syntax/valid` gets an `invalid` scope or ends inside a string.
+`npm test` checks the grammar's scopes against the assertions in `test/highlighting.eye`, that no
+file in `testdata/syntax/valid` gets an `invalid` scope or ends inside a string, and that `eye lsp`
+answers the JSON-RPC client the extension uses. `npm run test:vscode` runs the extension in a real
+VS Code (downloaded once into `.vscode-test/`, or `VSCODE_EXECUTABLE`): it starts without a server,
+starts one when `bin/eye` appears, restarts it when `bin/eye` changes, and checks errors,
+formatting, the outline and semantic tokens through it. On Linux without a display, run it under
+`xvfb-run`.
