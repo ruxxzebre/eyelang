@@ -28,9 +28,10 @@ To work on the extension itself, open this directory in VS Code and press F5.
 
 ## Without an editor
 
-`eye check [paths]` reports errors as `file:line:column: message`, the same ones the editor
-shows, and exits 1 if there are any. It parses files in parallel and takes a few milliseconds for
-a project. Until the checker lands it reports syntax errors only.
+`eye check [dir]` reports a program's errors as `file:line:column: message` and exits 1 if there
+are any: syntax errors, undefined names and misplaced waiting calls (types come with phase 2).
+`eye check --syntax [paths]` checks only syntax, of any files, in parallel; it is what the editor
+shows as you type, and takes a few milliseconds for a project.
 
 ## Tests
 

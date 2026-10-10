@@ -344,6 +344,7 @@ for (i, item) in items |> enumerate { log.info("{i}: {item.name}") }
 for i in 0..n { log.info("{i}") }
 ```
 
+- A `?` after a piped call applies to that call: `xs |> find(isEven)?` is `find(xs, isEven)?`.
 - Named arguments with defaults: `fn page(size: Int = 50, after: Option(Cursor) = None)`.
 - No partial application by argument count. Use `_` or a lambda.
 
@@ -468,6 +469,10 @@ ranges of numbers or characters (`'a'..='z'`, `0..10`), variants with positional
 ..rest]`, which also match `Bytes` and slices) and alternatives (`Asleep | Waking`). `..` skips the
 remaining fields or elements; `..rest` binds the remaining elements.
 
+A variant pattern names a variant of the matched value's type, so a variant declared in an imported
+module needs no module prefix in a pattern, even when another module has a variant of the same name:
+`Refused(reason)` in the tour matches zeropod's `Refused`.
+
 Every `match` must be exhaustive. Adding a variant to a type makes each `match` that doesn't handle
 it a compile error, which is how a new outcome from another service reaches every caller.
 
@@ -526,6 +531,8 @@ impl Named for Player {
 fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named` (section 8)
 ```
 
+- A type that wraps one value in a variant of its own name, such as `type WorldId = | WorldId(String)`,
+  shows as the value it wraps: `"sleep-{w.id}"` is `sleep-survival`, not `sleep-WorldId("survival")`.
 - `Eq`, `Ord`, `Show`, `Hash`, `Save` and `Schema` are derived automatically for records, variants and
   collections of types that have them.
 - `Secret(a)` deliberately has no `Show` and no `Save`. Printing a secret, or holding one across a
@@ -582,6 +589,10 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   with status 1.
 - `eye run` also starts the job runtime when the program declares entities or jobs, using the
   in-memory store unless another is configured.
+- **Modules.** A module is a directory: its `.eye` files share one namespace and one set of
+  imports. A program is the module in its directory and the modules it imports. `import lab.notify`
+  names the directory `lab/notify` below the program's directory; its public names are then used as
+  `notify.Delivery`, or brought in by name with `import lab.notify.{Delivery}`.
 
 **Concurrency** is structured. Tasks start inside one call, and all of them finish (or are
 cancelled) before that call returns, so no task outlives the code that started it.
@@ -654,7 +665,8 @@ entity Player(id: PlayerId) {
   transaction commits.
   Because entity methods have no outside side effects, the runtime can safely retry one after a
   conflict.
-- **Reading from a job:** `w.read!()` returns a snapshot with a `version` field. Snapshots go stale,
+- **Reading from a job:** `w.read!()` returns a snapshot with a `version` field, which counts the
+  transactions that changed the entity: 0 when it is new, then one more for each. Snapshots go stale,
   and commands can name the version they were based on (see `@fresh` in section 17).
 - **Evolution:** adding a field with a default is automatic. Any other change to stored state needs
   a `migrate from N` function. The compiler refuses to deploy if a stored version has no path to the
@@ -771,9 +783,22 @@ type Delivery =
 - **`@fresh`** on a command adds a required `basedOn: Version` argument and `Stale`/`Expired`
   outcomes, so an old command can't act on newer state.
 - **`@destructive`** on a command adds a required `Approval` argument.
+- **A contract's operations are its module's functions.** A module that declares one contract offers
+  its commands and queries by name: `notify.send!(…)` for `contract Notify { command send … }`.
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
-  error, unless it is marked `@unwitnessed("why")`.
+  error, unless it is marked `@unwitnessed("why")`. A recording is a JSON file per contract module,
+  named after it (`receipts/notify.json`), that lists exchanges by operation and key:
+
+  ```json
+  { "contract": "Notify",
+    "exchanges": [{ "op": "send", "key": "ireland-2026-10-10",
+                    "result": { "Sent": { "receipt": "r-41", "at": "2026-10-10T07:40:02Z" } } }] }
+  ```
+
+  A variant is an object with the variant's name as its only key and its fields as a list or, when
+  they are named, an object; a type that wraps one value, such as `| ReceiptId(String)`, may be
+  written as the value.
 - **Generated code for other languages** (types, clients and server stubs for Go, TypeScript, Rust
   and Python) is a build output, never committed.
 
@@ -937,7 +962,11 @@ log.info("token is {token}")               # compile error: Secret has no Show
 
 **Tests.** A `test` block is a declaration. `with` applies a handler to the rest of the block:
 `fakes(…)`, `clock(…)` with `advance(…)`, `memory(…)`. In tests, jobs run against an in-memory
-store, so every run is deterministic and fast.
+store, so every run is deterministic and fast. The clock starts at `clock(…)`'s time (2026-01-01
+00:00 UTC without one) and moves only when the test calls `advance(…)`; each run that wakes on the
+way runs before `advance` goes on. Jobs started by a call run as soon as the call returns, until
+they finish or wait. `expect(cond)` fails the test, and for a comparison shows the value it got:
+`expected w.phase == Asleep, but w.phase is Running`.
 
 ## 21. What happens to Eyelang 1
 
@@ -1002,7 +1031,9 @@ diagnostics layer, and a conversion from its editor-oriented tree.
    methods, exhaustiveness, total arithmetic.
 4. Effect inference and checks: `uses`, the `!` rules, `Save` across checkpoints, and the
    no-aliasing rule for `mut`.
-5. Typed IR, plus a reference interpreter on that IR. Used by the REPL and tests, with entities
+5. Typed IR, plus a reference interpreter on that IR. The interpreter resumes a job by running it
+   again from the start: each step it already took returns its recorded result, so nothing outside
+   happens twice, and output from those steps isn't printed again. Used by the REPL and tests, with entities
    and jobs on an in-memory store, structured concurrency on lightweight tasks, and `extern`
    functions from the Go host or from C libraries loaded at run time (without cgo). `entity`, `job`, `contract` and `view` are each lowered into core
    IR by their own pass, kept separate from the type checker. Nothing else in the compiler needs to

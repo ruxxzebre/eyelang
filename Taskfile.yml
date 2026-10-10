@@ -53,7 +53,7 @@ tasks:
     desc: Fail if generated files in git don't match grammar.js and SPECS.md
     cmds:
       - task: generate
-      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid
+      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid testdata/programs/tour/tour.eye
       - test -z "$(git ls-files --others --exclude-standard -- testdata/syntax/valid)"
 
   conformance:
@@ -72,6 +72,8 @@ tasks:
     desc: Fail if any of the repository's Eyelang sources isn't formatted
     cmds:
       - go run ./cmd/eye fmt --check testdata/fmt/*.golden.eye
+      # The programs, except the tour, which is the spec's text.
+      - go run ./cmd/eye fmt --check $(find testdata/programs -name '*.eye' ! -name tour.eye)
 
   check:
     desc: Everything CI runs - generated files, build, vet, lint, tests, formatting, the conformance suite, the grammar's tests and the VS Code extension

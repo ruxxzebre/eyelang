@@ -16,3 +16,16 @@ fn describe(w: World) -> String {
 }
 
 let pick = fn x: if x then { kind: "yes" } else { kind: "no" }
+
+# return, break and continue go wherever a value does.
+fn firstPositive(xs: List(Option(Int))) -> Option(Int) {
+  for x in xs {
+    let n = match x {
+      Some(n) => n
+      None => continue
+    }
+    if n > 0 then return Some(n)
+    if n < -100 then break
+  }
+  None
+}

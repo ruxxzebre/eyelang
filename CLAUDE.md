@@ -90,13 +90,15 @@ real code demands it.
 - **The conformance suite is the referee.** Both parsers must agree, token for token, on every file
   in `testdata/syntax` and the corpus. Add a valid file for each new construct and an invalid file
   for each new error.
-- **Don't edit generated files.** `testdata/syntax/spec-*.eye` come from the examples in SPECS.md
-  (`tools/specexamples`, using `internal/specdoc`); `syntax/kind_gen.go` and `syntax/view_gen.go`
-  from the grammar's `node-types.json` (`syntax/gen`); and `tree-sitter-eyelang/src/` from
-  `grammar.js`, except `scanner.c`. To change one, change its source and run `task generate`.
+- **Don't edit generated files.** `testdata/syntax/spec-*.eye` and `testdata/programs/tour/tour.eye`
+  come from the examples in SPECS.md (`tools/specexamples`, using `internal/specdoc`);
+  `syntax/kind_gen.go` and `syntax/view_gen.go` from the grammar's `node-types.json`
+  (`syntax/gen`); and `tree-sitter-eyelang/src/` from `grammar.js`, except `scanner.c`. To change
+  one, change its source and run `task generate`.
 - **Iterate on one thing,** then run everything:
   `go test ./syntax -run 'TestConformance/valid/if-match.eye'` (one conformance file),
   `go test ./syntax -run TestFormat`, `go test ./internal/lsp`,
+  `go run ./cmd/eye test testdata/programs/core` (the language's own tests),
   `cd tree-sitter-eyelang && tree-sitter test -i 'Waiting'` (corpus tests by name).
 - **Run `task check` before pushing.** It runs everything CI runs: generated files, build, vet,
   lint, tests, formatting, the conformance suite, the grammar's corpus and the VS Code extension's
@@ -127,9 +129,12 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `internal/lsp/` | The language server behind `eye lsp` |
 | `internal/specdoc/`, `tools/specexamples/` | Extract SPECS.md's examples into `testdata/syntax` |
 | `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
-| `check/`, `ir/`, `interp/` | Checker, IR and interpreter (phases 2 and 3); empty so far |
+| `check/` | Loads a program's modules, resolves names, reports errors (types come in phase 2) |
+| `ir/` | The resolved form programs are lowered to |
+| `interp/` | Reference interpreter and in-memory runtime: entities, views, jobs, clock, fakes |
+| `testdata/programs/` | Programs whose tests `go test ./interp` runs; `tour/tour.eye` is generated from SPECS.md |
 | `repl/` | Line editor with history, for `eye repl` |
 
 Commands: `task check` (everything), `task generate` (after editing the grammar or a spec
 example), `task conformance`, `task grammar`, `task vscode`,
-`go run ./cmd/eye parse|check|fmt FILE`.
+`go run ./cmd/eye parse|check|fmt FILE`, `go run ./cmd/eye test|run DIR`.

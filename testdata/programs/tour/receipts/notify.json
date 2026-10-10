@@ -1,0 +1,10 @@
+{
+  "contract": "Notify",
+  "exchanges": [
+    {
+      "op": "send",
+      "key": "sleep-refused-creative",
+      "result": { "Sent": { "receipt": "r-41", "at": "2026-10-10T11:21:00Z" } }
+    }
+  ]
+}

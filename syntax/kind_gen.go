@@ -310,7 +310,7 @@ var fieldNames = [...]string{
 // IsExpression reports whether nodes of this kind are expressions (_expression in the grammar).
 func (k Kind) IsExpression() bool {
 	switch k {
-	case BinaryExpression, Boolean, CallExpression, Char, Date, Duration, EmptyBraces, FieldExpression, Float, Ident, IfExpression, IndexExpression, Instant, Int, Lambda, List, Map, MatchExpression, ParenthesizedExpression, Placeholder, RangeExpression, Record, RecordUpdate, Size, String, Time, TryExpression, Tuple, TypeIdent, UnaryExpression, Unit, WaitingCallExpression, ZonedTime:
+	case BinaryExpression, Boolean, BreakStatement, CallExpression, Char, ContinueStatement, Date, Duration, EmptyBraces, FieldExpression, Float, Ident, IfExpression, IndexExpression, Instant, Int, Lambda, List, Map, MatchExpression, ParenthesizedExpression, Placeholder, RangeExpression, Record, RecordUpdate, ReturnStatement, Size, String, Time, TryExpression, Tuple, TypeIdent, UnaryExpression, Unit, WaitingCallExpression, ZonedTime:
 		return true
 	}
 	return false

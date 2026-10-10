@@ -34,9 +34,9 @@ func init() {
 	commands = []command{
 		{name: "parse", summary: "print the syntax tree of files", run: runParse, phase: 1, issue: 2},
 		{name: "fmt", summary: "format source files", run: runFmt, phase: 1, issue: 2},
-		{name: "check", summary: "report errors in files (syntax only until phase 2)", run: runCheck, phase: 1, issue: 43},
-		{name: "run", summary: "run a program", phase: 3, issue: 4},
-		{name: "test", summary: "run the test blocks of a program", phase: 3, issue: 4},
+		{name: "check", summary: "report errors in a program (names and syntax; types come in phase 2)", run: runCheck, phase: 1, issue: 43},
+		{name: "run", summary: "run a program's main function", run: runRun, phase: 3, issue: 31},
+		{name: "test", summary: "run the test blocks of a program", run: runTest, phase: 3, issue: 31},
 		{name: "repl", summary: "start an interactive session", phase: 3, issue: 4},
 		{name: "lsp", summary: "run the language server for editors", run: runLSP, phase: 1, issue: 43},
 	}

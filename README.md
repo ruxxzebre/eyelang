@@ -7,10 +7,26 @@ entities and run jobs that mostly wait. It is being designed and built now:
 - [ROADMAP.md](ROADMAP.md) lists the phases, versions and exit criteria. Progress is tracked in
   [GitHub issues](https://github.com/ruxxzebre/eyelang/issues).
 
-Nothing in the spec runs yet. `eye parse` prints the syntax tree of a file, `eye check` reports
-errors as `file:line:column: message` (syntax errors until the checker lands), `eye fmt` formats
-files in the one canonical style (`--check` lists the ones that aren't), and `eye lsp` is the
-language server editors run. The other subcommands arrive phase by phase.
+The tour from the spec runs: entities, a view, a job that sleeps for 20 minutes on a test clock,
+and a call to another service replayed from a recording.
+
+```sh
+go run ./cmd/eye test testdata/programs/tour
+```
+
+The interpreter resolves names but doesn't check types yet; that is phase 2.
+
+| Command | What it does |
+|---|---|
+| `eye run [dir] [-- args]` | runs a program's `main` |
+| `eye test [--run text] [dir]` | runs a program's `test` blocks, each with a fresh in-memory store and its own clock |
+| `eye check [dir]` | reports errors in a program as `file:line:column: message`; `--syntax` checks only the syntax of any files |
+| `eye fmt [--check] [paths]` | formats files in the one canonical style |
+| `eye parse [--sexp] files` | prints syntax trees |
+| `eye lsp` | the language server editors run |
+
+A program is a directory of `.eye` files; `import lab.notify` names the directory `lab/notify` under
+it.
 
 ## Editors
 
@@ -50,9 +66,10 @@ Prebuilt binaries for Linux, macOS and Windows are attached to each
 | `tree-sitter-eyelang/` | The tree-sitter grammar: the definition of the syntax, and editor highlighting |
 | `syntax/` | Lexer, lossless parser, syntax tree and formatter (phase 1) |
 | `testdata/syntax/` | The conformance suite: files that both parsers must parse identically, or both reject |
-| `check/` | Name resolution, type and effect checking, diagnostics (phase 2) |
-| `ir/` | Typed intermediate representation (phase 3) |
-| `interp/` | Reference interpreter and in-memory runtime (phases 3 and 4) |
+| `testdata/programs/` | Programs whose tests `go test ./interp` runs: the tour, and the language tested in itself |
+| `check/` | Loads a program's modules, resolves names, reports errors; types and effects come in phase 2 |
+| `ir/` | The resolved form programs are lowered to; types will be added to it |
+| `interp/` | The reference interpreter and in-memory runtime: entities, views, jobs, clock, fakes |
 | `repl/` | Line editor with history, reused by `eye repl` |
 
 ## Eyelang 1

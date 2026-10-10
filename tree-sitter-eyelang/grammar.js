@@ -350,9 +350,6 @@ module.exports = grammar({
       $.for_statement,
       $.while_statement,
       $.with_statement,
-      $.return_statement,
-      $.break_statement,
-      $.continue_statement,
       $._expression,
     ),
 
@@ -397,7 +394,9 @@ module.exports = grammar({
 
     with_statement: $ => seq('with', field('value', $._expression)),
 
-    return_statement: $ => prec.right(seq('return', optional(field('value', $._expression)))),
+    // `return`, `break` and `continue` leave a function or loop, so they can stand wherever a
+    // value is expected: `if c then return x`, `None => continue`.
+    return_statement: $ => prec.right(PREC.lambda, seq('return', optional(field('value', $._expression)))),
 
     break_statement: _ => 'break',
 
@@ -439,6 +438,9 @@ module.exports = grammar({
       $.unary_expression,
       $.binary_expression,
       $.range_expression,
+      $.return_statement,
+      $.break_statement,
+      $.continue_statement,
     ),
 
     // `_` in an argument list: `2 |> sub(10, _)` calls `sub(10, 2)`.

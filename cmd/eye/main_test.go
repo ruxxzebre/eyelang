@@ -137,7 +137,7 @@ func TestFmt(t *testing.T) {
 	}
 }
 
-func TestCheck(t *testing.T) {
+func TestCheckSyntax(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
 		t.Fatal(err)
@@ -153,13 +153,13 @@ func TestCheck(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"check", filepath.Join(dir, "good.eye")}, &stdout, &stderr); code != 0 || stdout.Len() > 0 {
+	if code := run([]string{"check", "--syntax", filepath.Join(dir, "good.eye")}, &stdout, &stderr); code != 0 || stdout.Len() > 0 {
 		t.Errorf("check of a good file: exit %d, output %q %q", code, stdout.String(), stderr.String())
 	}
 
 	t.Chdir(dir)
 	stdout.Reset()
-	if code := run([]string{"check"}, &stdout, &stderr); code != exitErrors {
+	if code := run([]string{"check", "--syntax", "."}, &stdout, &stderr); code != exitErrors {
 		t.Errorf("check exit code = %d, want %d", code, exitErrors)
 	}
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
@@ -168,8 +168,87 @@ func TestCheck(t *testing.T) {
 	}
 
 	stderr.Reset()
-	if code := run([]string{"check", "missing.eye"}, &stdout, &stderr); code != exitErrors || !strings.Contains(stderr.String(), "missing.eye") {
+	if code := run([]string{"check", "--syntax", "missing.eye"}, &stdout, &stderr); code != exitErrors || !strings.Contains(stderr.String(), "missing.eye") {
 		t.Errorf("check of a missing file: exit %d, stderr %q", code, stderr.String())
+	}
+}
+
+// program writes a program's files into a new directory and returns it.
+func program(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, src := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestCheckProgram(t *testing.T) {
+	good := program(t, map[string]string{"a.eye": "fn double(n) = n * 2\n", "b.eye": "let four = double(2)\n"})
+	bad := program(t, map[string]string{"a.eye": "fn f() = missing(1)\n\njob j() {\n  sleep(1 min)\n}\n"})
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", good}, &stdout, &stderr); code != 0 {
+		t.Errorf("check of a good program: exit %d, %s%s", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	if code := run([]string{"check", filepath.Join(bad, "a.eye")}, &stdout, &stderr); code != exitErrors {
+		t.Errorf("check of a bad program: exit %d", code)
+	}
+	for _, want := range []string{"a.eye:1:10: undefined name missing", "a.eye:4:3: in a job, sleep is a durable step: write sleep!(…)"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("check reported %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestTestCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"test", "../../testdata/programs/tour"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("eye test of the tour: exit %d\n%s%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    an idle world sleeps after 20 minutes") || !strings.Contains(stdout.String(), "3 tests passed") {
+		t.Errorf("eye test printed %q", stdout.String())
+	}
+
+	failing := program(t, map[string]string{"t.eye": "test \"arithmetic\" {\n  log.info(\"checking\")\n  expect(1 + 1 == 3)\n}\n"})
+	stdout.Reset()
+	if code := run([]string{"test", failing}, &stdout, &stderr); code != exitErrors {
+		t.Errorf("a failing test: exit %d", code)
+	}
+	for _, want := range []string{"FAIL  arithmetic", "t.eye:3:3: expected 1 + 1 == 3, but 1 + 1 is 2", "info: checking", "1 of 1 tests failed"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("eye test printed %q, want %q", stdout.String(), want)
+		}
+	}
+
+	stdout.Reset()
+	if code := run([]string{"test", "--run", "nothing matches this", "../../testdata/programs/tour"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "no tests to run") {
+		t.Errorf("eye test --run: exit %d, %q", code, stdout.String())
+	}
+}
+
+func TestRunCommand(t *testing.T) {
+	dir := program(t, map[string]string{"main.eye": `pub fn main(args: List(String)) -> Result((), String) {
+  let names = args |> drop(1)
+  if names |> isEmpty { return Err("who?") }
+  for name in names { print("hello, {name}") }
+  Ok(())
+}
+`})
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"run", dir, "--", "Ann", "Bo"}, &stdout, &stderr); code != 0 || stdout.String() != "hello, Ann\nhello, Bo\n" {
+		t.Errorf("eye run: exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	if code := run([]string{"run", dir}, &stdout, &stderr); code != exitErrors || !strings.Contains(stderr.String(), "who?") {
+		t.Errorf("eye run returning Err: exit %d, stderr %q", code, stderr.String())
 	}
 }
 

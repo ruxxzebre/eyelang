@@ -41,7 +41,7 @@ func binaryPrec(k Kind) (prec int, rightAssoc bool) {
 func (p *parser) startsExpr() bool {
 	switch p.kind() {
 	case Ident, TypeIdent, Underscore, Int, Float, Date, Time, Char, StringStart, KwTrue, KwFalse,
-		LParen, LBracket, LBrace, KwFn, KwIf, KwMatch, Minus, Bang:
+		LParen, LBracket, LBrace, KwFn, KwIf, KwMatch, Minus, Bang, KwReturn, KwBreak, KwContinue:
 		return true
 	}
 	return false
@@ -185,6 +185,22 @@ func (p *parser) mutArgument() *Node {
 
 func (p *parser) primary() *Node {
 	switch p.kind() {
+	case KwReturn:
+		// `return` takes everything to its right, like a lambda's body.
+		b := p.start(ReturnStatement)
+		b.add(p.bump())
+		if p.startsExpr() && !p.atBreak() {
+			b.field(FieldValue, p.expr())
+		}
+		return b.done(p)
+	case KwBreak:
+		b := p.start(BreakStatement)
+		b.add(p.bump())
+		return b.done(p)
+	case KwContinue:
+		b := p.start(ContinueStatement)
+		b.add(p.bump())
+		return b.done(p)
 	case Ident, TypeIdent, Char:
 		return p.bump()
 	case Underscore:

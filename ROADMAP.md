@@ -23,6 +23,19 @@ implementation or real code shows a rule is wrong. The freeze lifts when task 4.
 ([#38](https://github.com/ruxxzebre/eyelang/issues/38)) closes: the tour passes under `eye test` in
 CI, deterministically.
 
+**Thin slice, done 2026-10-10.** The tour runs under `eye test` (`testdata/programs/tour`), ahead of
+the phases, by taking a thin cut through them:
+
+- names and imports are resolved, and waiting calls checked (part of 2.1 and 2.6);
+- programs are lowered to an IR without types (part of 3.1) and run by the reference interpreter
+  (3.2), with `eye run` and `eye test` (3.4);
+- entities with transactional methods (4.1), jobs that resume by replaying their recorded steps,
+  saved as bytes (4.3), a test clock (4.4), and `enters`/`leaves` triggers (4.5);
+- fakes replayed from recordings, checked against the contract (part of phase 6).
+
+Still missing before v0.1: type and effect checking (phase 2), the store written in Eyelang (4.2),
+schedules and time zones in triggers, migrations (4.6), and the REPL.
+
 ## Phases
 
 ### Phase 0: Clean slate — [#1](https://github.com/ruxxzebre/eyelang/issues/1) · v0.1

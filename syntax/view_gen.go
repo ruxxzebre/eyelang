@@ -87,7 +87,7 @@ func AsBlock(n *Node) (BlockView, bool) {
 	return BlockView{n}, true
 }
 
-// Items returns the named children that have no field (_expression, assignment, break_statement, continue_statement, for_statement, let_statement, return_statement, var_statement, while_statement, with_statement).
+// Items returns the named children that have no field (_expression, assignment, for_statement, let_statement, var_statement, while_statement, with_statement).
 func (v BlockView) Items() []*Node { return v.Node.unfielded() }
 
 // BooleanView is a typed view of a boolean node.

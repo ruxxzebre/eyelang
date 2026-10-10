@@ -51,21 +51,6 @@ func (p *parser) statement() *Node {
 		p.withNewlines(false, func() { b.field(FieldCondition, p.expr()) })
 		b.field(FieldBody, p.block())
 		return b.done(p)
-	case KwReturn:
-		b := p.start(ReturnStatement)
-		b.add(p.bump())
-		if p.startsExpr() && !p.atBreak() {
-			b.field(FieldValue, p.expr())
-		}
-		return b.done(p)
-	case KwBreak:
-		b := p.start(BreakStatement)
-		b.add(p.bump())
-		return b.done(p)
-	case KwContinue:
-		b := p.start(ContinueStatement)
-		b.add(p.bump())
-		return b.done(p)
 	}
 	if !p.startsExpr() {
 		p.errorExpected("a statement")
