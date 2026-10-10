@@ -807,27 +807,7 @@ func (c *checker) opHTTP(f *ir.File, d *syntax.Node, args []*syntax.Node, named 
 }
 
 // docComment returns the `##` lines directly above a node.
-func docComment(f *ir.File, n *syntax.Node) string {
-	first := n
-	for !first.IsToken() && len(first.Children) > 0 {
-		first = first.Children[0]
-	}
-	var run []string
-	for _, t := range first.Leading {
-		s := string(f.Src[t.Span.Start:t.Span.End])
-		switch {
-		case t.Kind == syntax.Whitespace:
-			if strings.Count(s, "\n") > 1 {
-				run = nil // a blank line ends a doc comment
-			}
-		case t.Kind == syntax.Comment && strings.HasPrefix(s, "##"):
-			run = append(run, strings.TrimPrefix(strings.TrimPrefix(s, "##"), " "))
-		default:
-			run = nil
-		}
-	}
-	return strings.TrimSpace(strings.Join(run, "\n"))
-}
+func docComment(f *ir.File, n *syntax.Node) string { return syntax.DocComment(n, f.Src) }
 
 func hasAttribute(f *ir.File, d *syntax.Node, name string) bool {
 	for _, attr := range d.Children {

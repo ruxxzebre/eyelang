@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"eyelang/check"
 	"eyelang/internal/apidoc"
@@ -20,6 +21,8 @@ func runDoc(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Writes the API reference as Markdown: the standard library and, given a program,")
 		fmt.Fprintln(stderr, "its modules. Each public declaration gets its signature and its ## comment.")
+		fmt.Fprintln(stderr, "A [Name] in a ## comment links to that declaration; eye doc exits 1 if one")
+		fmt.Fprintln(stderr, "names nothing.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -40,7 +43,12 @@ func runDoc(args []string, stdout, stderr io.Writer) int {
 			return exitErrors
 		}
 		defer os.RemoveAll(tmp)
-		if err := os.WriteFile(tmp+"/empty.eye", []byte("# The standard library alone.\n"), 0o644); err != nil {
+		// The standard library alone: a program that imports every module of it.
+		var src strings.Builder
+		for _, m := range check.StdModules() {
+			src.WriteString("import " + m + "\n")
+		}
+		if err := os.WriteFile(tmp+"/std.eye", []byte(src.String()), 0o644); err != nil {
 			fmt.Fprintf(stderr, "eye doc: %v\n", err)
 			return exitErrors
 		}
@@ -53,7 +61,7 @@ func runDoc(args []string, stdout, stderr io.Writer) int {
 		}
 		return exitErrors
 	}
-	pages := apidoc.Pages(prog)
+	pages, problems := apidoc.Pages(prog)
 	if flags.NArg() == 0 {
 		pages = stdOnly(pages)
 	}
@@ -62,6 +70,12 @@ func runDoc(args []string, stdout, stderr io.Writer) int {
 		return exitErrors
 	}
 	fmt.Fprintf(stdout, "wrote %d pages to %s\n", len(pages), *out)
+	for _, p := range problems {
+		fmt.Fprintln(stderr, p)
+	}
+	if len(problems) > 0 {
+		return exitErrors
+	}
 	return 0
 }
 

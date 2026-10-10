@@ -1,12 +1,18 @@
 // Package apidoc writes the API reference of Eyelang modules as Markdown:
 // each public declaration with its signature and its `##` documentation.
 // `eye doc` uses it, and the docs site publishes what it writes.
+//
+// Doc comments are Markdown. Their first sentence is the summary that index
+// tables show. `[Name]`, `[Type.member]` and `[module.Name]` link to the
+// declaration they name, anywhere in the reference.
 package apidoc
 
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -20,11 +26,25 @@ type Page struct {
 	Title   string
 	Summary string
 	Content string
+
+	module string            // the module's import path, for links
+	doc    string            // the module's doc comment
+	decls  []decl            // what the page documents
+	names  map[string]string // what [Name] may say, to the anchor it goes to
+}
+
+// Problem is a doc comment that links to a name the reference doesn't have.
+type Problem struct {
+	Page, Decl, Link string
+}
+
+func (p Problem) String() string {
+	return fmt.Sprintf("%s: the doc comment of %s links to [%s], which names nothing documented", p.Page, p.Decl, p.Link)
 }
 
 // Pages documents the standard library and, if prog has modules of its own,
-// each of them.
-func Pages(prog *ir.Program) []Page {
+// each of them. Problems lists the links in doc comments that name nothing.
+func Pages(prog *ir.Program) ([]Page, []Problem) {
 	pages := []Page{prelude(prog.Prelude), builtins()}
 	for _, m := range prog.Modules {
 		if m == prog.Prelude {
@@ -32,8 +52,8 @@ func Pages(prog *ir.Program) []Page {
 		}
 		pages = append(pages, module(m))
 	}
-	pages = append([]Page{index(pages)}, pages...)
-	return pages
+	problems := link(pages)
+	return append([]Page{index(pages)}, pages...), problems
 }
 
 // Reindex rebuilds the index page of pages, after some were left out.
@@ -79,14 +99,17 @@ func index(pages []Page) Page {
 	b.WriteString("| Module | |\n|---|---|\n")
 	for _, p := range pages {
 		link := "./" + strings.TrimSuffix(p.Path, ".md")
-		fmt.Fprintf(&b, "| [%s](%s) | %s |\n", p.Title, link, p.Summary)
+		fmt.Fprintf(&b, "| [%s](%s) | %s |\n", p.Title, link, docLink.ReplaceAllString(p.Summary, "`$1`"))
 	}
 	return Page{Path: "index.md", Title: "API reference", Content: b.String()}
 }
 
 func builtins() Page {
+	p := Page{Path: "std/builtins.md", Title: "Built-in functions", Summary: "Output, tests, time, collections, strings and numbers"}
+	p.module = "builtins"
+	p.names = map[string]string{}
 	var b strings.Builder
-	b.WriteString(frontmatter("Built-in functions"))
+	b.WriteString(frontmatter(p.Title))
 	b.WriteString("# Built-in functions\n\n")
 	b.WriteString("Functions every module can call without importing anything. Collection functions take the ")
 	b.WriteString("collection first, so they read well after `|>`: `players |> add(p)`. Any of them can also be ")
@@ -97,34 +120,42 @@ func builtins() Page {
 			group = d.Group
 			fmt.Fprintf(&b, "## %s\n\n", group)
 		}
-		fmt.Fprintf(&b, "### %s\n\n```eye\n%s\n```\n\n%s\n\n", d.Name, d.Signature, d.Doc)
+		id := anchor(d.Name)
+		p.names[d.Name] = id
+		p.decls = append(p.decls, decl{name: d.Name, doc: d.Doc})
+		fmt.Fprintf(&b, "### %s {#%s}\n\n```eye\n%s\n```\n\n%s\n\n", d.Name, id, d.Signature, d.Doc)
 	}
-	return Page{Path: "std/builtins.md", Title: "Built-in functions", Summary: "Output, tests, time, collections, strings and numbers", Content: b.String()}
+	p.Content = b.String()
+	return p
 }
 
 func prelude(m *ir.Module) Page {
 	p := module(m)
 	p.Path, p.Title = "std/prelude.md", "Prelude"
-	p.Summary = "Option and Result, which every module sees"
+	p.Content = strings.Replace(p.Content, "title: prelude\n", "title: Prelude\n", 1)
 	p.Content = strings.Replace(p.Content, "# Module prelude", "# Prelude", 1)
 	return p
 }
 
 // decl is a documented declaration.
 type decl struct {
-	kind, name, signature, doc string
-	members                    []decl
+	kind, name, title, signature, doc string
+	members                           []decl // methods, each with a heading
+	parts                             []decl // variants, fields and state, listed under the signature
+	variant                           bool
 }
 
 func module(m *ir.Module) Page {
 	var decls []decl
-	var summary string
+	var doc string
+	std := false
 	for _, f := range m.Files {
 		if f.Tree == nil || len(f.Tree.Diagnostics) > 0 {
 			continue
 		}
-		if summary == "" {
-			summary = fileSummary(f)
+		std = std || strings.HasPrefix(f.Path, "<std ")
+		if doc == "" {
+			doc = syntax.ModuleDoc(f.Tree)
 		}
 		for _, d := range f.Tree.Root.Children {
 			if dd, ok := document(f, d, m.Path == "prelude"); ok {
@@ -139,11 +170,16 @@ func module(m *ir.Module) Page {
 	if name == "" {
 		name = "main"
 	}
+	p := Page{Title: name, Summary: syntax.Summary(doc), module: m.Path, doc: doc, decls: decls, names: map[string]string{}}
+	p.Path = strings.ReplaceAll(name, ".", "/") + ".md"
+	if std {
+		p.Path = "std/" + p.Path
+	}
 	var b strings.Builder
 	b.WriteString(frontmatter(name))
 	fmt.Fprintf(&b, "# Module %s\n\n", name)
-	if summary != "" {
-		b.WriteString(summary + "\n\n")
+	if doc != "" {
+		b.WriteString(doc + "\n\n")
 	}
 	if m.Path != "prelude" && m.Path != "" {
 		fmt.Fprintf(&b, "```eye\nimport %s\n```\n\n", m.Path)
@@ -154,12 +190,26 @@ func module(m *ir.Module) Page {
 			kind = d.kind
 			fmt.Fprintf(&b, "## %s\n\n", kind)
 		}
-		fmt.Fprintf(&b, "### %s\n\n```eye\n%s\n```\n\n", d.name, d.signature)
+		id := anchor(d.name)
+		p.names[d.name] = id
+		fmt.Fprintf(&b, "### %s {#%s}\n\n```eye\n%s\n```\n\n", d.title, id, d.signature)
 		if d.doc != "" {
 			b.WriteString(d.doc + "\n\n")
 		}
+		for _, part := range d.parts {
+			p.names[part.title] = anchor(part.title)
+			if part.variant {
+				// Variants are in scope by their own names.
+				if _, ok := p.names[part.name]; !ok {
+					p.names[part.name] = anchor(part.title)
+				}
+			}
+		}
+		writeParts(&b, d.parts)
 		for _, mem := range d.members {
-			fmt.Fprintf(&b, "#### %s.%s\n\n```eye\n%s\n```\n\n", d.name, mem.name, mem.signature)
+			id := anchor(d.name + "." + mem.name)
+			p.names[d.name+"."+mem.name] = id
+			fmt.Fprintf(&b, "#### %s.%s {#%s}\n\n```eye\n%s\n```\n\n", d.name, mem.name, id, mem.signature)
 			if mem.doc != "" {
 				b.WriteString(mem.doc + "\n\n")
 			}
@@ -168,8 +218,24 @@ func module(m *ir.Module) Page {
 	if len(decls) == 0 {
 		b.WriteString("This module has no public declarations.\n")
 	}
-	path := strings.ReplaceAll(name, ".", "/") + ".md"
-	return Page{Path: path, Title: name, Summary: summary, Content: b.String()}
+	p.Content = b.String()
+	return p
+}
+
+// writeParts lists the documented variants, fields or state of a declaration.
+func writeParts(b *strings.Builder, parts []decl) {
+	wrote := false
+	for _, part := range parts {
+		if part.doc == "" {
+			continue
+		}
+		wrote = true
+		doc := strings.ReplaceAll(part.doc, "\n", "\n  ")
+		fmt.Fprintf(b, "- <span id=%q></span>`%s`: %s\n", anchor(part.title), part.signature, doc)
+	}
+	if wrote {
+		b.WriteString("\n")
+	}
 }
 
 // document returns the reference entry for a public top-level declaration.
@@ -178,13 +244,15 @@ func document(f *ir.File, d *syntax.Node, all bool) (decl, bool) {
 	if name == nil || !all && !isPub(f, d) {
 		return decl{}, false
 	}
-	out := decl{name: name.Text(f.Src), doc: docComment(f, d)}
+	out := decl{name: name.Text(f.Src), doc: syntax.DocComment(d, f.Src)}
+	out.title = out.name
 	switch d.Kind {
 	case syntax.TypeDeclaration:
 		out.kind, out.signature = "Types", text(f, d)
 		if tp := d.ChildByField(syntax.FieldTypeParameters); tp != nil {
-			out.name += tp.Text(f.Src)
+			out.title += tp.Text(f.Src)
 		}
+		out.parts = typeParts(f, out.name, d.ChildByField(syntax.FieldValue))
 	case syntax.FunctionDeclaration, syntax.ExternDeclaration:
 		out.kind, out.signature = "Functions", header(f, d)
 	case syntax.JobDeclaration:
@@ -201,10 +269,14 @@ func document(f *ir.File, d *syntax.Node, all bool) (decl, bool) {
 			switch member.Kind {
 			case syntax.StateDeclaration:
 				sig.WriteString("  " + text(f, member) + "\n")
+				if n := member.ChildByField(syntax.FieldName); n != nil {
+					mn := n.Text(f.Src)
+					out.parts = append(out.parts, decl{name: mn, title: out.name + "." + mn, signature: text(f, member), doc: syntax.DocComment(member, f.Src)})
+				}
 			case syntax.FunctionDeclaration:
 				if isPub(f, member) {
 					mn := member.ChildByField(syntax.FieldName).Text(f.Src)
-					out.members = append(out.members, decl{name: mn, signature: header(f, member), doc: docComment(f, member)})
+					out.members = append(out.members, decl{name: mn, signature: header(f, member), doc: syntax.DocComment(member, f.Src)})
 				}
 			}
 		}
@@ -214,6 +286,37 @@ func document(f *ir.File, d *syntax.Node, all bool) (decl, bool) {
 		return decl{}, false
 	}
 	return out, true
+}
+
+// typeParts returns the variants or record fields of a type, with their docs.
+func typeParts(f *ir.File, typeName string, value *syntax.Node) []decl {
+	var parts []decl
+	switch {
+	case value == nil:
+	case value.Kind == syntax.VariantList:
+		// A variant's `##` comment sits above its `|`.
+		doc := ""
+		for _, vn := range value.Children {
+			if vn.Kind != syntax.Variant {
+				doc = syntax.DocComment(vn, f.Src)
+				continue
+			}
+			if own := syntax.DocComment(vn, f.Src); own != "" {
+				doc = own
+			}
+			n := vn.ChildByField(syntax.FieldName).Text(f.Src)
+			parts = append(parts, decl{name: n, title: typeName + "." + n, signature: text(f, vn), doc: doc, variant: true})
+			doc = ""
+		}
+	case value.Kind == syntax.RecordType:
+		for _, field := range value.NamedChildren() {
+			if n := field.ChildByField(syntax.FieldName); n != nil {
+				name := n.Text(f.Src)
+				parts = append(parts, decl{name: name, title: typeName + "." + name, signature: text(f, field), doc: syntax.DocComment(field, f.Src)})
+			}
+		}
+	}
+	return parts
 }
 
 func isPub(f *ir.File, d *syntax.Node) bool {
@@ -246,44 +349,117 @@ func header(f *ir.File, d *syntax.Node) string {
 	return strings.TrimSpace(strings.TrimSuffix(h, "="))
 }
 
-// docComment returns the `##` lines directly above a declaration.
-func docComment(f *ir.File, d *syntax.Node) string {
-	first := d
-	for !first.IsToken() && len(first.Children) > 0 {
-		first = first.Children[0]
+// anchor is the id of a declaration's heading: "World.join" is "World-join".
+func anchor(name string) string { return strings.ReplaceAll(name, ".", "-") }
+
+var (
+	docLink  = regexp.MustCompile(`\[([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\]`)
+	codeSpan = regexp.MustCompile("`[^`]*`")
+)
+
+// link turns `[Name]` in doc comments into links to the page and heading of
+// the declaration it names, and reports the ones that name nothing. A name is
+// looked up in the page's own module, then the prelude, then the built-in
+// functions; `[module.Name]` names a declaration of another module.
+func link(pages []Page) []Problem {
+	byModule := map[string]*Page{}
+	for i := range pages {
+		byModule[pages[i].module] = &pages[i]
 	}
-	var run []string
-	for _, t := range first.Leading {
-		s := string(f.Src[t.Span.Start:t.Span.End])
-		switch {
-		case t.Kind == syntax.Whitespace:
-			if strings.Count(s, "\n") > 1 {
-				run = nil // a blank line ends a doc comment
+	target := func(from *Page, name string) (string, bool) {
+		try := func(p *Page, n string) (string, bool) {
+			if p == nil {
+				return "", false
 			}
-		case t.Kind == syntax.Comment && strings.HasPrefix(s, "##"):
-			run = append(run, strings.TrimPrefix(strings.TrimPrefix(s, "##"), " "))
-		default:
-			run = nil
+			id, ok := p.names[n]
+			if !ok {
+				return "", false
+			}
+			rel, _ := filepath.Rel(path.Dir(from.Path), strings.TrimSuffix(p.Path, ".md"))
+			if !strings.HasPrefix(rel, ".") {
+				rel = "./" + rel
+			}
+			return filepath.ToSlash(rel) + "#" + id, true
 		}
+		for _, p := range []*Page{from, byModule["prelude"], byModule["builtins"]} {
+			if t, ok := try(p, name); ok {
+				return t, true
+			}
+		}
+		if i := strings.LastIndex(name, "."); i > 0 {
+			if t, ok := try(byModule[name[:i]], name[i+1:]); ok {
+				return t, true
+			}
+		}
+		return "", false
 	}
-	return strings.TrimSpace(strings.Join(run, "\n"))
+	var problems []Problem
+	for i := range pages {
+		p := &pages[i]
+		check := func(owner, doc string) {
+			for _, n := range linkNames(doc) {
+				if _, ok := target(p, n); !ok {
+					problems = append(problems, Problem{Page: p.Path, Decl: owner, Link: n})
+				}
+			}
+		}
+		check("module "+p.Title, p.doc)
+		for _, d := range p.decls {
+			check(d.name, d.doc)
+			for _, m := range append(append([]decl{}, d.members...), d.parts...) {
+				check(d.name+"."+m.name, m.doc)
+			}
+		}
+		p.Content = rewriteLinks(p.Content, func(n string) (string, bool) { return target(p, n) })
+	}
+	return problems
 }
 
-// fileSummary is the first comment of a file, before its first declaration.
-func fileSummary(f *ir.File) string {
-	var lines []string
-	first := f.Tree.Root
-	for !first.IsToken() && len(first.Children) > 0 {
-		first = first.Children[0]
-	}
-	for _, t := range first.Leading {
-		s := string(f.Src[t.Span.Start:t.Span.End])
-		if t.Kind == syntax.Whitespace && strings.Count(s, "\n") > 1 && len(lines) > 0 {
-			break
+// linkNames returns the names a doc comment links to.
+func linkNames(doc string) []string {
+	var out []string
+	rewriteLinks(doc, func(n string) (string, bool) { out = append(out, n); return "", false })
+	return out
+}
+
+// rewriteLinks replaces each `[Name]` in Markdown prose, outside code, with a
+// link when to finds where it goes. Text that is already a link, such as
+// `[text](url)` or `[text][ref]`, is left alone.
+func rewriteLinks(md string, to func(string) (string, bool)) string {
+	lines := strings.Split(md, "\n")
+	fence := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fence = !fence
+			continue
 		}
-		if t.Kind == syntax.Comment && !strings.HasPrefix(s, "##") {
-			lines = append(lines, strings.TrimSpace(strings.TrimPrefix(s, "#")))
+		if fence || strings.HasPrefix(line, "#") {
+			continue
 		}
+		var b strings.Builder
+		last := 0
+		prose := func(s string) string {
+			var b strings.Builder
+			last := 0
+			for _, m := range docLink.FindAllStringSubmatchIndex(s, -1) {
+				end := m[1]
+				if end < len(s) && (s[end] == '(' || s[end] == '[') || m[0] > 0 && s[m[0]-1] == ']' {
+					continue
+				}
+				if t, ok := to(s[m[2]:m[3]]); ok {
+					b.WriteString(s[last:m[0]] + "[`" + s[m[2]:m[3]] + "`](" + t + ")")
+					last = m[1]
+				}
+			}
+			return b.String() + s[last:]
+		}
+		for _, span := range codeSpan.FindAllStringIndex(line, -1) {
+			b.WriteString(prose(line[last:span[0]]))
+			b.WriteString(line[span[0]:span[1]])
+			last = span[1]
+		}
+		b.WriteString(prose(line[last:]))
+		lines[i] = b.String()
 	}
-	return strings.Join(lines, " ")
+	return strings.Join(lines, "\n")
 }

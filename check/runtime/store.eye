@@ -1,7 +1,8 @@
-# The in-memory store (SPECS.md §15): everything a running program keeps, as
-# one immutable value. Each commit is a pure function from one store to the
-# next, and the runtime holds the only reference to the current one.
-#
+## The in-memory store: everything a running program keeps, as one immutable
+## value. Each commit is a pure function from one store to the next, and the
+## runtime holds the only reference to the current one.
+
+# SPECS.md §15.
 # The runtime reaches it through the Store interface in interp/store.go. A
 # journal (interp/journal.go) wraps it to keep it across restarts. Saved
 # values are bytes; until the interpreter has Bytes values, they travel as

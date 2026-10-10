@@ -1,5 +1,7 @@
-# The standard library's ai module: typed calls to language models
-# (SPECS.md §19). Its primitives are provided by the host.
+## Typed calls to language models. Ask for a value of any type, and the reply
+## is checked against that type and decoded into it.
+
+# SPECS.md §19. Its primitives are provided by the host.
 
 ## Why a model call gave no value.
 pub type AiError =
