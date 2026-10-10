@@ -87,7 +87,7 @@ export default defineConfig({
     ],
     sidebar: {
       '/reference/': [
-        { text: 'Reference', link: '/reference/', items: [{ text: 'The eye command', link: '/reference/cli' }] },
+        { text: 'Reference', link: '/reference/', items: [{ text: 'The eye command', link: '/reference/cli' }, { text: 'What runs today', link: '/reference/status' }] },
         { ...spec[0], collapsed: false },
         { text: 'API reference', link: '/reference/api/', items: apiPages() },
       ],
