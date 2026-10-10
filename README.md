@@ -19,6 +19,10 @@ go build -o eye ./cmd/eye
 
 With [Task](https://taskfile.dev): `task build` writes `bin/eye`, and `task test` runs the tests.
 
+Prebuilt binaries for Linux, macOS and Windows are attached to each
+[GitHub release](https://github.com/ruxxzebre/eyelang/releases), starting with v0.1.0. Pushing a
+`v*` tag builds and publishes them; nothing built is committed to git.
+
 ## Repository layout
 
 | Path | Contents |
