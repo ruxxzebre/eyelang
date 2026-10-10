@@ -1,0 +1,345 @@
+================================================================================
+Let
+================================================================================
+
+fn f() {
+  let x = 5
+  let y: Int = 6
+  let { name, age } = user
+  let [first, ..rest] = items else { return Err(Empty) }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (integer))
+      (let_statement
+        (identifier)
+        (type_identifier)
+        (integer))
+      (let_statement
+        (record_pattern
+          (shorthand_field_pattern
+            (identifier))
+          (shorthand_field_pattern
+            (identifier)))
+        (identifier))
+      (let_statement
+        (list_pattern
+          (identifier)
+          (rest_pattern
+            (identifier)))
+        (identifier)
+        (block
+          (return_statement
+            (call_expression
+              (type_identifier)
+              (arguments
+                (type_identifier)))))))))
+
+================================================================================
+Var and assignment
+================================================================================
+
+fn f() {
+  var total = 0
+  var count: Int = 0
+  total = total + x
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (var_statement
+        (identifier)
+        (integer))
+      (var_statement
+        (identifier)
+        (type_identifier)
+        (integer))
+      (assignment
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier))))))
+
+================================================================================
+For and while
+================================================================================
+
+fn f() {
+  for item in items { log.info(item.name) }
+  for { name, .. } in users {
+    print(name)
+  }
+  while running() { tick() }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (for_statement
+        (identifier)
+        (identifier)
+        (block
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (field_expression
+                (identifier)
+                (identifier))))))
+      (for_statement
+        (record_pattern
+          (shorthand_field_pattern
+            (identifier))
+          (rest_pattern))
+        (identifier)
+        (block
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier)))))
+      (while_statement
+        (call_expression
+          (identifier)
+          (arguments))
+        (block
+          (call_expression
+            (identifier)
+            (arguments)))))))
+
+================================================================================
+Break and continue
+================================================================================
+
+fn f() {
+  while true {
+    if done() { break }
+    continue
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (while_statement
+        (boolean)
+        (block
+          (if_expression
+            (call_expression
+              (identifier)
+              (arguments))
+            (block
+              (break_statement)))
+          (continue_statement))))))
+
+================================================================================
+Return
+================================================================================
+
+fn f() {
+  if a { return }
+  if b { return 1 }
+  return
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (if_expression
+        (identifier)
+        (block
+          (return_statement)))
+      (if_expression
+        (identifier)
+        (block
+          (return_statement
+            (integer))))
+      (return_statement))))
+
+================================================================================
+With
+================================================================================
+
+test "clock" {
+  with fakes(zeropod, notify, from: "receipts/")
+  with clock(2026-10-10 12:00 in "Europe/Dublin")
+  advance(21 min)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (test_declaration
+    (string
+      (string_content))
+    (block
+      (with_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)
+            (identifier)
+            (named_argument
+              (identifier)
+              (string
+                (string_content))))))
+      (with_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (instant
+              (date)
+              (time)
+              (string
+                (string_content))))))
+      (call_expression
+        (identifier)
+        (arguments
+          (duration
+            (integer)
+            (unit_name)))))))
+
+================================================================================
+Semicolons
+================================================================================
+
+fn f() { let a = 1; let b = 2; a + b }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (integer))
+      (let_statement
+        (identifier)
+        (integer))
+      (binary_expression
+        (identifier)
+        (identifier)))))
+
+================================================================================
+Blank lines and comments between statements
+================================================================================
+
+fn f() {
+
+  # first
+  let a = 1
+
+
+  let b = 2  # trailing
+  ;;
+  a + b
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (comment)
+      (let_statement
+        (identifier)
+        (integer))
+      (let_statement
+        (identifier)
+        (integer))
+      (comment)
+      (binary_expression
+        (identifier)
+        (identifier)))))
+
+================================================================================
+Empty block
+================================================================================
+
+fn f() {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block)))
+
+================================================================================
+Let else binds to the if expression
+================================================================================
+
+fn f() {
+  let x = if a { b } else { c }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (if_expression
+          (identifier)
+          (block
+            (identifier))
+          (block
+            (identifier)))))))
+
+================================================================================
+Record at the start of a statement
+================================================================================
+
+fn f() {
+  { name: old.nick, devices: {} }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (record
+        (field_initializer
+          (identifier)
+          (field_expression
+            (identifier)
+            (identifier)))
+        (field_initializer
+          (identifier)
+          (empty_braces))))))

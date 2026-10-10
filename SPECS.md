@@ -67,6 +67,8 @@ outside that domain.
 | Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing and saving are derived for data types | One mechanism for generic code |
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts | One general mechanism instead of special syntax per feature |
 | Blocks | **Braces** | Keeps parsing simple; no whitespace pitfalls |
+| Statements | **A newline ends a statement** unless the next line starts with an operator, `.`, `,`, `:`, `=` or `else`. `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
+| Braces in expressions | A `{` after `if`, `else`, `for`, `while`, `=>`, a signature or a lambda's parameters opens a block; anywhere else it starts a record or map. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found without lookahead, in both parsers |
 | Pipes | Data-first: `x |> f(a)` is `f(x, a)`; `_` places the value elsewhere: `x |> f(a, _)` | Matches method-call intuition |
 | Memory | Reference counting with in-place reuse of uniquely owned values; immutable values; entities referenced by ID | No GC pauses, and no reference cycles by construction |
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
@@ -149,8 +151,12 @@ test "an idle world sleeps after 20 minutes" {
 
 ## 4. Lexical structure
 
+Source files are UTF-8. Names and keywords are ASCII; strings and comments may contain any text.
+
 - **Comments:** `#` to the end of the line.
-- **Identifiers:** a letter or `_`, then letters, digits and `_`. Identifiers can no longer end in
+- **Names:** a letter or `_`, then letters, digits and `_`. A name that starts with an upper-case
+  letter names a type, variant, entity or contract (`World`, `Some`, `Notify`); any other name is a
+  value, function, field or module (`world`, `markAsleep`, `zeropod`). Names can no longer end in
   `!` or `?` (Eyelang 1 allowed `update!` and `ok?`): `!` now marks waiting calls and `?`
   propagates errors.
 - **Literals:**
@@ -158,23 +164,49 @@ test "an idle world sleeps after 20 minutes" {
   | Kind | Examples |
   |---|---|
   | Int (arbitrary precision) | `0`, `42`, `1_000_000` |
-  | Float (64-bit IEEE) | `1.5`, `0.25` |
+  | Float (64-bit IEEE) | `1.5`, `0.25`, `6.02e23` |
   | String, with interpolation | `"hello"`, `"ireland-{day}"`, `"\{literal brace}"` |
   | Bool | `true`, `false` |
-  | Duration | `500 ms`, `20 min`, `3 h`, `2 days` |
+  | Unit | `()` |
+  | Duration | `500 ms`, `20 min`, `3 h`, `2 days`, `1.5 h` |
   | Size | `512 B`, `64 KiB`, `64 MiB`, `6 GiB` |
   | Time of day | `07:40`, `23:59:30` |
   | Date | `2026-10-10` |
   | Instant | `2026-10-10 07:40 in "Europe/Dublin"` |
+  | Next time of day in a zone | `07:45 in "Europe/Dublin"` |
 
   A number followed by a unit name (`ms`, `s`, `min`, `h`, `day`, `days`, `week`, `weeks`, `B`,
   `KiB`, `MiB`, `GiB`) is a Duration or Size. A date or time of day is written without spaces;
-  `2026 - 10 - 10` is still subtraction.
+  `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time.
+- **Strings** stay on one line. The escapes are `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\{`, `\}` and
+  `\u{1F600}`. `{expression}` interpolates a value that has `Show`.
 - **Keywords:** `let var fn pub return if else match for in while break continue type trait impl
-  entity state job view contract import test with start true false`. A few more words are keywords
-  only in one position: `command`, `query`, `event` inside contracts; `migrate`, `from` inside
-  entities; `after`, `at` after `start`; `uses` in signatures.
+  entity state job view contract import test with start true false _`. A few more words are
+  keywords only in one position: `command`, `query`, `event` and `on` inside contracts; `migrate`
+  and `from` inside entities; `after` and `at` after `start`; `uses` in signatures; and the unit
+  names after a number. `in` and `for` may also be used as argument labels: `daily(07:40, in: zone)`.
 - **Attributes:** `@name` or `@name(args)` before a declaration or member.
+- **Newlines end statements.** A line break ends a statement, declaration, member or match arm
+  wherever one could end. It doesn't when the next line (ignoring blank and comment lines) starts
+  with a binary operator, `.`, `?`, `,`, `:`, `=`, `->` or `else`; `-` and `!` continue only as
+  `->` and `!=`, since `-x` and `!x` can start a statement. Inside `(…)`, `[…]` and record or map
+  braces no statement can end, so line breaks there are ordinary spaces (until a lambda's block
+  starts a new list of statements). `;` separates statements on one line.
+
+  ```eye
+  let ready = worlds
+    |> filter(fn w: w.phase == Running)      # continues: the line starts with |>
+    |> size
+  let next = a
+  (b)                                        # a new statement, not the call a(b)
+  ```
+- **Braces.** `{` opens a block after `if`, `else`, `for … in …`, `while`, `match` arms (`=>`),
+  `let … else`, a function or job signature, `test "…"` and a lambda's parameters. In any other
+  expression position it starts a record (`{ name: "Ann" }`), a map (`{ "a": 1 }`), an update
+  (`{ user with age: 4 }`) or the empty `{}`. So a match arm that returns a record wraps it in
+  parentheses: `Some(u) => ({ u with seen: true })`. A lambda doesn't need to: `fn u: { u with seen: true }`.
+- **Waiting calls:** in `f!(x)` the `!` and `(` follow the callee with no spaces. `x != y` and `!x`
+  are the usual operators.
 
 ## 5. Values and types
 
@@ -184,24 +216,33 @@ test "an idle world sleeps after 20 minutes" {
   reference happens in place at run time, without changing the meaning.
 - **Records:** `type User = { name: String, age: Int }`, built with `{ name: "Ann", age: 3 }` and
   updated with `{ user with age: 4 }`.
-- **Variants:** `type Grant = Admitted { revision: Revision } | Pending { receipt: ReceiptId } | Refused { reason: Reason }`.
+- **Variants:** `type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)`,
+  built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(T)`). A
+  variant list needs at least one `|`, so a type with a single variant starts with one:
+  `type Wrapper = | Wrapped(Int)`. Without a `|`, `type Ids = List(Id)` is an alias.
 - **Built-in variants:** `Option(T) = Some(T) | None` and `Result(T, E) = Ok(T) | Err(E)`.
   There is no null.
 - **Entity references:** `Ref(World)` is an ID, not a pointer. It can be stored, sent and saved
   anywhere, and it can't be confused with `Ref(Player)`.
 - **Special types:** `Secret(T)` (no printing, no saving), `Approval` (only a human approval flow
   can create one), `Key` (an idempotency key), `Run(T)` (a started job).
-- **Maps** use string or expression keys: `{"a": 1}`. Records use identifier keys: `{a: 1}`.
+- **Maps** use literal or parenthesised keys: `{"a": 1}`, `{(key): 1}`. Records use names:
+  `{a: 1}`, and `{ name, age }` is short for `{ name: name, age: age }`. `{}` is an empty map,
+  set or record, depending on the type expected. Other sets are built from lists: `toSet([a, b])`.
 
 ## 6. Bindings, functions and pipes
+
+```eye
+pub fn area(w: Float, h: Float) -> Float = w * h       # public: full signature
+fn double(n) = n * 2                                     # private: inferred
+```
+
+Inside a function body:
 
 ```eye
 let x = 5                    # immutable, block-scoped; a later `let x` shadows it
 var total = 0                # mutable local; closures can't capture a `var`
 total = total + x
-
-pub fn area(w: Float, h: Float) -> Float = w * h       # public: full signature
-fn double(n) = n * 2                                     # private: inferred
 
 let inc = fn n: n + 1                                    # lambdas
 let add = fn (a, b): a + b
@@ -209,6 +250,7 @@ let show = fn item {
   let label = item.name
   "<{label}>"
 }
+let later = fn { notify.send!(owner, "done", key: k) }       # no parameters
 
 let sizes = urls |> map(fetchSize) |> filter(fn s: s > 0)   # data-first pipe
 let diff = 2 |> sub(10, _)                                   # _ places the value: sub(10, 2)
@@ -224,15 +266,20 @@ for item in items { log.info(item.name) }
 
 ```eye
 match grant {
-  Admitted { revision } => use(revision)
-  Pending { receipt } if receipt.age > 1 h => escalate(receipt)
-  Pending { receipt } => wait(receipt)
-  Refused { reason } => report(reason)
+  Admitted(revision) => use(revision)
+  Pending(receipt) if receipt.age > 1 h => escalate(receipt)
+  Pending(receipt) => wait(receipt)
+  Refused(..) => report(grant)
 }
 
 let { name, age } = user                     # destructuring
 let [first, ..rest] = items else { return Err(Empty) }
 ```
+
+Patterns are names (which bind), `_`, literals (including negative numbers), variants with
+positional or named payloads (`Sent(receipt: r, ..)`), records (`{ name, age: a, .. }`), lists
+(`[first, ..rest]`) and alternatives (`Asleep | Waking`). `..` skips the remaining fields or
+elements; `..rest` binds the remaining elements.
 
 Every `match` must be exhaustive. Adding a variant to a type makes each `match` that doesn't handle
 it a compile error, which is how a new outcome from another service reaches every caller.
@@ -351,9 +398,9 @@ A job is a durable function: it can pause for any length of time and holds no me
 @deadline(13:40, in: "Europe/Dublin")
 job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   let items = miniflux.unread!("ireland", since: day - 1 day)?
-  let text = reserve!(256 MiB) {               # waits until the host grants the memory
+  let text = reserve!(256 MiB, fn {            # waits until the host grants the memory
     summarise!(items)
-  }
+  })
   Ok(notify.send!(owner, text, key: "ireland-{day}").reconcile!())
 }
 ```
@@ -374,8 +421,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `sleep!(20 min)`, `sleepUntil!(07:45 in "Europe/Dublin")` | time |
   | `approval!("delete 3 backups", from: operator, within: 3 days)` | a human; returns `Approved(Approval) \| Declined \| Expired` |
   | `next!(notify.delivered, where: fn e: e.key == k, within: 1 h)` | an event |
-  | `reserve!(1 GiB) { … }` | memory from the host, released at the end of the block |
-  | `lock!("ci", for: 30 min) { … }` | a named lock that records its owner and expiry |
+  | `reserve!(1 GiB, fn { … })` | memory from the host, released when the function returns |
+  | `lock!("ci", for: 30 min, fn { … })` | a named lock that records its owner and expiry |
   | `run.join!()` | a job started earlier |
   | `first!([a, b])` | whichever of several waits finishes first |
 
@@ -430,14 +477,15 @@ contract Notify {
   event delivered: Delivered on "notify.events"
 }
 
-type Delivery = Sent { receipt: ReceiptId, at: Instant }
-              | Pending { receipt: ReceiptId }
-              | Refused { reason: Refusal }
+type Delivery =
+  | Sent(receipt: ReceiptId, at: Instant)
+  | Pending(receipt: ReceiptId)
+  | Refused(reason: Refusal)
 ```
 
 - **`import notify` is a typed edge.** Port, network policy, credentials and the allowed-caller check
   are derived from it, so a wrong port or an unapproved caller is a compile error.
-- **Commands** return their declared variants plus `Uncertain { key }`, which `.reconcile!()`
+- **Commands** return their declared variants plus `Uncertain(key)`, which `.reconcile!()`
   resolves through the declared query.
 - **`@fresh`** on a command adds a required `basedOn: Version` argument and `Stale`/`Expired`
   outcomes, so an old command can't act on newer state.
@@ -496,8 +544,8 @@ Before deleting anything, tag the current state as `eyelang-1` so it stays easy 
 
 - **`tree-sitter-eyelang/grammar.js` is the executable grammar.** It is the canonical definition of
   the syntax, and section 18 is a readable summary of it. It also drives highlighting in editors
-  (Neovim, Helix, Zed, and VS Code through an extension). Interpolated strings and the `!` waiting
-  marker need a small external scanner in C.
+  (Neovim, Helix, Zed, and VS Code through an extension). A small external scanner in C decides
+  which newlines end statements, tells a block's `{` from a literal's, and reads string text.
 - **The compiler parses by hand,** in Go, with recursive descent and Pratt parsing for expressions
   (precedence table in section 18). That keeps cgo and runtime libraries out of the compiler and keeps
   error messages under our control. Most production compilers work this way: Go, Rust, TypeScript,
@@ -537,39 +585,68 @@ diagnostics layer, and a conversion from its editor-oriented tree.
 
 ## 18. Grammar sketch
 
-A readable summary. Once `tree-sitter-eyelang/grammar.js` exists, it is the definition, and this
-section follows it.
+A readable summary of [`tree-sitter-eyelang/grammar.js`](tree-sitter-eyelang/grammar.js), which is
+the definition. `sep` is `;` or a newline that ends a statement (section 4); `{` marked *block* is
+the brace that opens a block. Lists in `( )`, `[ ]` and literal braces allow a trailing comma.
+Every `eye` example in this document is a whole file or the statements of a function body, and CI
+parses each one with both parsers.
 
 ```ebnf
-file       = { import | decl } ;
-import     = "import" path [ ".{" ident { "," ident } "}" ] ;
-decl       = { attribute } ( fn | job | entity | view | type | trait | impl | contract | test | let ) ;
-attribute  = "@" ident [ "(" args ")" ] ;
-fn         = [ "pub" ] "fn" ident params [ "->" type ] [ "uses" effects ] ( "=" expr | block ) ;
-job        = "job" ident params [ "->" type ] block ;
-entity     = "entity" Ident params "{" { { attribute } member } "}" ;
-member     = "state" ident ":" type [ "=" expr ] | fn | "migrate" "from" int "(" ident ")" block ;
-view       = "view" ident "=" expr ;
-type       = "type" Ident [ "(" tparams ")" ] "=" ( record | variants | typeexpr ) ;
-variants   = variant { "|" variant } ;
-variant    = Ident [ record | "(" typeexpr { "," typeexpr } ")" ] ;
-trait      = "trait" Ident "{" { fnsig } "}" ;
-impl       = "impl" Ident "for" typeexpr "{" { fn } "}" ;
-contract   = "contract" Ident "{" { { attribute } cmember } "}" ;
-cmember    = ( "command" | "query" ) ident params "->" typeexpr
-           | "event" ident ":" typeexpr "on" string ;
-test       = "test" string block ;
-block      = "{" { stmt } [ expr ] "}" ;
-stmt       = "let" pattern [ ":" typeexpr ] "=" expr [ "else" block ]
-           | "var" ident "=" expr | ident "=" expr
+file       = { sep } [ item { sep item } { sep } ] ;
+item       = import | fn | job | entity | view | type | trait | impl | contract | test | let ;
+import     = "import" ident { "." ident } [ ".{" name { "," name } "}" ] ;
+attribute  = "@" ident [ args ] ;
+fn         = { attribute } [ "pub" ] "fn" ident params [ "->" type ] [ uses ] ( "=" expr | block ) ;
+params     = "(" [ param { "," param } ] ")" ;
+param      = ident [ ":" type ] [ "=" expr ] ;
+uses       = "uses" "{" [ effect { "," effect } ] "}" ;          (* wait, net Llm.complete *)
+job        = { attribute } [ "pub" ] "job" ident params [ "->" type ] [ uses ] block ;
+entity     = { attribute } [ "pub" ] "entity" Ident params "{" members "}" ;
+member     = { attribute } "state" ident ":" type [ "=" expr ]
+           | fn
+           | { attribute } "migrate" "from" int "(" ident ")" block ;
+view       = { attribute } [ "pub" ] "view" ident "=" expr ;
+type       = { attribute } [ "pub" ] "type" Ident [ "(" Ident { "," Ident } ")" ] "=" ( typeexpr | variants ) ;
+variants   = [ "|" ] variant "|" variant { "|" variant } | "|" variant ;
+variant    = Ident [ "(" ( ident ":" typeexpr | typeexpr ) { "," … } ")" ] ;
+trait      = { attribute } [ "pub" ] "trait" Ident "{" { fn | fnsig } "}" ;
+impl       = { attribute } "impl" typeexpr "for" typeexpr "{" { fn } "}" ;
+contract   = { attribute } [ "pub" ] "contract" Ident "{" { cmember } "}" ;
+cmember    = { attribute } ( "command" | "query" ) ident params "->" typeexpr
+           | { attribute } "event" ident ":" typeexpr "on" string ;
+test       = { attribute } "test" string block ;
+
+block      = "{"(block) { sep } [ stmt { sep stmt } { sep } ] "}" ;
+stmt       = let | "var" ident [ ":" type ] "=" expr | ident "=" expr
            | "for" pattern "in" expr block | "while" expr block
            | "with" expr | "return" [ expr ] | "break" | "continue" | expr ;
-primary    = literal | ident | "(" expr ")" | list | record | map | lambda
-           | "if" expr block [ "else" ( block | if ) ] | "match" expr "{" { arm } "}"
-           | "start" expr [ ( "after" | "at" ) expr ] ;
-call       = primary { "(" args ")" | "!" "(" args ")" | "." ident | "[" expr "]" | "?" } ;
-lambda     = "fn" ( ident | "(" idents ")" ) ( ":" expr | block ) ;
-arm        = pattern [ "if" expr ] "=>" expr ;
+let        = "let" pattern [ ":" typeexpr ] "=" expr [ "else" block ] ;
+
+expr       = lambda | binary ;                              (* precedence table below *)
+lambda     = "fn" [ ident | params ] ( ":" expr | block ) ;
+unary      = ( "-" | "!" ) unary | "start" call [ ( "after" | "at" ) expr ] | postfix ;
+postfix    = primary { args | "!(" args… | "." name | "[" expr "]" | "?" } ;
+args       = "(" [ arg { "," arg } ] ")" ;
+arg        = [ ( ident | "in" | "for" ) ":" ] expr ;
+primary    = ident | Ident | "_" | literal | "(" expr ")" | "[" [ expr { "," expr } ] "]"
+           | "{" "}" | "{" field { "," field } "}" | "{" expr "with" field { "," field } "}"
+           | "{" key ":" expr { "," key ":" expr } "}"
+           | "if" expr block [ "else" ( block | if ) ]
+           | "match" expr "{" { arm ( "," | sep ) } "}" ;
+field      = ident ":" expr | ident ;
+key        = string | int | "(" expr ")" ;
+arm        = pattern [ "if" expr ] "=>" ( block | expr ) ;
+literal    = int | float | string | "true" | "false" | "()" | number unit
+           | date | time | date time "in" string | time "in" string ;
+
+pattern    = pattern "|" pattern | ident | "_" | literal | "-" number
+           | Ident [ "(" [ ppart { "," ppart } ] ")" ]
+           | "{" [ ( ident ":" pattern | ident | ".." ) { "," … } ] "}"
+           | "[" [ ( pattern | ".." [ ident ] ) { "," … } ] "]" ;
+ppart      = pattern | ident ":" pattern | ".." ;
+typeexpr   = Ident [ "(" typeexpr { "," typeexpr } ")" ] | ident "." Ident [ "(" … ")" ]
+           | "()" | "{" [ ident ":" typeexpr { "," … } ] "}"
+           | "fn" "(" [ typeexpr { "," typeexpr } ] ")" [ "->" typeexpr ] ;
 ```
 
 **Operator precedence**, from tightest to loosest:
@@ -577,7 +654,7 @@ arm        = pattern [ "if" expr ] "=>" expr ;
 | Level | Operators |
 |---|---|
 | 1 | postfix: call `f(x)`, waiting call `f!(x)`, field `.x`, index `[i]`, propagate `?` |
-| 2 | prefix: `-`, `!` (not) |
+| 2 | prefix: `-`, `!` (not), `start` |
 | 3 | `*` `/` `%` |
 | 4 | `+` `-` |
 | 5 | `|>` |
@@ -586,9 +663,11 @@ arm        = pattern [ "if" expr ] "=>" expr ;
 | 8 | `&&` |
 | 9 | `||` |
 | 10 | `??` (default for `Option`) |
+| 11 | lambda body: `fn x: …` takes everything to its right |
 
-`!` after a name and directly before `(` is the waiting marker. `!` before an expression is logical
-not. The lexer tells them apart by position, and the waiting `!` can't contain spaces.
+`!` directly after an expression and directly before `(` is the waiting marker; `!` before an
+expression is logical not. `?` directly after an expression propagates an error; `??` is the
+operator. All binary operators associate to the left except `??`, which associates to the right.
 
 ## 19. Open questions
 
@@ -610,3 +689,6 @@ not. The lexer tells them apart by position, and the waiting `!` can't contain s
    macros (compile-time Eyelang functions that inspect a declaration's types and generate code).
    The built-in constructs could then be re-expressed with them, and grammar and editor support
    would stay unchanged because macros would only appear as attributes.
+10. **Multi-line strings:** strings stay on one line for now, which keeps an unclosed quote from
+    swallowing the rest of a file in editors. Prompts and templates will want a multi-line form
+    (indented, with the margin stripped). Which delimiter?

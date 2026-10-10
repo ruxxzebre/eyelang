@@ -26,9 +26,8 @@ jobs:
         with:
           task-version: 3.29.1
 
-      # The conformance suite (ROADMAP task 1.5) needs the tree-sitter CLI once the grammar exists.
+      # `task grammar` generates the parser from tree-sitter-eyelang/grammar.js and runs its corpus.
       - name: Set up tree-sitter
-        if: hashFiles('tree-sitter-eyelang/grammar.js') != ''
         run: npm install -g tree-sitter-cli@0.27.0
 
       - name: Check

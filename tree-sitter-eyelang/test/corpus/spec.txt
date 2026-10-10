@@ -1,0 +1,1309 @@
+================================================================================
+SPECS 3. A tour (1)
+================================================================================
+
+import zeropod                       # contract: the checkpoint service (Go)
+import notify                        # contract: notifications (TypeScript)
+
+let owner = UserId("operator")
+
+type Phase = Asleep | Waking | Running
+
+# A world is an entity: identity, owned state, atomic methods.
+entity World(id: WorldId) {
+  state phase: Phase = Asleep
+  state players: Set(PlayerId) = {}
+
+  pub fn join(p: PlayerId) {
+    players = players |> add(p)
+    if phase == Asleep {
+      phase = Waking
+      start wake(id)                 # starting a job is part of this transaction
+    }
+  }
+
+  pub fn leave(p: PlayerId) {
+    players = players |> remove(p)
+  }
+
+  pub fn markRunning() { phase = Running }
+  pub fn markAsleep() { phase = Asleep }
+}
+
+# Kept up to date by the runtime as World transactions commit.
+view idleWorlds = World.all
+  |> filter(fn w: w.phase == Running && w.players == {})
+
+# Every world that becomes idle gets one run of this job.
+@on(enters(idleWorlds))
+@priority(background)
+@memory(16 MiB)
+job sleepWhenIdle(w: Ref(World)) -> Result((), SleepError) {
+  sleep!(20 min)                                   # the run is a row for 20 minutes
+  let world = w.read!()                            # fresh snapshot after the wait
+  if world.players != {} {
+    return Ok(())                                  # someone joined meanwhile
+  }
+  match zeropod.checkpoint!(w.id, key: "sleep-{w.id}-{world.version}").reconcile!() {
+    Done(_) => {
+      w.markAsleep!()                              # exactly once: same database as the journal
+      Ok(())
+    }
+    Refused(reason) => {
+      notify.send!(owner, "world {w.id} didn't sleep: {reason}", key: "sleep-refused-{w.id}")
+      Err(SleepRefused(reason))
+    }
+  }
+}
+
+test "an idle world sleeps after 20 minutes" {
+  with fakes(zeropod, notify, from: "receipts/")
+  with clock(2026-10-10 12:00 in "Europe/Dublin")
+  let w = World(WorldId("survival"))
+  let alice = PlayerId("alice")
+
+  w.join(alice)
+  w.markRunning()
+  w.leave(alice)                                   # enters idleWorlds
+
+  advance(21 min)
+  expect(w.phase == Asleep)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (import_declaration
+    (import_path
+      (identifier)))
+  (comment)
+  (import_declaration
+    (import_path
+      (identifier)))
+  (comment)
+  (let_statement
+    (identifier)
+    (call_expression
+      (type_identifier)
+      (arguments
+        (string
+          (string_content)))))
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier))
+      (variant
+        (type_identifier))
+      (variant
+        (type_identifier))))
+  (comment)
+  (entity_declaration
+    (type_identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (entity_body
+      (state_declaration
+        (identifier)
+        (type_identifier)
+        (type_identifier))
+      (state_declaration
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))
+        (empty_braces))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (block
+          (assignment
+            (identifier)
+            (binary_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (arguments
+                  (identifier)))))
+          (if_expression
+            (binary_expression
+              (identifier)
+              (type_identifier))
+            (block
+              (assignment
+                (identifier)
+                (type_identifier))
+              (start_expression
+                (call_expression
+                  (identifier)
+                  (arguments
+                    (identifier))))
+              (comment)))))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (block
+          (assignment
+            (identifier)
+            (binary_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (arguments
+                  (identifier)))))))
+      (function_declaration
+        (identifier)
+        (parameters)
+        (block
+          (assignment
+            (identifier)
+            (type_identifier))))
+      (function_declaration
+        (identifier)
+        (parameters)
+        (block
+          (assignment
+            (identifier)
+            (type_identifier))))))
+  (comment)
+  (view_declaration
+    (identifier)
+    (binary_expression
+      (field_expression
+        (type_identifier)
+        (identifier))
+      (call_expression
+        (identifier)
+        (arguments
+          (lambda
+            (identifier)
+            (binary_expression
+              (binary_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (type_identifier))
+              (binary_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (empty_braces))))))))
+  (comment)
+  (job_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))))
+    (attribute
+      (identifier)
+      (arguments
+        (identifier)))
+    (attribute
+      (identifier)
+      (arguments
+        (size
+          (integer)
+          (unit_name))))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (unit_type)
+        (type_identifier)))
+    (block
+      (waiting_call_expression
+        (identifier)
+        (arguments
+          (duration
+            (integer)
+            (unit_name))))
+      (comment)
+      (let_statement
+        (identifier)
+        (waiting_call_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (arguments)))
+      (comment)
+      (if_expression
+        (binary_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (empty_braces))
+        (block
+          (return_statement
+            (call_expression
+              (type_identifier)
+              (arguments
+                (unit))))
+          (comment)))
+      (match_expression
+        (waiting_call_expression
+          (field_expression
+            (waiting_call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (named_argument
+                  (identifier)
+                  (string
+                    (string_content)
+                    (interpolation
+                      (field_expression
+                        (identifier)
+                        (identifier)))
+                    (string_content)
+                    (interpolation
+                      (field_expression
+                        (identifier)
+                        (identifier)))))))
+            (identifier))
+          (arguments))
+        (match_body
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (wildcard)))
+            (block
+              (waiting_call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments))
+              (comment)
+              (call_expression
+                (type_identifier)
+                (arguments
+                  (unit)))))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (identifier)))
+            (block
+              (waiting_call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments
+                  (identifier)
+                  (string
+                    (string_content)
+                    (interpolation
+                      (field_expression
+                        (identifier)
+                        (identifier)))
+                    (string_content)
+                    (interpolation
+                      (identifier)))
+                  (named_argument
+                    (identifier)
+                    (string
+                      (string_content)
+                      (interpolation
+                        (field_expression
+                          (identifier)
+                          (identifier)))))))
+              (call_expression
+                (type_identifier)
+                (arguments
+                  (call_expression
+                    (type_identifier)
+                    (arguments
+                      (identifier)))))))))))
+  (test_declaration
+    (string
+      (string_content))
+    (block
+      (with_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)
+            (identifier)
+            (named_argument
+              (identifier)
+              (string
+                (string_content))))))
+      (with_statement
+        (call_expression
+          (identifier)
+          (arguments
+            (instant
+              (date)
+              (time)
+              (string
+                (string_content))))))
+      (let_statement
+        (identifier)
+        (call_expression
+          (type_identifier)
+          (arguments
+            (call_expression
+              (type_identifier)
+              (arguments
+                (string
+                  (string_content)))))))
+      (let_statement
+        (identifier)
+        (call_expression
+          (type_identifier)
+          (arguments
+            (string
+              (string_content)))))
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (identifier)))
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments))
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (identifier)))
+      (comment)
+      (call_expression
+        (identifier)
+        (arguments
+          (duration
+            (integer)
+            (unit_name))))
+      (call_expression
+        (identifier)
+        (arguments
+          (binary_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (type_identifier)))))))
+
+================================================================================
+SPECS 4. Lexical structure (1)
+================================================================================
+
+fn example() {
+  let ready = worlds
+    |> filter(fn w: w.phase == Running)      # continues: the line starts with |>
+    |> size
+  let next = a
+  (b)                                        # a new statement, not the call a(b)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (arguments
+                (lambda
+                  (identifier)
+                  (binary_expression
+                    (field_expression
+                      (identifier)
+                      (identifier))
+                    (type_identifier))))))
+          (comment)
+          (identifier)))
+      (let_statement
+        (identifier)
+        (identifier))
+      (parenthesized_expression
+        (identifier))
+      (comment))))
+
+================================================================================
+SPECS 6. Bindings, functions and pipes (1)
+================================================================================
+
+pub fn area(w: Float, h: Float) -> Float = w * h       # public: full signature
+fn double(n) = n * 2                                     # private: inferred
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (type_identifier)
+    (binary_expression
+      (identifier)
+      (identifier)))
+  (comment)
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)))
+    (binary_expression
+      (identifier)
+      (integer)))
+  (comment))
+
+================================================================================
+SPECS 6. Bindings, functions and pipes (2)
+================================================================================
+
+fn example() {
+  let x = 5                    # immutable, block-scoped; a later `let x` shadows it
+  var total = 0                # mutable local; closures can't capture a `var`
+  total = total + x
+
+  let inc = fn n: n + 1                                    # lambdas
+  let add = fn (a, b): a + b
+  let show = fn item {
+    let label = item.name
+    "<{label}>"
+  }
+  let later = fn { notify.send!(owner, "done", key: k) }       # no parameters
+
+  let sizes = urls |> map(fetchSize) |> filter(fn s: s > 0)   # data-first pipe
+  let diff = 2 |> sub(10, _)                                   # _ places the value: sub(10, 2)
+
+  if n < 2 { n } else { fib(n - 1) + fib(n - 2) }          # if is an expression; no parentheses
+  for item in items { log.info(item.name) }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (integer))
+      (comment)
+      (var_statement
+        (identifier)
+        (integer))
+      (comment)
+      (assignment
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (let_statement
+        (identifier)
+        (lambda
+          (identifier)
+          (binary_expression
+            (identifier)
+            (integer))))
+      (comment)
+      (let_statement
+        (identifier)
+        (lambda
+          (parameters
+            (parameter
+              (identifier))
+            (parameter
+              (identifier)))
+          (binary_expression
+            (identifier)
+            (identifier))))
+      (let_statement
+        (identifier)
+        (lambda
+          (identifier)
+          (block
+            (let_statement
+              (identifier)
+              (field_expression
+                (identifier)
+                (identifier)))
+            (string
+              (string_content)
+              (interpolation
+                (identifier))
+              (string_content)))))
+      (let_statement
+        (identifier)
+        (lambda
+          (block
+            (waiting_call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (arguments
+                (identifier)
+                (string
+                  (string_content))
+                (named_argument
+                  (identifier)
+                  (identifier)))))))
+      (comment)
+      (let_statement
+        (identifier)
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))
+          (call_expression
+            (identifier)
+            (arguments
+              (lambda
+                (identifier)
+                (binary_expression
+                  (identifier)
+                  (integer)))))))
+      (comment)
+      (let_statement
+        (identifier)
+        (binary_expression
+          (integer)
+          (call_expression
+            (identifier)
+            (arguments
+              (integer)
+              (placeholder)))))
+      (comment)
+      (if_expression
+        (binary_expression
+          (identifier)
+          (integer))
+        (block
+          (identifier))
+        (block
+          (binary_expression
+            (call_expression
+              (identifier)
+              (arguments
+                (binary_expression
+                  (identifier)
+                  (integer))))
+            (call_expression
+              (identifier)
+              (arguments
+                (binary_expression
+                  (identifier)
+                  (integer)))))))
+      (comment)
+      (for_statement
+        (identifier)
+        (identifier)
+        (block
+          (call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (field_expression
+                (identifier)
+                (identifier)))))))))
+
+================================================================================
+SPECS 7. Pattern matching (1)
+================================================================================
+
+fn example() {
+  match grant {
+    Admitted(revision) => use(revision)
+    Pending(receipt) if receipt.age > 1 h => escalate(receipt)
+    Pending(receipt) => wait(receipt)
+    Refused(..) => report(grant)
+  }
+
+  let { name, age } = user                     # destructuring
+  let [first, ..rest] = items else { return Err(Empty) }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (identifier)))
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (identifier)))
+            (binary_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (duration
+                (integer)
+                (unit_name)))
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (identifier)))
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (rest_pattern)))
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))))
+      (let_statement
+        (record_pattern
+          (shorthand_field_pattern
+            (identifier))
+          (shorthand_field_pattern
+            (identifier)))
+        (identifier))
+      (comment)
+      (let_statement
+        (list_pattern
+          (identifier)
+          (rest_pattern
+            (identifier)))
+        (identifier)
+        (block
+          (return_statement
+            (call_expression
+              (type_identifier)
+              (arguments
+                (type_identifier)))))))))
+
+================================================================================
+SPECS 8. Errors: Result only (1)
+================================================================================
+
+fn example() {
+  let avg = total / 3
+  match nonzero(count) {
+    Some(n) => total / n
+    None => 0
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (binary_expression
+          (identifier)
+          (integer)))
+      (match_expression
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))
+        (match_body
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (identifier)))
+            (binary_expression
+              (identifier)
+              (identifier)))
+          (match_arm
+            (variant_pattern
+              (type_identifier))
+            (integer)))))))
+
+================================================================================
+SPECS 9. Traits (1)
+================================================================================
+
+trait Named {
+  fn name(self) -> String
+}
+
+impl Named for Player {
+  fn name(self) = self.nick
+}
+
+fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named`
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (trait_declaration
+    (type_identifier)
+    (trait_body
+      (function_signature
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (type_identifier))))
+  (impl_declaration
+    (type_identifier)
+    (type_identifier)
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (field_expression
+          (identifier)
+          (identifier)))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (type_identifier)
+    (string
+      (string_content)
+      (interpolation
+        (call_expression
+          (field_expression
+            (identifier)
+            (identifier))
+          (arguments)))
+      (string_content)))
+  (comment))
+
+================================================================================
+SPECS 10. Effects and signatures (1)
+================================================================================
+
+pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
+  llm.complete!(prompt(items))
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (type_identifier)
+    (uses_clause
+      (effect
+        (identifier))
+      (effect
+        (identifier)
+        (path
+          (type_identifier)
+          (identifier))))
+    (block
+      (waiting_call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier))))))))
+
+================================================================================
+SPECS 11. Entities (1)
+================================================================================
+
+@version(3)
+entity Player(id: PlayerId) {
+  state name: String
+  state devices: Set(DeviceId) = {}          # v3: added; the default fills old rows
+
+  pub fn addDevice(d: DeviceId) -> Result((), DeviceError) {
+    if devices |> size >= 5 { return Err(TooManyDevices) }
+    devices = devices |> add(d)
+    Ok(())
+  }
+
+  pub fn retire(ok: Approval) { end(ok) }     # ending an entity needs an Approval
+
+  migrate from 2 (old) {                      # pure function from the old stored shape
+    { name: old.nick, devices: {} }
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (entity_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (integer)))
+    (type_identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (entity_body
+      (state_declaration
+        (identifier)
+        (type_identifier))
+      (state_declaration
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))
+        (empty_braces))
+      (comment)
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (unit_type)
+            (type_identifier)))
+        (block
+          (if_expression
+            (binary_expression
+              (binary_expression
+                (identifier)
+                (identifier))
+              (integer))
+            (block
+              (return_statement
+                (call_expression
+                  (type_identifier)
+                  (arguments
+                    (type_identifier))))))
+          (assignment
+            (identifier)
+            (binary_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (arguments
+                  (identifier)))))
+          (call_expression
+            (type_identifier)
+            (arguments
+              (unit)))))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (block
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier)))))
+      (comment)
+      (migration
+        (integer)
+        (identifier)
+        (block
+          (comment)
+          (record
+            (field_initializer
+              (identifier)
+              (field_expression
+                (identifier)
+                (identifier)))
+            (field_initializer
+              (identifier)
+              (empty_braces))))))))
+
+================================================================================
+SPECS 12. Jobs and waiting (1)
+================================================================================
+
+@on(daily(07:40, in: "Europe/Dublin"))
+@priority(background)
+@memory(64 MiB)
+@deadline(13:40, in: "Europe/Dublin")
+job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
+  let items = miniflux.unread!("ireland", since: day - 1 day)?
+  let text = reserve!(256 MiB, fn {            # waits until the host grants the memory
+    summarise!(items)
+  })
+  Ok(notify.send!(owner, text, key: "ireland-{day}").reconcile!())
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (job_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (call_expression
+          (identifier)
+          (arguments
+            (time)
+            (named_argument
+              (identifier)
+              (string
+                (string_content)))))))
+    (attribute
+      (identifier)
+      (arguments
+        (identifier)))
+    (attribute
+      (identifier)
+      (arguments
+        (size
+          (integer)
+          (unit_name))))
+    (attribute
+      (identifier)
+      (arguments
+        (time)
+        (named_argument
+          (identifier)
+          (string
+            (string_content)))))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_identifier)
+        (type_identifier)))
+    (block
+      (let_statement
+        (identifier)
+        (try_expression
+          (waiting_call_expression
+            (field_expression
+              (identifier)
+              (identifier))
+            (arguments
+              (string
+                (string_content))
+              (named_argument
+                (identifier)
+                (binary_expression
+                  (identifier)
+                  (duration
+                    (integer)
+                    (unit_name))))))))
+      (let_statement
+        (identifier)
+        (waiting_call_expression
+          (identifier)
+          (arguments
+            (size
+              (integer)
+              (unit_name))
+            (lambda
+              (block
+                (comment)
+                (waiting_call_expression
+                  (identifier)
+                  (arguments
+                    (identifier))))))))
+      (call_expression
+        (type_identifier)
+        (arguments
+          (waiting_call_expression
+            (field_expression
+              (waiting_call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments
+                  (identifier)
+                  (identifier)
+                  (named_argument
+                    (identifier)
+                    (string
+                      (string_content)
+                      (interpolation
+                        (identifier))))))
+              (identifier))
+            (arguments)))))))
+
+================================================================================
+SPECS 13. Views and triggers (1)
+================================================================================
+
+view idleWorlds = World.all
+  |> filter(fn w: w.phase == Running && w.players == {})
+
+@on(enters(idleWorlds))
+job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (view_declaration
+    (identifier)
+    (binary_expression
+      (field_expression
+        (type_identifier)
+        (identifier))
+      (call_expression
+        (identifier)
+        (arguments
+          (lambda
+            (identifier)
+            (binary_expression
+              (binary_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (type_identifier))
+              (binary_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (empty_braces))))))))
+  (job_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (block
+      (waiting_call_expression
+        (identifier)
+        (arguments
+          (duration
+            (integer)
+            (unit_name))))))
+  (comment))
+
+================================================================================
+SPECS 14. Contracts: talking to other services (1)
+================================================================================
+
+@port(3001)
+@allow(digest, inbox, welcome)          # who may call; everyone else is denied
+contract Notify {
+  @key(required)
+  @reconcile(receipt)
+  command send(to: UserId, text: String) -> Delivery
+
+  query receipt(key: Key) -> Delivery
+  query identity(user: UserId) -> Identity
+
+  event delivered: Delivered on "notify.events"
+}
+
+type Delivery =
+  | Sent(receipt: ReceiptId, at: Instant)
+  | Pending(receipt: ReceiptId)
+  | Refused(reason: Refusal)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (contract_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (integer)))
+    (attribute
+      (identifier)
+      (arguments
+        (identifier)
+        (identifier)
+        (identifier)))
+    (comment)
+    (type_identifier)
+    (contract_body
+      (command_declaration
+        (attribute
+          (identifier)
+          (arguments
+            (identifier)))
+        (attribute
+          (identifier)
+          (arguments
+            (identifier)))
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier))
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (type_identifier))
+      (query_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (type_identifier))
+      (query_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (type_identifier))
+      (event_declaration
+        (identifier)
+        (type_identifier)
+        (string
+          (string_content)))))
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier))
+          (field_declaration
+            (identifier)
+            (type_identifier))))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier))))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier)))))))
+
+================================================================================
+SPECS 15. Time, secrets, tests (1)
+================================================================================
+
+fn example() {
+  let token: Secret(String) = secret("telegram-bot-token")
+  http.post!(url, auth: bearer(token))       # bearer() accepts a Secret
+  log.info("token is {token}")               # compile error: Secret has no Show
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))
+        (call_expression
+          (identifier)
+          (arguments
+            (string
+              (string_content)))))
+      (waiting_call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (identifier)
+          (named_argument
+            (identifier)
+            (call_expression
+              (identifier)
+              (arguments
+                (identifier))))))
+      (comment)
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (string
+            (string_content)
+            (interpolation
+              (identifier)))))
+      (comment))))

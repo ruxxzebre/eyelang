@@ -1,0 +1,693 @@
+================================================================================
+Imports
+================================================================================
+
+import zeropod
+import a.b.c
+import notify.{send, Delivery,}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (import_declaration
+    (import_path
+      (identifier)))
+  (import_declaration
+    (import_path
+      (identifier)
+      (identifier)
+      (identifier)))
+  (import_declaration
+    (import_path
+      (identifier))
+    (identifier)
+    (type_identifier)))
+
+================================================================================
+Top-level let
+================================================================================
+
+let owner = UserId("operator")
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (call_expression
+      (type_identifier)
+      (arguments
+        (string
+          (string_content))))))
+
+================================================================================
+Functions
+================================================================================
+
+pub fn area(w: Float, h: Float) -> Float = w * h
+fn double(n) = n * 2
+fn page(size: Int = 50, after: Option(Cursor) = None) -> List(Item) {
+  fetch(size, after)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (type_identifier)
+    (binary_expression
+      (identifier)
+      (identifier)))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)))
+    (binary_expression
+      (identifier)
+      (integer)))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)
+        (integer))
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))
+        (type_identifier)))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_identifier)))
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (identifier)
+          (identifier))))))
+
+================================================================================
+Function with effects
+================================================================================
+
+pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
+  llm.complete!(prompt(items))
+}
+fn touch(w: Ref(World)) uses {entity World, secret token, publish Delivered, clock} = w
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (type_identifier)
+    (uses_clause
+      (effect
+        (identifier))
+      (effect
+        (identifier)
+        (path
+          (type_identifier)
+          (identifier))))
+    (block
+      (waiting_call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier)))))))
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (uses_clause
+      (effect
+        (identifier)
+        (path
+          (type_identifier)))
+      (effect
+        (identifier)
+        (path
+          (identifier)))
+      (effect
+        (identifier)
+        (path
+          (type_identifier)))
+      (effect
+        (identifier)))
+    (identifier)))
+
+================================================================================
+Brace on the next line
+================================================================================
+
+fn f()
+{
+  1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (integer))))
+
+================================================================================
+Attributes
+================================================================================
+
+@on(daily(07:40, in: "Europe/Dublin"))
+@priority(background)
+@inline
+job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
+  Ok(x)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (job_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (call_expression
+          (identifier)
+          (arguments
+            (time)
+            (named_argument
+              (identifier)
+              (string
+                (string_content)))))))
+    (attribute
+      (identifier)
+      (arguments
+        (identifier)))
+    (attribute
+      (identifier))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_identifier)
+        (type_identifier)))
+    (block
+      (call_expression
+        (type_identifier)
+        (arguments
+          (identifier))))))
+
+================================================================================
+Job without a return type
+================================================================================
+
+@on(enters(idleWorlds))
+job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (job_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))))
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))))
+    (block
+      (waiting_call_expression
+        (identifier)
+        (arguments
+          (duration
+            (integer)
+            (unit_name)))))))
+
+================================================================================
+Entity
+================================================================================
+
+@version(3)
+entity Player(id: PlayerId) {
+  state name: String
+  state devices: Set(DeviceId) = {}
+
+  @audit
+  pub fn addDevice(d: DeviceId) -> Result((), DeviceError) {
+    devices = devices |> add(d)
+    Ok(())
+  }
+
+  migrate from 2 (old) {
+    { name: old.nick, devices: {} }
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (entity_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (integer)))
+    (type_identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (entity_body
+      (state_declaration
+        (identifier)
+        (type_identifier))
+      (state_declaration
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))
+        (empty_braces))
+      (function_declaration
+        (attribute
+          (identifier))
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (unit_type)
+            (type_identifier)))
+        (block
+          (assignment
+            (identifier)
+            (binary_expression
+              (identifier)
+              (call_expression
+                (identifier)
+                (arguments
+                  (identifier)))))
+          (call_expression
+            (type_identifier)
+            (arguments
+              (unit)))))
+      (migration
+        (integer)
+        (identifier)
+        (block
+          (record
+            (field_initializer
+              (identifier)
+              (field_expression
+                (identifier)
+                (identifier)))
+            (field_initializer
+              (identifier)
+              (empty_braces))))))))
+
+================================================================================
+View
+================================================================================
+
+view idleWorlds = World.all
+  |> filter(fn w: w.phase == Running && w.players == {})
+pub view all = World.all
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (view_declaration
+    (identifier)
+    (binary_expression
+      (field_expression
+        (type_identifier)
+        (identifier))
+      (call_expression
+        (identifier)
+        (arguments
+          (lambda
+            (identifier)
+            (binary_expression
+              (binary_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (type_identifier))
+              (binary_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (empty_braces))))))))
+  (view_declaration
+    (identifier)
+    (field_expression
+      (type_identifier)
+      (identifier))))
+
+================================================================================
+Type alias and record type
+================================================================================
+
+type Ids = List(Id)
+pub type User = { name: String, age: Int }
+type Pair(A, B) = { first: A, second: B, }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_identifier))))
+  (type_declaration
+    (type_identifier)
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (type_identifier))))
+  (type_declaration
+    (type_identifier)
+    (type_parameters
+      (type_identifier)
+      (type_identifier))
+    (record_type
+      (field_declaration
+        (identifier)
+        (type_identifier))
+      (field_declaration
+        (identifier)
+        (type_identifier)))))
+
+================================================================================
+Variant lists
+================================================================================
+
+type Phase = Asleep | Waking | Running
+type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)
+type Option(T) = Some(T) | None
+type Wrapper = | Wrapped(Int)
+type Delivery =
+  | Sent(receipt: ReceiptId, at: Instant)
+  | Pending(receipt: ReceiptId)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier))
+      (variant
+        (type_identifier))
+      (variant
+        (type_identifier))))
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier))))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier))))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier))))))
+  (type_declaration
+    (type_identifier)
+    (type_parameters
+      (type_identifier))
+    (variant_list
+      (variant
+        (type_identifier)
+        (variant_payload
+          (type_identifier)))
+      (variant
+        (type_identifier))))
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier)
+        (variant_payload
+          (type_identifier)))))
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier))
+          (field_declaration
+            (identifier)
+            (type_identifier))))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (field_declaration
+            (identifier)
+            (type_identifier)))))))
+
+================================================================================
+Traits
+================================================================================
+
+trait Named {
+  fn name(self) -> String
+  fn label(self) -> String = "<{self.name()}>"
+}
+pub trait Store(T) {
+  fn get(self, key: Key) -> Option(T) uses {wait}
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (trait_declaration
+    (type_identifier)
+    (trait_body
+      (function_signature
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (type_identifier))
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (type_identifier)
+        (string
+          (string_content)
+          (interpolation
+            (call_expression
+              (field_expression
+                (identifier)
+                (identifier))
+              (arguments)))
+          (string_content)))))
+  (trait_declaration
+    (type_identifier)
+    (type_parameters
+      (type_identifier))
+    (trait_body
+      (function_signature
+        (identifier)
+        (parameters
+          (parameter
+            (identifier))
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)))
+        (uses_clause
+          (effect
+            (identifier)))))))
+
+================================================================================
+Impl
+================================================================================
+
+impl Named for Player {
+  fn name(self) = self.nick
+}
+impl Show for List(T) { fn show(self) = join(self) }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (impl_declaration
+    (type_identifier)
+    (type_identifier)
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (field_expression
+          (identifier)
+          (identifier)))))
+  (impl_declaration
+    (type_identifier)
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_identifier)))
+    (impl_body
+      (function_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))))))
+
+================================================================================
+Contract
+================================================================================
+
+@port(3001)
+@allow(digest, inbox, welcome)
+contract Notify {
+  @key(required)
+  @reconcile(receipt)
+  command send(to: UserId, text: String) -> Delivery
+
+  query receipt(key: Key) -> Delivery
+  event delivered: Delivered on "notify.events"
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (contract_declaration
+    (attribute
+      (identifier)
+      (arguments
+        (integer)))
+    (attribute
+      (identifier)
+      (arguments
+        (identifier)
+        (identifier)
+        (identifier)))
+    (type_identifier)
+    (contract_body
+      (command_declaration
+        (attribute
+          (identifier)
+          (arguments
+            (identifier)))
+        (attribute
+          (identifier)
+          (arguments
+            (identifier)))
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier))
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (type_identifier))
+      (query_declaration
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)
+            (type_identifier)))
+        (type_identifier))
+      (event_declaration
+        (identifier)
+        (type_identifier)
+        (string
+          (string_content))))))
+
+================================================================================
+Test
+================================================================================
+
+test "an idle world sleeps" {
+  expect(true)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (test_declaration
+    (string
+      (string_content))
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (boolean))))))

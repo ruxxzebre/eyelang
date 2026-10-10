@@ -1,0 +1,358 @@
+================================================================================
+A newline ends a statement
+================================================================================
+
+fn f() {
+  a
+  b
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (identifier)
+      (identifier))))
+
+================================================================================
+A parenthesis on the next line starts a statement
+================================================================================
+
+fn f() {
+  a
+  (b)
+  c
+  [d]
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (identifier)
+      (parenthesized_expression
+        (identifier))
+      (identifier)
+      (list
+        (identifier)))))
+
+================================================================================
+Inside parentheses a newline is a space
+================================================================================
+
+fn f() {
+  g(a
+  (b))
+  [a
+  (b)]
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier)))))
+      (list
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))))))
+
+================================================================================
+Lines starting with an operator continue
+================================================================================
+
+fn f() {
+  a
+    |> b
+    |> c
+  d
+    + e
+    * f
+  g
+    && h
+    || i
+    ?? j
+  k
+    == l
+  m
+    != n
+  o
+    < p
+    >= q
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (binary_expression
+        (binary_expression
+          (identifier)
+          (identifier))
+        (identifier))
+      (binary_expression
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (binary_expression
+        (binary_expression
+          (binary_expression
+            (identifier)
+            (identifier))
+          (identifier))
+        (identifier))
+      (binary_expression
+        (identifier)
+        (identifier))
+      (binary_expression
+        (identifier)
+        (identifier))
+      (binary_expression
+        (binary_expression
+          (identifier)
+          (identifier))
+        (identifier)))))
+
+================================================================================
+Lines starting with a dot or question marks continue
+================================================================================
+
+fn f() {
+  a
+    .b()
+    .c!()?
+    ?? d
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (binary_expression
+        (try_expression
+          (waiting_call_expression
+            (field_expression
+              (call_expression
+                (field_expression
+                  (identifier)
+                  (identifier))
+                (arguments))
+              (identifier))
+            (arguments)))
+        (identifier)))))
+
+================================================================================
+Minus and not on the next line start a statement
+================================================================================
+
+fn f() {
+  a
+  -b
+  c
+  !d
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (identifier)
+      (unary_expression
+        (identifier))
+      (identifier)
+      (unary_expression
+        (identifier)))))
+
+================================================================================
+Comments and blank lines do not stop a continuation
+================================================================================
+
+fn f() {
+  a
+  # a comment
+
+  .b()
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (call_expression
+        (field_expression
+          (identifier)
+          (comment)
+          (identifier))
+        (arguments)))))
+
+================================================================================
+Else on the next line continues
+================================================================================
+
+fn f() {
+  if a {
+    b
+  }
+  else {
+    c
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (if_expression
+        (identifier)
+        (block
+          (identifier))
+        (block
+          (identifier))))))
+
+================================================================================
+Arrow on the next line continues
+================================================================================
+
+trait Named {
+  fn name(self)
+    -> String
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (trait_declaration
+    (type_identifier)
+    (trait_body
+      (function_signature
+        (identifier)
+        (parameters
+          (parameter
+            (identifier)))
+        (type_identifier)))))
+
+================================================================================
+Return without a value
+================================================================================
+
+fn f() {
+  return
+  x
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (return_statement)
+      (identifier))))
+
+================================================================================
+Variants on several lines
+================================================================================
+
+type T =
+  | A
+  | B(Int)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (type_declaration
+    (type_identifier)
+    (variant_list
+      (variant
+        (type_identifier))
+      (variant
+        (type_identifier)
+        (variant_payload
+          (type_identifier))))))
+
+================================================================================
+A newline after a binary operator continues
+================================================================================
+
+fn f() {
+  let a = b +
+    c
+  let d = e |>
+    g
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (let_statement
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier)))
+      (let_statement
+        (identifier)
+        (binary_expression
+          (identifier)
+          (identifier))))))
+
+================================================================================
+Statement-ending newlines between declarations
+================================================================================
+
+let a = 1
+let b = 2
+fn f() = a
+  + b
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (integer))
+  (let_statement
+    (identifier)
+    (integer))
+  (function_declaration
+    (identifier)
+    (parameters)
+    (binary_expression
+      (identifier)
+      (identifier))))
