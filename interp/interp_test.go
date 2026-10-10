@@ -147,3 +147,22 @@ test "t" { }`, ""},
 		}
 	}
 }
+
+// TestBuiltinsAreImplemented checks that every documented built-in exists.
+func TestBuiltinsAreImplemented(t *testing.T) {
+	table := builtinTable()
+	for _, d := range ir.BuiltinDocs {
+		if _, ok := table[d.Name]; !ok {
+			t.Errorf("%s is documented but not implemented", d.Name)
+		}
+	}
+	for name := range table {
+		found := false
+		for _, d := range ir.BuiltinDocs {
+			found = found || d.Name == name
+		}
+		if !found {
+			t.Errorf("%s is implemented but not documented in ir.BuiltinDocs", name)
+		}
+	}
+}

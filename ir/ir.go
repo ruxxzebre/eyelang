@@ -10,6 +10,7 @@ package ir
 
 import (
 	"strconv"
+	"strings"
 
 	"eyelang/syntax"
 )
@@ -506,24 +507,85 @@ func (PRange) isPattern()   {}
 func (POr) isPattern()      {}
 func (PEmpty) isPattern()   {}
 
+// BuiltinDoc documents a built-in function for `eye doc`.
+type BuiltinDoc struct {
+	Name, Signature, Doc string
+	Group                string
+}
+
+// BuiltinDocs documents every function in Builtins and BuiltinModules, in
+// the order the reference lists them.
+var BuiltinDocs = []BuiltinDoc{
+	{"print", "fn print(values…)", "Writes the values, shown as string interpolation shows them and separated by spaces, and a line break to standard output.", "Output and failure"},
+	{"unreachable", "fn unreachable(why: String)", "Stops the program, or the job's run, as a fault: `Failed(Unreachable(why))`. It is for states the code has already ruled out, never for failures that can happen.", "Output and failure"},
+	{"log.debug", "fn log.debug(values…)", "Logs a line at debug level. A job that resumes doesn't log again what it logged before its last step.", "Output and failure"},
+	{"log.info", "fn log.info(values…)", "Logs a line at info level.", "Output and failure"},
+	{"log.warn", "fn log.warn(values…)", "Logs a line at warning level.", "Output and failure"},
+	{"log.error", "fn log.error(values…)", "Logs a line at error level.", "Output and failure"},
+
+	{"expect", "fn expect(condition: Bool)", "Fails the test if the condition is false. For a comparison it shows the value it got: `expected w.phase == Asleep, but w.phase is Running`.", "Tests"},
+	{"advance", "fn advance(by: Duration)", "Moves the test's clock forward. Each job run that wakes on the way runs, in the order of its wake time, before `advance` returns.", "Tests"},
+	{"clock", "fn clock(at: Instant) -> Handler", "Used as `with clock(2026-10-10 12:00 in \"Europe/Dublin\")`: sets the test's clock. Without it, a test's clock starts at 2026-01-01 00:00 UTC.", "Tests"},
+	{"fakes", "fn fakes(modules…, from: String) -> Handler", "Used as `with fakes(notify, from: \"receipts/\")`: calls to the contract modules replay the exchanges recorded in `receipts/notify.json`, checked against the contract's types.", "Tests"},
+
+	{"sleep", "fn sleep(for: Duration)", "In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes when the time comes, even after a restart. Outside jobs, `sleep` blocks; in tests it advances the clock.", "Time"},
+	{"now", "fn now() -> Instant", "The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run sees the same time.", "Time"},
+
+	{"size", "fn size(c: Collection(a)) -> Int", "The number of elements.", "Collections"},
+	{"isEmpty", "fn isEmpty(c: Collection(a)) -> Bool", "Whether there are no elements.", "Collections"},
+	{"add", "fn add(s: Set(a), x: a) -> Set(a)", "The set with x in it; on a list, the list with x at the end.", "Collections"},
+	{"remove", "fn remove(s: Set(a), x: a) -> Set(a)", "The set without x; on a map, the map without the key x.", "Collections"},
+	{"contains", "fn contains(c: Collection(a), x: a) -> Bool", "Whether x is an element; for a map, a key; for a string, a substring.", "Collections"},
+	{"insert", "fn insert(m: Map(k, v), key: k, value: v) -> Map(k, v)", "The map with key set to value.", "Collections"},
+	{"get", "fn get(m: Map(k, v), key: k) -> Option(v)", "The value for key, or `None`; on a list, the element at an index. Same as `m[key]`.", "Collections"},
+	{"first", "fn first(c: Collection(a)) -> Option(a)", "The first element, or `None`.", "Collections"},
+	{"last", "fn last(c: Collection(a)) -> Option(a)", "The last element, or `None`.", "Collections"},
+	{"map", "fn map(c: Collection(a), f: fn(a) -> b) -> List(b)", "Applies f to each element. On an Option or a Result, applies f to the value inside `Some` or `Ok`.", "Collections"},
+	{"filter", "fn filter(c: Collection(a), keep: fn(a) -> Bool) -> List(a)", "The elements for which keep is true; a set stays a set. Over `Entity.all` in a view, the runtime keeps the result up to date.", "Collections"},
+	{"find", "fn find(c: Collection(a), test: fn(a) -> Bool) -> Option(a)", "The first element for which test is true.", "Collections"},
+	{"any", "fn any(c: Collection(a), test: fn(a) -> Bool) -> Bool", "Whether test is true for some element.", "Collections"},
+	{"all", "fn all(c: Collection(a), test: fn(a) -> Bool) -> Bool", "Whether test is true for every element.", "Collections"},
+	{"count", "fn count(c: Collection(a), test: fn(a) -> Bool) -> Int", "How many elements test is true for; without test, the size.", "Collections"},
+	{"reduce", "fn reduce(c: Collection(a), start: b, f: fn(b, a) -> b) -> b", "Combines the elements, from start, left to right.", "Collections"},
+	{"sum", "fn sum(c: Collection(a)) -> a", "Adds the elements: numbers, durations or sizes.", "Collections"},
+	{"enumerate", "fn enumerate(c: Collection(a)) -> List((Int, a))", "Pairs each element with its index, from 0.", "Collections"},
+	{"drop", "fn drop(c: Collection(a), n: Int) -> List(a)", "Everything after the first n elements.", "Collections"},
+	{"take", "fn take(c: Collection(a), n: Int) -> List(a)", "The first n elements.", "Collections"},
+	{"reverse", "fn reverse(c: Collection(a)) -> List(a)", "The elements in reverse order.", "Collections"},
+	{"sort", "fn sort(c: Collection(a)) -> List(a) where a: Ord", "The elements in ascending order; equal elements keep their order.", "Collections"},
+	{"keys", "fn keys(m: Map(k, v)) -> List(k)", "The keys, in the order they were added.", "Collections"},
+	{"values", "fn values(m: Map(k, v)) -> List(v)", "The values, in the order their keys were added.", "Collections"},
+	{"entries", "fn entries(m: Map(k, v)) -> List((k, v))", "The key and value pairs.", "Collections"},
+	{"toList", "fn toList(c: Collection(a)) -> List(a)", "The elements as a list.", "Collections"},
+	{"toSet", "fn toSet(c: Collection(a)) -> Set(a)", "The elements as a set, without duplicates.", "Collections"},
+	{"join", "fn join(c: Collection(a), separator: String) -> String", "The shown elements, with separator between them.", "Collections"},
+	{"flatMap", "fn flatMap(c: Collection(a), f: fn(a) -> Collection(b)) -> List(b)", "Applies f to each element and joins the results.", "Collections"},
+	{"zip", "fn zip(a: Collection(a), b: Collection(b)) -> List((a, b))", "Pairs elements of a and b, as far as the shorter goes.", "Collections"},
+
+	{"lines", "fn lines(s: String) -> List(String)", "The lines of s, without their line breaks.", "Strings and numbers"},
+	{"split", "fn split(s: String, separator: String) -> List(String)", "The parts of s between separators.", "Strings and numbers"},
+	{"trim", "fn trim(s: String) -> String", "s without whitespace at either end.", "Strings and numbers"},
+	{"parseInt", "fn parseInt(s: String) -> Result(Int, String)", "Reads a whole number written in decimal.", "Strings and numbers"},
+	{"nonzero", "fn nonzero(n: Int) -> Option(NonZero(Int))", "`Some(n)` unless n is 0: what `/` and `%` take as a divisor.", "Strings and numbers"},
+	{"min", "fn min(a: t, b: t) -> t where t: Ord", "The smaller of a and b.", "Strings and numbers"},
+	{"max", "fn max(a: t, b: t) -> t where t: Ord", "The larger of a and b.", "Strings and numbers"},
+	{"abs", "fn abs(n: t) -> t", "n without its sign.", "Strings and numbers"},
+
+	{"enters", "enters(view)", "In `@on(enters(view))`: starts one run of the job for each entity that begins to match the view.", "Triggers"},
+	{"leaves", "leaves(view)", "In `@on(leaves(view))`: starts one run of the job for each entity that stops matching the view.", "Triggers"},
+}
+
 // Builtins are the functions every module can call without importing them.
 // The interpreter provides them; a test checks the two lists agree.
-var Builtins = []string{
-	// output and failure
-	"print", "unreachable",
-	// tests
-	"expect", "advance", "fakes", "clock",
-	// time
-	"sleep", "now",
-	// collections, used with pipes
-	"size", "isEmpty", "add", "remove", "contains", "insert", "get", "first", "last", "map",
-	"filter", "find", "any", "all", "count", "reduce", "sum", "enumerate", "drop", "take",
-	"reverse", "sort", "keys", "values", "entries", "toList", "toSet", "join", "flatMap", "zip",
-	// strings and numbers
-	"lines", "split", "trim", "parseInt", "nonzero", "min", "max", "abs",
-	// view triggers, inside @on(…)
-	"enters", "leaves",
-}
+var Builtins = func() []string {
+	var names []string
+	for _, d := range BuiltinDocs {
+		if !strings.Contains(d.Name, ".") {
+			names = append(names, d.Name)
+		}
+	}
+	return names
+}()
 
 // BuiltinModules are the standard modules every module can use without
 // importing them, with their functions.
