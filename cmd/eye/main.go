@@ -39,7 +39,7 @@ func init() {
 		{name: "run", summary: "run a program: main, then its jobs, kept in a journal across restarts", run: runRun, phase: 3, issue: 31},
 		{name: "runs", summary: "list a program's job runs: status, what each waits for, and steps", run: runRuns, phase: 4, issue: 34},
 		{name: "test", summary: "run the test blocks of a program", run: runTest, phase: 3, issue: 31},
-		{name: "repl", summary: "start an interactive session", phase: 3, issue: 4},
+		{name: "repl", summary: "start an interactive session: expressions, declarations and jobs", run: runREPL, phase: 3, issue: 31},
 		{name: "lsp", summary: "run the language server for editors", run: runLSP, phase: 1, issue: 43},
 	}
 }

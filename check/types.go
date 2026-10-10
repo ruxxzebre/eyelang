@@ -232,6 +232,7 @@ func (c *checker) bind(v *tvar, t typ, want, got typ) *mismatch {
 			return nil
 		}
 		if v.lit == litNone {
+			v.lit = w.lit // what the literal allows goes with it
 			w.ref = v
 			return nil
 		}

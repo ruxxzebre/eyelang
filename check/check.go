@@ -134,6 +134,20 @@ func (c *checker) load(path, dir string) *module {
 		}
 		files = append(files, parseFile(p, src))
 	}
+	// A file in the overlay that isn't on disk yet, such as an editor's new
+	// buffer or the REPL's session, is part of its directory's module too.
+	var unsaved []string
+	for p := range c.overlay {
+		if filepath.Dir(p) == filepath.Clean(dir) && strings.HasSuffix(p, ".eye") {
+			if _, err := os.Stat(p); err != nil {
+				unsaved = append(unsaved, p)
+			}
+		}
+	}
+	sort.Strings(unsaved)
+	for _, p := range unsaved {
+		files = append(files, parseFile(p, c.overlay[p]))
+	}
 	if len(files) == 0 {
 		c.errorf(ir.Pos{}, "%s has no .eye files", dir)
 		return nil
