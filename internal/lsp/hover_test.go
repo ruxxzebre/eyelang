@@ -30,6 +30,9 @@ pub type Shape =
   | Square(Int)
   | Dot
 
+## Names a shape.
+pub type Name = | Name(String)
+
 ## A box.
 pub type Box = {
   ## How long a side is.
@@ -42,7 +45,7 @@ pub fn size(s: Shape) -> Int = match s {
   Dot => 0
 }
 `)
-	main := "import shapes\n\nfn area(s: shapes.Shape, b: shapes.Box) -> Int {\n  print(b.side)\n  let n = shapes.size(shapes.Square(2))\n  Some(n) ?? 0\n}\n"
+	main := "import shapes\n\nfn area(s: shapes.Shape, b: shapes.Box) -> Int {\n  print(b.side)\n  let n = shapes.size(shapes.Square(2))\n  Some(n) ?? 0\n}\n\nlet unnamed = shapes.Name(\"none\")\n"
 	write("app/main.eye", main)
 	uri := pathURI(filepath.Join(dir, "app", "main.eye"))
 
@@ -63,6 +66,7 @@ pub fn size(s: Shape) -> Int = match s {
 		"builtin":  at(3, 3),  // print
 		"prelude":  at(5, 3),  // Some
 		"nothing":  at(1, 0),
+		"newtype":  at(8, 23), // shapes.Name("none")
 	}
 	msgs := s.run()
 	get := func(name string) string {
@@ -81,6 +85,7 @@ pub fn size(s: Shape) -> Int = match s {
 		"module":   {"```eye\nimport shapes\n```", "Shapes and their sizes."},
 		"builtin":  {"fn print(", "standard output"},
 		"prelude":  {"Some(a)", "A variant of `Option`."},
+		"newtype":  {"pub type Name = | Name(String)", "Names a shape."},
 	} {
 		got := get(name)
 		for _, w := range want {

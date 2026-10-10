@@ -81,7 +81,12 @@ func describe(target any) string {
 		// A variant's doc comment sits above its `|`, which the checker has
 		// already read.
 		doc = t.Doc
-		if t.Type.Name != t.Name {
+		if t.Type.Name == t.Name {
+			// `type UserId = | UserId(String)`: the type's doc is the variant's.
+			if doc == "" {
+				doc = t.Type.Doc
+			}
+		} else {
 			doc = strings.TrimSpace(doc + "\n\nA variant of `" + t.Type.Name + "`.")
 		}
 	case check.Member:
