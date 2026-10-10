@@ -36,8 +36,8 @@ outside that domain.
 
 - **A good general language first.** Immutable values, variants with exhaustive matching, traits,
   inferred types, and no nulls, exceptions or panics.
-- **Waiting is cheap.** A job that is waiting is a row in a database, not a process or a thread.
-  Resuming one takes milliseconds.
+- **Waiting is cheap.** A job that is waiting is a saved record in the store, not a process or a
+  thread. Resuming one takes milliseconds.
 - **State has an owner.** Every piece of stored state belongs to exactly one entity. Changes inside
   eyelang are atomic, and changes to other services are keyed and reconciled, never blindly retried.
 - **Everything a reviewer needs is in the diff.** Public signatures state their types and effects,
@@ -56,7 +56,7 @@ outside that domain.
 | Wait marker | A **`!` suffix** on every call that may pause: `sleep!(20 min)`, `notify.send!(…)` | Every save point is visible in code review |
 | Checkpoints | Every `!` call in a job is also a **checkpoint**: its result is saved and it runs once | No separate `step` keyword is needed |
 | Entity lifecycle | **Virtual**: an entity exists on first use. Ending one with protected state needs an `Approval` | No create/exists dance; deletion always involves a human |
-| Storage | Behind a **runtime interface**. Postgres first; an embedded store is possible later; never an in-memory store like Redis for durable state | Memory is the scarce resource, and durability is already solved there |
+| Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang; **Postgres** is selectable. (Proposed: the in-memory backend can journal each commit to an append-only file, for durability on one machine without a database.) | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
 | Errors | **Result only**: no exceptions, no panics. Runtime faults become outcomes of the run | Every failure is visible in a type |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
@@ -124,7 +124,7 @@ job sleepWhenIdle(w: Ref(World)) -> Result((), SleepError) {
   }
   match zeropod.checkpoint!(w.id, key: "sleep-{w.id}-{world.version}").reconcile!() {
     Done(_) => {
-      w.markAsleep!()                              # exactly once: same database as the journal
+      w.markAsleep!()                              # exactly once: same transaction as the checkpoint
       Ok(())
     }
     Refused(reason) => {
@@ -411,8 +411,15 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   repeats a recorded call.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a checkpoint is a compile error.
-- **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same database transaction as
-  the checkpoint, so they happen exactly once.
+- **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the
+  checkpoint, so they happen exactly once.
+- **Where runs live.** Entities, runs and checkpoints are kept by a store, chosen when the program is
+  started or embedded. The default store keeps them in memory and is itself written in Eyelang: it is
+  an immutable value, each transaction is a pure function from one store value to the next, and the
+  runtime holds the only reference, so updates happen in place. It is what tests, the REPL and
+  embedders use; on its own it doesn't survive a restart. The Postgres store survives restarts and
+  serves several runners. Both implement the `Store` trait from the standard library, and programs
+  don't change when the store does.
 - **Calls to other services** carry a key. If the outcome is `Uncertain`, `.reconcile!()` asks the
   owner with the same key until it knows. Nothing is resent automatically.
 - **Waiting constructs** (all library functions, all marked with `!`):
@@ -581,7 +588,8 @@ diagnostics layer, and a conversion from its editor-oriented tree.
    IR by their own pass, kept separate from the type checker. Nothing else in the compiler needs to
    know about them, and the passes are already shaped like macros if metaprogramming is added after
    v1.0.
-6. The runtime pieces: runs table, runner, and storage interface on Postgres.
+6. The runtime pieces: the `Store` trait, the runner, the in-memory store written in Eyelang, and the
+   Postgres store.
 7. Code generation to C with reference counting, as described in the compilation analysis.
 
 ## 18. Grammar sketch
@@ -693,3 +701,7 @@ operator. All binary operators associate to the left except `??`, which associat
 10. **Multi-line strings:** strings stay on one line for now, which keeps an unclosed quote from
     swallowing the rest of a file in editors. Prompts and templates will want a multi-line form
     (indented, with the margin stripped). Which delimiter?
+11. **Durability without a database:** the in-memory store could append each commit (entity changes
+    and checkpoints) to a journal file, fsynced before the commit is acknowledged, and replay it on
+    start, with periodic snapshots to bound replay time. Is that enough for single-machine
+    deployments, and what is the file format?

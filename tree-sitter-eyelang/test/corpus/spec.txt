@@ -46,7 +46,7 @@ job sleepWhenIdle(w: Ref(World)) -> Result((), SleepError) {
   }
   match zeropod.checkpoint!(w.id, key: "sleep-{w.id}-{world.version}").reconcile!() {
     Done(_) => {
-      w.markAsleep!()                              # exactly once: same database as the journal
+      w.markAsleep!()                              # exactly once: same transaction as the checkpoint
       Ok(())
     }
     Refused(reason) => {

@@ -12,7 +12,7 @@ is done when all its sub-issues are closed and its exit test passes.
 | Version | Phases | What you can do with it |
 |---|---|---|
 | **v0.1** | 0–4 | Write, check, format, run and test Eyelang 2 programs, including entities, jobs and views, against an in-memory store with a controllable clock |
-| v0.2 | 5 | Run jobs durably on Postgres; the morning digest runs in the lab |
+| v0.2 | 5 | Run jobs durably, with Postgres selectable as the store; the morning digest runs in the lab |
 | v0.3 | 6 | Describe other services with contracts; network policy and Go/TypeScript types are derived from them |
 | v0.4 | 7 | Compile to native code with reference counting; jobs run as short-lived processes |
 | v1.0 | — | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation |
@@ -92,7 +92,7 @@ state is serialised to bytes and restored at each checkpoint.
 | Task | Issue |
 |---|---|
 | 4.1 Entities: state, atomic methods, `Ref`, virtual lifecycle | [#32](https://github.com/ruxxzebre/eyelang/issues/32) |
-| 4.2 Storage interface and in-memory store | [#33](https://github.com/ruxxzebre/eyelang/issues/33) |
+| 4.2 `Store` trait and the in-memory store, written in Eyelang | [#33](https://github.com/ruxxzebre/eyelang/issues/33) |
 | 4.3 Jobs as resumable state machines, saved at every `!` | [#34](https://github.com/ruxxzebre/eyelang/issues/34) |
 | 4.4 Waiting library and controllable clock | [#35](https://github.com/ruxxzebre/eyelang/issues/35) |
 | 4.5 Views and triggers, schedules with time zones | [#36](https://github.com/ruxxzebre/eyelang/issues/36) |
@@ -102,11 +102,12 @@ state is serialised to bytes and restored at each checkpoint.
 Order: 4.2 first, then 4.1 and 4.3 together. 4.4 needs 4.3. 4.5 needs 4.1 and 4.3. 4.6 needs 4.1.
 4.7 comes last.
 
-### Phase 5: Durable on Postgres — [#6](https://github.com/ruxxzebre/eyelang/issues/6) · v0.2
+### Phase 5: Durable stores — [#6](https://github.com/ruxxzebre/eyelang/issues/6) · v0.2
 
-Done when the morning digest runs in the lab as an Eyelang job, survives restarts of the runner and
-the database, and costs only the runner's memory while it waits. Tasks will be broken down when
-v0.1 is close to done.
+Done when the morning digest runs in the lab as an Eyelang job on the Postgres store, survives
+restarts of the runner and the database, and costs only the runner's memory while it waits; and the
+same program runs unchanged on the in-memory store. Tasks will be broken down when v0.1 is close to
+done; durability for the in-memory store (SPECS.md open question 11) is decided then.
 
 ### Phase 6: Contracts — [#7](https://github.com/ruxxzebre/eyelang/issues/7) · v0.3
 
