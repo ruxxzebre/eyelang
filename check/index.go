@@ -61,10 +61,13 @@ func (c *checker) loadAll() {
 			return filepath.SkipDir
 		}
 		rel, err := filepath.Rel(c.root, dir)
-		if err != nil || rel == "." {
+		if err != nil {
 			return nil
 		}
 		path := strings.ReplaceAll(filepath.ToSlash(rel), "/", ".")
+		if rel == "." {
+			path = "" // the program's own module
+		}
 		if c.modules[path] != nil || !hasEyeFiles(dir) {
 			return nil
 		}

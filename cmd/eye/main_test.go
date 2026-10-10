@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -263,6 +264,47 @@ func TestLSP(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"semanticTokensProvider"`) {
 		t.Errorf("lsp didn't answer initialize: %q", stdout.String())
+	}
+}
+
+// TestLSPProbe answers one definition and one references request from the
+// command line, in a program of two modules.
+func TestLSPProbe(t *testing.T) {
+	dir := t.TempDir()
+	for name, src := range map[string]string{
+		"eye.toml":          "",
+		"main.eye":          "import shapes\n\nfn main() {\n  print(shapes.size())\n}\n",
+		"shapes/shapes.eye": "pub fn size() -> Int = 2\n",
+	} {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+	cases := []struct{ args, want string }{
+		{"--definition main.eye:4:17", "shapes/shapes.eye:1:8\n"},
+		{"--references shapes/shapes.eye:1:8", "main.eye:4:16\nshapes/shapes.eye:1:8\n"},
+		{"--definition main.eye:1:1", "nothing\n"},
+	}
+	for _, c := range cases {
+		var stdout, stderr bytes.Buffer
+		if code := run(append([]string{"lsp"}, strings.Fields(c.args)...), &stdout, &stderr); code != 0 {
+			t.Fatalf("eye lsp %s: exit %d (stderr: %s)", c.args, code, stderr.String())
+		}
+		lines := strings.SplitAfter(stdout.String(), "\n")
+		sort.Strings(lines)
+		if got := strings.Join(lines, ""); got != c.want {
+			t.Errorf("eye lsp %s:\n%s\nwant:\n%s", c.args, got, c.want)
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"lsp", "--definition", "main.eye:4"}, &stdout, &stderr); code != exitErrors ||
+		!strings.Contains(stderr.String(), "FILE:LINE:COLUMN") {
+		t.Errorf("a position without a column: exit %d, stderr %q", code, stderr.String())
 	}
 }
 
