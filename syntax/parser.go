@@ -14,7 +14,7 @@ import (
 // the precedence table of SPECS.md section 22.
 func Parse(src []byte) *File {
 	tokens, lexDiags := Lex(src)
-	p := &parser{src: src, lines: NewLines(src), errLines: map[int]bool{}}
+	p := &parser{src: src, lines: NewLines(src), errLines: map[int]bool{}, errTok: -1}
 	var trivia []Token
 	for _, t := range tokens {
 		if t.Kind.IsTrivia() {
@@ -45,8 +45,11 @@ type parser struct {
 
 	// errLines holds the lines that already have a diagnostic. Like the Go
 	// compiler, the parser reports at most one error per line, so one mistake
-	// doesn't produce a cascade.
+	// doesn't produce a cascade. errTok is the token where the last error was
+	// reported; a second error there, before anything is consumed, is a
+	// consequence of the first and isn't reported.
 	errLines map[int]bool
+	errTok   int
 
 	// nl is true where a line break may end the current statement, member or
 	// match arm, which is where tree-sitter's scanner may produce _newline.
@@ -199,22 +202,38 @@ func (p *parser) errorAt(span Span, format string, args ...any) {
 // token. An illegal token already has a diagnostic from the lexer.
 func (p *parser) errorExpected(what string) {
 	t := p.tok()
-	if t.Kind == Illegal {
+	if t.Kind == Illegal || p.pos == p.errTok {
 		return
 	}
+	p.errTok = p.pos
 	found := "'" + p.text(t) + "'"
 	switch {
 	case t.Kind == EOF:
 		found = "end of file"
 	case t.Kind == StringStart:
 		found = "a string"
-	case t.Flags&NewlineBefore != 0 && p.nl:
-		// The line break, not the token, is what ended the construct.
+	case t.Flags&NewlineBefore != 0 && (p.nl || p.atRecoveryPoint()):
+		// The line ended the construct; the next line is something else.
 		end := p.prevEnd()
 		p.errorAt(Span{end, end}, "expected %s before the end of the line", what)
 		return
 	}
 	p.errorAt(t.Span, "expected %s, found %s", what, found)
+}
+
+// atRecoveryPoint reports whether the current token starts a line with a
+// declaration or statement keyword, where error recovery stops skipping.
+func (p *parser) atRecoveryPoint() bool {
+	t := p.tok()
+	if t.Flags&NewlineBefore == 0 {
+		return false
+	}
+	switch t.Kind {
+	case At, KwPub, KwFn, KwType, KwTrait, KwImpl, KwImport, KwEntity, KwJob, KwView, KwContract,
+		KwTest, KwLet, KwVar, KwReturn, KwFor, KwWhile:
+		return true
+	}
+	return false
 }
 
 // ---------------------------------------------------------------- building
@@ -270,14 +289,15 @@ func errorNode(children []*Node) *Node {
 	return newNode(ErrorNode, children, children[0].Span.Start)
 }
 
-// skipUntil consumes tokens until stop reports true at nesting depth zero, or
-// until a closing delimiter that this skip didn't open, or the end of the
-// file. Brackets, strings and interpolations are skipped whole.
+// skipUntil consumes tokens until stop reports true at nesting depth zero, a
+// line starts with a declaration or statement keyword, a closing delimiter
+// that this skip didn't open comes up, or the file ends. Brackets, strings and
+// interpolations are skipped whole.
 func (p *parser) skipUntil(stop func() bool) []*Node {
 	var skipped []*Node
 	depth := 0
 	for !p.at(EOF) {
-		if depth == 0 && stop() {
+		if depth == 0 && (stop() || p.atRecoveryPoint()) {
 			break
 		}
 		switch p.kind() {

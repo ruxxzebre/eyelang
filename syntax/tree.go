@@ -57,6 +57,17 @@ func (n *Node) ChildrenByField(f Field) []*Node {
 	return out
 }
 
+// unfielded returns the named children that have no field.
+func (n *Node) unfielded() []*Node {
+	var out []*Node
+	for _, c := range n.Children {
+		if c.Field == NoField && c.Kind.IsNamed() {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // NamedChildren returns the children that are named nodes, as tree-sitter
 // defines them.
 func (n *Node) NamedChildren() []*Node {

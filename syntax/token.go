@@ -196,6 +196,9 @@ func (k Kind) String() string {
 	if name, ok := nodeNames[k]; ok {
 		return name
 	}
+	if name, ok := extraNames[k]; ok {
+		return name
+	}
 	return "kind(" + strconv.Itoa(int(k)) + ")"
 }
 

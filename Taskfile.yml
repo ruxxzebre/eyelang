@@ -28,14 +28,27 @@ tasks:
       - tree-sitter generate
       - tree-sitter test
 
+  generate:
+    desc: Regenerate the parser from grammar.js and the Go node kinds and views from it
+    cmds:
+      - cd tree-sitter-eyelang && tree-sitter generate
+      - go generate ./syntax
+
+  generated:
+    desc: Fail if the generated Go files don't match the grammar
+    cmds:
+      - task: generate
+      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go
+
   check:
-    desc: Everything CI runs - build, vet, lint, test and the grammar's tests
+    desc: Everything CI runs - build, vet, lint, test, the grammar's tests and generated files
     cmds:
       - go build ./...
       - task: vet
       - task: lint
       - task: test
       - task: grammar
+      - task: generated
 
   coverage:
     desc: Show test coverage per package
