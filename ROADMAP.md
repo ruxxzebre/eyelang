@@ -1,5 +1,9 @@
 # Eyelang 2 roadmap
 
+**Status, 2026-10-11:** v0.1.0 is ready on `dev` (phases 0–4 done), waiting to be tagged; parts of
+phases 5 and 6 are built early (journal store, contracts over HTTP, model calls). Development and
+releases happen on `dev`; `main` stays at Eyelang 1 until that changes.
+
 What gets built, in what order, and how we know each part is done. The language itself is defined
 in [SPECS.md](SPECS.md).
 
@@ -233,3 +237,30 @@ formatter, `eye doc` and the checker.
   conformance suite.
 - **New tasks** for phases 5–7 are added as sub-issues of their phase issue and listed here, when
   the phase before them is close to done.
+
+## Working in parallel
+
+Several sessions and agents often work at once, each in its own git worktree. So that their work
+merges cleanly:
+
+- **Name the base.** A track starts from a named commit on `dev` and says which in its first
+  message and its report.
+- **Rebase before reporting.** Before a track reports, it rebases onto the current `dev` tip and
+  runs the checks again; the report gives the rebased commit. Whoever merges announces each new tip
+  to the tracks still running.
+- **Own paths, and say so.** Each active track lists the paths it changes, and others leave them
+  alone or ask first. Files every track touches (SPECS.md's status line, decision log and open
+  questions; ROADMAP.md) are merged by whoever merges, after `task generate`.
+- **Close issues by commit.** A commit that finishes a task says `Closes #N`; the
+  `Close issues` workflow closes it when the commit reaches `dev`, since GitHub does that only for
+  the default branch.
+
+Paths owned now (2026-10-11):
+
+| Who | Worktree or branch | Paths |
+|---|---|---|
+| Main session (release, merges) | `dev` | merges; `.github/workflows`; ROADMAP.md, CHANGELOG.md |
+| eyelang-42 (docs site) | `docs-site` | `docs/`, `tools/specpages`, `internal/apidoc`, `cmd/eye/doc.go` |
+| eyelang-55 (language server) | `lsp-*` | `internal/lsp`, `check/index.go`, `check/resolve_test.go` |
+| eyelang-3b (editor and tasks) | — | `Taskfile.yml`, `editors/vscode` |
+| eyelang-de (process) | — | `CLAUDE.md` |

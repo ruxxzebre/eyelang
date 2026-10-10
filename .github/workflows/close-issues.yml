@@ -1,0 +1,45 @@
+name: Close issues
+
+# GitHub closes the issues a commit names with `Closes #N` only for commits
+# on the default branch. Eyelang 2 lands on dev for now, so this does the
+# same for dev: each issue a pushed commit closes gets a comment naming the
+# commit, and is closed.
+
+on:
+  push:
+    branches: ["dev"]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Close the issues the pushed commits name
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            range="$AFTER"            # a new branch: every commit it holds
+          else
+            range="$BEFORE..$AFTER"
+          fi
+          git log --format='%H' "$range" | while read -r sha; do
+            git log -1 --format='%B' "$sha" \
+              | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' \
+              | grep -oE '[0-9]+' | sort -u \
+              | while read -r n; do
+                  state=$(gh issue view "$n" --json state --jq .state 2>/dev/null || echo MISSING)
+                  if [ "$state" = "OPEN" ]; then
+                    gh issue close "$n" --comment "Closed by ${sha:0:7} on dev."
+                  fi
+                done
+          done
