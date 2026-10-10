@@ -86,7 +86,7 @@ func (fm *formatter) collect(n, parent *Node) {
 			first := len(t.comments) == 0
 			t.comments = append(t.comments, fcomment{
 				text:    strings.TrimRight(text, " \t\r"),
-				ownLine: !(first && lines == 0) || len(fm.tokens) == 0,
+				ownLine: !first || lines > 0 || len(fm.tokens) == 0,
 				blank:   lines >= 2,
 			})
 			lines = 0
@@ -349,7 +349,7 @@ func (fm *formatter) print() []byte {
 			if closer {
 				ci = contentIndent()
 			}
-			l := newLine(ci, c.blank && !(ownLine == 0 && afterOpener(prev)))
+			l := newLine(ci, c.blank && (ownLine > 0 || !afterOpener(prev)))
 			l.comment, l.empty = c.text, true
 			cur = nil
 			ownLine++
