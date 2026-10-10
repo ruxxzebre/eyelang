@@ -20,6 +20,7 @@ func builtinTable() map[string]*BuiltinFn {
 	t := map[string]*BuiltinFn{}
 	add := func(name string, fn builtinFunc) { t[name] = &BuiltinFn{Name: name, Fn: fn} }
 	scheduleBuiltins(add)
+	taskBuiltins(add)
 
 	add("print", func(in *Interp, args []Value, _ map[string]Value, _ ir.Pos) Value {
 		if in.replaying() {
@@ -89,11 +90,7 @@ func builtinTable() map[string]*BuiltinFn {
 		if !ok {
 			in.faultf(at, "sleep takes a Duration")
 		}
-		if in.rt.real {
-			time.Sleep(time.Duration(d))
-			return ir.Unit{}
-		}
-		in.rt.advance(d)
+		in.pause(time.Duration(d))
 		return ir.Unit{}
 	})
 	add("sleepUntil", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
@@ -102,10 +99,12 @@ func builtinTable() map[string]*BuiltinFn {
 		if !ok {
 			in.faultf(at, "sleepUntil takes an Instant")
 		}
+		now := in.rt.now
 		if in.rt.real {
-			time.Sleep(time.Until(t))
-		} else if t.After(in.rt.now) {
-			in.rt.advance(ir.Duration(t.Sub(in.rt.now)))
+			now = time.Now()
+		}
+		if t.After(now) {
+			in.pause(t.Sub(now))
 		}
 		return ir.Unit{}
 	})
@@ -467,11 +466,7 @@ func builtinTable() map[string]*BuiltinFn {
 			if waited+every > within {
 				return false
 			}
-			if in.rt.real {
-				time.Sleep(time.Duration(every))
-			} else {
-				in.rt.advance(every)
-			}
+			in.pause(time.Duration(every))
 		}
 	})
 	// next! in a job is handled by durable, which records the wait.

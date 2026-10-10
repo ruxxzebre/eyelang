@@ -75,8 +75,17 @@ migrations, and `eye run` refuses to start on rows no migration can bring to the
 (`cmd/eye`, `TestRunMigratesStoredEntities`). Left from 4.2: a `Store` trait, once traits are
 checked (2.5).
 
+**The REPL and structured concurrency, 2026-10-10.** `eye repl` evaluates expressions, statements
+and declarations, keeps bindings, entities and runs for the session, and runs jobs on a clock that
+`:advance` moves (3.4; SPECS.md open question 6 decided). `parallelMap`, `both`, `race` and
+`timeout` run tasks whose waits overlap: on goroutines on the system clock, and taking turns by
+wake time on a test's clock, so tests stay the same on every run (3.5,
+`testdata/programs/tasks`, `interp` `TestTasksOverlapTheirWaits`). Left from 3.5: the checker
+doesn't yet refuse a durable step in a task in a job (the runtime does), and the cheap,
+growing stacks of §13 are Go's goroutines for now.
+
 Still missing before v0.1: the rest of phase 2 (traits, mutation, diagnostics for every class),
-the `Store` trait (4.2, with traits), `@memory`, `@priority` and `@budget` at run time, and the REPL.
+the `Store` trait (4.2, with traits), and `@memory`, `@priority` and `@budget` at run time.
 `approval!` is answered only by tests so far.
 
 ## Phases

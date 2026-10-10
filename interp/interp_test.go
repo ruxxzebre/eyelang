@@ -159,6 +159,13 @@ func TestFaults(t *testing.T) {
 test "t" { j.start(); advance(2 min) }`, "job j: "},
 		{`import missing
 test "t" { }`, ""},
+		{`job j() -> List(Int) {
+  [1, 2] |> parallelMap(fn n {
+    sleep!(1 min)
+    n
+  })
+}
+test "t" { j.start() }`, "a task in a job can only compute"},
 	} {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, "main.eye"), []byte(c.src), 0o644); err != nil {

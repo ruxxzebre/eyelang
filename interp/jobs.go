@@ -13,6 +13,9 @@ import (
 // the job goes on.
 func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 	run := in.run
+	if run == nil && in.task != nil {
+		in.faultf(w.Pos, "a task in a job can only compute: its steps couldn't be recorded, so start a child run for durable work (SPECS.md §13)")
+	}
 	if run == nil {
 		in.faultf(w.Pos, "a waiting call ran outside a job")
 	}

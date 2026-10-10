@@ -2,6 +2,7 @@ package interp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -212,7 +213,7 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 	}
 	httpErr := httpErrorType(op.Return)
 	for try := 0; ; try++ {
-		status, reply, err := doRequest(op.HTTP.Method, target, headers, body)
+		status, reply, err := in.doRequest(op.HTTP.Method, target, headers, body)
 		retry := false
 		switch {
 		case err != nil && op.Command && !notSent(err):
@@ -257,7 +258,13 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		if !retry || try >= len(retryDelays) {
 			panic(&Fault{Pos: at, Msg: name + " stayed out of reach", Kind: "Unavailable", Arg: name})
 		}
-		time.Sleep(rt.retryDelay(try))
+		delay := rt.retryDelay(try)
+		in.blocking(func(ctx context.Context) {
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+			}
+		})
 	}
 }
 
@@ -268,23 +275,30 @@ func (rt *runtime) retryDelay(try int) time.Duration {
 	return retryDelays[try]
 }
 
-func doRequest(method, target string, headers http.Header, body []byte) (int, []byte, error) {
-	var r io.Reader
-	if body != nil {
-		r = bytes.NewReader(body)
-	}
-	req, err := http.NewRequest(method, target, r)
-	if err != nil {
-		return 0, nil, err
-	}
-	req.Header = headers
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-	return resp.StatusCode, data, err
+// doRequest makes an HTTP request. Other tasks run while it waits, and a
+// task cancelled meanwhile stops when it returns.
+func (in *Interp) doRequest(method, target string, headers http.Header, body []byte) (status int, data []byte, err error) {
+	in.blocking(func(ctx context.Context) {
+		var r io.Reader
+		if body != nil {
+			r = bytes.NewReader(body)
+		}
+		var req *http.Request
+		req, err = http.NewRequestWithContext(ctx, method, target, r)
+		if err != nil {
+			return
+		}
+		req.Header = headers
+		var resp *http.Response
+		resp, err = httpClient.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		status = resp.StatusCode
+		data, err = io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	})
+	return status, data, err
 }
 
 func decodeJSON(data []byte) (any, error) {
@@ -419,17 +433,23 @@ func hostHTTPGet(in *Interp, params map[string]Value, at ir.Pos) Value {
 		client = &http.Client{Timeout: httpClient.Timeout, Transport: &http.Transport{Proxy: http.ProxyURL(proxy)}}
 	}
 	httpMod := in.stdModule("http", at)
-	req, err := http.NewRequest("GET", target, nil)
-	if err != nil {
-		in.faultf(at, "http.get: %v", err)
-	}
-	req.Header = headers
-	resp, err := client.Do(req)
-	if err != nil {
-		return in.errV(in.httpError(httpMod.Types["HttpError"], err, 0, ""))
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	var resp *http.Response
+	var data []byte
+	var err error
+	in.blocking(func(ctx context.Context) {
+		var req *http.Request
+		req, err = http.NewRequestWithContext(ctx, "GET", target, nil)
+		if err != nil {
+			return
+		}
+		req.Header = headers
+		resp, err = client.Do(req)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+		data, err = io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	})
 	if err != nil {
 		return in.errV(in.httpError(httpMod.Types["HttpError"], err, 0, ""))
 	}

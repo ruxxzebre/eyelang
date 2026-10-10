@@ -149,6 +149,20 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		b.name("within", tDuration)
 		b.arg(0, fn(tBool))
 		return tBool
+	case "both":
+		l, r := c.fresh(), c.fresh()
+		b.arg(0, fn(l))
+		b.arg(1, fn(r))
+		return &ttuple{elems: []typ{l, r}}
+	case "race":
+		t := c.fresh()
+		b.arg(0, list(fn(t)))
+		return t
+	case "timeout":
+		t := c.fresh()
+		b.arg(0, tDuration)
+		b.arg(1, fn(t))
+		return option(t)
 	case "next":
 		event := c.fresh()
 		b.arg(0, con("Event", event))
@@ -271,6 +285,11 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		return option(elem)
 	case "first", "last":
 		return option(elem)
+	case "parallelMap":
+		out := c.fresh()
+		b.arg(1, fn(out, elem))
+		b.name("limit", tInt)
+		return list(out)
 	case "map":
 		out := c.fresh()
 		switch k := prune(coll).(type) {

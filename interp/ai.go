@@ -114,7 +114,7 @@ func (in *Interp) complete(model string, messages []map[string]string, schema ma
 	if key, ok := lookupSecret("ai-key"); ok {
 		headers.Set("Authorization", "Bearer "+key)
 	}
-	status, data, err := doRequest("POST", base+"/chat/completions", headers, body)
+	status, data, err := in.doRequest("POST", base+"/chat/completions", headers, body)
 	if err != nil {
 		return "", 0, err.Error()
 	}

@@ -709,6 +709,14 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   start, a job it starts takes a key, which starts it once (`ring.start("kitchen", key:
   "kitchen")`); without one, the checker refuses the call. `eye runs` lists the runs in the
   journal: their status, what each waits for and until when, and their steps.
+- **`eye repl [dir]`** is an interactive session in a program, or in an empty one. An expression
+  prints its value and type (`[1, 2] |> map(fn x: x * 10)` prints `[10, 20]: List(Int)`), a
+  statement runs, and `let` and `var` bindings last for the session. A declaration (`fn`, `type`,
+  `entity`, `job`, `view`, `impl`, `contract`, `test`, `import`) joins the session, and declaring
+  a name again replaces it. Every input is checked with the whole session, so its errors are the
+  compiler's, shown under the line of the input they are on. Jobs run on a clock that moves only
+  with `:advance`; `:runs`, `:type`, `:doc`, `:test`, `:reset` and `:quit` are the other
+  commands.
 - **Modules.** A module is a directory: its `.eye` files share one namespace and one set of
   imports. A program is the module in its directory and the modules it imports. `import lab.notify`
   names the directory `lab/notify` below the program's directory; its public names are then used as
@@ -735,7 +743,15 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
   captured. Results come back as return values.
 - **Cheap tasks.** A task's stack starts small and grows, so thousands of waiting tasks cost little
   memory.
-- `race` cancels the losers at their next wait. `timeout(5 s, fn { … })` returns an `Option`.
+- `race` cancels the losers at their next wait. `timeout(5 s, fn { … })` returns an `Option`:
+  `None`, with the function cancelled at its next wait, if it doesn't finish in time.
+  `parallelMap` runs at most `limit:` tasks at once, all of them without one. If a task fails,
+  the others are cancelled and the call fails with it.
+- **Waits overlap.** On the system clock, a task that waits for the network, a timer or another
+  service lets the others run, so two requests of 300 ms each take 300 ms together. On a test's
+  clock, tasks take turns: one runs until it waits, and the one that wakes first goes next, with the
+  clock moving to its wake time. A call takes as long as its longest task, in either, and every run
+  of a test is the same.
 - **From v0.2, task groups and channels** cover streams and work that is discovered as it goes. A
   group starts tasks with `spawn` and returns only when all of them have finished. A channel has a
   fixed capacity, and `put` parks while it is full, so a fast producer can't fill memory:
@@ -754,7 +770,8 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
   Channels aren't durable and can't be live across a `!`; jobs talk through entities and events.
 - **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
   `first!`. `parallelMap` is allowed in a job only with a pure function, since its steps aren't
-  recorded.
+  recorded; for now the runtime enforces it, failing a task that takes a `!` step, and the checker
+  doesn't yet.
 
 ## 14. Entities
 
@@ -1470,7 +1487,10 @@ operator. All binary operators associate to the left except `??`, which associat
 5. **Packages:** `eye.toml` and an `eye.lock` that carries hashes (so Nix needs no placeholder
    hash); registry or git only? `eye.toml` already marks a program's root (section 13); what it
    holds beyond that is open.
-6. **REPL behaviour for jobs:** run them against the in-memory store with a controllable clock?
+6. **REPL behaviour for jobs:** decided on 2026-10-10: `eye repl` runs jobs against the in-memory
+   store on a clock that moves only when `:advance 20 min` says, as a test's does; `:runs` shows the
+   runs as `eye runs` does. The session keeps its entities, runs and bindings while declarations
+   change.
 7. **Metaprogramming after v1.0:** if real code keeps repeating the same patterns, add attribute
    macros (compile-time Eyelang functions that inspect a declaration's types and generate code).
    The built-in constructs could then be re-expressed with them, and grammar and editor support

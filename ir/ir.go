@@ -635,6 +635,10 @@ var BuiltinDocs = []BuiltinDoc{
 	{"every", "fn every(interval: Duration) -> Schedule", "At every multiple of the interval since midnight UTC: `@on(every(15 min))` fires at :00, :15, :30 and :45.", "Time"},
 	{"now", "fn now() -> Instant", "The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run sees the same time.", "Time"},
 
+	{"parallelMap", "fn parallelMap(c: Collection(a), f: fn(a) -> b, limit: Int = all) -> List(b)", "Applies f to each element in tasks that run at once, at most limit of them, and returns the results in the elements' order. Tasks that wait, for the network or a timer, overlap. In a job, f may only compute.", "Concurrency"},
+	{"both", "fn both(a: fn() -> x, b: fn() -> y) -> (x, y)", "Runs a and b at once and returns both results when both have finished.", "Concurrency"},
+	{"race", "fn race(fs: List(fn() -> a)) -> a", "Runs the functions at once and returns the result of the first to finish; the others are cancelled at their next wait.", "Concurrency"},
+	{"timeout", "fn timeout(after: Duration, f: fn() -> a) -> Option(a)", "Runs f, and returns `Some(result)` if it finishes in time, or `None`, cancelling it at its next wait, if it doesn't.", "Concurrency"},
 	{"poll", "fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool", "In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls check every interval until it returns true, and returns false if `within` runs out first. For a service that can't send an event when it is ready. Only the outcome is kept, so a long poll doesn't grow the run's history.", "Waiting"},
 	{"next", "fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a)", "In a job, waits for the first event that matches, counting every one published since the run's previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.", "Waiting"},
 	{"approval", "fn approval(what: String, from: who, within: Duration) -> Decision", "In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined` or `Expired`. Only this can make an `Approval`.", "Waiting"},

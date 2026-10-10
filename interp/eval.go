@@ -27,6 +27,9 @@ type Interp struct {
 	call     string       // what the waiting call being recorded calls, for its step
 	scope    *viewScope   // while a view is evaluated for one entity
 	want     *ir.TypeExpr // while a call runs: the type its value is wanted as (ir.Call.Want)
+	session  *Session     // the REPL's session, when the program is one
+	task     *taskCtx     // the task this interpreter runs, for parallelMap and friends
+	g        *gil         // guards shared state while tasks run on goroutines
 }
 
 // New prepares to run prog, printing to out and logging to log.
