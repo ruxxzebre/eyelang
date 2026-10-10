@@ -72,6 +72,13 @@ makes one area much better (jobs, agents, data) is welcome, as long as it pays o
 Avoid syntax that serves a single feature; that belongs in a library, in types or in effects.
 Before adding a keyword, check it doesn't take away a name people will want: make it contextual.
 
+### Scope is frozen until the tour runs
+
+Agreed on 2026-10-10: until the tour in SPECS.md §3 runs under `eye test`, the spec doesn't grow.
+New ideas go into the open questions at the end of SPECS.md, not into the rules. The spec changes
+only when building the checker and interpreter shows a rule is wrong or unclear, or when real code
+demands it.
+
 ### When to change a decision
 
 Before v1.0 the language changes whenever real programs show a better way. Write the change down

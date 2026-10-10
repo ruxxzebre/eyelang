@@ -17,6 +17,10 @@ is done when all its sub-issues are closed and its exit test passes.
 | v0.4 | 7 | Compile to native code with reference counting; jobs run as short-lived processes |
 | v1.0 | — | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation |
 
+**Scope is frozen until the tour runs.** Until the tour in SPECS.md §3 runs under `eye test`, new
+ideas go into SPECS.md's open questions rather than its rules; the spec changes only when the
+implementation or real code shows a rule is wrong.
+
 ## Phases
 
 ### Phase 0: Clean slate — [#1](https://github.com/ruxxzebre/eyelang/issues/1) · v0.1
