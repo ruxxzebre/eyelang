@@ -98,13 +98,15 @@ export default defineConfig({
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: repo }],
     editLink: {
-      // Generated pages are edited at their source, which their own text names.
-      pattern: ({ filePath }) =>
-        /^(reference\/language|design)\//.test(filePath)
-          ? `${repo}/blob/main/SPECS.md`
-          : filePath.startsWith('reference/api/')
-            ? `${repo}/tree/main/check`
-            : `${repo}/edit/main/docs/${filePath}`,
+      // Generated pages are edited at their source. VitePress runs this in the
+      // browser, so it can't use anything from the rest of this file.
+      pattern: ({ filePath }) => {
+        const repo = 'https://github.com/ruxxzebre/eyelang'
+        if (/^(reference\/language|design)\//.test(filePath)) return `${repo}/blob/main/SPECS.md`
+        if (filePath.startsWith('reference/api/')) return `${repo}/tree/main/check`
+        if (filePath === 'reference/cli.md') return `${repo}/tree/main/cmd/eye`
+        return `${repo}/edit/main/docs/${filePath}`
+      },
       text: 'Edit this page',
     },
   },
