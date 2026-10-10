@@ -1,0 +1,1 @@
+let a = (min s)

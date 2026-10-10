@@ -90,7 +90,7 @@ func FuzzParse(f *testing.F) {
 		}
 		if file.Root.HasError() && len(file.Diagnostics) == 0 {
 			t.Fatalf("the tree has an error but no diagnostic was reported:\n%s",
-				file.Root.SExpr(file.Src, SExprOptions{Fields: true, Tokens: true}))
+				file.Root.SExpr(file.Src, SExprOptions{Fields: true, Tokens: true, Text: true}))
 		}
 	})
 }
@@ -111,7 +111,7 @@ func TestTypedViews(t *testing.T) {
 	}
 	body, ok := AsBinaryExpression(fn.Body())
 	if !ok || body.Operator().Text(src) != "*" || !body.Left().Kind.IsExpression() {
-		t.Errorf("body = %s, want w * h", fn.Body().SExpr(src, SExprOptions{Tokens: true}))
+		t.Errorf("body = %s, want w * h", fn.Body().SExpr(src, SExprOptions{Tokens: true, Text: true}))
 	}
 	if _, ok := AsJobDeclaration(f.Root.Children[0]); ok {
 		t.Error("a function declaration is viewed as a job")

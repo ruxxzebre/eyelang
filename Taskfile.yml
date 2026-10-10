@@ -29,26 +29,36 @@ tasks:
       - tree-sitter test
 
   generate:
-    desc: Regenerate the parser from grammar.js and the Go node kinds and views from it
+    desc: Regenerate everything derived from grammar.js and SPECS.md
     cmds:
       - cd tree-sitter-eyelang && tree-sitter generate
       - go generate ./syntax
+      - go run ./tools/specexamples
 
   generated:
-    desc: Fail if the generated Go files don't match the grammar
+    desc: Fail if generated files in git don't match grammar.js and SPECS.md
     cmds:
       - task: generate
-      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go
+      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid
+      - test -z "$(git ls-files --others --exclude-standard -- testdata/syntax/valid)"
+
+  conformance:
+    desc: Compare the hand-written parser with tree-sitter on every file in testdata/syntax and the corpus
+    env:
+      EYE_CONFORMANCE: "1"
+    cmds:
+      - go test ./syntax -run 'TestConformance' -count=1
 
   check:
-    desc: Everything CI runs - build, vet, lint, test, the grammar's tests and generated files
+    desc: Everything CI runs - generated files, build, vet, lint, tests, the conformance suite and the grammar's tests
     cmds:
+      - task: generated
       - go build ./...
       - task: vet
       - task: lint
       - task: test
+      - task: conformance
       - task: grammar
-      - task: generated
 
   coverage:
     desc: Show test coverage per package

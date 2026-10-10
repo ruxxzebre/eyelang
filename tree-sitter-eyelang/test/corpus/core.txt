@@ -1008,3 +1008,40 @@ fn f() {
             (duration
               (integer)
               (unit_name))))))))
+
+================================================================================
+Ignored parameters
+================================================================================
+
+fn f(_: Int, _) = 1
+fn g() = pairs |> filter(fn (_, at): at <= now)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (wildcard)
+        (type_identifier))
+      (parameter
+        (wildcard)))
+    (integer))
+  (function_declaration
+    (identifier)
+    (parameters)
+    (binary_expression
+      (identifier)
+      (call_expression
+        (identifier)
+        (arguments
+          (lambda
+            (parameters
+              (parameter
+                (wildcard))
+              (parameter
+                (identifier)))
+            (binary_expression
+              (identifier)
+              (identifier))))))))

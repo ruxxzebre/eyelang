@@ -147,10 +147,10 @@ module.exports = grammar({
 
     parameters: $ => seq('(', commaSep($.parameter), ')'),
 
-    // `mut` lets the function change the caller's variable.
+    // `mut` lets the function change the caller's variable; `_` ignores an argument.
     parameter: $ => seq(
       optional('mut'),
-      field('name', $.identifier),
+      field('name', choice($.identifier, $.wildcard)),
       optional(seq(':', field('type', $._type))),
       optional(seq('=', field('default', $._expression))),
     ),

@@ -121,18 +121,20 @@ func (n *Node) HasError() bool {
 
 // SExprOptions select what SExpr prints.
 type SExprOptions struct {
-	// Tokens includes anonymous tokens as quoted strings and the text of
-	// named leaves: (binary_expression left: (identifier "a") "+" …).
+	// Tokens includes anonymous tokens as quoted strings:
+	// (binary_expression left: (identifier) "+" …).
 	Tokens bool
+	// Text includes the text of named leaves: (identifier "a").
+	Text bool
 	// Fields prefixes children with their field name.
 	Fields bool
 	// Indent breaks the output into lines, one named node per line.
 	Indent bool
 }
 
-// SExpr prints the tree as an S-expression. With Fields and Tokens it is the
-// normalised form that the conformance suite compares with tree-sitter's
-// output; without either it matches tree-sitter's corpus test format.
+// SExpr prints the tree as an S-expression. With Fields, Tokens and Text it is
+// the normalised form that the conformance suite compares with tree-sitter's
+// output; with none of them it matches tree-sitter's corpus test format.
 // Comments are trivia and never appear; the EOF token is left out.
 func (n *Node) SExpr(src []byte, opts SExprOptions) string {
 	var b strings.Builder
@@ -155,7 +157,7 @@ func (n *Node) writeSExpr(b *strings.Builder, src []byte, opts SExprOptions, dep
 	}
 	b.WriteString(n.Kind.String())
 	if n.IsToken() {
-		if opts.Tokens {
+		if opts.Text {
 			b.WriteString(" ")
 			b.WriteString(strconv.Quote(n.Text(src)))
 		}

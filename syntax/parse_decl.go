@@ -250,7 +250,13 @@ func (p *parser) parameter() *Node {
 	if p.at(KwMut) {
 		b.add(p.bump())
 	}
-	b.field(FieldName, p.expect(Ident))
+	if p.at(Underscore) {
+		w := p.start(Wildcard)
+		w.add(p.bump())
+		b.field(FieldName, w.done(p))
+	} else {
+		b.field(FieldName, p.expect(Ident))
+	}
 	if p.at(Colon) {
 		b.add(p.bump())
 		b.field(FieldType, p.typeExpr())

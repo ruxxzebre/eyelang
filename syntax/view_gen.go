@@ -959,7 +959,7 @@ func AsParameter(n *Node) (ParameterView, bool) {
 // Default returns the default child (_expression), or nil.
 func (v ParameterView) Default() *Node { return v.Node.ChildByField(FieldDefault) }
 
-// Name returns the name child (identifier).
+// Name returns the name child (identifier, wildcard).
 func (v ParameterView) Name() *Node { return v.Node.ChildByField(FieldName) }
 
 // Type returns the type child (_type), or nil.

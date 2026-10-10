@@ -251,7 +251,9 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   collection that nothing else refers to happens in place; otherwise the collection is copied first.
 - **Tuples:** `(Int, String)`, built with `(1, "a")` and taken apart with patterns:
   `let (n, s) = pair`. A tuple has at least two elements, and there is no `.0`; when the parts
-  deserve names, use a record.
+  deserve names, use a record. A lambda with as many parameters as a tuple has elements accepts
+  the tuple, so `m |> entries |> filter(fn (_, at): at <= now)` needs no destructuring; `_` names a
+  parameter that is ignored.
 - **Records:** `type User = { name: String, age: Int }`, built with `{ name: "Ann", age: 3 }` and
   updated with `{ user with age: 4 }`, or with `user.age = 4` when `user` is a `var`.
 - **Variants:** `type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)`,

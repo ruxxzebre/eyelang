@@ -210,7 +210,10 @@ func (p *parser) errorExpected(what string) {
 	found := "'" + p.text(t) + "'"
 	switch {
 	case t.Kind == EOF:
-		found = "end of file"
+		// Point just after the last token rather than at the end of the file.
+		end := p.prevEnd()
+		p.errorAt(Span{end, end}, "expected %s, found end of file", what)
+		return
 	case t.Kind == StringStart:
 		found = "a string"
 	case t.Flags&NewlineBefore != 0 && (p.nl || p.atRecoveryPoint()):
