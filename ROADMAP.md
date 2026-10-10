@@ -48,9 +48,10 @@ in CI, and `eye fmt` gives the same output when run twice on the whole corpus.
 | 1.5 Conformance suite: both parsers on `testdata/syntax` in CI | [#18](https://github.com/ruxxzebre/eyelang/issues/18) |
 | 1.6 `eye fmt` on the lossless tree | [#19](https://github.com/ruxxzebre/eyelang/issues/19) |
 | 1.7 Editor highlighting queries | [#20](https://github.com/ruxxzebre/eyelang/issues/20) |
+| 1.8 Syntax for the general-purpose core: `mut`, tuples, characters, ranges, `impl Type`, `where`, `extern` | [#39](https://github.com/ruxxzebre/eyelang/issues/39) |
 
 Order: the tree-sitter track (1.1 → 1.2) and the compiler track (1.3 → 1.4) can run in parallel.
-1.5 needs both tracks, and 1.6 needs 1.4. 1.7 needs 1.1.
+1.8 follows 1.4. 1.5 needs both tracks and 1.8, and 1.6 needs 1.8. 1.7 needs 1.8.
 
 ### Phase 2: Checker — [#3](https://github.com/ruxxzebre/eyelang/issues/3) · v0.1
 
@@ -60,20 +61,22 @@ all SPECS.md examples pass the checker.
 | Task | Issue |
 |---|---|
 | 2.1 Name resolution, modules, `import` and `pub` | [#21](https://github.com/ruxxzebre/eyelang/issues/21) |
-| 2.2 Type inference and signature checking | [#22](https://github.com/ruxxzebre/eyelang/issues/22) |
+| 2.2 Type inference, generics and signature checking | [#22](https://github.com/ruxxzebre/eyelang/issues/22) |
 | 2.3 Exhaustive pattern matching and destructuring | [#23](https://github.com/ruxxzebre/eyelang/issues/23) |
 | 2.4 Result-only errors and total arithmetic | [#24](https://github.com/ruxxzebre/eyelang/issues/24) |
-| 2.5 Traits, impls and derived traits | [#25](https://github.com/ruxxzebre/eyelang/issues/25) |
+| 2.5 Traits, methods, impls and derived traits | [#25](https://github.com/ruxxzebre/eyelang/issues/25) |
 | 2.6 Effect inference, `uses`, and the `!` and `Save` rules | [#26](https://github.com/ruxxzebre/eyelang/issues/26) |
 | 2.7 Diagnostics with spans, and a test per error class | [#27](https://github.com/ruxxzebre/eyelang/issues/27) |
+| 2.8 Mutation: `mut` parameters, places and the no-aliasing rule | [#40](https://github.com/ruxxzebre/eyelang/issues/40) |
 
-Order: 2.1 → 2.2, then 2.3, 2.4 and 2.5 in any order, then 2.6. Start 2.7 with 2.1 and extend it in
+Order: 2.1 → 2.2, then 2.3, 2.4, 2.5 and 2.8 in any order, then 2.6. Start 2.7 with 2.1 and extend it in
 every later task.
 
 ### Phase 3: Interpreter — [#4](https://github.com/ruxxzebre/eyelang/issues/4) · v0.1
 
-Done when ordinary programs (no entities or jobs yet) and their `test` blocks run through `eye run`
-and `eye test`, and the REPL evaluates expressions and declarations.
+Done when ordinary programs (no entities or jobs yet), starting at `main` with file and process
+effects, and their `test` blocks run through `eye run` and `eye test`, and the REPL evaluates
+expressions and declarations.
 
 | Task | Issue |
 |---|---|
@@ -81,8 +84,11 @@ and `eye test`, and the REPL evaluates expressions and declarations.
 | 3.2 Reference interpreter for the core language | [#29](https://github.com/ruxxzebre/eyelang/issues/29) |
 | 3.3 Standard library basics | [#30](https://github.com/ruxxzebre/eyelang/issues/30) |
 | 3.4 `eye run`, `eye test` and the REPL | [#31](https://github.com/ruxxzebre/eyelang/issues/31) |
+| 3.5 Structured concurrency on lightweight tasks | [#41](https://github.com/ruxxzebre/eyelang/issues/41) |
+| 3.6 `extern` functions: Go host functions and C libraries | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
 
-Order: 3.1 → 3.2 → 3.4. 3.3 can start alongside 3.2.
+Order: 3.1 → 3.2 → 3.4. 3.3 can start alongside 3.2; 3.6 alongside 3.3, since the standard
+library's primitives are host functions. 3.5 needs 3.2.
 
 ### Phase 4: Entities, jobs and views in memory — [#5](https://github.com/ruxxzebre/eyelang/issues/5) · v0.1 release
 
@@ -107,7 +113,7 @@ Order: 4.2 first, then 4.1 and 4.3 together. 4.4 needs 4.3. 4.5 needs 4.1 and 4.
 Done when the morning digest runs in the lab as an Eyelang job on the Postgres store, survives
 restarts of the runner and the database, and costs only the runner's memory while it waits; and the
 same program runs unchanged on the in-memory store. Tasks will be broken down when v0.1 is close to
-done; durability for the in-memory store (SPECS.md open question 11) is decided then.
+done; durability for the in-memory store (SPECS.md open question 9) is decided then.
 
 ### Phase 6: Contracts — [#7](https://github.com/ruxxzebre/eyelang/issues/7) · v0.3
 

@@ -2,7 +2,7 @@
 
 Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
 [ROADMAP.md](ROADMAP.md). None of it is implemented yet: the code in this repository is Eyelang 1, a Monkey-style tree-walking interpreter that served
-as a testing ground (see [What happens to Eyelang 1](#16-what-happens-to-eyelang-1)).
+as a testing ground (see [What happens to Eyelang 1](#20-what-happens-to-eyelang-1)).
 
 Eyelang 2 is a general-purpose, statically typed, compiled language. It is designed to make one
 kind of program easy to get right: code that manages data spread across many entities (users,
@@ -18,24 +18,33 @@ outside that domain.
 4. [Lexical structure](#4-lexical-structure)
 5. [Values and types](#5-values-and-types)
 6. [Bindings, functions and pipes](#6-bindings-functions-and-pipes)
-7. [Pattern matching](#7-pattern-matching)
-8. [Errors: Result only](#8-errors-result-only)
-9. [Traits](#9-traits)
-10. [Effects and signatures](#10-effects-and-signatures)
-11. [Entities](#11-entities)
-12. [Jobs and waiting](#12-jobs-and-waiting)
-13. [Views and triggers](#13-views-and-triggers)
-14. [Contracts: talking to other services](#14-contracts-talking-to-other-services)
-15. [Time, secrets, tests](#15-time-secrets-tests)
-16. [What happens to Eyelang 1](#16-what-happens-to-eyelang-1)
-17. [Implementation plan](#17-implementation-plan)
-18. [Grammar sketch](#18-grammar-sketch)
-19. [Open questions](#19-open-questions)
+7. [Mutation](#7-mutation)
+8. [Methods and generics](#8-methods-and-generics)
+9. [Pattern matching](#9-pattern-matching)
+10. [Errors: Result only](#10-errors-result-only)
+11. [Traits](#11-traits)
+12. [Effects and signatures](#12-effects-and-signatures)
+13. [Programs and concurrency](#13-programs-and-concurrency)
+14. [Entities](#14-entities)
+15. [Jobs and waiting](#15-jobs-and-waiting)
+16. [Views and triggers](#16-views-and-triggers)
+17. [Contracts: talking to other services](#17-contracts-talking-to-other-services)
+18. [Calling C and Go](#18-calling-c-and-go)
+19. [Time, secrets, tests](#19-time-secrets-tests)
+20. [What happens to Eyelang 1](#20-what-happens-to-eyelang-1)
+21. [Implementation plan](#21-implementation-plan)
+22. [Grammar sketch](#22-grammar-sketch)
+23. [Open questions](#23-open-questions)
 
 ## 1. Goals
 
-- **A good general language first.** Immutable values, variants with exhaustive matching, traits,
-  inferred types, and no nulls, exceptions or panics.
+- **A good general language first.** Values with no shared mutation, variants with exhaustive
+  matching, traits and generics, inferred types, structured concurrency, and no nulls or exceptions.
+  The domain constructs (entities, jobs, views, contracts) sit on top of a core that stands on its
+  own.
+- **Good enough to host itself.** The core must be comfortable for systems code: parsers, stores,
+  type checkers. Eyelang's own compiler should be writable in Eyelang once it compiles to native
+  code (v0.4).
 - **Waiting is cheap.** A job that is waiting is a saved record in the store, not a process or a
   thread. Resuming one takes milliseconds.
 - **State has an owner.** Every piece of stored state belongs to exactly one entity. Changes inside
@@ -53,7 +62,7 @@ outside that domain.
 |---|---|---|
 | Core model | **Entities** hold shared data; **jobs** are durable functions; **views** react to conditions across many entities | Data has a home, waiting has a home, and cross-entity conditions don't need polling |
 | Waiting | **Only jobs wait.** Entity methods are short atomic transactions | No state changes in the middle of a method; every method is all-or-nothing |
-| Wait marker | A **`!` suffix** on every call that may pause: `sleep!(20 min)`, `notify.send!(…)` | Every save point is visible in code review |
+| Wait marker | A **`!` suffix** on every durable step in a job, which is every call that may pause or has an outside effect: `sleep!(20 min)`, `notify.send!(…)` | Every save point is visible in code review |
 | Checkpoints | Every `!` call in a job is also a **checkpoint**: its result is saved and it runs once | No separate `step` keyword is needed |
 | Entity lifecycle | **Virtual**: an entity exists on first use. Ending one with protected state needs an `Approval` | No create/exists dance; deletion always involves a human |
 | Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang; **Postgres** is selectable. (Proposed: the in-memory backend can journal each commit to an append-only file, for durability on one machine without a database.) | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
@@ -64,8 +73,14 @@ outside that domain.
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
 | Reactions | **Views trigger jobs**: `@on(enters(view))`, `@on(leaves(view))` | Replaces most polling cron jobs |
 | Evolution | Adding a field with a default is automatic; anything else needs a **`migrate from N`** function; deploy is refused if any stored version has no path to the current one | Stored data outlives code |
+| Mutation | **Mutable value semantics**: `var` locals, `mut` parameters and `mut self` methods, field assignment and `+=`. Callers write `mut` too: `unify(mut subst, a, b)`. Values never alias; there are no references or pointers | Systems code reads naturally, every place a value can change is visible in the diff, and without aliasing there are no cycles, so reference counting stays enough |
+| Generics and methods | Lower-case **type variables** (`List(a)`), requirements with `where a: Ord`, and methods on a type with `impl Type { … }` | Generic code without new brackets; types get their own operations |
 | Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing and saving are derived for data types | One mechanism for generic code |
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts | One general mechanism instead of special syntax per feature |
+| Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
+| Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values | Parallelism without coloured functions or data races |
+| Interop | **`extern fn`** for C functions and for functions provided by a Go program that embeds Eyelang | Reuse existing libraries; the standard library's primitives use the same mechanism |
+| Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
 | Blocks | **Braces** | Keeps parsing simple; no whitespace pitfalls |
 | Statements | **A newline ends a statement** unless the next line starts with an operator, `.`, `,`, `:`, `=` or `else`. `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
 | Braces in expressions | A `{` after `if`, `else`, `for`, `while`, `=>`, a signature or a lambda's parameters opens a block; anywhere else it starts a record or map. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found without lookahead, in both parsers |
@@ -96,7 +111,7 @@ entity World(id: WorldId) {
     players = players |> add(p)
     if phase == Asleep {
       phase = Waking
-      start wake(id)                 # starting a job is part of this transaction
+      wake.start(id)                 # starting a job is part of this transaction
     }
   }
 
@@ -167,6 +182,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   | Float (64-bit IEEE) | `1.5`, `0.25`, `6.02e23` |
   | String, with interpolation | `"hello"`, `"ireland-{day}"`, `"\{literal brace}"` |
   | Bool | `true`, `false` |
+  | Char | `'a'`, `'\n'`, `'\u{1F600}'` |
   | Unit | `()` |
   | Duration | `500 ms`, `20 min`, `3 h`, `2 days`, `1.5 h` |
   | Size | `512 B`, `64 KiB`, `64 MiB`, `6 GiB` |
@@ -178,14 +194,23 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   A number followed by a unit name (`ms`, `s`, `min`, `h`, `day`, `days`, `week`, `weeks`, `B`,
   `KiB`, `MiB`, `GiB`) is a Duration or Size. A date or time of day is written without spaces;
   `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time.
+- **Characters:** `'a'` is a `Char`, one Unicode scalar value, with the escapes of strings plus
+  `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`.
 - **Strings:** a string's text stays on one line, though an interpolated expression may break
   across lines. The escapes are `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\{`, `\}` and
   `\u{1F600}`. `{expression}` interpolates a value that has `Show`.
-- **Keywords:** `let var fn pub return if else match for in while break continue type trait impl
-  entity state job view contract import test with start true false _`. A few more words are
-  keywords only in one position: `command`, `query`, `event` and `on` inside contracts; `migrate`
-  and `from` inside entities; `after` and `at` after `start`; `uses` in signatures; and the unit
-  names after a number. `in` and `for` may also be used as argument labels: `daily(07:40, in: zone)`.
+- **Keywords.** These are reserved and are never names: `let var mut fn pub return if else match
+  for in while break continue true false _`. Every other keyword is a keyword only where the grammar
+  expects it, and an ordinary name everywhere else, so `state`, `view`, `type` and `test` work as
+  variable and field names:
+  - at the start of a declaration: `import type opaque trait impl entity job view contract test
+    extern`;
+  - inside declarations: `state` and `migrate … from` in entities; `command`, `query`, `event` and
+    `on` in contracts; `uses` and `where` after a signature;
+  - `with` at the start of a statement and inside a record update, and the unit names after a number.
+
+  A contextual keyword is read as a keyword wherever one is allowed, so a variable named `with`
+  can't begin a statement. `in` and `for` may also be argument labels: `daily(07:40, in: zone)`.
 - **Attributes:** `@name` or `@name(args)` before a declaration or member.
 - **Newlines end statements.** A line break ends a statement, declaration, member or match arm
   wherever one could end. It doesn't when the next line (ignoring blank and comment lines) starts
@@ -211,22 +236,46 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 
 ## 5. Values and types
 
-- **Primitives:** `Int`, `NonZero(Int)`, `Float`, `Bool`, `String`, `Bytes`, `()`.
+- **Primitives:** `Int`, `NonZero(Int)`, `Float`, `Bool`, `Char`, `String`, `()`.
+- **Bytes and fixed-width integers:** `Byte`, `Bytes`, `Int32`, `Int64`, `UInt32` and `UInt64`,
+  for binary formats, hashing and foreign functions. They compare with the usual operators but have
+  no `+`, `-`, `*` or `/`: arithmetic on them is explicit, as `a.wrappingAdd(b)` or
+  `a.checkedAdd(b)` (an `Option`), and so are bit operations (`a.and(b)`, `a.xor(b)`,
+  `a.shiftLeft(3)`). A conversion that could lose information returns an `Option`: `Int32.from(n)`.
+  Integer literals that fit are fixed-width values where one is expected: `src[i] ?? 0`.
 - **Time:** `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`. **Memory:** `Size`.
-- **Collections:** `List(T)`, `Map(K, V)`, `Set(T)`. All immutable. An update that holds the only
-  reference happens in place at run time, without changing the meaning.
+- **Collections:** `List(a)`, `Map(k, v)` and `Set(a)`. A `List` is a growable array. Collections
+  are values: assigning or passing one never shares later changes (section 7). An update to a
+  collection that nothing else refers to happens in place; otherwise the collection is copied first.
+- **Tuples:** `(Int, String)`, built with `(1, "a")` and taken apart with patterns:
+  `let (n, s) = pair`. A tuple has at least two elements, and there is no `.0`; when the parts
+  deserve names, use a record.
 - **Records:** `type User = { name: String, age: Int }`, built with `{ name: "Ann", age: 3 }` and
-  updated with `{ user with age: 4 }`.
+  updated with `{ user with age: 4 }`, or with `user.age = 4` when `user` is a `var`.
 - **Variants:** `type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)`,
-  built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(T)`). A
+  built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(a)`). A
   variant list needs at least one `|`, so a type with a single variant starts with one:
   `type Wrapper = | Wrapped(Int)`. Without a `|`, `type Ids = List(Id)` is an alias.
-- **Built-in variants:** `Option(T) = Some(T) | None` and `Result(T, E) = Ok(T) | Err(E)`.
+- **Built-in variants:** `Option(a) = Some(a) | None` and `Result(a, e) = Ok(a) | Err(e)`.
   There is no null.
+- **Type variables** are lower-case names in types: `List(a)`, `Map(k, v)` (section 8).
+- **Ranges:** `0..n` counts up to but not including `n`, and `0..=n` includes it. Ranges drive `for`
+  loops, slices and patterns.
+- **Slices:** `xs[2..5]`, `xs[..n]` and `bytes[i..]` are views that share storage with what they
+  come from. A slice is clamped to the elements that exist, so it never fails, while `xs[i]`
+  returns an `Option`. Strings are sliced by byte offsets with `s.slice(2..5)`, an `Option(String)`
+  that is `None` when the range would split a character.
+- **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
+  characters (`s.chars()`) and any `Iter(a)`. `xs.iter()` gives a lazy `Iter(a)` whose pipelines
+  (`map`, `filter`, `take`, `enumerate`, `zip`) don't build intermediate lists; `toList` collects
+  one.
 - **Entity references:** `Ref(World)` is an ID, not a pointer. It can be stored, sent and saved
   anywhere, and it can't be confused with `Ref(Player)`.
-- **Special types:** `Secret(T)` (no printing, no saving), `Approval` (only a human approval flow
-  can create one), `Key` (an idempotency key), `Run(T)` (a started job).
+- **Special types:** `Secret(a)` (no printing, no saving), `Approval` (only a human approval flow
+  can create one), `Key` (an idempotency key), `Run(a)` (a started job), `Handle(name)` (an object
+  owned by foreign code, section 18).
+- **Opaque types:** `pub opaque type Lexer = { … }` exports the type but not its fields, so other
+  modules use it only through its functions and methods.
 - **Maps** use literal or parenthesised keys: `{"a": 1}`, `{(key): 1}`. Records use names:
   `{a: 1}`, and `{ name, age }` is short for `{ name: name, age: age }`. `{}` is an empty map,
   set or record, depending on the type expected. Other sets are built from lists: `toSet([a, b])`.
@@ -242,8 +291,8 @@ Inside a function body:
 
 ```eye
 let x = 5                    # immutable, block-scoped; a later `let x` shadows it
-var total = 0                # mutable local; closures can't capture a `var`
-total = total + x
+var total = 0                # mutable local; closures can't capture a `var` (section 7)
+total += x
 
 let inc = fn n: n + 1                                    # lambdas
 let add = fn (a, b): a + b
@@ -251,19 +300,102 @@ let show = fn item {
   let label = item.name
   "<{label}>"
 }
-let later = fn { notify.send!(owner, "done", key: k) }       # no parameters
+let later = fn { log.info("done") }                       # no parameters
 
 let sizes = urls |> map(fetchSize) |> filter(fn s: s > 0)   # data-first pipe
 let diff = 2 |> sub(10, _)                                   # _ places the value: sub(10, 2)
 
 if n < 2 { n } else { fib(n - 1) + fib(n - 2) }          # if is an expression; no parentheses
 for item in items { log.info(item.name) }
+for (i, item) in items |> enumerate { log.info("{i}: {item.name}") }
+for i in 0..n { log.info("{i}") }
 ```
 
 - Named arguments with defaults: `fn page(size: Int = 50, after: Option(Cursor) = None)`.
 - No partial application by argument count. Use `_` or a lambda.
 
-## 7. Pattern matching
+## 7. Mutation
+
+Eyelang has mutable value semantics, as Swift's value types and Hylo do. A value never changes
+behind your back: the only things that change are `var` variables and `mut` parameters, and a
+change is visible only through the variable it was made to.
+
+```eye
+type Counter = { hits: Int, last: Option(Instant) }
+
+fn record(mut c: Counter, at: Instant) {      # may change the caller's counter
+  c.hits += 1
+  c.last = Some(at)
+}
+
+impl Counter {
+  fn reset(mut self) { self.hits = 0 }
+}
+
+fn tally(times: List(Instant)) -> Counter {
+  var counter = { hits: 0, last: None }
+  for t in times {
+    record(mut counter, t)                    # `mut` at the call: this call may change counter
+  }
+  let snapshot = counter                      # a copy; later changes to counter don't reach it
+  counter.reset()                             # a `mut self` method needs a `var` receiver
+  snapshot
+}
+```
+
+- **What can change:** a `var`, a `mut` parameter, and fields of either (`c.last = …`). `+=`, `-=`,
+  `*=`, `/=` and `%=` combine an operation with an assignment. A `let` never changes.
+- **Visible at the call.** A `mut` argument is written `mut x` (or `mut x.field`) and must be a
+  `var` or a `mut` parameter. A method that takes `mut self` can only be called on one.
+- **No aliasing.** The same variable can't be passed as `mut` twice in one call, or passed as `mut`
+  and read in the same call: `swap(mut a, mut a)` is a compile error. Closures can't capture a
+  `var` or a `mut` parameter.
+- **No references.** A `mut` parameter lasts for the call; it can't be stored or returned. Nothing
+  in the language is a pointer, so values can't form cycles, and reference counting reclaims
+  everything without a garbage collector.
+- **In place when unique.** A change to a value that nothing else refers to happens in place. If
+  something does, the value is copied first (copy on write), so the change stays local.
+- **Entity methods** are `mut self` methods over the entity's state, run as a transaction
+  (section 14).
+
+## 8. Methods and generics
+
+```eye
+pub opaque type Lexer = { src: Bytes, pos: Int, tokens: List(Token) }
+
+impl Lexer {
+  pub fn new(src: Bytes) -> Lexer = { src, pos: 0, tokens: [] }
+  pub fn peek(self) -> Byte = self.src[self.pos] ?? 0
+  pub fn advance(mut self) { self.pos += 1 }
+}
+
+fn skipSpaces(mut lexer: Lexer) {
+  while lexer.peek() == ' ' { lexer.advance() }
+}
+
+fn largest(xs: List(a)) -> Option(a) where a: Ord {
+  var best = first(xs)?                      # ? on an Option returns None
+  for x in xs {
+    if x > best { best = x }
+  }
+  Some(best)
+}
+```
+
+- **Methods** are declared in `impl Type { … }` in the module that defines the type, and called as
+  `x.method(args)`. A function in the block without `self` is called on the type: `Lexer.new(src)`.
+  Trait methods are called the same way (section 11).
+- **Pipes and methods.** `x |> f(a)` calls an ordinary function with `x` first; `x.f(a)` calls a
+  method. Collection operations in the standard library are functions, used with pipes, so the same
+  pipeline works on lists, iterators and entity sets.
+- **Type variables** are lower-case names in types, as in Gleam: `fn first(xs: List(a)) -> Option(a)`,
+  `type Pair(a, b) = { first: a, second: b }`. A lower-case name followed by `.` is a module:
+  `notify.Delivery`.
+- **Requirements** on type variables follow `where`: `where a: Ord + Show`. A trait used as a
+  parameter type is short for one: `fn label(x: Named)` means `fn label(x: t) where t: Named`.
+- Generic code is specialised for the types it is used with, so it costs nothing at run time.
+
+## 9. Pattern matching
 
 ```eye
 match grant {
@@ -275,22 +407,35 @@ match grant {
 
 let { name, age } = user                     # destructuring
 let [first, ..rest] = items else { return Err(Empty) }
+let (key, value) = entry
+
+match rest {                                 # rest: Bytes
+  ['-', '>', ..] => Arrow
+  ['0'..='9', ..] => number(rest)
+  [] => End
+  _ => Illegal
+}
 ```
 
-Patterns are names (which bind), `_`, literals (including negative numbers), variants with
-positional or named payloads (`Sent(receipt: r, ..)`), records (`{ name, age: a, .. }`), lists
-(`[first, ..rest]`) and alternatives (`Asleep | Waking`). `..` skips the remaining fields or
-elements; `..rest` binds the remaining elements.
+Patterns are names (which bind), `_`, literals (including negative numbers and characters),
+ranges of numbers or characters (`'a'..='z'`, `0..10`), variants with positional or named payloads
+(`Sent(receipt: r, ..)`), records (`{ name, age: a, .. }`), tuples (`(k, v)`), lists (`[first,
+..rest]`, which also match `Bytes` and slices) and alternatives (`Asleep | Waking`). `..` skips the
+remaining fields or elements; `..rest` binds the remaining elements.
 
 Every `match` must be exhaustive. Adding a variant to a type makes each `match` that doesn't handle
 it a compile error, which is how a new outcome from another service reaches every caller.
 
-## 8. Errors: Result only
+## 10. Errors: Result only
 
 - Expected failures are values: `Result(T, E)` and domain variants such as `Refused` and
-  `Uncertain`. Postfix `?` returns the error to the caller: `let p = Player(id).profile()?`.
-- There are no exceptions and no panics. Library functions are total: `xs[0]` and `first(xs)`
-  return `Option`, and `parseInt(s)` returns `Result`.
+  `Uncertain`. Postfix `?` returns the error to the caller: `let p = Player(id).profile()?`. In a
+  function that returns an `Option`, `?` on an `Option` returns `None`.
+- There are no exceptions. Library functions are total: `xs[0]` and `first(xs)` return `Option`,
+  and `parseInt(s)` returns `Result`.
+- **`unreachable("why")`** is the one way for code to stop itself. It ends the program, or the
+  job's run, as a fault: `Failed(Unreachable("why"))`. It is for states the code has already ruled
+  out, such as an index a loop just checked, never for failures that can happen.
 - **Arithmetic is total.** `Int` has arbitrary precision, so it can't overflow. Small values stay
   unboxed at run time. `/` and `%` take a `NonZero(Int)` divisor. Literals other than `0` qualify
   automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows
@@ -303,11 +448,11 @@ it a compile error, which is how a new outcome from another service reaches ever
     None => 0
   }
   ```
-- **Runtime faults** (out of memory, over budget, killed, deadline passed) are not errors that code
-  can throw or catch. They end the run, and whoever started it sees `Failed(fault)` as the run's
+- **Runtime faults** (out of memory, over budget, killed, deadline passed, `unreachable`) are not
+  errors that code can throw or catch. They end the run, and whoever started it sees `Failed(fault)` as the run's
   outcome.
 
-## 9. Traits
+## 11. Traits
 
 ```eye
 trait Named {
@@ -318,16 +463,16 @@ impl Named for Player {
   fn name(self) = self.nick
 }
 
-fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named`
+fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named` (section 8)
 ```
 
 - `Eq`, `Ord`, `Show`, `Hash` and `Save` are derived automatically for records, variants and
   collections of types that have them.
-- `Secret(T)` deliberately has no `Show` and no `Save`. Printing a secret, or holding one across a
+- `Secret(a)` deliberately has no `Show` and no `Save`. Printing a secret, or holding one across a
   `!`, is a compile error.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
 
-## 10. Effects and signatures
+## 12. Effects and signatures
 
 The compiler infers what each function touches. Public signatures state it with `uses`, so a new
 permission always shows up in the diff.
@@ -345,11 +490,60 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 | `publish T`, `consume T` | sending or receiving events | Derives message-queue permissions |
 | `entity E` | reading or changing entities of type `E` | Database grants; includes the type in backups |
 | `secret S` | using secret `S` | Delivers that secret only to code that uses it |
-| `clock`, `random` | `now()`, `random()` | In jobs, allowed only through `!` calls, so a resumed run sees the same values |
+| `clock`, `random` | `now()`, `random()` | Lets tests replace them |
+| `fs`, `process`, `stdio`, `env` | files, running programs, standard input and output, environment variables | Lets embedders and sandboxes grant them one by one |
+| `ffi` | calling an `extern fn` (section 18) | Marks code the compiler can't check |
 
 A private function's effects are inferred and never need writing.
 
-## 11. Entities
+**`!` in jobs.** Inside a job, every call with an outside effect (`net`, `fs`, `process`, `clock`,
+`random`, `ffi` and the rest) is a `!` call: it runs once and its result is recorded, so a resumed run
+never repeats it and sees the same values. Calls that only touch entities or compute are ordinary.
+Outside jobs the same functions are called without `!` (section 13).
+
+## 13. Programs and concurrency
+
+A program starts at `pub fn main`. It is an ordinary function, not a job: its effects happen
+directly, without `!`, and nothing about it is durable.
+
+```eye
+import fs
+
+pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
+  for path in args |> drop(1) {
+    let text = fs.readText(path)?
+    print("{path}: {text |> lines |> size} lines")
+  }
+  Ok(())
+}
+```
+
+- `main` returns `()` or `Result((), e)`. An `Err` is printed with `Show`, and the program exits
+  with status 1.
+- `eye run` also starts the job runtime when the program declares entities or jobs, using the
+  in-memory store unless another is configured.
+
+**Concurrency** is structured. Tasks start inside one call, and all of them finish (or are
+cancelled) before that call returns, so no task outlives the code that started it.
+
+```eye
+let pages = urls |> parallelMap(fn u: http.get(u), limit: 8)    # results in input order
+let (user, orders) = both(fn { users.get(id) }, fn { orders.list(id) })
+let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
+```
+
+- **No `async` or `await`.** Any function can run in a task. A task that waits for input or output
+  is parked by the runtime while others run, so functions don't come in two colours.
+- **No data races.** Tasks share only immutable values; a `var` or `mut` parameter can't be
+  captured. Results come back as return values.
+- **Cheap tasks.** A task's stack starts small and grows, so thousands of waiting tasks cost little
+  memory.
+- `race` cancels the losers at their next wait. `timeout(5 s, fn { … })` returns an `Option`.
+- **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
+  `first!`. `parallelMap` is allowed in a job only with a pure function, since its steps aren't
+  recorded.
+
+## 14. Entities
 
 ```eye
 @version(3)
@@ -375,20 +569,22 @@ entity Player(id: PlayerId) {
   default state.
 - **Methods are atomic transactions.** One writer at a time per entity, all or nothing. A method
   may call methods on other entities, and the whole call tree commits or rolls back together.
-- **How to think about `state`:** a method works on a copy of the entity's state, as if it were a
-  `var self`, loaded before the call and saved when the transaction commits. Assigning to a `state`
-  field changes that copy, and nothing outside the method sees the change until the commit.
+- **State and `mut self`:** an entity method is a `mut self` method over the entity's state
+  (section 7), and a `state` field such as `devices` is short for `self.devices`. The state is
+  loaded before the call and saved when the transaction commits; nothing outside the method sees a
+  change until the commit.
 - **Methods never wait.** They can't use `!`, so they can't call other services; those calls
-  belong in jobs. A method can `start` a job, and the job begins only if the transaction commits.
+  belong in jobs. A method can start a job (`wake.start(id)`), and the job begins only if the
+  transaction commits.
   Because entity methods have no outside side effects, the runtime can safely retry one after a
   conflict.
 - **Reading from a job:** `w.read!()` returns a snapshot with a `version` field. Snapshots go stale,
-  and commands can name the version they were based on (see `@fresh` in section 14).
+  and commands can name the version they were based on (see `@fresh` in section 17).
 - **Evolution:** adding a field with a default is automatic. Any other change to stored state needs
   a `migrate from N` function. The compiler refuses to deploy if a stored version has no path to the
   current one, and rows are migrated when they are next loaded.
 
-## 12. Jobs and waiting
+## 15. Jobs and waiting
 
 A job is a durable function: it can pause for any length of time and holds no memory while paused.
 
@@ -406,8 +602,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 }
 ```
 
-- **`!` marks a checkpoint.** At each `!` the job's live variables are saved to a row, and the call's
-  result is recorded. A resumed or restarted run continues from the last checkpoint and never
+- **`!` marks a checkpoint.** Every call with an outside effect in a job is a `!` call (section 12).
+  At each `!` the job's live variables are saved, and the call's result is recorded. A resumed or restarted run continues from the last checkpoint and never
   repeats a recorded call.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a checkpoint is a compile error.
@@ -432,11 +628,12 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `reserve!(1 GiB, fn { … })` | memory from the host, released when the function returns |
   | `lock!("ci", for: 30 min, fn { … })` | a named lock that records its owner and expiry |
   | `run.join!()` | a job started earlier |
-  | `first!([a, b])` | whichever of several waits finishes first |
+  | `all!([a, b])`, `first!([a, b])` | every one, or whichever finishes first, of several waits |
 
-- **Starting jobs:** `start irelandDigest(day)` returns a `Run(T)`. It works from entity methods (as
-  part of the transaction) and from jobs, where it starts a child run. Scheduled starts use
-  `start x after 20 min` or `start x at 07:40 in "Europe/Dublin"`.
+- **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
+  part of the transaction) and from jobs, where it starts a child run. Scheduled starts take
+  `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
+  `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`.
 - **Attributes:**
 
   | Attribute | Meaning |
@@ -448,7 +645,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `@concurrency(n, by: key)` | at most `n` runs at once, optionally per key |
   | `@limit(n, per: duration)` | rate limit |
 
-## 13. Views and triggers
+## 16. Views and triggers
 
 ```eye
 view idleWorlds = World.all
@@ -464,7 +661,7 @@ job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
   entity that stops matching.
 - Over entity sets, pipelines compile to SQL. The same functions work on in-memory lists.
 
-## 14. Contracts: talking to other services
+## 17. Contracts: talking to other services
 
 A contract is the single description of another service's interface. It is written once and shared
 by eyelang and the Go, TypeScript, Rust and Python code that implements or calls it. Think of it as a
@@ -504,7 +701,28 @@ type Delivery =
 - **Generated code for other languages** (types, clients and server stubs for Go, TypeScript, Rust
   and Python) is a build output, never committed.
 
-## 15. Time, secrets, tests
+## 18. Calling C and Go
+
+```eye
+@library("z")
+extern fn crc32(crc: UInt64, data: Bytes, length: UInt32) -> UInt64
+
+@host("lab.desk")                  # provided by the Go program that embeds Eyelang
+extern fn showOnDesk(text: String) -> Result((), String)
+```
+
+- An `extern fn` has a signature and no body. Calling one has the `ffi` effect, which public
+  signatures state like any other.
+- `@library` links a C function by its symbol. `@host` names a function that the Go program
+  embedding Eyelang registers through the embedding API; the standard library's own primitives are
+  provided the same way.
+- Across the boundary go `Bool`, `Byte`, the fixed-width integers, `Float`, and `Bytes` and `String`
+  (copied). An object owned by foreign code is a `Handle(name)`, which can't be saved, so it can't
+  be live across a `!`.
+- The compiler trusts an extern's signature. It can't check that the foreign side is total or that
+  it has no other effects, which is why `ffi` shows up in every signature that depends on one.
+
+## 19. Time, secrets, tests
 
 **Time.** Schedules carry their zone: `daily(07:40, in: "Europe/Dublin")`. Daylight-saving gaps and
 overlaps follow a declared policy (`onGap: shift`, `onOverlap: first`), so there are never two UTC
@@ -514,7 +732,7 @@ crons and an hour check.
 
 ```eye
 let token: Secret(String) = secret("telegram-bot-token")
-http.post!(url, auth: bearer(token))       # bearer() accepts a Secret
+http.post(url, auth: bearer(token))        # bearer() accepts a Secret
 log.info("token is {token}")               # compile error: Secret has no Show
 ```
 
@@ -522,7 +740,7 @@ log.info("token is {token}")               # compile error: Secret has no Show
 `fakes(…)`, `clock(…)` with `advance(…)`, `memory(…)`. In tests, jobs run against an in-memory
 store, so every run is deterministic and fast.
 
-## 16. What happens to Eyelang 1
+## 20. What happens to Eyelang 1
 
 The current code was a testing ground. Little of it carries over, because Eyelang 2 changes the
 semantics, not just the syntax. Proposed handling:
@@ -536,7 +754,7 @@ semantics, not just the syntax. Proposed handling:
 | `bin/` | 8.2 MB of binaries | **Delete now** | Build outputs don't belong in git; publish them as release assets from CI |
 | `parser/debug.go`, `parser/parser_tracer.go` | 59 lines | Delete with the parser | Commented-out code and a debug tracer called from 17 places |
 | `token/`, `lexer/` | ~420 lines | **Replace** | New tokens (units, dates, times, interpolation, `!`, `@`), byte-offset spans, keeping comments for the formatter |
-| `parser/`, `ast/` | ~1,100 lines | **Replace** | Needs a lossless syntax tree with error recovery (see section 17) |
+| `parser/`, `ast/` | ~1,100 lines | **Replace** | Needs a lossless syntax tree with error recovery (see section 21) |
 | `eval/`, `object/` | ~1,600 lines | **Replace** | The new reference interpreter runs typed IR with entities and jobs; the current evaluator can't be adapted to that |
 | `cli/`, `main.go` | ~120 lines | **Replace** | Becomes the `eye` command: `run`, `build`, `test`, `fmt`, `check`, `repl`, `why` |
 | `repl/lineedit.go` | 318 lines | **Keep** | The line editor and history work and aren't tied to the language |
@@ -546,16 +764,16 @@ semantics, not just the syntax. Proposed handling:
 
 Before deleting anything, tag the current state as `eyelang-1` so it stays easy to find and run.
 
-## 17. Implementation plan
+## 21. Implementation plan
 
 **Parsing: the grammar is the spec, the compiler's parser is hand-written.** Decided 2026-10-10.
 
 - **`tree-sitter-eyelang/grammar.js` is the executable grammar.** It is the canonical definition of
-  the syntax, and section 18 is a readable summary of it. It also drives highlighting in editors
+  the syntax, and section 22 is a readable summary of it. It also drives highlighting in editors
   (Neovim, Helix, Zed, and VS Code through an extension). A small external scanner in C decides
   which newlines end statements, tells a block's `{` from a literal's, and reads string text.
 - **The compiler parses by hand,** in Go, with recursive descent and Pratt parsing for expressions
-  (precedence table in section 18). That keeps cgo and runtime libraries out of the compiler and keeps
+  (precedence table in section 22). That keeps cgo and runtime libraries out of the compiler and keeps
   error messages under our control. Most production compilers work this way: Go, Rust, TypeScript,
   Swift, Clang and Zig.
 - **A conformance suite keeps the two honest.** `testdata/syntax/` holds example files, both valid and
@@ -581,10 +799,13 @@ diagnostics layer, and a conversion from its editor-oriented tree.
 1. Tree-sitter grammar, hand-written lexer and lossless parser, and the conformance suite, with
    `eye fmt` and `eye check --syntax`.
 2. Name resolution and modules (`import`, `pub`).
-3. Type checker: inference inside bodies, checked signatures, traits, exhaustiveness, total arithmetic.
-4. Effect inference and checks: `uses`, the `!` rules, and `Save` across checkpoints.
+3. Type checker: inference inside bodies, checked signatures, generics with `where`, traits and
+   methods, exhaustiveness, total arithmetic.
+4. Effect inference and checks: `uses`, the `!` rules, `Save` across checkpoints, and the
+   no-aliasing rule for `mut`.
 5. Typed IR, plus a reference interpreter on that IR. Used by the REPL and tests, with entities
-   and jobs on an in-memory store. `entity`, `job`, `contract` and `view` are each lowered into core
+   and jobs on an in-memory store, structured concurrency on lightweight tasks, and `extern`
+   functions from the Go host or from C libraries loaded at run time (without cgo). `entity`, `job`, `contract` and `view` are each lowered into core
    IR by their own pass, kept separate from the type checker. Nothing else in the compiler needs to
    know about them, and the passes are already shaped like macros if metaprogramming is added after
    v1.0.
@@ -592,69 +813,84 @@ diagnostics layer, and a conversion from its editor-oriented tree.
    Postgres store.
 7. Code generation to C with reference counting, as described in the compilation analysis.
 
-## 18. Grammar sketch
+## 22. Grammar sketch
 
 A readable summary of [`tree-sitter-eyelang/grammar.js`](tree-sitter-eyelang/grammar.js), which is
-the definition. `sep` is `;` or a newline that ends a statement (section 4); `{` marked *block* is
+the definition. This sketch already includes the general-purpose additions decided on 2026-10-10
+(`mut`, tuples, characters, ranges and slices, `impl Type`, `where`, `extern`, `opaque`, contextual
+keywords, `job.start(…)` in place of `start`); the grammar catches up in ROADMAP task 1.8. `sep` is `;` or a newline that ends a statement (section 4); `{` marked *block* is
 the brace that opens a block. Lists in `( )`, `[ ]` and literal braces allow a trailing comma.
 Every `eye` example in this document is a whole file or the statements of a function body, and CI
 parses each one with both parsers.
 
 ```ebnf
 file       = { sep } [ item { sep item } { sep } ] ;
-item       = import | fn | job | entity | view | type | trait | impl | contract | test | let ;
+item       = import | fn | extern | job | entity | view | type | trait | impl | contract | test | let ;
 import     = "import" ident { "." ident } [ ".{" name { "," name } "}" ] ;
 attribute  = "@" ident [ args ] ;
-fn         = { attribute } [ "pub" ] "fn" ident params [ "->" type ] [ uses ] ( "=" expr | block ) ;
+fn         = { attribute } [ "pub" ] "fn" ident params [ "->" type ] [ uses ] [ where ]
+             ( "=" expr | block ) ;
+extern     = { attribute } [ "pub" ] "extern" "fn" ident params [ "->" type ] [ uses ] ;
 params     = "(" [ param { "," param } ] ")" ;
-param      = ident [ ":" type ] [ "=" expr ] ;
+param      = [ "mut" ] ident [ ":" type ] [ "=" expr ] ;           (* self, mut self *)
 uses       = "uses" "{" [ effect { "," effect } ] "}" ;          (* wait, net Llm.complete *)
+where      = "where" ident ":" bound { "," ident ":" bound } ;
+bound      = typeexpr { "+" typeexpr } ;
 job        = { attribute } [ "pub" ] "job" ident params [ "->" type ] [ uses ] block ;
 entity     = { attribute } [ "pub" ] "entity" Ident params "{" members "}" ;
 member     = { attribute } "state" ident ":" type [ "=" expr ]
            | fn
            | { attribute } "migrate" "from" int "(" ident ")" block ;
 view       = { attribute } [ "pub" ] "view" ident "=" expr ;
-type       = { attribute } [ "pub" ] "type" Ident [ "(" Ident { "," Ident } ")" ] "=" ( typeexpr | variants ) ;
+type       = { attribute } [ "pub" [ "opaque" ] ] "type" Ident [ "(" ident { "," ident } ")" ]
+             "=" ( typeexpr | variants ) ;
 variants   = [ "|" ] variant "|" variant { "|" variant } | "|" variant ;
 variant    = Ident [ "(" ( ident ":" typeexpr | typeexpr ) { "," … } ")" ] ;
-trait      = { attribute } [ "pub" ] "trait" Ident "{" { fn | fnsig } "}" ;
-impl       = { attribute } "impl" typeexpr "for" typeexpr "{" { fn } "}" ;
+trait      = { attribute } [ "pub" ] "trait" Ident [ "(" ident { "," ident } ")" ] "{" { fn | fnsig } "}" ;
+impl       = { attribute } "impl" typeexpr [ "for" typeexpr ] "{" { fn } "}" ;
 contract   = { attribute } [ "pub" ] "contract" Ident "{" { cmember } "}" ;
 cmember    = { attribute } ( "command" | "query" ) ident params "->" typeexpr
            | { attribute } "event" ident ":" typeexpr "on" string ;
 test       = { attribute } "test" string block ;
 
 block      = "{"(block) { sep } [ stmt { sep stmt } { sep } ] "}" ;
-stmt       = let | "var" ident [ ":" type ] "=" expr | ident "=" expr
+stmt       = let | "var" ident [ ":" type ] "=" expr | place assign expr
            | "for" pattern "in" expr block | "while" expr block
            | "with" expr | "return" [ expr ] | "break" | "continue" | expr ;
 let        = "let" pattern [ ":" typeexpr ] "=" expr [ "else" block ] ;
+place      = ident { "." ident } ;
+assign     = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 
 expr       = lambda | binary ;                              (* precedence table below *)
 lambda     = "fn" [ ident | params ] ( ":" expr | block ) ;
-unary      = ( "-" | "!" ) unary | "start" call [ ( "after" | "at" ) expr ] | postfix ;
-postfix    = primary { args | "!(" args… | "." name | "[" expr "]" | "?" } ;
+unary      = ( "-" | "!" ) unary | postfix ;
+postfix    = primary { args | "!(" args… | "." name | "[" ( expr | slice ) "]" | "?" } ;
+slice      = [ expr ] ( ".." | "..=" ) [ expr ] ;
 args       = "(" [ arg { "," arg } ] ")" ;
-arg        = [ ( ident | "in" | "for" ) ":" ] expr ;
-primary    = ident | Ident | "_" | literal | "(" expr ")" | "[" [ expr { "," expr } ] "]"
+arg        = [ ( ident | "in" | "for" ) ":" ] ( expr | "mut" place ) ;
+primary    = ident | Ident | "_" | literal | "(" expr ")" | "(" expr "," expr { "," expr } ")"
+           | "[" [ expr { "," expr } ] "]"
            | "{" "}" | "{" field { "," field } "}" | "{" expr "with" field { "," field } "}"
            | "{" key ":" expr { "," key ":" expr } "}"
            | "if" expr block [ "else" ( block | if ) ]
            | "match" expr "{" { arm ( "," | sep ) } "}" ;
 field      = ident ":" expr | ident ;
-key        = string | int | "(" expr ")" ;
+key        = string | int | date | time | "(" expr ")" ;
 arm        = pattern [ "if" expr ] "=>" ( block | expr ) ;
-literal    = int | float | string | "true" | "false" | "()" | number unit
+literal    = int | float | char | string | "true" | "false" | "()" | number unit
            | date | time | date time "in" string | time "in" string ;
 
 pattern    = pattern "|" pattern | ident | "_" | literal | "-" number
+           | bound ( ".." | "..=" ) bound                      (* bound: a number or char *)
            | Ident [ "(" [ ppart { "," ppart } ] ")" ]
+           | "(" pattern "," pattern { "," pattern } ")"
            | "{" [ ( ident ":" pattern | ident | ".." ) { "," … } ] "}"
            | "[" [ ( pattern | ".." [ ident ] ) { "," … } ] "]" ;
 ppart      = pattern | ident ":" pattern | ".." ;
 typeexpr   = Ident [ "(" typeexpr { "," typeexpr } ")" ] | ident "." Ident [ "(" … ")" ]
-           | "()" | "{" [ ident ":" typeexpr { "," … } ] "}"
+           | ident                                            (* a type variable *)
+           | "()" | "(" typeexpr "," typeexpr { "," typeexpr } ")"
+           | "{" [ ident ":" typeexpr { "," … } ] "}"
            | "fn" "(" [ typeexpr { "," typeexpr } ] ")" [ "->" typeexpr ] ;
 ```
 
@@ -662,23 +898,24 @@ typeexpr   = Ident [ "(" typeexpr { "," typeexpr } ")" ] | ident "." Ident [ "("
 
 | Level | Operators |
 |---|---|
-| 1 | postfix: call `f(x)`, waiting call `f!(x)`, field `.x`, index `[i]`, propagate `?` |
-| 2 | prefix: `-`, `!` (not), `start` |
+| 1 | postfix: call `f(x)`, waiting call `f!(x)`, field `.x`, index `[i]`, slice `[a..b]`, propagate `?` |
+| 2 | prefix: `-`, `!` (not) |
 | 3 | `*` `/` `%` |
 | 4 | `+` `-` |
 | 5 | `|>` |
-| 6 | `<` `>` `<=` `>=` |
-| 7 | `==` `!=` |
-| 8 | `&&` |
-| 9 | `||` |
-| 10 | `??` (default for `Option`) |
-| 11 | lambda body: `fn x: …` takes everything to its right |
+| 6 | `..` `..=` (ranges; they don't chain) |
+| 7 | `<` `>` `<=` `>=` |
+| 8 | `==` `!=` |
+| 9 | `&&` |
+| 10 | `||` |
+| 11 | `??` (default for `Option`) |
+| 12 | lambda body: `fn x: …` takes everything to its right |
 
 `!` directly after an expression and directly before `(` is the waiting marker; `!` before an
 expression is logical not. `?` directly after an expression propagates an error; `??` is the
 operator. All binary operators associate to the left except `??`, which associates to the right.
 
-## 19. Open questions
+## 23. Open questions
 
 1. **Time conditions in views**, such as "idle for 20 minutes". Today that is `enters(view)` plus
    `sleep!`. Should views support `for 20 min` directly?
@@ -688,20 +925,28 @@ operator. All binary operators associate to the left except `??`, which associat
    contracts only?
 4. **Job code upgrades:** when a new version changes what is live at a checkpoint, do paused runs
    finish on the old version, or must the change come with a migration?
-5. **Parallel pure computation:** `pmap` over pure functions inside a job, without creating child
-   runs?
-6. **Packages:** `eye.toml` and an `eye.lock` that carries hashes (so Nix needs no placeholder
+5. **Packages:** `eye.toml` and an `eye.lock` that carries hashes (so Nix needs no placeholder
    hash); registry or git only?
-7. **Calling C or Go libraries:** is a foreign-function interface needed for v1?
-8. **REPL behaviour for jobs:** run them against the in-memory store with a controllable clock?
-9. **Metaprogramming after v1.0:** if real code keeps repeating the same patterns, add attribute
+6. **REPL behaviour for jobs:** run them against the in-memory store with a controllable clock?
+7. **Metaprogramming after v1.0:** if real code keeps repeating the same patterns, add attribute
    macros (compile-time Eyelang functions that inspect a declaration's types and generate code).
    The built-in constructs could then be re-expressed with them, and grammar and editor support
    would stay unchanged because macros would only appear as attributes.
-10. **Multi-line strings:** strings stay on one line for now, which keeps an unclosed quote from
-    swallowing the rest of a file in editors. Prompts and templates will want a multi-line form
-    (indented, with the margin stripped). Which delimiter?
-11. **Durability without a database:** the in-memory store could append each commit (entity changes
-    and checkpoints) to a journal file, fsynced before the commit is acknowledged, and replay it on
-    start, with periodic snapshots to bound replay time. Is that enough for single-machine
-    deployments, and what is the file format?
+8. **Multi-line strings:** strings stay on one line for now, which keeps an unclosed quote from
+   swallowing the rest of a file in editors. Prompts and templates will want a multi-line form
+   (indented, with the margin stripped). Which delimiter?
+9. **Durability without a database:** the in-memory store could append each commit (entity changes
+   and checkpoints) to a journal file, fsynced before the commit is acknowledged, and replay it on
+   start, with periodic snapshots to bound replay time. Is that enough for single-machine
+   deployments, and what is the file format?
+10. **Dynamic dispatch:** a list of different types that share a trait needs something like Rust's
+    `dyn Trait`. v0.1 uses variants for that. Is `List(dyn Named)` worth adding?
+11. **Channels between tasks:** structured concurrency covers starting tasks and collecting their
+    results. Producer and consumer pipelines want bounded channels; add `channel(capacity)`, or
+    stream through iterators only?
+12. **Self-hosting order:** after v0.4, which part moves to Eyelang first: the formatter, the lexer
+    and parser (checked by the conformance suite as a third implementation), or `eye doc`?
+13. **Converting errors with `?`:** `fs.readText(path)?` in a function whose error type is
+    `CountError` needs the `FsError` turned into a `CountError`. Wrap it automatically when the
+    caller's error type has exactly one variant that holds an `FsError`, or always require
+    `.mapErr(…)`?

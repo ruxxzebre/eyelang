@@ -11,7 +11,7 @@ import (
 //
 // The grammar is tree-sitter-eyelang/grammar.js. Declarations and statements
 // are parsed by recursive descent and expressions by precedence climbing, with
-// the precedence table of SPECS.md section 18.
+// the precedence table of SPECS.md section 22.
 func Parse(src []byte) *File {
 	tokens, lexDiags := Lex(src)
 	p := &parser{src: src, lines: NewLines(src), errLines: map[int]bool{}}
