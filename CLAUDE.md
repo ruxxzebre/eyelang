@@ -130,7 +130,7 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `tools/spechtml/`, `internal/highlight/` | Render SPECS.md as one HTML page (`task spec`), highlighted by the parser |
 | `internal/apidoc/` | The API reference `eye doc` writes from `##` comments |
 | `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
-| `check/` | Loads a program's modules, resolves names, reports errors (types come in phase 2); `prelude.eye` and `std/` are the standard library written in Eyelang |
+| `check/` | Loads a program's modules, resolves names, checks types, matches and effects, reports errors; `prelude.eye` and `std/` are the standard library written in Eyelang |
 | `ir/` | The resolved form programs are lowered to |
 | `interp/` | Reference interpreter and in-memory runtime: entities, views, jobs, clock, fakes |
 | `testdata/programs/` | Programs whose tests `go test ./interp` runs; `tour/tour.eye` is generated from SPECS.md |

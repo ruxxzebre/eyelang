@@ -2,9 +2,10 @@
 
 Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
 [ROADMAP.md](ROADMAP.md). The syntax is implemented (phase 1), and a reference interpreter runs
-programs, the tour in section 3 included, without checking types yet (phase 2). The lab's real
-workloads, written in Eyelang in [testdata/lab](testdata/lab), check and pass their tests; the rules
-they changed say "from the lab" in the decision log. Eyelang 1, the
+programs, the tour in section 3 included. `eye check` checks types, exhaustive matches and effects
+(a first slice of phase 2; ROADMAP.md says what is left). The lab's real workloads, written in
+Eyelang in [testdata/lab](testdata/lab), check and pass their tests; the rules they changed say
+"from the lab" in the decision log. Eyelang 1, the
 Monkey-style tree-walking interpreter that served as a testing ground, has been removed; it is kept
 at the tag `eyelang-1` (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 
@@ -81,6 +82,7 @@ construct that also works outside that domain.
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
 | Errors | **Result only**: no exceptions. `?` wraps an error into the caller's error type when exactly one of its variants holds it; otherwise `.mapErr(…)`. Runtime faults and `unreachable` become outcomes of the run | Every failure is visible in a type, and wrapping needs no boilerplate |
 | Records | **Nominal**: a record type is its name, and a literal takes the type its context expects | Same-shaped types can't be mixed up, and methods, operators, schemas and error messages have a name to use |
+| Results | **A function without `->` returns `()` when its body is a block**, and its last value is dropped; one written `= expr` returns the expression's type, inferred. `while true` without `break` has any type, since only `return` leaves it | Entity methods, jobs and helpers that do something need no `-> ()`, and a loop that serves until it returns needs no `unreachable` after it. From the type checker: Notify's delivery loop |
 | Effects | **Inferred inside, stated at the boundary**: public functions list their effects with `uses` (none means pure); a callback's effects pass to the call that gives it; a function type kept in data states its effects | Permissions show up in the diff without annotating every helper, and higher-order functions work with any callback |
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
@@ -343,8 +345,11 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 - **Opaque types:** `pub opaque type Lexer = { … }` exports the type but not its fields, so other
   modules use it only through its functions and methods.
 - **String literals take the type expected,** as record literals do: where a `Key` or a `Zone` is
-  expected, `"ireland-{day}"` is a `Key` and `"Europe/Dublin"` a `Zone`. A zone's name is checked
-  against the time-zone database when the program is compiled.
+  expected, `"ireland-{day}"` is a `Key` and `"Europe/Dublin"` a `Zone`. The expectation may come
+  later: `let key = "digest-{id}"` is a `Key` when `key` is passed where a `Key` goes, and a literal
+  nothing decides is a `String`. A variable declared `String` isn't a `Key`. A zone's name is
+  checked against the time-zone database when the program is compiled. Integer literals take a
+  fixed-width type the same way.
 - **Maps** use literal or parenthesised keys: `{"a": 1}`, `{(key): 1}`. Records use names:
   `{a: 1}`, and `{ name, age }` is short for `{ name: name, age: age }`. `{}` is an empty map,
   set or record, depending on the type expected. Other sets are built from lists: `toSet([a, b])`.
@@ -389,6 +394,11 @@ for i in 0..n { log.info("{i}") }
 - Named arguments with defaults: `fn page(size: Int = 50, after: Option(Cursor) = None)`.
 - **`name:` alone** passes the variable of that name: `page(size:, after:)` is
   `page(size: size, after: after)`.
+- **Results.** A function without `->` returns `()` if its body is a block, and the value of its
+  last expression is dropped; `fn double(n) = n * 2` returns its expression's type. A private
+  function may leave out parameter types too; they are inferred from its body and its calls, and
+  are the same at every call. `while true` without a `break` never ends but by `return`, so it can
+  stand where any value is expected.
 - **A module-level `let`** binds a value computed once; `pub let dublin: Zone = "Europe/Dublin"`
   exports it, and other modules import it by name like any other declaration.
 - **A branch that is one assignment** needs no braces, as one that is one expression doesn't:
@@ -757,7 +767,8 @@ entity Player(id: PlayerId) {
 - **State and `mut self`:** an entity method is a `mut self` method over the entity's state
   (section 7). A `state` field such as `devices` is short for `self.devices`, and a method is
   called by its name too: `unpin(p)` in another method is `self.unpin(p)`, in the same
-  transaction. The state is
+  transaction. A pipe still calls a function, never a method: `shapes |> add(s)` is the collection
+  function `add`, even in an entity that has a method of that name. The state is
   loaded before the call and saved when the transaction commits; nothing outside the method sees a
   change until the commit.
 - **Methods never wait.** They can't use `!`, so they can't call other services; those calls
@@ -766,9 +777,10 @@ entity Player(id: PlayerId) {
   Because entity methods have no outside side effects, the runtime can safely retry one after a
   conflict.
 - **Reading from a job:** `w.read!()` returns a snapshot, whose type is the entity's name
-  (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field, which counts the
-  transactions that changed the entity: 0 when it is new, then one more for each. Snapshots go stale,
-  and commands can name the version they were based on (see `@fresh` in section 17).
+  (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field,
+  which counts the transactions that changed the entity: 0 when it is new, then one more for each.
+  Snapshots go stale, and commands can name the version they were based on (see `@fresh` in
+  section 17). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
 - **Evolution:** adding a field with a default is automatic. Any other change to stored state needs
   a `migrate from N` function. The compiler refuses to deploy if a stored version has no path to the
   current one, and rows are migrated when they are next loaded.
@@ -897,7 +909,8 @@ type Delivery =
 - **`import notify` is a typed edge.** Port, network policy, credentials and the allowed-caller check
   are derived from it, so a wrong port or an unapproved caller is a compile error.
 - **Commands** return a variant type, and every command can also return `Uncertain(key)`: its
-  reply was lost, so the other service may or may not have acted. With `@reconcile(query)`,
+  reply was lost, so the other service may or may not have acted. Until it is reconciled, or a
+  `match` handles `Uncertain(_)`, the result can't be passed where the declared type is expected. With `@reconcile(query)`,
   `.reconcile!()` resolves it by asking the query, which returns `Option` of the command's outcome:
   `Some` is the outcome, and `None` means the command never arrived, so it is sent again with the
   same key, which can't do it twice. A command without `@reconcile`, such as one to a service that
@@ -1369,3 +1382,9 @@ operator. All binary operators associate to the left except `??`, which associat
     deployment say where requests go and who may answer (the lab would use Notify's buttons)?
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
+19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and
+    standard output are. Are logging, publishing an event and starting a job effects too, to be
+    stated with `uses`? (`publish T` is in the table of section 12; the checker doesn't infer it yet.)
+20. **Collection functions' types.** `map`, `filter` and `size` work on lists, sets, maps, ranges and
+    `Option`s; `take` on strings too. Until traits are checked, the checker has a rule for each. Is
+    the final form a `Collection` trait, or functions named per kind?

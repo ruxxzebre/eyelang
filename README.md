@@ -15,7 +15,8 @@ and a call to another service replayed from a recording.
 go run ./cmd/eye test testdata/programs/tour
 ```
 
-The interpreter resolves names but doesn't check types yet; that is phase 2.
+`eye check` checks names, types, exhaustive matches and effects; traits and `mut` come later in
+phase 2.
 
 | Command | What it does |
 |---|---|
@@ -77,7 +78,7 @@ Prebuilt binaries for Linux, macOS and Windows are attached to each
 | `syntax/` | Lexer, lossless parser, syntax tree and formatter (phase 1) |
 | `testdata/syntax/` | The conformance suite: files that both parsers must parse identically, or both reject |
 | `testdata/programs/` | Programs whose tests `go test ./interp` runs: the tour, and the language tested in itself |
-| `check/` | Loads a program's modules, resolves names, reports errors; types and effects come in phase 2 |
+| `check/` | Loads a program's modules, resolves names, checks types, matches and effects, reports errors |
 | `ir/` | The resolved form programs are lowered to; types will be added to it |
 | `interp/` | The reference interpreter and in-memory runtime: entities, views, jobs, clock, fakes |
 | `repl/` | Line editor with history, reused by `eye repl` |

@@ -84,10 +84,29 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 		}
 	}
 	fn.Return = c.typeExpr(m, f, d.ChildByField(syntax.FieldReturnType), nil)
+	fn.Uses, fn.HasUses = usesOf(f, d)
 	l.wrap = errorType(fn.Return)
 	if body := d.ChildByField(syntax.FieldBody); body != nil {
 		fn.Body = l.expr(body)
 	}
+}
+
+// usesOf reads a declaration's uses clause: each effect as written, such as
+// "net Notify.send".
+func usesOf(f *ir.File, d *syntax.Node) ([]string, bool) {
+	clause := d.ChildByField(syntax.FieldEffects)
+	if clause == nil {
+		return nil, false
+	}
+	var out []string
+	for _, e := range clause.NamedChildren() {
+		kind := text(f, e.ChildByField(syntax.FieldKind))
+		if target := e.ChildByField(syntax.FieldTarget); target != nil {
+			kind += " " + text(f, target)
+		}
+		out = append(out, kind)
+	}
+	return out, true
 }
 
 // errorType returns E for a function that returns Result(T, E), when E is a
@@ -233,12 +252,14 @@ func (l *lowerer) stmt(n *syntax.Node) ir.Expr {
 			elseBody = l.block(alt)
 		}
 		pat := l.pattern(n.ChildByField(syntax.FieldPattern), map[string]int{})
-		return &ir.Let{At: l.at(n), Pattern: pat, Value: value, Else: elseBody}
+		return &ir.Let{At: l.at(n), Pattern: pat, Type: l.c.typeExpr(l.m, l.f, n.ChildByField(syntax.FieldType), nil),
+			Value: value, Else: elseBody}
 	case syntax.VarStatement:
 		value := l.expr(n.ChildByField(syntax.FieldValue))
 		name := n.ChildByField(syntax.FieldName)
 		slot := l.bind(l.text(name), true, true)
-		return &ir.Let{At: l.at(n), Pattern: ir.PBind{Name: l.text(name), Slot: slot}, Value: value}
+		return &ir.Let{At: l.at(n), Pattern: ir.PBind{Name: l.text(name), Slot: slot},
+			Type: l.c.typeExpr(l.m, l.f, n.ChildByField(syntax.FieldType), nil), Value: value}
 	case syntax.Assignment:
 		op := l.text(n.ChildByField(syntax.FieldOperator))
 		value := l.expr(n.ChildByField(syntax.FieldRight))
@@ -713,7 +734,7 @@ func (l *lowerer) pipe(n, left, right *syntax.Node) ir.Expr {
 			args = append([]ir.Arg{piped}, args...)
 		}
 		waiting := right.Kind == syntax.WaitingCallExpression
-		call := l.call(right, right.ChildByField(syntax.FieldFunction), args, waiting)
+		call := l.pipedCall(right, right.ChildByField(syntax.FieldFunction), args, waiting)
 		if waiting {
 			if ok, why := l.canWait(); !ok {
 				l.errorf(right, "%s", why)
@@ -722,7 +743,7 @@ func (l *lowerer) pipe(n, left, right *syntax.Node) ir.Expr {
 		}
 		return call
 	}
-	return l.call(n, right, []ir.Arg{piped}, false)
+	return l.pipedCall(n, right, []ir.Arg{piped}, false)
 }
 
 func (l *lowerer) args(n *syntax.Node) []ir.Arg {
@@ -782,6 +803,23 @@ func (l *lowerer) call(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.E
 		l.checkDurable(n, r.Decl, waiting)
 	}
 	return &ir.Call{At: at, Func: callee, Args: args}
+}
+
+// pipedCall lowers the call a pipe makes. A pipe calls a function, never a
+// method (SPECS.md §8), so in an entity `shapes |> add(s)` is the function
+// add even where the entity has a method of that name.
+func (l *lowerer) pipedCall(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir.Expr {
+	if fnNode.Kind != syntax.Ident || !l.ownMethod(fnNode) {
+		return l.call(n, fnNode, args, waiting)
+	}
+	name := l.text(fnNode)
+	d := l.c.lookupValue(l.m, name)
+	if d == nil {
+		l.errorf(fnNode, "%s is a method of this entity, and a pipe calls a function; write %s(…) to call the method", name, name)
+		return &ir.Lit{At: l.at(n), Value: ir.Unit{}}
+	}
+	l.checkDurable(n, d, waiting)
+	return &ir.Call{At: l.at(n), Func: &ir.Ref{At: l.at(fnNode), Decl: d}, Args: args}
 }
 
 // ownMethod reports whether n names a method of the entity whose method is

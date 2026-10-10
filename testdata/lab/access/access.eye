@@ -155,7 +155,7 @@ job admit(user: Pending) -> Result(Admission, AdmitError) {
   }
   apply!(step).mapErr(NotApplied)?
   Ok(match step {
-    Admit(groups, ..) => Admitted(groups)
+    Admit(groups: groups, ..) => Admitted(groups)
     _ => Refused
   })
 }

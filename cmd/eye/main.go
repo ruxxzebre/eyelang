@@ -24,8 +24,8 @@ type command struct {
 	name    string
 	summary string
 	run     func(args []string, stdout, stderr io.Writer) int // nil until implemented
-	phase   int                                                // ROADMAP.md phase that implements it
-	issue   int                                                // GitHub issue tracking that phase
+	phase   int                                               // ROADMAP.md phase that implements it
+	issue   int                                               // GitHub issue tracking that phase
 }
 
 var commands []command
@@ -35,7 +35,7 @@ func init() {
 		{name: "parse", summary: "print the syntax tree of files", run: runParse, phase: 1, issue: 2},
 		{name: "fmt", summary: "format source files", run: runFmt, phase: 1, issue: 2},
 		{name: "doc", summary: "write the API reference as Markdown", run: runDoc, phase: 3, issue: 30},
-		{name: "check", summary: "report errors in a program (names and syntax; types come in phase 2)", run: runCheck, phase: 1, issue: 43},
+		{name: "check", summary: "report errors in a program: syntax, names, types and effects", run: runCheck, phase: 1, issue: 43},
 		{name: "run", summary: "run a program's main function", run: runRun, phase: 3, issue: 31},
 		{name: "test", summary: "run the test blocks of a program", run: runTest, phase: 3, issue: 31},
 		{name: "repl", summary: "start an interactive session", phase: 3, issue: 4},

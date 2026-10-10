@@ -23,8 +23,8 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Checks programs: a directory and the modules it imports, or the directory of a")
 		fmt.Fprintln(stderr, "file. Reports errors as file:line:column: message and exits 1 if there are any.")
-		fmt.Fprintln(stderr, "With no paths, checks the program in the current directory. Names, imports and")
-		fmt.Fprintln(stderr, "where waiting calls may appear are checked; types come with phase 2.")
+		fmt.Fprintln(stderr, "With no paths, checks the program in the current directory. Names, imports,")
+		fmt.Fprintln(stderr, "types, exhaustive matches, effects and where waiting calls may appear are checked.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {

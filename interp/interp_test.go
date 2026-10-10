@@ -142,8 +142,6 @@ func TestFaults(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`test "t" { expect([1, 2] |> size == 3) }`, "expected [1, 2] |> size == 3, but [1, 2] |> size is 2"},
 		{`test "t" { unreachable("checked above") }`, "unreachable: checked above"},
-		{`fn f(x: Int) = x
-test "t" { f(1, 2) }`, "too many arguments to f"},
 		{`test "t" { let a = 1 / 0 }`, "division by zero"},
 		{`job j() { sleep!(1 min); unreachable("in a job") }
 test "t" { j.start(); advance(2 min) }`, "job j: "},

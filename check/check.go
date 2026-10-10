@@ -2,9 +2,8 @@
 // ir. It loads the program's module and the modules it imports, resolves
 // every name, and reports what it finds wrong: syntax errors, undefined or
 // duplicate names, waiting calls where nothing can wait, and assignments to
-// what can't change.
-//
-// Types aren't checked yet; that is phase 2 of ROADMAP.md.
+// what can't change. Once every name resolves, it infers and checks types
+// (infer.go), exhaustive matches (exhaust.go) and effects (effects.go).
 package check
 
 import (
@@ -55,6 +54,11 @@ func Program(dir string) (*ir.Program, []Diagnostic) {
 		c.lowerModule(m)
 	}
 	c.prog.Modules = append([]*ir.Module{prelude.mod}, c.prog.Modules...)
+	// Types are checked once every name resolves, so that one undefined
+	// name doesn't bring a crowd of type errors with it.
+	if len(c.diags) == 0 {
+		c.checkTypes()
+	}
 	sort.SliceStable(c.diags, func(i, j int) bool {
 		a, b := c.diags[i].Pos, c.diags[j].Pos
 		if a.File == nil || b.File == nil || a.File != b.File {
@@ -72,6 +76,8 @@ type checker struct {
 	modules map[string]*module // by import path
 	order   []*module          // dependencies before the modules that import them
 	diags   []Diagnostic
+	ts      *typeState
+	nextVar int
 }
 
 // module is a module being checked, with its namespaces.
@@ -257,10 +263,11 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 			c.errorf(pos(f, pat), "a module-level let binds one name")
 			return
 		}
-		g := &ir.Global{Name: text(f, pat), Module: m.mod, Index: len(m.mod.Globals)}
+		g := &ir.Global{Name: text(f, pat), Module: m.mod, Index: len(m.mod.Globals), Pub: hasToken(f, d, "pub"), Pos: pos(f, d)}
 		m.mod.Globals = append(m.mod.Globals, g)
 		c.define(m, f, pat, g.Name, g)
 		m.decls = append(m.decls, func() {
+			g.Type = c.typeExpr(m, f, d.ChildByField(syntax.FieldType), nil)
 			l := c.newFunc(m, f, "let "+g.Name, pos(f, d), ctxGlobal)
 			l.fn.Body = l.expr(d.ChildByField(syntax.FieldValue))
 			g.Init = l.done()
@@ -276,9 +283,21 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 		}
 		m.decls = append(m.decls, func() { c.lowerFunc(m, f, d, fn, ctxPlain, nil, nil) })
 	case syntax.ExternDeclaration:
-		fn := &ir.Func{Name: text(f, nameNode), Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d)}
+		fn := &ir.Func{Name: text(f, nameNode), Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d), Extern: true}
 		m.mod.Funcs[fn.Name] = fn
 		c.define(m, f, nameNode, fn.Name, fn)
+		m.decls = append(m.decls, func() {
+			for _, p := range d.ChildByField(syntax.FieldParameters).NamedChildren() {
+				param := &ir.Param{Name: text(f, p.ChildByField(syntax.FieldName)), Type: c.typeExpr(m, f, p.ChildByField(syntax.FieldType), nil)}
+				if def := p.ChildByField(syntax.FieldDefault); def != nil {
+					l := c.newFunc(m, f, fn.Name, pos(f, p), ctxGlobal)
+					param.Default = l.expr(def)
+				}
+				fn.Params = append(fn.Params, param)
+			}
+			fn.Return = c.typeExpr(m, f, d.ChildByField(syntax.FieldReturnType), nil)
+			fn.Uses, fn.HasUses = usesOf(f, d)
+		})
 	case syntax.EntityDeclaration:
 		c.entityDecl(m, f, d)
 	case syntax.JobDeclaration:

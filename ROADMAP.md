@@ -37,7 +37,19 @@ arguments, `pub let`, zones by name and one-assignment branches into the syntax,
 interpreter: events (`publish`, `@on(event(…))`, `next!`), `poll!`, `sleepUntil!`, reconciling
 through a query, and contracts served in Eyelang (part of 4.4, 4.5 and phase 6).
 
-Still missing before v0.1: type and effect checking (phase 2), the store written in Eyelang (4.2),
+**Types and effects, first slice, 2026-10-10.** `eye check` infers and checks types (2.2), Hindley-Milner
+style inside bodies against signatures as written, with generic type variables, nominal records,
+variants, entities and their snapshots, contracts (a command's result includes `Uncertain`), events,
+jobs and runs, and the built-in library. Matches must be exhaustive, a `let` without `else` must
+match every value (2.3), and `?` wraps errors only into a variant that holds them (2.4). Effects are
+inferred and a public function must state them with `uses`; waiting functions and entity calls in
+jobs need `!`, and a Secret, Handle or function can't be held across a `!` (2.6). A call records the
+type of its result (`ir.Call.Expected`), which a model call's schema comes from. Not checked yet:
+traits and their bounds (2.5: `where` is read but not enforced, and only the operators of the built-in
+types and declared `add`, `sub`… methods are known), `mut` and aliasing (2.8), function types kept in
+data, `dyn`, and NonZero divisors, which are their number type.
+
+Still missing before v0.1: the rest of phase 2 (traits, mutation, diagnostics for every class), the store written in Eyelang (4.2),
 schedules and time zones in triggers, a runner that keeps jobs across restarts, migrations (4.6),
 and the REPL. `approval!` is answered only by tests so far.
 

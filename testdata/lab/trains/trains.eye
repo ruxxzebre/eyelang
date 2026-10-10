@@ -199,10 +199,10 @@ test "a reminder is due once, inside its lead" {
   with fakes(irishrail, notify, from: "recordings/")
   let me = Traveller(UserId("ann"))
   me.pin(pin)
-  expect(due(me, pin, movement, 2026-10-12 08:10 in dublin) == [])
-  expect(due(me, pin, movement, 2026-10-12 08:16 in dublin) |> size == 1)
+  expect(due(me.read(), pin, movement, 2026-10-12 08:10 in dublin) == [])
+  expect(due(me.read(), pin, movement, 2026-10-12 08:16 in dublin) |> size == 1)
   me.remind({ pin, lead: Fixed(before: 15 min) })
-  expect(due(me, pin, movement, 2026-10-12 08:17 in dublin) == [])
+  expect(due(me.read(), pin, movement, 2026-10-12 08:17 in dublin) == [])
 }
 
 test "a press on Boarded boards the train" {

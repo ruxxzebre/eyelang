@@ -7,6 +7,8 @@ type Shape =
 
 type Counter = { hits: Int, last: Option(Int) }
 
+type Person = { name: String, age: Int }
+
 type ParseError = | NotANumber(String)
 
 type CountError =
@@ -70,7 +72,7 @@ test "strings interpolate any value" {
 }
 
 test "records are values" {
-  let a = { name: "Ann", age: 3 }
+  let a: Person = { name: "Ann", age: 3 }
   let b = { a with age: 4 }
   expect(a.age == 3)
   expect(b.age == 4)

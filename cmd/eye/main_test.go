@@ -235,7 +235,7 @@ func TestTestCommand(t *testing.T) {
 }
 
 func TestRunCommand(t *testing.T) {
-	dir := program(t, map[string]string{"main.eye": `pub fn main(args: List(String)) -> Result((), String) {
+	dir := program(t, map[string]string{"main.eye": `pub fn main(args: List(String)) -> Result((), String) uses {stdio} {
   let names = args |> drop(1)
   if names |> isEmpty { return Err("who?") }
   for name in names { print("hello, {name}") }

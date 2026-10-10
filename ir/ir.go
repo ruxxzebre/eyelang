@@ -3,9 +3,9 @@
 // interpolation are spelled out as calls, and locals live in numbered slots.
 // The interpreter runs it.
 //
-// Types aren't in it yet. The checker resolves names and checks where waiting
-// calls may appear; type inference (phase 2) will annotate this form rather
-// than replace it.
+// The checker resolves names, then infers and checks types and effects over
+// this form. It keeps what later stages need: the type a call's result was
+// inferred to have (Call.Expected), from which a model call's schema comes.
 package ir
 
 import (
@@ -78,8 +78,11 @@ type Module struct {
 type Global struct {
 	Name   string
 	Module *Module
-	Init   *Func // no parameters; returns the value
-	Index  int   // position in Module.Globals
+	Init   *Func     // no parameters; returns the value
+	Index  int       // position in Module.Globals
+	Type   *TypeExpr // as written, or nil
+	Pub    bool
+	Pos    Pos
 }
 
 // Type is a type declaration with variants, a record type, or an alias.
@@ -117,9 +120,9 @@ type VariantField struct {
 
 // TypeExpr is a type as written: a name with arguments.
 type TypeExpr struct {
-	Name   string     // Int, List, Phase, a type variable, "()" for unit, "fn", "tuple", "record"
-	Decl   *Type      // the declaration, when the name is a declared type
-	Entity *Entity    // for Ref(Entity) and entity names
+	Name   string  // Int, List, Phase, a type variable, "()" for unit, "fn", "tuple", "record"
+	Decl   *Type   // the declaration, when the name is a declared type
+	Entity *Entity // for Ref(Entity) and entity names
 	Args   []*TypeExpr
 	Fields []string // record type field names, matching Args
 }
@@ -138,7 +141,12 @@ type Func struct {
 	Pub      bool
 	Return   *TypeExpr
 	Captures []Capture // for lambdas: values copied in when the lambda is made
-	Pos      Pos
+	// Uses lists the effects its signature states, such as "net Notify.send";
+	// HasUses is set when it has a uses clause, even an empty one.
+	Uses    []string
+	HasUses bool
+	Extern  bool
+	Pos     Pos
 }
 
 // Param is a function parameter.
@@ -275,11 +283,15 @@ type (
 		At
 		Decl any
 	}
-	// Call calls a function value with arguments.
+	// Call calls a function value with arguments. Expected is the type the
+	// checker inferred for its result, with every type variable resolved, or
+	// nil where a part of it isn't known: for `ai.generate!(…)` it is
+	// Result(T, AiError), and T is the type the reply is decoded into.
 	Call struct {
 		At
-		Func Expr
-		Args []Arg
+		Func     Expr
+		Args     []Arg
+		Expected *TypeExpr
 	}
 	// MethodCall calls a method on a value, found by the value's kind at run
 	// time: entity methods, `start` on a job, `impl` methods, built-in methods.
@@ -336,6 +348,7 @@ type (
 	Let struct {
 		At
 		Pattern Pattern
+		Type    *TypeExpr // as written: `let x: T = …`, or nil
 		Value   Expr
 		Else    Expr // for `let … else`, nil otherwise
 	}

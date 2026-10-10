@@ -631,8 +631,10 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 		}
 	case *EntityRef:
 		if name == "read" {
-			if !durable {
-				in.faultf(at, "a job reads an entity with read!(); entity methods use their own state")
+			// Outside a job (a test, main, a transaction) a read is
+			// ordinary; in a job it is a durable step.
+			if !durable && in.run != nil {
+				in.faultf(at, "a job reads an entity with read!()")
 			}
 			return in.rt.snapshot(r, at), nil
 		}
