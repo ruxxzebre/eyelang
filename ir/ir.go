@@ -92,6 +92,10 @@ type Type struct {
 	Alias    *TypeExpr  // for an alias
 	Methods  map[string]*Func
 	Pos      Pos
+	// Doc is the `##` comment above the declaration, and FieldDocs the ones
+	// above a record's fields: model calls use them to describe the schema.
+	Doc       string
+	FieldDocs map[string]string
 }
 
 // Newtype reports whether the type has one variant, named like the type, with
@@ -107,6 +111,7 @@ type Variant struct {
 	Name   string
 	Type   *Type
 	Fields []VariantField
+	Doc    string
 }
 
 // VariantField is a payload field; Name is empty for a positional field.
@@ -117,15 +122,16 @@ type VariantField struct {
 
 // TypeExpr is a type as written: a name with arguments.
 type TypeExpr struct {
-	Name   string     // Int, List, Phase, a type variable, "()" for unit, "fn", "tuple", "record"
-	Decl   *Type      // the declaration, when the name is a declared type
-	Entity *Entity    // for Ref(Entity) and entity names
+	Name   string  // Int, List, Phase, a type variable, "()" for unit, "fn", "tuple", "record"
+	Decl   *Type   // the declaration, when the name is a declared type
+	Entity *Entity // for Ref(Entity) and entity names
 	Args   []*TypeExpr
 	Fields []string // record type field names, matching Args
 }
 
 // Func is a function, method, lambda, job body, test body or initializer.
 type Func struct {
+	Host     string // for an extern fn: the host function that runs it, from @host("…")
 	Name     string
 	Module   *Module
 	Params   []*Param
@@ -204,6 +210,22 @@ type Contract struct {
 	Module *Module
 	Ops    map[string]*Op
 	Events map[string]*Event
+	HTTP   ContractHTTP // from @http(names: …) and @auth(…) on the contract
+}
+
+// ContractHTTP is what a contract's operations share over HTTP.
+type ContractHTTP struct {
+	Snake      bool   // names are snake_case on the wire: dedupeKey is dedupe_key, Normal is "normal"
+	AuthHeader string // the header that carries the credential: Authorization, X-Auth-Token
+	AuthBearer bool   // the credential is sent as "Bearer <secret>"
+	AuthSecret string // the secret that holds the credential
+}
+
+// OpHTTP is how one operation goes over HTTP: @http("POST /v1/send", status: {…}).
+type OpHTTP struct {
+	Method string
+	Path   string         // with :name where an argument goes in the path
+	Status map[int]string // the variant a reply with that status decodes as
 }
 
 // Event is an event a contract publishes: `event answered: Answered on "notify.answers"`.
@@ -224,7 +246,10 @@ type Op struct {
 	Return    *TypeExpr
 	Reconcile string // the query that resolves an Uncertain outcome
 	Key       bool   // @key: the command takes a `key: Key` argument
-	Impl      *Func  // the function that serves it, when this program serves the contract
+	KeyHeader string // @key(…, header: "…"): the HTTP header that carries the key
+	KeyField  string // @key(…, field: "…"): a body field that carries it too
+	HTTP      *OpHTTP
+	Impl      *Func // the function that serves it, when this program serves the contract
 	Pos       Pos
 }
 
@@ -280,6 +305,11 @@ type (
 		At
 		Func Expr
 		Args []Arg
+		// Want is the type the call's value is wanted as, where the code
+		// says: a `let x: T` annotation or the enclosing function's return
+		// type, with Result(T, E) read as T when `?` unwraps it. A model
+		// call asks for it. Type checking (phase 2) will replace this.
+		Want *TypeExpr
 	}
 	// MethodCall calls a method on a value, found by the value's kind at run
 	// time: entity methods, `start` on a job, `impl` methods, built-in methods.
@@ -552,6 +582,8 @@ var BuiltinDocs = []BuiltinDoc{
 
 	{"sleep", "fn sleep(for: Duration)", "In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes when the time comes, even after a restart. Outside jobs, `sleep` blocks; in tests it advances the clock.", "Time"},
 	{"sleepUntil", "fn sleepUntil(at: Instant)", "In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until that time comes. Outside jobs it blocks; in tests it advances the clock.", "Time"},
+	{"secret", "fn secret(name: String) -> Secret(String)", "The secret of that name: the environment variable of the name in upper case, with `-` and `.` as `_` (`notify-token` is NOTIFY_TOKEN), or the file of that name in the directory $EYE_SECRETS. It can't be shown or saved.", "Configuration"},
+	{"env.get", "fn env.get(name: String) -> Option(String)", "The environment variable of that name, if it is set: for configuration that isn't secret, such as a proxy's address.", "Configuration"},
 	{"now", "fn now() -> Instant", "The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run sees the same time.", "Time"},
 
 	{"poll", "fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool", "In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls check every interval until it returns true, and returns false if `within` runs out first. For a service that can't send an event when it is ready. Only the outcome is kept, so a long poll doesn't grow the run's history.", "Waiting"},
@@ -624,4 +656,5 @@ var Builtins = func() []string {
 // importing them, with their functions.
 var BuiltinModules = map[string][]string{
 	"log": {"debug", "info", "warn", "error"},
+	"env": {"get"},
 }

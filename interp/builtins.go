@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -445,7 +446,7 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("toJson", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "toJson", at)
-		out, err := json.Marshal(in.jsonOf(args[0]))
+		out, err := json.Marshal(in.toWire(args[0], false))
 		if err != nil {
 			in.faultf(at, "toJson: %v", err)
 		}
@@ -573,6 +574,30 @@ func builtinTable() map[string]*BuiltinFn {
 			return nil
 		})
 	}
+
+	add("secret", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		name, ok := "", false
+		if len(args) == 1 {
+			name, ok = args[0].(string)
+		}
+		if !ok {
+			in.faultf(at, `secret takes the secret's name: secret("notify-token")`)
+		}
+		return in.secret(name, at)
+	})
+	add("env.get", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		name, ok := "", false
+		if len(args) == 1 {
+			name, ok = args[0].(string)
+		}
+		if !ok {
+			in.faultf(at, `env.get takes a variable's name: env.get("VPN_PROXY_URL")`)
+		}
+		if v, set := os.LookupEnv(name); set {
+			return in.some(v)
+		}
+		return in.none()
+	})
 
 	for module, fns := range ir.BuiltinModules {
 		for _, fn := range fns {

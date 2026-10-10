@@ -10,6 +10,7 @@ import (
 
 // timeMethod calls a method of a time value (SPECS.md §20):
 //
+//	at.unix()                         seconds since 1970-01-01 00:00 UTC
 //	at.date(in: zone)                 the date the clock in zone shows at that instant
 //	at.time(in: zone)                 the time of day it shows
 //	t.next(in: zone, after: instant)  the first instant after `after` when the clock shows t
@@ -31,6 +32,8 @@ func (in *Interp) timeMethod(recv Value, name string, args []argVal, at ir.Pos) 
 	switch x := recv.(type) {
 	case time.Time:
 		switch name {
+		case "unix":
+			return x.Unix(), true
 		case "date":
 			t := x.In(zone())
 			return ir.Date{Year: t.Year(), Month: int(t.Month()), Day: t.Day()}, true

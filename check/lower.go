@@ -87,6 +87,35 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 	l.wrap = errorType(fn.Return)
 	if body := d.ChildByField(syntax.FieldBody); body != nil {
 		fn.Body = l.expr(body)
+		if fn.Return != nil {
+			want(fn.Body, fn.Return, false)
+		}
+	}
+}
+
+// want records on the call that gives e's value the type the code wants it
+// as (ir.Call.Want): below a `?`, t is the value inside the Result. Model
+// calls ask for that type. Type checking (phase 2) will give every
+// expression its type and replace this.
+func want(e ir.Expr, t *ir.TypeExpr, unwrapped bool) {
+	switch x := e.(type) {
+	case *ir.Waiting:
+		want(x.Call, t, unwrapped)
+	case *ir.Try:
+		want(x.X, t, true)
+	case *ir.MethodCall:
+		if x.Name == "mapErr" || x.Name == "context" {
+			want(x.Recv, t, unwrapped)
+		}
+	case *ir.Block:
+		if x.Value && len(x.Exprs) > 0 {
+			want(x.Exprs[len(x.Exprs)-1], t, unwrapped)
+		}
+	case *ir.Call:
+		if !unwrapped && t.Name == "Result" && len(t.Args) == 2 {
+			t = t.Args[0]
+		}
+		x.Want = t
 	}
 }
 
@@ -228,6 +257,9 @@ func (l *lowerer) stmt(n *syntax.Node) ir.Expr {
 	switch n.Kind {
 	case syntax.LetStatement:
 		value := l.expr(n.ChildByField(syntax.FieldValue))
+		if t := n.ChildByField(syntax.FieldType); t != nil {
+			want(value, l.c.typeExpr(l.m, l.f, t, nil), false)
+		}
 		var elseBody ir.Expr
 		if alt := n.ChildByField(syntax.FieldAlternative); alt != nil {
 			elseBody = l.block(alt)

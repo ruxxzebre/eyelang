@@ -37,6 +37,12 @@ arguments, `pub let`, zones by name and one-assignment branches into the syntax,
 interpreter: events (`publish`, `@on(event(…))`, `next!`), `poll!`, `sleepUntil!`, reconciling
 through a query, and contracts served in Eyelang (part of 4.4, 4.5 and phase 6).
 
+**Calling services, 2026-10-10.** Contracts go over HTTP (`@http`, `@auth`, the key's header),
+values have one JSON shape everywhere, `ai.generate!` asks an OpenAI-compatible gateway for a typed
+value by its schema, `http.get` reads pages, and secrets come from the environment or
+`$EYE_SECRETS`. The lab's digest runs end to end against stand-ins for its services
+(`TestDigestOverHTTP`). Part of phase 5's typed model calls and phase 6's contracts.
+
 Still missing before v0.1: type and effect checking (phase 2), the store written in Eyelang (4.2),
 schedules and time zones in triggers, a runner that keeps jobs across restarts, migrations (4.6),
 and the REPL. `approval!` is answered only by tests so far.

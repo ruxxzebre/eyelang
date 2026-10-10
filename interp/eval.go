@@ -23,8 +23,9 @@ type Interp struct {
 	entities map[string]*ir.Entity
 	jobs     map[string]*ir.Job
 	rt       *runtime
-	run      *jobRun    // the job run being executed, if any
-	scope    *viewScope // while a view is evaluated for one entity
+	run      *jobRun      // the job run being executed, if any
+	scope    *viewScope   // while a view is evaluated for one entity
+	want     *ir.TypeExpr // while a call runs: the type its value is wanted as (ir.Call.Want)
 }
 
 // New prepares to run prog, printing to out and logging to log.
@@ -72,6 +73,10 @@ type (
 type Fault struct {
 	Pos ir.Pos
 	Msg string
+	// Kind is the prelude's Fault variant a run that ends this way shows
+	// (Unavailable, DeadlinePassed, …), with Arg its text; empty is
+	// Unreachable(Msg).
+	Kind, Arg string
 }
 
 func (f *Fault) Error() string { return f.Pos.String() + ": " + f.Msg }
@@ -117,6 +122,9 @@ func split(args []argVal) ([]Value, map[string]Value) {
 // argument was bound to, for `mut` arguments.
 func (in *Interp) callFunc(fn *ir.Func, self Value, captured []Value, args []argVal, at ir.Pos) (Value, Value, []Value) {
 	if fn.Body == nil {
+		if fn.Host != "" {
+			return in.callHost(fn, args, at), nil, make([]Value, len(args))
+		}
 		in.faultf(at, "%s has no body: extern functions arrive with task 3.6", fn.Name)
 	}
 	fr := &frame{fn: fn, slots: make([]Value, fn.Slots), self: self}
@@ -210,7 +218,10 @@ func (in *Interp) apply(callee Value, args []argVal, at ir.Pos) (Value, []Value)
 		}
 		return &EntityRef{Entity: c.E, ID: pos[0]}, nil
 	case *OpVal:
-		if c.Op.Impl != nil && in.rt.fakes[c.Op.Contract] == nil {
+		// A program that serves the contract calls itself, unless the
+		// service's URL is configured: then the service is elsewhere.
+		_, elsewhere := serviceURL(c.Op.Contract.Module.Path)
+		if c.Op.Impl != nil && in.rt.fakes[c.Op.Contract] == nil && !elsewhere {
 			return in.rt.serve(c.Op, args, at), nil
 		}
 		pos, named := split(args)
@@ -552,7 +563,10 @@ func (in *Interp) evalCall(f *frame, c *ir.Call) Value {
 		return in.expect(f, c)
 	}
 	args := in.evalArgs(f, c.Args)
+	prev := in.want
+	in.want = c.Want
 	result, final := in.apply(callee, args, c.Pos)
+	in.want = prev
 	for i, a := range c.Args {
 		if a.Mut && final != nil && final[i] != nil {
 			in.writePlace(f, a.Place, final[i])

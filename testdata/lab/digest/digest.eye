@@ -28,7 +28,11 @@ type DigestError =
   ## Miniflux stayed paused for six hours.
   | MinifluxAway
   | WriteFailed(ai.AiError)
-  | NotSent(notify.Refusal)
+  | NotSent(error: String)
+  ## Notify queued it for nobody: subscribe someone to digest.* in Notify.
+  | NoReaders
+  ## Notify is still admitting it; sending again with the same key settles it.
+  | StillPending(action: String)
   ## The writing run ended without a result: a deadline, a budget, a crash.
   | Faulted(Fault)
 
@@ -69,13 +73,13 @@ job command(update: telegram.Update) {
   let day = update.sentAt.date(in: dublin)
   let key = "digest-{update.id}"
   match written!(day, refresh:) {
-    Ok(article) => deliver!(article, priority: High, to: [person], key:)
+    Ok(article) => deliver!(article, priority: High, to: Some([person]), key:)
     Err(e) => notify.send!(
       event: "digest.ireland",
       title: "Ireland digest",
       body: "The digest couldn't be written: {e}. Try again in a few minutes.",
       priority: High,
-      to: [person],
+      to: Some([person]),
       key: "{key}-failed",
     )
   }
@@ -101,16 +105,16 @@ fn written(day: Date, refresh: Bool) -> Result(Article, DigestError) =
 job write(day: Date) -> Result(Article, DigestError) {
   # Miniflux pauses while the game server or a CI check needs the memory.
   # Wait for it rather than lose the day, then let it catch up.
-  if !miniflux.ready!() {
-    if !poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() }) {
+  if miniflux.me!() |> isErr {
+    if !poll!(every: 1 min, within: 6 h, fn { miniflux.me!() |> isOk }) {
       return Err(MinifluxAway)
     }
-    miniflux.refresh!(key: "catch-up-{day}")
+    miniflux.refresh!()
     sleep!(5 min)
   }
   let news = gather!(since: now!() - 24 h)
   let briefing: Briefing = ai.generate!(
-    model: "gpt-5.6-terra",
+    model: env.get("DIGEST_MODEL") ?? "gpt-5.6-terra",
     system: prompt,
     prompt: news.sections |> toJson,
   ).mapErr(WriteFailed)?
@@ -126,7 +130,7 @@ job write(day: Date) -> Result(Article, DigestError) {
 fn deliver(
   article: Article,
   priority: notify.Priority,
-  to: List(UserId) = [],
+  to: Option(List(UserId)) = None,
   key: Key,
 ) -> Result(notify.Delivery, DigestError) {
   let delivery = notify.send!(
@@ -139,11 +143,13 @@ fn deliver(
     key:,
   ).reconcile!()
   match delivery {
+    Accepted(deliveries: 0, deduped: false, ..) => Err(NoReaders)
     Accepted(..) => {
       Day(article.day).sentAs!(key)
       Ok(delivery)
     }
-    Refused(reason) => Err(NotSent(reason))
+    Pending(action) => Err(StillPending(action))
+    Refused(error) => Err(NotSent(error))
   }
 }
 
@@ -164,9 +170,12 @@ type Page = { name: String, url: String, via: web.Route }
 type SectionNews = {
   heading: String,
   brief: String,
-  items: List(miniflux.Entry),
+  items: List(Item),
   pages: List(PageText),
 }
+
+## A feed entry, as the model is given it.
+type Item = { source: String, title: String, url: String, published: Instant, text: String }
 
 type PageText = { source: String, url: String, text: String }
 
@@ -211,11 +220,20 @@ fn gather(since: Instant) -> News {
     found += [{
       heading: section.heading,
       brief: section.brief,
-      items: miniflux.entries!(section.category, since:, limit: 60),
+      items: miniflux.entries!(section.category, publishedAfter: since.unix(), limit: 60).entries
+      |> map(item),
       pages,
     }]
   }
   { sections: found, problems }
+}
+
+fn item(e: miniflux.Entry) -> Item = {
+  source: e.feed.title,
+  title: e.title,
+  url: e.url,
+  published: e.publishedAt,
+  text: e.content |> clip(300),
 }
 
 fn clip(text: String, limit: Int) -> String =

@@ -1,6 +1,6 @@
 {
   "contract": "Notify",
   "exchanges": [
-    { "op": "ask", "key": "netbird-approval-p9", "result": { "Asking": ["q-9"] } }
+    { "op": "ask", "key": "netbird-approval-p9", "result": { "kind": "Asking", "value": "q-9" } }
   ]
 }

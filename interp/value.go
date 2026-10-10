@@ -538,6 +538,10 @@ func show(v Value) string {
 
 func writeShow(b *strings.Builder, v Value, nested bool) {
 	switch x := v.(type) {
+	case *SecretVal:
+		// The checker will refuse to show a secret; until then only its
+		// name is ever written.
+		b.WriteString("secret(" + strconv.Quote(x.name) + ")")
 	case int64:
 		b.WriteString(strconv.FormatInt(x, 10))
 	case *big.Int:
@@ -704,6 +708,8 @@ func showSize(s ir.Size) string {
 // kindName describes a value's kind in messages.
 func kindName(v Value) string {
 	switch x := v.(type) {
+	case *SecretVal:
+		return "Secret"
 	case int64, *big.Int:
 		return "Int"
 	case float64:

@@ -64,6 +64,10 @@ func (h *fakesHandler) apply(in *Interp, at ir.Pos) {
 		base = filepath.Dir(at.File.Path)
 	}
 	for _, m := range h.modules {
+		if m.Path == "ai" && m.Dir == "" {
+			in.rt.aiReplies = in.loadReplies(filepath.Join(base, h.dir, "ai.json"), at)
+			continue
+		}
 		if len(m.Contracts) != 1 {
 			in.faultf(at, "fakes take modules that declare one contract, and %s declares %d", m.Name, len(m.Contracts))
 		}
@@ -100,10 +104,10 @@ func (in *Interp) loadFakes(path string, ct *ir.Contract) (*fakeSet, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: exchange %d: %s has no operation %q", path, i+1, ct.Name, e.Op)
 		}
-		v, err := in.fromJSON(e.Result, op.Return)
+		v, err := in.recorded(e.Result, op.Return)
 		if err != nil && op.Command {
-			// A command's reply may have been lost: {"Uncertain": ["key"]}.
-			if u, uerr := in.fromJSON(e.Result, &ir.TypeExpr{Name: "Unconfirmed", Decl: in.prog.Prelude.Types["Unconfirmed"]}); uerr == nil {
+			// A command's reply may have been lost: {"kind": "Uncertain", "key": "…"}.
+			if u, uerr := in.recorded(e.Result, &ir.TypeExpr{Name: "Unconfirmed", Decl: in.prog.Prelude.Types["Unconfirmed"]}); uerr == nil {
 				v, err = u, nil
 			}
 		}
@@ -115,15 +119,57 @@ func (in *Interp) loadFakes(path string, ct *ir.Contract) (*fakeSet, error) {
 	return fs, nil
 }
 
-// callOp calls an operation of another service, which in tests is a fake.
+// recorded reads a recorded value in the JSON shape every value travels in
+// (json.go): a variant is {"kind": "Sent", …}. Recordings made before that
+// shape was settled write a variant as {"Sent": fields}, which is still read.
+func (in *Interp) recorded(raw json.RawMessage, t *ir.TypeExpr) (Value, error) {
+	x, err := decodeJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	v, err := in.fromWire(x, t, false)
+	if err == nil {
+		return v, nil
+	}
+	if old, oldErr := in.fromJSON(raw, t); oldErr == nil {
+		return old, nil
+	}
+	return nil, err
+}
+
+// loadReplies reads recorded model replies for `with fakes(ai, …)`: an
+// "exchanges" list whose results are the replies, each the value asked for,
+// used in order.
+func (in *Interp) loadReplies(path string, at ir.Pos) []json.RawMessage {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		in.faultf(at, "no recordings for ai: %v", err)
+	}
+	var rec recording
+	if err := json.Unmarshal(data, &rec); err != nil {
+		in.faultf(at, "%s: %v", path, err)
+	}
+	replies := []json.RawMessage{}
+	for _, e := range rec.Exchanges {
+		replies = append(replies, e.Result)
+	}
+	return replies
+}
+
+// callOp calls an operation of another service: a fake in tests, or the
+// service itself over HTTP when its contract says how and a URL is
+// configured for it.
 func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir.Pos) Value {
 	fs := rt.fakes[op.Contract]
 	mod := op.Contract.Module.Name
 	if fs == nil {
-		if rt.real {
-			rt.in.faultf(at, "calling %s.%s needs the contract runtime of phase 6; for now, run it in a test with fakes", mod, op.Name)
+		if v, ok := rt.callHTTP(op, args, named, at); ok {
+			return v
 		}
-		rt.in.faultf(at, "%s.%s calls another service; replay recordings with `with fakes(%s, from: \"…\")`", mod, op.Name, mod)
+		if op.HTTP == nil {
+			rt.in.faultf(at, "%s.%s calls another service; replay recordings with `with fakes(%s, from: \"…\")`, or say how it goes over HTTP with @http", mod, op.Name, mod)
+		}
+		rt.in.faultf(at, "%s.%s calls another service: set %s_URL to its address, or replay recordings with `with fakes(%s, from: \"…\")`", mod, op.Name, envName(op.Contract.Module.Path), mod)
 	}
 	key, _ := named["key"].(string)
 	for _, e := range fs.exchanges {
@@ -166,6 +212,16 @@ func (rt *runtime) reconcile(v *Variant, at ir.Pos) Value {
 		}
 		if tries == 3 {
 			rt.in.faultf(at, "%s with key %s is still uncertain after asking %s three times", sent.op.Name, show(key), query.Name)
+		}
+		if query == sent.op {
+			// @reconcile(send): the service keeps what a key did, so sending
+			// again with the same key answers without doing it twice.
+			next, ok := rt.callOp(sent.op, sent.args, sent.named, at).(*Variant)
+			if !ok {
+				rt.in.faultf(at, "%s returned something other than its outcome", sent.op.Name)
+			}
+			v = next
+			continue
 		}
 		found, ok := rt.callOp(query, nil, map[string]Value{"key": key}, at).(*Variant)
 		switch {

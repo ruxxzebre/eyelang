@@ -1,7 +1,11 @@
 {
   "contract": "Notify",
   "exchanges": [
-    { "op": "identity", "result": { "Some": ["ann"] } },
-    { "op": "send", "key": "digest-7", "result": { "Accepted": { "message": "m-7", "deliveries": 1 } } }
+    { "op": "identity", "result": "ann" },
+    {
+      "op": "send",
+      "key": "digest-7",
+      "result": { "kind": "Accepted", "id": "m-7", "deliveries": 1, "deduped": false }
+    }
   ]
 }
