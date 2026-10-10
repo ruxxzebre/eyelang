@@ -434,6 +434,33 @@ func compare(a, b Value) (int, bool) {
 			}
 		}
 		return 0, true
+	case *Record:
+		// Records part by part, in the order their type declares the fields.
+		y, ok := b.(*Record)
+		if !ok || len(x.Names) != len(y.Names) {
+			return 0, false
+		}
+		for i, name := range x.Names {
+			yv, has := y.get(name)
+			if !has {
+				return 0, false
+			}
+			if c, ok := compare(x.Vals[i], yv); !ok || c != 0 {
+				return c, ok
+			}
+		}
+		return 0, true
+	case *Tuple:
+		y, ok := b.(*Tuple)
+		if !ok || len(x.Elems) != len(y.Elems) {
+			return 0, false
+		}
+		for i := range x.Elems {
+			if c, ok := compare(x.Elems[i], y.Elems[i]); !ok || c != 0 {
+				return c, ok
+			}
+		}
+		return 0, true
 	case int64, *big.Int:
 		if !isInt(b) {
 			return 0, false

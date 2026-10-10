@@ -42,3 +42,57 @@ pub type Decision = Approved(Approval) | Declined | Expired
 ## besides the variants its contract declares; `.reconcile!()` resolves it
 ## when the contract names a query for it.
 pub type Unconfirmed = | Uncertain(key: Key)
+
+## `==` and `!=`. Derived for every type whose parts have it.
+pub trait Eq {}
+
+## `<`, `<=`, `>` and `>=`. Derived: numbers, text and times by value,
+## variants in the order they are declared, records and lists part by part.
+pub trait Ord {}
+
+## How a value is written in `"{…}"` and by `print`. Derived; an impl's
+## `show` replaces the derived form.
+pub trait Show {
+  fn show(self) -> String
+}
+
+## What a set's elements and a map's keys need. Derived.
+pub trait Hash {}
+
+## What can be saved: entity state, a job's arguments and what a job holds
+## across a `!`. Derived; a Secret, a Handle and a function have none.
+pub trait Save {}
+
+## What a model can be asked for: `ai.generate!` derives the JSON Schema from
+## the type. Derived.
+pub trait Schema {}
+
+## `a + b`, with the right-hand type rhs and the result out.
+pub trait Add(rhs, out) {
+  fn add(self, other: rhs) -> out
+}
+
+## `a - b`.
+pub trait Sub(rhs, out) {
+  fn sub(self, other: rhs) -> out
+}
+
+## `a * b`.
+pub trait Mul(rhs, out) {
+  fn mul(self, other: rhs) -> out
+}
+
+## `a / b`.
+pub trait Div(rhs, out) {
+  fn div(self, other: rhs) -> out
+}
+
+## `a % b`.
+pub trait Rem(rhs, out) {
+  fn rem(self, other: rhs) -> out
+}
+
+## `-a`.
+pub trait Neg(out) {
+  fn neg(self) -> out
+}

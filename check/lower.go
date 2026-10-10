@@ -68,8 +68,8 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 		for i, p := range params.NamedChildren() {
 			nameNode := p.ChildByField(syntax.FieldName)
 			name := text(f, nameNode)
-			if i == 0 && fn.HasSelf && self != nil {
-				continue // self
+			if i == 0 && fn.HasSelf && name == "self" {
+				continue // self, in an impl's or a trait's method
 			}
 			param := &ir.Param{Name: name, Mut: hasToken(f, p, "mut"), Type: c.typeExpr(m, f, p.ChildByField(syntax.FieldType), nil)}
 			if nameNode.Kind == syntax.Wildcard {
@@ -85,6 +85,7 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 		}
 	}
 	fn.Return = c.typeExpr(m, f, d.ChildByField(syntax.FieldReturnType), nil)
+	c.lowerBounds(m, f, d, fn)
 	fn.Uses, fn.HasUses = usesOf(f, d)
 	l.wrap = errorType(fn.Return)
 	if body := d.ChildByField(syntax.FieldBody); body != nil {
@@ -158,8 +159,11 @@ func (l *lowerer) lookupLocal(name string, n *syntax.Node) (local, bool) {
 	}
 	outer, ok := l.parent.lookupLocal(name, n)
 	if ok {
-		if outer.isVar {
+		switch {
+		case outer.isVar:
 			l.errorf(n, "a closure can't capture %s, a var; copy it into a let first", name)
+		case outer.mutable:
+			l.errorf(n, "a closure can't capture %s, a mut parameter; copy it into a let first", name)
 		}
 		slot := l.newSlot()
 		l.fn.Captures = append(l.fn.Captures, ir.Capture{From: &ir.Local{At: l.at(n), Name: name, Slot: outer.slot}, Slot: slot})

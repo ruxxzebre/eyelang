@@ -109,6 +109,14 @@ pub fn main() {
 		{"missing module", `import nowhere`, []string{"1:8: no module nowhere"}},
 		{"views start from an entity set", `view v = [1, 2]`, []string{"1:1: a view is a pipeline that starts from an entity set"}},
 		{"syntax errors", `fn f( {`, []string{"1:7: expected"}},
+		{"return leaves a function, not a lambda", `fn f() {
+  let g = fn: return 1
+}`, []string{"2:15: return inside a lambda would leave only the lambda"}},
+		{"_ goes in a piped call", `fn f() = _`, []string{"1:10: _ stands for the piped value"}},
+		{"in: and for: alone need a value", `fn f() = daily(07:40, in:)`, []string{"1:23: in is a keyword, not a variable, so in: needs a value"}},
+		{"impl gives methods to a type this module declares", `impl Int {
+  fn twice(self) -> Int = self * 2
+}`, []string{"1:6: impl for Int, which isn't a type declared in this module"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -154,6 +162,28 @@ func TestImportsAcrossModules(t *testing.T) {
 	write("lib/shapes/shapes.eye", "pub type Shape = | Circle(Float)\npub fn area(s: Shape) -> Float = 1.0\n")
 	_, diags := Program(dir)
 	if len(diags) != 1 || !strings.Contains(diags[0].Message, "module shapes has no missing") {
+		t.Errorf("diagnostics: %v", diags)
+	}
+}
+
+// TestAmbiguousVariants checks that a variant two imported modules declare
+// is named with its module where nothing else says which it is.
+func TestAmbiguousVariants(t *testing.T) {
+	dir := t.TempDir()
+	write := func(path, src string) {
+		p := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("main.eye", "import a\nimport b\nfn f() = Done\n")
+	write("a/a.eye", "pub type A = | Done\n")
+	write("b/b.eye", "pub type B = | Done\n")
+	_, diags := Program(dir)
+	if len(diags) != 1 || !strings.HasSuffix(diags[0].Pos.String(), "main.eye:3:10") || !strings.Contains(diags[0].Message, "Done is a variant in more than one imported module; qualify it") {
 		t.Errorf("diagnostics: %v", diags)
 	}
 }

@@ -28,7 +28,7 @@ func builtinTable() map[string]*BuiltinFn {
 		}
 		var parts []string
 		for _, a := range args {
-			parts = append(parts, show(a))
+			parts = append(parts, in.display(a))
 		}
 		fmt.Fprintln(in.out, strings.Join(parts, " "))
 		return ir.Unit{}
@@ -614,7 +614,7 @@ func builtinTable() map[string]*BuiltinFn {
 					}
 					var parts []string
 					for _, a := range args {
-						parts = append(parts, show(a))
+						parts = append(parts, in.display(a))
 					}
 					fmt.Fprintf(in.log, "%s: %s\n", level, strings.Join(parts, " "))
 					return ir.Unit{}

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -279,7 +280,13 @@ func walk(e ir.Expr, waiting bool, visit func(e ir.Expr, waiting bool) bool) {
 
 // unsaveable names what in t can't be saved at a checkpoint: a Secret, a
 // Handle or a function. It returns "" if t can be saved.
-func unsaveable(t typ) string {
+func (c *checker) unsaveable(t typ) string {
+	return c.unsaveableIn(t, map[*ir.Type]bool{})
+}
+
+func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
+	unsaveable := func(t typ) string { return c.unsaveableIn(t, seen) }
+	fromDecl := func(_ *ir.Type, te *ir.TypeExpr, x *tcon) typ { return c.fromExpr(te, envOf(x), false) }
 	switch x := prune(t).(type) {
 	case *tcon:
 		if x.decl == nil && (x.name == "Secret" || x.name == "Handle") {
@@ -288,6 +295,40 @@ func unsaveable(t typ) string {
 		for _, a := range x.args {
 			if s := unsaveable(a); s != "" {
 				return s
+			}
+		}
+		// A declared type is saved field by field.
+		if d := x.decl; d != nil && !seen[d] {
+			seen[d] = true
+			defer delete(seen, d)
+			fields := func(names []string, types []*ir.TypeExpr) string {
+				for i, n := range names {
+					if i < len(types) {
+						if s := unsaveable(fromDecl(d, types[i], x)); s != "" {
+							return fmt.Sprintf("%s (its field %s is a %s)", d.Name, n, s)
+						}
+					}
+				}
+				return ""
+			}
+			if d.Alias != nil {
+				if s := fields(d.Alias.Fields, d.Alias.Args); s != "" {
+					return s
+				}
+			}
+			for _, v := range d.Variants {
+				for _, field := range v.Fields {
+					if s := unsaveable(fromDecl(d, field.Type, x)); s != "" {
+						return fmt.Sprintf("%s (%s holds a %s)", d.Name, v.Name, s)
+					}
+				}
+			}
+		}
+		if e := x.entity; e != nil {
+			for _, s := range e.States {
+				if what := unsaveable(fromDecl(nil, s.Type, x)); what != "" {
+					return fmt.Sprintf("%s (its state %s is a %s)", e.Name, s.Name, what)
+				}
 			}
 		}
 	case *ttuple:
@@ -313,7 +354,7 @@ func (c *checker) checkSave(j *ir.Job) {
 	}
 	for _, p := range j.Func.Params {
 		if p.Slot < len(slots) {
-			if what := unsaveable(slots[p.Slot]); what != "" {
+			if what := c.unsaveable(slots[p.Slot]); what != "" {
 				c.typeErrorf(j.Pos, "%s's argument %s is a %s, which can't be saved, and a job's arguments are", j.Name, p.Name, what)
 			}
 		}
@@ -328,7 +369,7 @@ func (c *checker) checkSave(j *ir.Job) {
 		if slot >= len(slots) || reported[slot] {
 			return
 		}
-		what := unsaveable(slots[slot])
+		what := c.unsaveable(slots[slot])
 		if what == "" {
 			return
 		}

@@ -166,7 +166,7 @@ func (c *checker) parse(path, dir string, files []*ir.File) *module {
 			Path: path, Name: name, Dir: dir, Files: files,
 			Types: map[string]*ir.Type{}, Variants: map[string]*ir.Variant{}, Funcs: map[string]*ir.Func{},
 			Entities: map[string]*ir.Entity{}, Jobs: map[string]*ir.Job{}, Views: map[string]*ir.View{},
-			Contracts: map[string]*ir.Contract{},
+			Contracts: map[string]*ir.Contract{}, Traits: map[string]*ir.Trait{},
 		},
 		values:  map[string]any{},
 		types:   map[string]any{},
@@ -354,8 +354,7 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 	case syntax.ImplDeclaration:
 		c.implDecl(m, f, d)
 	case syntax.TraitDeclaration:
-		// Traits matter to the type checker (phase 2); the interpreter
-		// dispatches on the value.
+		c.traitDecl(m, f, d)
 	case syntax.TestDeclaration:
 		name := strings.Trim(text(f, nameNode), `"`)
 		t := &ir.Test{Name: name, Module: m.mod, Pos: pos(f, d)}
@@ -506,6 +505,8 @@ func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string)
 			t.Decl = d.Type // a newtype named like its variant
 		case *ir.Entity:
 			t.Entity = d
+		case *ir.Trait:
+			t.Trait = d
 		case *ir.Contract:
 		default:
 			if !builtinTypes[name] {
@@ -542,6 +543,8 @@ func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string)
 			t.Decl = d.Type
 		case *ir.Entity:
 			t.Entity = d
+		case *ir.Trait:
+			t.Trait = d
 		default:
 			c.errorf(pos(f, n), "module %s has no type %s", mod, name)
 		}
@@ -904,55 +907,6 @@ func (c *checker) serve(m *module, f *ir.File, d *syntax.Node, ct *ir.Contract) 
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		c.errorf(pos(f, d), "a program that serves %s serves every operation; this one doesn't serve %s", ct.Name, strings.Join(missing, ", "))
-	}
-}
-
-func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
-	typeNode := d.ChildByField(syntax.FieldType)
-	if ct := c.contractNamed(m, f, typeNode); ct != nil && d.ChildByField(syntax.FieldTrait) == nil {
-		c.use(pos(f, typeNode), ct)
-		c.serve(m, f, d, ct)
-		return
-	}
-	name := text(f, typeNode)
-	if typeNode.Kind == syntax.GenericType {
-		name = text(f, typeNode.ChildByField(syntax.FieldName))
-	}
-	t := m.mod.Types[name]
-	if t == nil {
-		if v, ok := m.types[name].(*ir.Variant); ok {
-			t = v.Type
-		}
-	}
-	if t == nil {
-		c.errorf(pos(f, typeNode), "impl for %s, which isn't a type declared in this module", name)
-		return
-	}
-	if typeNode.Kind == syntax.GenericType {
-		c.use(pos(f, typeNode.ChildByField(syntax.FieldName)), t)
-	} else {
-		c.use(pos(f, typeNode), t)
-	}
-	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
-		if member.Kind != syntax.FunctionDeclaration {
-			continue
-		}
-		mn := member.ChildByField(syntax.FieldName)
-		fn := &ir.Func{Name: text(f, mn), Module: m.mod, Receiver: t, Pub: hasToken(f, member, "pub"), Pos: pos(f, member)}
-		params := member.ChildByField(syntax.FieldParameters).NamedChildren()
-		if len(params) > 0 {
-			first := params[0].ChildByField(syntax.FieldName)
-			if first != nil && text(f, first) == "self" {
-				fn.HasSelf = true
-				fn.MutSelf = hasToken(f, params[0], "mut")
-			}
-		}
-		if _, dup := t.Methods[fn.Name]; dup {
-			c.errorf(pos(f, mn), "%s.%s is declared twice", t.Name, fn.Name)
-		}
-		t.Methods[fn.Name] = fn
-		member := member
-		m.decls = append(m.decls, func() { c.lowerFunc(m, f, member, fn, ctxPlain, nil, t) })
 	}
 }
 

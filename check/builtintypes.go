@@ -105,10 +105,13 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	}
 	list := func(t typ) typ { return con("List", t) }
 	switch name {
-	case "print":
-		x.top.effect("stdio")
-		return tUnit
-	case "log.debug", "log.info", "log.warn", "log.error":
+	case "print", "log.debug", "log.info", "log.warn", "log.error":
+		if name == "print" {
+			x.top.effect("stdio")
+		}
+		for i := range b.pos {
+			x.requireNamed(b.arg(i, nil), "Show", b.pos[i].Value.Position(), name)
+		}
 		return tUnit
 	case "unreachable":
 		b.arg(0, tString)
@@ -206,6 +209,7 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 			return c.fresh()
 		}
 		b.arg(1, t)
+		x.requireNamed(t, "Ord", at, name)
 		return t
 	case "abs":
 		if t := b.arg(0, nil); t != nil {
@@ -326,6 +330,7 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		b.arg(2, fn(acc, acc, elem))
 		return acc
 	case "sum":
+		x.require(elem, c.preludeTrait("Add"), []typ{elem, elem}, at, "sum")
 		return elem
 	case "enumerate":
 		return list(&ttuple{elems: []typ{tInt, elem}})
@@ -336,8 +341,12 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		}
 		return list(elem)
 	case "reverse", "sort", "toList":
+		if name == "sort" {
+			x.requireNamed(elem, "Ord", at, "sort")
+		}
 		return list(elem)
 	case "toSet":
+		x.requireNamed(elem, "Hash", at, "toSet")
 		return con("Set", elem)
 	case "keys":
 		if k, _, ok := mapOf(coll); ok {

@@ -10,4 +10,4 @@ impl Add(Money, Money) for Money {
 }
 
 let total = price + shipping                 # Money + Money
-fn double(n) = n * 2                         # inferred: fn(t) -> o where t: Mul(Int, o)
+fn double(n: t) -> t where t: Mul(Int, t) = n * 2

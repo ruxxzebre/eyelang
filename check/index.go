@@ -106,6 +106,8 @@ func Definition(target any) (ir.Pos, bool) {
 		return named(d.Pos)
 	case *ir.Type:
 		return named(d.Pos)
+	case *ir.Trait:
+		return named(d.Pos)
 	case *ir.Entity:
 		return named(d.Pos)
 	case *ir.Job:

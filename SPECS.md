@@ -97,7 +97,7 @@ construct that also works outside that domain.
 | Evolution | Adding a field with a default is automatic; anything else raises the entity's **`@version`** by one and adds a **`migrate from N`** function, from a row as it was stored at version N to the state at N+1. Migrations chain, with no gaps; `eye run` refuses to start if a stored row has no path to the current version | Stored data outlives code, and the shape of old data needs no declaration kept around: a migration reads the old row by name |
 | Mutation | **Mutable value semantics**: `var` locals, `mut` parameters and `mut self` methods, field assignment and `+=`. Callers write `mut` too: `unify(mut subst, a, b)`. Values never alias; there are no references or pointers | Systems code reads naturally, every place a value can change is visible in the diff, and without aliasing there are no cycles, so reference counting stays enough |
 | Generics and methods | Lower-case **type variables** (`List(a)`), requirements with `where a: Ord`, and methods on a type with `impl Type { … }` | Generic code without new brackets; types get their own operations |
-| Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing and saving are derived for data types | One mechanism for generic code |
+| Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing, saving and schemas are derived for data types whose parts have them. An impl lives in the module of the trait or of the type, and a type variable has only the traits its `where` gives it | One mechanism for generic code; a requirement written once is checked at every call, and two modules can't give one type two meanings of a trait |
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts. Each attribute is declared with where it goes and what it takes, and the checker holds every use to that: `@concurency isn't an attribute; did you mean @concurrency?` | One general mechanism instead of special syntax per feature, and a program can't say "one at a time" and quietly get five. From the lab: a misspelt attribute was ignored, and `@concurrency(1)` wasn't enforced |
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
@@ -444,7 +444,8 @@ fn tally(times: List(Instant)) -> Counter {
   list and `out += "\n"` to a string, in place when nothing else refers to them. A `let` never
   changes.
 - **Visible at the call.** A `mut` argument is written `mut x` (or `mut x.field`) and must be a
-  `var` or a `mut` parameter. A method that takes `mut self` can only be called on one.
+  `var` or a `mut` parameter. A `mut` parameter is always passed that way, and only a `mut`
+  parameter is. A method that takes `mut self` can only be called on a `var` or a `mut` parameter.
 - **No aliasing.** The same variable can't be passed as `mut` twice in one call, or passed as `mut`
   and read in the same call: `swap(mut a, mut a)` is a compile error. Closures can't capture a
   `var` or a `mut` parameter.
@@ -491,6 +492,11 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   `notify.Delivery`.
 - **Requirements** on type variables follow `where`: `where a: Ord + Show`. A trait used as a
   parameter type is short for one: `fn label(x: Named)` means `fn label(x: t) where t: Named`.
+  Inside the function a type variable has only what its requirements give it: `x > best` needs
+  `a: Ord`, `x + y` needs `a: Add(a, a)`, and `x.name()` a trait with a `name` method. A call
+  checks that the types it passes have them: `largest([s])` with a `Secret` is an error, since a
+  `Secret` has no `Ord`. A trait is a requirement, not a type, so it can't go inside one
+  (`List(Named)` is written `List(t) where t: Named`).
 - Generic code is specialised for the types it is used with, so it costs nothing at run time.
 - **`dyn Trait`** (from v0.2) is a value of some type that implements the trait, chosen at run
   time. Calls on it look up the implementation, and `dyn` in the type says so:
@@ -597,11 +603,23 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 
 - A type that wraps one value in a variant of its own name, such as `type WorldId = | WorldId(String)`,
   shows as the value it wraps: `"sleep-{w.id}"` is `sleep-survival`, not `sleep-WorldId("survival")`.
+- **An impl gives every method its trait declares**, apart from those the trait gives a default
+  body, and no others; methods that aren't the trait's go in `impl Type { … }`. Its methods may
+  leave out their types, which come from the trait, as `fn name(self) = self.nick` does above.
+- **Coherence.** An impl lives in the module that declares the trait or the one that declares the
+  type, so two modules can't give one type two meanings of a trait. A type implements a trait
+  once for each set of type arguments.
 - `Eq`, `Ord`, `Show`, `Hash`, `Save` and `Schema` are derived automatically for records, variants and
   collections of types that have them. Derived `Ord` orders a type's variants as they are declared,
-  then by their fields, so `type Priority = Low | Normal | High` has `Low < High`.
-- `Secret(a)` deliberately has no `Show` and no `Save`. Printing a secret, or holding one across a
-  `!`, is a compile error.
+  then by their fields, and a record's fields in the order the type declares them, so
+  `type Priority = Low | Normal | High` has `Low < High`. An impl of `Show`, with its `show`
+  method, replaces the derived form wherever the value is written.
+- What uses them asks for them: `==` needs `Eq` and `<` `Ord`; `"{x}"`, `print` and `log` need
+  `Show`; `sort`, `min` and `max` need `Ord`, `toSet` `Hash`, `sum` `Add`; whatever a job saves
+  needs `Save`, and `ai.generate` the `Schema` of the type it asks for.
+- `Secret(a)` deliberately has none of `Show`, `Save`, `Eq`, `Ord`, `Hash` or `Schema`, and a
+  function or a `Handle` has no `Show`, `Save` or `Schema`. Printing a secret, or holding one
+  across a `!`, is a compile error, and so is a record that holds one in either place.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
 - **Operators are traits.** `a + b` calls `Add`, and likewise `-` (`Sub`), `*` (`Mul`), `/`
   (`Div`), `%` (`Rem`) and unary `-` (`Neg`); `==` uses `Eq` and `<` uses `Ord`. A trait names the
@@ -620,8 +638,11 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   }
 
   let total = price + shipping                 # Money + Money
-  fn double(n) = n * 2                         # inferred: fn(t) -> o where t: Mul(Int, o)
+  fn double(n: t) -> t where t: Mul(Int, t) = n * 2
   ```
+
+  A private function that leaves its types out has one type, inferred from its body and its calls:
+  `fn double(n) = n * 2` doubles `Int`s. To work for any type with the operator, it says so.
 
   The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
   `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,
@@ -1478,8 +1499,8 @@ operator. All binary operators associate to the left except `??`, which associat
 
 1. **Time conditions in views**, such as "idle for 20 minutes". Today that is `enters(view)` plus
    `sleep!`. Should views support `for 20 min` directly?
-2. **Trait coherence:** may a module implement a trait it doesn't own for a type it doesn't own?
-   (Rust's orphan rule says no.)
+2. **Trait coherence:** decided on 2026-10-11: no. An impl lives in the module of the trait or of
+   the type (section 11).
 3. **Exposing entities and jobs to other services:** a generated contract per entity, or explicit
    contracts only?
 4. **Job code upgrades:** when a new version changes what is live at a checkpoint, do paused runs
@@ -1547,6 +1568,8 @@ operator. All binary operators associate to the left except `??`, which associat
 19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and
     standard output are. Are logging, publishing an event and starting a job effects too, to be
     stated with `uses`? (`publish T` is in the table of section 12; the checker doesn't infer it yet.)
-20. **Collection functions' types.** `map`, `filter` and `size` work on lists, sets, maps, ranges and
-    `Option`s; `take` on strings too. Until traits are checked, the checker has a rule for each. Is
-    the final form a `Collection` trait, or functions named per kind?
+20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
+    with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
+    strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,
+    `toSet` `Hash`, `sum` `Add`). A `Collection` trait would need traits over type constructors,
+    which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.

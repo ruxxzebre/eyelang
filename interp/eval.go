@@ -396,6 +396,20 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 			r.Names = append(r.Names, n)
 			r.Vals = append(r.Vals, in.eval(f, x.Values[i]))
 		}
+		if x.Type != nil && x.Type.Alias != nil && len(x.Type.Alias.Fields) == len(r.Names) {
+			// Fields in the order the type declares them, which is the order
+			// a derived Ord compares them in.
+			sorted := &Record{}
+			for _, name := range x.Type.Alias.Fields {
+				if v, ok := r.get(name); ok {
+					sorted.Names = append(sorted.Names, name)
+					sorted.Vals = append(sorted.Vals, v)
+				}
+			}
+			if len(sorted.Names) == len(r.Names) {
+				r = sorted
+			}
+		}
 		return r
 	case *ir.RecordUpdate:
 		base := in.eval(f, x.Base)
@@ -432,7 +446,7 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 	case *ir.Interpolate:
 		var b strings.Builder
 		for _, p := range x.Parts {
-			b.WriteString(show(in.eval(f, p)))
+			b.WriteString(in.display(in.eval(f, p)))
 		}
 		return b.String()
 	case *ir.Try:
@@ -979,6 +993,9 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 			t := time.Date(x.Year, time.Month(x.Month), x.Day, 0, 0, 0, 0, time.UTC).AddDate(0, 0, days)
 			return ir.Date{Year: t.Year(), Month: int(t.Month()), Day: t.Day()}
 		}
+	}
+	if v, ok := in.userOp(op, a, b, at); ok {
+		return v
 	}
 	in.faultf(at, "%s %s %s isn't defined", kindName(a), op, kindName(b))
 	return nil

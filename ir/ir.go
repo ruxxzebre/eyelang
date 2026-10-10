@@ -72,8 +72,41 @@ type Module struct {
 	Jobs      map[string]*Job
 	Views     map[string]*View
 	Contracts map[string]*Contract
+	Traits    map[string]*Trait
+	Impls     []*Impl // the module's `impl Trait for Type` blocks
 	Tests     []*Test
 	Main      *Func
+}
+
+// Trait is a trait declaration: the methods its implementations have, by
+// name. A method with a body is a default, which an impl may leave out.
+type Trait struct {
+	Name    string
+	Module  *Module
+	Params  []string // its type parameters: Add(rhs, out)
+	Methods map[string]*Func
+	Order   []string // method names in source order
+	Doc     string
+	Pos     Pos
+}
+
+// Impl is `impl Trait(args) for Type { … }`.
+type Impl struct {
+	Trait   *Trait
+	Args    []*TypeExpr // the trait's type arguments
+	For     *TypeExpr   // the type it is for
+	Module  *Module
+	Methods map[string]*Func // the impl's own methods, and the trait's defaults it takes
+	Pos     Pos
+}
+
+// Bound is a requirement on a type variable: `where a: Ord`, or a trait used
+// as a parameter's type, `fn label(x: Named)`.
+type Bound struct {
+	Var   string
+	Trait *Trait
+	Args  []*TypeExpr
+	Pos   Pos
 }
 
 // Global is a module-level `let`. Its value is computed once, before the
@@ -97,6 +130,7 @@ type Type struct {
 	Fields   []string   // for a record type
 	Alias    *TypeExpr  // for an alias
 	Methods  map[string]*Func
+	Impls    []*Impl // the traits it implements
 	Pos      Pos
 	// Doc is the `##` comment above the declaration, and FieldDocs the ones
 	// above a record's fields: model calls use them to describe the schema.
@@ -131,6 +165,7 @@ type TypeExpr struct {
 	Name   string  // Int, List, Phase, a type variable, "()" for unit, "fn", "tuple", "record"
 	Decl   *Type   // the declaration, when the name is a declared type
 	Entity *Entity // for Ref(Entity) and entity names
+	Trait  *Trait  // a trait where a type is written: short for a bound
 	Args   []*TypeExpr
 	Fields []string // record type field names, matching Args
 }
@@ -155,7 +190,10 @@ type Func struct {
 	Uses    []string
 	HasUses bool
 	Extern  bool
-	Pos     Pos
+	// Bounds are the requirements on its type variables, from `where` and
+	// from traits used as parameter types.
+	Bounds []Bound
+	Pos    Pos
 }
 
 // Param is a function parameter.
@@ -446,6 +484,7 @@ type (
 		At
 		Names  []string
 		Values []Expr
+		Type   *Type // the record type it is, once the checker knows
 	}
 	RecordUpdate struct {
 		At

@@ -50,10 +50,21 @@ jobs and runs, and the built-in library. Matches must be exhaustive, a `let` wit
 match every value (2.3), and `?` wraps errors only into a variant that holds them (2.4). Effects are
 inferred and a public function must state them with `uses`; waiting functions and entity calls in
 jobs need `!`, and a Secret, Handle or function can't be held across a `!` (2.6). A call records the
-type of its result (`ir.Call.Expected`), which a model call's schema comes from. Not checked yet:
-traits and their bounds (2.5: `where` is read but not enforced, and only the operators of the built-in
-types and declared `add`, `sub`… methods are known), `mut` and aliasing (2.8), function types kept in
-data, `dyn`, and NonZero divisors, which are their number type.
+type of its result (`ir.Call.Expected`), which a model call's schema comes from.
+
+**Phase 2 finished, 2026-10-11.** Traits (2.5): declarations with default methods, `impl Trait for
+Type` with coherence (an impl lives with its trait or its type), `where` bounds and traits as
+parameter types, checked at every call and the only traits a type variable has inside its function;
+operators as `Add`, `Sub`… impls, and derived `Eq`, `Ord`, `Show`, `Hash`, `Save` and `Schema` for
+types whose parts have them, asked for where they are used (`==`, `<`, `"{x}"`, `sort`, what a job
+saves, `ai.generate`). Mutation (2.8): `mut` arguments only and always for `mut` parameters, no
+variable passed as `mut` twice or as `mut` and read in one call, `mut self` methods only on what can
+change, and no closure capturing a `var` or `mut` parameter. Diagnostics (2.7):
+`check/classes_test.go` lists every error class the spec promises, by section, with the test that
+shows it at its exact place. The store's `Store` trait, which `MemoryStore` implements, closes 4.2.
+Still approximated: function types kept in data, `dyn` (v0.2), NonZero divisors, which are their
+number type, and the types of private functions that leave them out, which are one type for the
+whole program rather than generic.
 
 **The durable runner, 2026-10-10.** `eye run` keeps a program's jobs going on the system clock and
 across restarts, in a journal file (SPECS.md open question 9): sleeping runs wake on time,
@@ -72,8 +83,7 @@ Eyelang (`check/runtime/store.eye`, 4.2): each commit is a pure function from on
 next, and the journal wraps it. Entities have `@version(N)` and `migrate from N` (4.6): rows record
 their version, migrations chain when a row is loaded, the checker refuses gaps and impure
 migrations, and `eye run` refuses to start on rows no migration can bring to the current version
-(`cmd/eye`, `TestRunMigratesStoredEntities`). Left from 4.2: a `Store` trait, once traits are
-checked (2.5).
+(`cmd/eye`, `TestRunMigratesStoredEntities`). The `Store` trait came with phase 2.
 
 **The REPL and structured concurrency, 2026-10-10.** `eye repl` evaluates expressions, statements
 and declarations, keeps bindings, entities and runs for the session, and runs jobs on a clock that
@@ -84,8 +94,7 @@ wake time on a test's clock, so tests stay the same on every run (3.5,
 doesn't yet refuse a durable step in a task in a job (the runtime does), and the cheap,
 growing stacks of §13 are Go's goroutines for now.
 
-Still missing before v0.1: the rest of phase 2 (traits, mutation, diagnostics for every class),
-the `Store` trait (4.2, with traits), and `@memory`, `@priority` and `@budget` at run time.
+Still missing before v0.1: `@memory`, `@priority` and `@budget` at run time.
 `approval!` is answered only by tests so far.
 
 ## Phases

@@ -33,6 +33,7 @@ type (
 	tfun struct {
 		params []fparam
 		ret    typ
+		bounds []boundUse // traits a call must give the function's type variables
 	}
 	ttuple struct{ elems []typ }
 	tvar   struct {
@@ -65,6 +66,16 @@ type fparam struct {
 	name       string
 	t          typ
 	hasDefault bool
+	mut        bool // a mut parameter: the call passes `mut x`
+}
+
+// boundUse is a trait a call of a generic function needs a type variable to
+// have: `sort` needs its elements to be Ord.
+type boundUse struct {
+	t  typ
+	b  cbound
+	fn string // the function, for messages
+	v  string // its type variable's name
 }
 
 // litKind says which types a literal may still take: a string literal is a

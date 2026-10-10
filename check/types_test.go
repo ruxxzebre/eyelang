@@ -186,13 +186,134 @@ pub fn f() = send("x")`, []string{"3:1: f uses net Svc.raw, which its signature 
 }`, []string{"4:14: f is a function, which can't be saved, and it is still needed after a waiting call"}},
 		{"operators need types that have them", `type Money = { cents: Int }
 fn f(a: Money, b: Money) = a + b`, []string{"2:28: Money has no +: implement Add for it"}},
+		{"a trait's methods take self", `trait Named {
+  fn name() -> String
+}`, []string{"2:6: Named.name takes self first"}},
+		{"an impl gives every method its trait needs, and no other", `trait Named {
+  fn name(self) -> String
+}
+type Player = { nick: String }
+type Robot = | Robot
+impl Named for Player {}
+impl Named for Robot {
+  fn name(self) = "robot"
+  fn serial(self) -> Int = 1
+}`, []string{
+			"6:1: impl Named for Player doesn't implement name, which Named needs",
+			"9:3: serial isn't a method of Named",
+		}},
+		{"only a trait can be implemented", `type Player = { nick: String }
+type Robot = | Robot
+impl Player for Robot {}`, []string{"3:6: Player isn't a trait, so it can't be implemented"}},
+		{"an impl lives with its trait or its type", `impl Show for Int {
+  fn show(self) = "int"
+}`, []string{"1:1: impl Show for Int belongs in the module that declares Show or the one that declares Int"}},
+		{"a type implements a trait once", `type Money = { cents: Int }
+impl Add(Money, Money) for Money { fn add(self, other: Money) -> Money = self }
+impl Add(Money, Money) for Money { fn add(self, other: Money) -> Money = other }`,
+			[]string{"3:1: Money implements Add(Money, Money) twice"}},
+		{"a trait's type arguments", `type Money = { cents: Int }
+impl Add(Money) for Money { fn add(self, other: Money) -> Money = self }`,
+			[]string{"2:6: Add takes 2 type arguments, and this impl gives 1"}},
+		{"an impl's method has its trait's types", `trait Sized {
+  fn size(self, unit: String) -> Int
+}
+type Box = { n: Int }
+impl Sized for Box {
+  fn size(self, unit: Int) -> Int = self.n
+}`, []string{"6:3: size's parameter unit is Int here, and Sized says String"}},
+		{"a call meets its callee's bounds", `fn largest(xs: List(a)) -> Option(a) where a: Ord = xs |> first
+fn f(s: Secret(String)) = largest([s])`,
+			[]string{"2:27: largest needs a: Ord, and a is Secret(String) here, which has no Ord: a Secret can't be shown, saved or compared"}},
+		{"a type variable has only the traits it requires", `fn biggest(a: t, b: t) -> t = if a > b then a else b
+fn sum2(a: t, b: t) -> t = a + b
+fn named(a: t) -> String = a.name()`, []string{
+			"1:34: comparing with > needs Ord, and t may be any type: require it, as `where t: Ord`",
+			"2:28: t + … needs t: Add",
+			"3:28: t may be any type, so it has no method name",
+		}},
+		{"where names a type variable and a trait", `type Shape = | Dot
+fn f(x: a) -> a where b: Ord, a: Shape = x`, []string{
+			"2:23: where names b, which isn't a type variable of f",
+			"2:34: Shape isn't a trait, so it can't be required of a",
+		}},
+		{"a trait isn't a type inside a type", `trait Named {
+  fn name(self) -> String
+}
+fn f(xs: List(Named)) -> Int = 0`, []string{"4:1: f's parameter xs has Named inside its type, and Named is a trait"}},
+		{"a value shown in a string has Show", `fn f(token: Secret(String)) = "token: {token}"`,
+			[]string{"1:40: showing a value in a string needs Show, and Secret(String) has no Show"}},
+		{"what a job saves has Save, field by field", `type Login = { user: String, password: Secret(String) }
+job j(login: Login) { sleep!(1 min) }`,
+			[]string{"2:1: j's argument login is a Login (its field password is a Secret)"}},
+		{"a model is asked for a type with a Schema", `import ai
+job j() {
+  let r: Result(Secret(String), ai.AiError) = ai.generate!(model: "m", prompt: "p")
+}`, []string{"3:47: ai.generate needs Schema, and Secret(String) has no Schema"}},
+		{"a mut parameter is passed with mut, and only it", `type Counter = { hits: Int }
+fn bump(mut c: Counter) { c.hits += 1 }
+fn look(c: Counter) -> Int = c.hits
+fn f() {
+  var c: Counter = { hits: 0 }
+  bump(c)
+  look(mut c)
+}`, []string{
+			"6:8: bump changes its argument c, so the call says so: write mut c",
+			"7:12: look doesn't change its argument c, so it takes it without mut",
+		}},
+		{"no value is changed through two names", `type Counter = { hits: Int }
+fn swap(mut a: Counter, mut b: Counter) {}
+fn add(mut a: Counter, n: Int) {}
+fn f() {
+  var c: Counter = { hits: 0 }
+  swap(mut c, mut c)
+  add(mut c, c.hits)
+}`, []string{
+			"6:19: c is passed as mut twice in one call",
+			"7:14: c is passed as mut and read in the same call",
+		}},
+		{"a mut self method needs a var", `type Counter = { hits: Int }
+impl Counter {
+  fn reset(mut self) { self.hits = 0 }
+}
+fn f() {
+  let c: Counter = { hits: 0 }
+  c.reset()
+}`, []string{"7:3: reset takes mut self, so it changes c, which can't change: declare it with var"}},
+		{"a closure can't capture what can change", `fn f(mut n: Int) {
+  let g = fn: n + 1
+}`, []string{"2:15: a closure can't capture n, a mut parameter"}},
+		{"? needs a Result or an Option, and a function that returns one", `fn f(o: Option(Int)) -> Result(Int, String) = Ok(o?)
+fn g(n: Int) -> Option(Int) = Some(n?)`, []string{
+			"1:50: ? on an Option needs a function that returns an Option, and this one returns Result(Int, String)",
+			"2:36: ? passes on the error of a Result or the None of an Option; this is Int",
+		}},
+		{"nothing converts implicitly", `fn f() = 1 + 2.0`, []string{"1:10: expected Int, found Float"}},
+		{"a mut argument is a var", `fn bump(mut n: Int) { n += 1 }
+fn f() {
+  let n = 1
+  bump(mut n)
+}`, []string{"4:12: n can't change: it is a let or a parameter"}},
+		{"a served contract serves every operation, as declared", `import svc
+impl svc.Svc {
+  fn send(text, key) = Sent(1)
+  fn raw(words, key) = Done
+  fn extra() = 1
+}`, []string{
+			"2:1: a program that serves Svc serves every operation; this one doesn't serve sent",
+			"4:6: raw takes (text), as contract Svc declares it",
+			"5:6: contract Svc has no operation extra",
+		}},
+		{"a trigger names a contract's event", `import svc
+@on(event(svc.missing))
+job j(p: svc.Ping) {}`, []string{"2:11: event(…) takes a contract's event, such as telegram.updates"}},
 		{"well-typed code has no diagnostics", `type Shape = | Circle(Float) | Dot
 type User = { name: String, age: Int }
 fn area(s: Shape) -> Float = match s {
   Circle(r) => r * r
   Dot => 0.0
 }
-fn largest(xs: List(a)) -> Option(a) {
+fn largest(xs: List(a)) -> Option(a) where a: Ord {
   var best = xs |> first?
   for x in xs {
     if x > best { best = x }
@@ -238,7 +359,9 @@ test "t" {
 func TestPrograms(t *testing.T) {
 	for _, dir := range []string{
 		"../testdata/programs/core", "../testdata/programs/jobs", "../testdata/programs/events",
-		"../testdata/programs/tour", "../testdata/programs/schedules", "../testdata/lab",
+		"../testdata/programs/tour", "../testdata/programs/schedules", "../testdata/programs/limits", "../testdata/programs/traits",
+		"../testdata/programs/tasks",
+		"../testdata/lab",
 	} {
 		_, diags := Program(dir)
 		for _, d := range diags {

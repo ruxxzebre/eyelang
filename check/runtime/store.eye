@@ -49,6 +49,37 @@ pub opaque type MemoryStore = {
   meta: Map(String, String),
 }
 
+## What a store does, whichever keeps the data: the in-memory store below, or
+## a database. Its own type is s, which a commit returns.
+pub trait Store(s) {
+  ## An entity's saved row.
+  fn load(self, entity: String, key: String) -> Option(Row)
+
+  ## The saved entities of one entity type, oldest first.
+  fn keys(self, entity: String) -> List(String)
+
+  ## The entity types with saved entities, in the order they first appeared.
+  fn entities(self) -> List(String)
+
+  ## A saved job run.
+  fn run(self, id: Int) -> Option(String)
+
+  ## The saved runs, oldest first.
+  fn runs(self) -> List(Int)
+
+  ## The published events, oldest first.
+  fn events(self) -> List(EventRecord)
+
+  ## A meta key's value.
+  fn meta(self, key: String) -> Option(String)
+
+  ## The meta keys that start with prefix, in order.
+  fn metaKeys(self, prefix: String) -> List(String)
+
+  ## The store after a transaction: every write of the commit, or none.
+  fn commit(self, c: Commit) -> s
+}
+
 impl MemoryStore {
   ## A store that holds nothing.
   pub fn empty() -> MemoryStore = {
@@ -60,43 +91,45 @@ impl MemoryStore {
     events: [],
     meta: {},
   }
+}
 
+impl Store(MemoryStore) for MemoryStore {
   ## An entity's saved row.
-  pub fn load(self, entity: String, key: String) -> Option(Row) =
+  fn load(self, entity: String, key: String) -> Option(Row) =
     match self.rows[entity] {
       Some(rows) => rows[key]
       None => None
     }
 
   ## The saved entities of one entity type, oldest first.
-  pub fn keys(self, entity: String) -> List(String) = self.kinds[entity] ?? []
+  fn keys(self, entity: String) -> List(String) = self.kinds[entity] ?? []
 
   ## The entity types with saved entities, in the order they first appeared.
-  pub fn entities(self) -> List(String) = self.entities
+  fn entities(self) -> List(String) = self.entities
 
   ## A saved job run.
-  pub fn run(self, id: Int) -> Option(String) =
+  fn run(self, id: Int) -> Option(String) =
     match self.runs[bucket(id)] {
       Some(runs) => runs[id]
       None => None
     }
 
   ## The saved runs, oldest first.
-  pub fn runs(self) -> List(Int) = self.order
+  fn runs(self) -> List(Int) = self.order
 
   ## The published events, oldest first.
-  pub fn events(self) -> List(EventRecord) = self.events
+  fn events(self) -> List(EventRecord) = self.events
 
   ## A meta key's value.
-  pub fn meta(self, key: String) -> Option(String) = self.meta[key]
+  fn meta(self, key: String) -> Option(String) = self.meta[key]
 
   ## The meta keys that start with prefix, in order.
-  pub fn metaKeys(self, prefix: String) -> List(String) =
+  fn metaKeys(self, prefix: String) -> List(String) =
     self.meta |> keys |> filter(fn k: k |> startsWith(prefix)) |> sort
 
   ## The store after a transaction: every write of the commit, or none, since
   ## the commit is one value applied in one step.
-  pub fn commit(self, c: Commit) -> MemoryStore {
+  fn commit(self, c: Commit) -> MemoryStore {
     var s = self
     for w in c.writes {
       let rows = s.rows[w.entity] ?? {}

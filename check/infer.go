@@ -39,6 +39,9 @@ type typeState struct {
 	outcome  *ir.Type
 	decision *ir.Type
 	uncert   *ir.Variant
+	// bounds holds the traits a function's own type variables have, from
+	// its `where` clause.
+	bounds map[*tvar][]cbound
 }
 
 type zoneLit struct {
@@ -78,6 +81,7 @@ type fnCheck struct {
 	matches []pendingMatch
 	lets    []pendingLet
 	calls   []pendingCall
+	reqs    []requirement
 }
 
 type pendingRecord struct {
@@ -86,6 +90,7 @@ type pendingRecord struct {
 	names  []string
 	values []typ
 	pos    []ir.Pos
+	e      *ir.Record
 }
 
 type pendingMatch struct {
@@ -125,12 +130,15 @@ func (c *checker) checkTypes() {
 		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{},
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
+		bounds: map[*tvar][]cbound{},
 	}
+	c.fillImplMethods()
 	type body struct {
 		fn     *ir.Func
 		kind   fnKind
 		entity *ir.Entity
 		self   *ir.Type
+		selfT  typ // self's type, for a method of no declared type
 		op     *ir.Op
 		want   typ
 	}
@@ -143,7 +151,7 @@ func (c *checker) checkTypes() {
 		}
 		for _, t := range m.Types {
 			for _, f := range t.Methods {
-				if f.Body != nil {
+				if f.Body != nil && f.Receiver == t { // a trait's default is checked with the trait
 					bodies = append(bodies, body{fn: f, self: t})
 				}
 			}
@@ -184,6 +192,23 @@ func (c *checker) checkTypes() {
 		for _, t := range m.Tests {
 			bodies = append(bodies, body{fn: t.Func, kind: kindTest})
 		}
+		for _, tr := range m.Traits {
+			for _, f := range tr.Methods {
+				if f.Body != nil {
+					bodies = append(bodies, body{fn: f, selfT: unknown}) // a default: self is whatever implements it
+				}
+			}
+		}
+		for _, impl := range m.Impls {
+			if impl.For == nil || impl.For.Decl != nil || impl.For.Entity != nil {
+				continue // a declared type's impl methods are among its methods
+			}
+			for _, f := range impl.Methods {
+				if f.Body != nil && (impl.Trait == nil || impl.Trait.Methods[f.Name] != f) {
+					bodies = append(bodies, body{fn: f, selfT: c.fromExpr(impl.For, typeEnv{}, false)})
+				}
+			}
+		}
 	}
 	sort.SliceStable(bodies, func(i, j int) bool {
 		a, b := bodies[i].fn.Pos, bodies[j].fn.Pos
@@ -216,6 +241,9 @@ func (c *checker) checkTypes() {
 				x.env[name] = v
 			}
 			x.self = self
+		}
+		if b.selfT != nil {
+			x.self = b.selfT
 		}
 		var ret typ
 		if b.op != nil {
@@ -264,7 +292,20 @@ func (x *fnCheck) signature() typ {
 			x.check(p.Default, x.slots[p.Slot])
 		}
 	}
-	return x.c.resultType(fn, x.env, true)
+	ret := x.c.resultType(fn, x.env, true)
+	// The function's own type variables have the traits it requires.
+	for _, b := range fn.Bounds {
+		v, ok := prune(x.env[b.Var]).(*tvar)
+		if !ok {
+			continue
+		}
+		cb := cbound{trait: b.Trait}
+		for _, a := range b.Args {
+			cb.args = append(cb.args, x.c.fromExpr(a, x.env, true))
+		}
+		x.c.ts.bounds[v] = append(x.c.ts.bounds[v], cb)
+	}
+	return ret
 }
 
 // operation gives a function that serves a contract's operation the types
@@ -325,9 +366,22 @@ func (c *checker) funcType(fn *ir.Func, env typeEnv) *tfun {
 	}
 	t := &tfun{}
 	for i, p := range fn.Params {
-		t.params = append(t.params, fparam{name: p.Name, t: c.paramType(fn, i, env, false), hasDefault: p.Default != nil})
+		t.params = append(t.params, fparam{name: p.Name, t: c.paramType(fn, i, env, false), hasDefault: p.Default != nil, mut: p.Mut})
 	}
 	t.ret = c.resultType(fn, env, false)
+	// Each call needs the traits the function requires of its type variables.
+	for _, b := range fn.Bounds {
+		v, ok := env[b.Var]
+		if !ok {
+			v = c.fresh()
+			env[b.Var] = v
+		}
+		cb := cbound{trait: b.Trait}
+		for _, a := range b.Args {
+			cb.args = append(cb.args, c.fromExpr(a, env, false))
+		}
+		t.bounds = append(t.bounds, boundUse{t: v, b: cb, fn: fn.Name, v: b.Var})
+	}
 	return t
 }
 
@@ -359,6 +413,9 @@ func (x *fnCheck) finish() {
 			continue
 		}
 		x.recordFields(rec, r.names, r.values, r.pos, r.at)
+		if r.e != nil {
+			r.e.Type = rec.decl
+		}
 	}
 	for _, m := range x.matches {
 		c.checkExhaustive(m.m, m.t)
@@ -371,6 +428,7 @@ func (x *fnCheck) finish() {
 	for _, call := range x.calls {
 		call.call.Expected = toExpr(defaultLiteral(call.t))
 	}
+	x.settleRequirements()
 }
 
 // ---------------------------------------------------------------- expressions
@@ -410,7 +468,10 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		return x.literal(e, want)
 	case *ir.Interpolate:
 		for _, p := range e.Parts {
-			x.check(p, nil)
+			t := x.check(p, nil)
+			if _, text := p.(*ir.Lit); !text {
+				x.requireNamed(t, "Show", p.Position(), "showing a value in a string")
+			}
 		}
 		return c.freshLit(litString)
 	case *ir.InZone:
@@ -820,6 +881,14 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 	callee := x.check(e.Func, nil)
 	t := x.apply(callee, e.Args, want, calleeName(e.Func), e.Pos)
 	x.top.calls = append(x.top.calls, pendingCall{e, t})
+	if r, ok := e.Func.(*ir.Ref); ok {
+		if fn, ok := r.Decl.(*ir.Func); ok && fn.Host == "ai.generate" {
+			// A model is asked for a value by its type's JSON Schema (§19).
+			if res, ok := prune(t).(*tcon); ok && res.decl == c.ts.result && len(res.args) == 2 {
+				x.requireNamed(res.args[0], "Schema", e.Pos, "ai.generate")
+			}
+		}
+	}
 	return t
 }
 
@@ -924,6 +993,102 @@ func (x *fnCheck) args(f *tfun, args []ir.Arg, name string, at ir.Pos) {
 			x.c.typeErrorf(at, "%s needs an argument for %s", name, paramName(p, j))
 		}
 	}
+	for _, bu := range f.bounds {
+		x.top.reqs = append(x.top.reqs, requirement{t: bu.t, b: bu.b, at: at, where: name, role: bu.v})
+	}
+	x.mutArgs(f, args, target, name)
+}
+
+// mutArgs checks a call's `mut` arguments (SPECS.md §7): a mut parameter is
+// passed as `mut x`, only a mut parameter is, and a variable passed as mut is
+// neither passed twice nor read in the same call, so no value is changed
+// through two names.
+func (x *fnCheck) mutArgs(f *tfun, args []ir.Arg, target []int, name string) {
+	c := x.c
+	for i, a := range args {
+		if target[i] < 0 {
+			continue
+		}
+		p := f.params[target[i]]
+		switch {
+		case p.mut && !a.Mut:
+			c.typeErrorf(a.Value.Position(), "%s changes its argument %s, so the call says so: write mut %s", name, p.name, placeText(a.Value))
+		case !p.mut && a.Mut:
+			c.typeErrorf(a.Value.Position(), "%s doesn't change its argument %s, so it takes it without mut", name, paramName(p, target[i]))
+		}
+	}
+	for i, a := range args {
+		if !a.Mut {
+			continue
+		}
+		for j, b := range args {
+			if j == i {
+				continue
+			}
+			if b.Mut && j < i && sameRoot(a.Place, b.Place) {
+				c.typeErrorf(a.Value.Position(), "%s is passed as mut twice in one call, and a value can't be changed through two arguments", placeText(a.Value))
+				continue
+			}
+			if !b.Mut && reads(b.Value, a.Place) {
+				c.typeErrorf(b.Value.Position(), "%s is passed as mut and read in the same call; copy what you need into a let first", rootName(a))
+			}
+		}
+	}
+}
+
+func sameRoot(a, b ir.Place) bool {
+	if a.Self || b.Self {
+		return a.Self && b.Self
+	}
+	return a.Slot == b.Slot
+}
+
+// reads reports whether e reads the variable at the root of p.
+func reads(e ir.Expr, p ir.Place) bool {
+	found := false
+	walk(e, false, func(e ir.Expr, _ bool) bool {
+		switch v := e.(type) {
+		case *ir.Local:
+			found = found || !p.Self && v.Slot == p.Slot
+		case *ir.Self, *ir.SelfField:
+			found = found || p.Self
+		case *ir.Lambda:
+			for _, capt := range v.Func.Captures {
+				if reads(capt.From, p) {
+					found = true
+				}
+			}
+			return false
+		}
+		return !found
+	})
+	return found
+}
+
+// placeText writes a mut argument's place as the program does.
+func placeText(e ir.Expr) string {
+	switch v := e.(type) {
+	case *ir.Local:
+		return v.Name
+	case *ir.Self:
+		return "self"
+	case *ir.SelfField:
+		return v.Name
+	case *ir.Field:
+		return placeText(v.Value) + "." + v.Name
+	}
+	return "it"
+}
+
+func rootName(a ir.Arg) string {
+	e := a.Value
+	for {
+		f, ok := e.(*ir.Field)
+		if !ok {
+			return placeText(e)
+		}
+		e = f.Value
+	}
 }
 
 func paramName(p fparam, i int) string {
@@ -977,6 +1142,14 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		case r.decl != nil:
 			if m, ok := r.decl.Methods[e.Name]; ok && m.HasSelf {
 				x.top.callee(m)
+				if m.MutSelf && e.RecvPlace == nil {
+					what := placeText(e.Recv)
+					if what == "it" {
+						c.typeErrorf(e.Pos, "%s takes mut self, so it changes what it is called on, and this value has no name to change: call it on a var", e.Name)
+					} else {
+						c.typeErrorf(e.Pos, "%s takes mut self, so it changes %s, which can't change: declare it with var, or as a mut parameter", e.Name, what)
+					}
+				}
 				return x.applyFunc(m, envOf(r), e.Args, r.name+"."+e.Name, e.Pos)
 			}
 		case r.decl == nil && r.entity == nil:
@@ -987,6 +1160,31 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	case *tjob:
 		if e.Name == "start" {
 			return x.start(r.job, e)
+		}
+	case *tvar:
+		if r.rigid {
+			// A type variable has the methods of the traits it requires.
+			for _, b := range c.ts.bounds[r] {
+				if m, ok := b.trait.Methods[e.Name]; ok && m.HasSelf {
+					env := typeEnv{}
+					for i, p := range b.trait.Params {
+						if i < len(b.args) {
+							env[p] = b.args[i]
+						}
+					}
+					return x.applyFunc(m, env, e.Args, b.trait.Name+"."+e.Name, e.Pos)
+				}
+			}
+			if !isBuiltin(e.Name) {
+				c.typeErrorf(e.Pos, "%s may be any type, so it has no method %s: require a trait that has one, as `where %s: Trait`", r.name, e.Name, r.name)
+				x.inferArgs(e.Args)
+				return unknown
+			}
+		}
+	}
+	if r, ok := prune(recv).(*tcon); ok && r.decl == nil && r.entity == nil {
+		if m := c.implMethod(r, e.Name); m != nil {
+			return x.applyFunc(m, typeEnv{}, e.Args, r.name+"."+e.Name, e.Pos)
 		}
 	}
 	if isBuiltin(e.Name) {
@@ -1160,14 +1358,20 @@ func (x *fnCheck) binary(e *ir.Binary) typ {
 		x.check(e.R, tBool)
 		return tBool
 	case "==", "!=", "<", "<=", ">", ">=":
+		trait := "Ord"
+		if e.Op == "==" || e.Op == "!=" {
+			trait = "Eq"
+		}
 		// A record literal takes its type from the other side.
 		if _, isRecord := e.L.(*ir.Record); isRecord {
 			r := x.check(e.R, nil)
 			x.check(e.L, r)
+			x.requireNamed(r, trait, e.Pos, "comparing with "+e.Op)
 			return tBool
 		}
 		l := x.check(e.L, nil)
 		x.check(e.R, l)
+		x.requireNamed(l, trait, e.Pos, "comparing with "+e.Op)
 		return tBool
 	}
 	l := x.check(e.L, nil)
@@ -1201,6 +1405,15 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 			return unknown
 		}
 		return result
+	}
+	if k, ok := lt.(*tcon); ok && (k.decl != nil || k.entity != nil) {
+		// A declared type's operators are its impls of Add, Sub, … (§11).
+		if rhs, out, found := x.opImpl(k, op, r); found {
+			x.expect(at, rhs, r)
+			return out
+		}
+		c.typeErrorf(at, "%s has no %s: implement %s for it, as `impl %s(%s, %s) for %s`", show(lt), op, opTrait(op), opTrait(op), show(lt), show(lt), show(lt))
+		return unknown
 	}
 	switch {
 	case ln == "Int" || rn == "Int" && ln == "":
@@ -1238,20 +1451,19 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 		x.expect(at, tDuration, r)
 		return tDate
 	}
-	if k, ok := lt.(*tcon); ok && k.decl != nil {
-		method := map[string]string{"+": "add", "-": "sub", "*": "mul", "/": "div", "%": "rem"}[op]
-		if m, ok := k.decl.Methods[method]; ok {
-			f := c.funcType(m, envOf(k))
-			if len(f.params) == 1 {
-				x.expect(at, f.params[0].t, r)
-			}
-			return f.ret
-		}
-		c.typeErrorf(at, "%s has no %s: implement %s for it", show(lt), op, opTrait(op))
-		return unknown
-	}
-	switch lt.(type) {
+	switch v := lt.(type) {
 	case *tvar:
+		if v.rigid {
+			// A function's own type variable has the operator its bounds give it.
+			for _, b := range c.ts.bounds[v] {
+				if b.trait.Name == opTrait(op) && b.trait.Module == c.prelude.mod && len(b.args) == 2 {
+					x.expect(at, b.args[0], r)
+					return b.args[1]
+				}
+			}
+			c.typeErrorf(at, "%s %s … needs %s: %s, and %s may be any type: require it, as `where %s: %s(%s, %s)`", v.name, op, v.name, opTrait(op), v.name, v.name, opTrait(op), v.name, v.name)
+			return unknown
+		}
 		if _, rvar := rt.(*tvar); !rvar && rn != "" {
 			return same(r)
 		}
@@ -1450,6 +1662,7 @@ func (x *fnCheck) record(e *ir.Record, want typ) typ {
 			pos[i] = v.Position()
 		}
 		x.recordFields(rec, e.Names, values, pos, e.Pos)
+		e.Type = rec.decl
 		return rec
 	}
 	for i, v := range e.Values {
@@ -1459,13 +1672,13 @@ func (x *fnCheck) record(e *ir.Record, want typ) typ {
 	switch w := prune(orNil(want)).(type) {
 	case *tvar:
 		if !w.rigid {
-			x.top.records = append(x.top.records, pendingRecord{t: w, at: e.Pos, names: e.Names, values: values, pos: pos})
+			x.top.records = append(x.top.records, pendingRecord{t: w, at: e.Pos, names: e.Names, values: values, pos: pos, e: e})
 			return w
 		}
 	case tunknown:
 		if want == nil || want == discard {
 			v := c.fresh()
-			x.top.records = append(x.top.records, pendingRecord{t: v, at: e.Pos, names: e.Names, values: values, pos: pos})
+			x.top.records = append(x.top.records, pendingRecord{t: v, at: e.Pos, names: e.Names, values: values, pos: pos, e: e})
 			return v
 		}
 		return unknown
