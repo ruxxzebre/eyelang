@@ -3,7 +3,8 @@
 Eyelang 2 is a statically typed, compiled language for programs that manage data across many
 entities and run jobs that mostly wait. It is being designed and built now:
 
-- [SPECS.md](SPECS.md) is the language design (draft).
+- [SPECS.md](SPECS.md) is the language design (draft). `task spec` renders it as one HTML page,
+  `bin/spec.html`, with its examples highlighted by Eyelang's own parser.
 - [ROADMAP.md](ROADMAP.md) lists the phases, versions and exit criteria. Progress is tracked in
   [GitHub issues](https://github.com/ruxxzebre/eyelang/issues).
 
@@ -22,6 +23,7 @@ The interpreter resolves names but doesn't check types yet; that is phase 2.
 | `eye test [--run text] [dir]` | runs a program's `test` blocks, each with a fresh in-memory store and its own clock |
 | `eye check [dir]` | reports errors in a program as `file:line:column: message`; `--syntax` checks only the syntax of any files |
 | `eye fmt [--check] [paths]` | formats files in the one canonical style |
+| `eye doc [--out dir] [dir]` | writes the API reference as Markdown, from `##` comments: the standard library, and a program's modules |
 | `eye parse [--sexp] files` | prints syntax trees |
 | `eye lsp` | the language server editors run |
 

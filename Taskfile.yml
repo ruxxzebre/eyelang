@@ -31,6 +31,11 @@ tasks:
       - tree-sitter build -o ../bin/eyelang-grammar.so .
       - for q in queries/*.scm; do tree-sitter query --lib-path ../bin/eyelang-grammar.so --lang-name eyelang "$q" ../testdata/syntax/valid/*.eye > /dev/null || exit 1; done
 
+  spec:
+    desc: Render SPECS.md as one HTML page, bin/spec.html, with examples highlighted by Eyelang's own parser
+    cmds:
+      - go run ./tools/spechtml -o bin/spec.html
+
   vscode:
     desc: Test the VS Code extension (its grammar, and the extension running in a real VS Code against eye lsp) and package it into bin/eyelang.vsix (needs Node)
     dir: editors/vscode

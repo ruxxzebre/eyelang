@@ -1,8 +1,8 @@
 # Eyelang 2 — language design (draft)
 
 Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
-[ROADMAP.md](ROADMAP.md). Only the syntax is implemented so far (phase 1): `eye` parses, formats and
-reports syntax errors, and VS Code highlights it. Nothing below the syntax runs yet. Eyelang 1, the
+[ROADMAP.md](ROADMAP.md). The syntax is implemented (phase 1), and a reference interpreter runs
+programs, the tour in section 3 included, without checking types yet (phase 2). Eyelang 1, the
 Monkey-style tree-walking interpreter that served as a testing ground, has been removed; it is kept
 at the tag `eyelang-1` (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 

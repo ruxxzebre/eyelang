@@ -128,6 +128,8 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `cmd/eye/` | The `eye` command |
 | `internal/lsp/` | The language server behind `eye lsp` |
 | `internal/specdoc/`, `tools/specexamples/` | Extract SPECS.md's examples into `testdata/syntax` |
+| `tools/spechtml/`, `internal/highlight/` | Render SPECS.md as one HTML page (`task spec`), highlighted by the parser |
+| `internal/apidoc/` | The API reference `eye doc` writes from `##` comments |
 | `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
 | `check/` | Loads a program's modules, resolves names, reports errors (types come in phase 2) |
 | `ir/` | The resolved form programs are lowered to |
