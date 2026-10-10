@@ -37,6 +37,12 @@ arguments, `pub let`, zones by name and one-assignment branches into the syntax,
 interpreter: events (`publish`, `@on(event(…))`, `next!`), `poll!`, `sleepUntil!`, reconciling
 through a query, and contracts served in Eyelang (part of 4.4, 4.5 and phase 6).
 
+**Calling services, 2026-10-10.** Contracts go over HTTP (`@http`, `@auth`, the key's header),
+values have one JSON shape everywhere, `ai.generate!` asks an OpenAI-compatible gateway for a typed
+value by its schema, `http.get` reads pages, and secrets come from the environment or
+`$EYE_SECRETS`. The lab's digest runs end to end against stand-ins for its services
+(`TestDigestOverHTTP`). Part of phase 5's typed model calls and phase 6's contracts.
+
 **Types and effects, first slice, 2026-10-10.** `eye check` infers and checks types (2.2), Hindley-Milner
 style inside bodies against signatures as written, with generic type variables, nominal records,
 variants, entities and their snapshots, contracts (a command's result includes `Uncertain`), events,

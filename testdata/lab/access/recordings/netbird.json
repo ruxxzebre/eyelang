@@ -8,6 +8,6 @@
         { "id": "p1", "email": "Ann@example.com", "groups": [], "service": false, "blocked": false }
       ]
     },
-    { "op": "join", "result": { "Uncertain": ["join-p1-net-people"] } }
+    { "op": "join", "result": { "kind": "Uncertain", "key": "join-p1-net-people" } }
   ]
 }

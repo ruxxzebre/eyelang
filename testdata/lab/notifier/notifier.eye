@@ -52,20 +52,21 @@ entity Message(key: Key) {
   ## Queues the message for each person. Only the first call with a key
   ## does anything; a repeat gets the same answer.
   pub fn queue(c: Content, to: List(UserId)) -> Delivery {
-    if content == None {
+    let deduped = content != None
+    if !deduped {
       content = Some(c)
       for person in to {
         copies = copies |> insert(person, Queued)
         deliver.start(key, person)
       }
     }
-    Accepted(message: notify.MessageId("{key}"), deliveries: copies |> size)
+    Accepted(id: notify.MessageId("{key}"), deliveries: copies |> size, deduped:)
   }
 
   ## What a send with this key did, if one arrived.
   pub fn delivery() -> Option(Delivery) =
     if content == None then None
-    else Some(Accepted(message: notify.MessageId("{key}"), deliveries: copies |> size))
+    else Some(Accepted(id: notify.MessageId("{key}"), deliveries: copies |> size, deduped: true))
 
   pub fn mark(person: UserId, copy: Copy) {
     copies = copies |> insert(person, copy)
@@ -76,9 +77,9 @@ entity Message(key: Key) {
 
 impl notify.Notify {
   fn send(event, title, body, priority, format, to, key) {
-    if body |> size > 240_000 { return Refused(TooLong(limit: 240_000)) }
-    let recipients = if to != [] then to else receivers(event)
-    if recipients == [] { return Refused(NoRecipients) }
+    if body |> size > 240_000 { return Refused(error: "a message holds at most 240000 characters") }
+    let recipients = to ?? receivers(event)
+    if recipients == [] { return Refused(error: "nobody receives {event}") }
     Message(key).queue({ event, title, body, priority, format, choices: [] }, recipients)
   }
 
@@ -225,9 +226,10 @@ job pressed(update: telegram.Update) {
 # ---------------------------------------------------------------- tests
 
 test "a repeated send queues one message" {
-  let one = notify.send(event: "digest.ireland", title: "a", body: "b", to: [operator], key: "k1")
-  let two = notify.send(event: "digest.ireland", title: "a", body: "b", to: [operator], key: "k1")
-  expect(one == two)
+  let one = notify.send(event: "digest.ireland", title: "a", body: "b", to: Some([operator]), key: "k1")
+  let two = notify.send(event: "digest.ireland", title: "a", body: "b", to: Some([operator]), key: "k1")
+  expect(one == Accepted(id: notify.MessageId("k1"), deliveries: 1, deduped: false))
+  expect(two == Accepted(id: notify.MessageId("k1"), deliveries: 1, deduped: true))
   expect(Message("k1").copies |> size == 1)
 }
 

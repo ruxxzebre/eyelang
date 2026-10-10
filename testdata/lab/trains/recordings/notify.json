@@ -1,6 +1,6 @@
 {
   "contract": "Notify",
   "exchanges": [
-    { "op": "ask", "key": "remind-ann-E216-2026-10-12-15 min", "result": { "Asking": ["q-1"] } }
+    { "op": "ask", "key": "remind-ann-E216-2026-10-12-15 min", "result": { "kind": "Asking", "value": "q-1" } }
   ]
 }

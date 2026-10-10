@@ -83,7 +83,7 @@ job watch(t: Ref(Traveller)) {
             title: "{pin.train}",
             body: news,
             priority: High,
-            to: [me.id],
+            to: Some([me.id]),
             # A new key for each delay: a correction is a new message.
             key: "late-{me.id}-{pin.train}-{pin.date}-{movement.delay}",
           )

@@ -5,7 +5,8 @@ Status: **draft**. These decisions come from design sessions on 2026-10-10. The 
 programs, the tour in section 3 included. `eye check` checks types, exhaustive matches and effects
 (a first slice of phase 2; ROADMAP.md says what is left). The lab's real workloads, written in
 Eyelang in [testdata/lab](testdata/lab), check and pass their tests; the rules they changed say
-"from the lab" in the decision log. Eyelang 1, the
+"from the lab" in the decision log. Contracts call their services over HTTP, and model calls go to
+an OpenAI-compatible gateway. Eyelang 1, the
 Monkey-style tree-walking interpreter that served as a testing ground, has been removed; it is kept
 at the tag `eyelang-1` (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 
@@ -87,6 +88,8 @@ construct that also works outside that domain.
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
 | Consistency | **Atomic inside eyelang**; keyed commands and **reconcile** at the boundary with other services. A `@reconcile` query returns an `Option` of the command's outcome: `None` means the command never arrived, and only then is it sent again, with the same key | One database makes real transactions cheap; outside services own their own state; the one case where resending is safe is decided by the owner, never guessed. From the lab: a lookup that can't say "never arrived" leaves a lost command uncertain for good |
+| Values as JSON | **One JSON shape everywhere**: records are objects, a variant is an object tagged with `"kind"`, a type of fieldless variants is a string, a wrapped value is the value, `None` is null (section 17) | Requests, replies, recordings, model schemas and the generated TypeScript and Go types agree, and a tagged union reads naturally as a discriminated union in TypeScript |
+| Contracts over HTTP | **Attributes map a contract to HTTP**: `@http("POST /v1/send", status: {202: Pending})` on an operation, `@http(names: snake)` and `@auth(…)` on the contract, the key's header and body field on `@key`; addresses and credentials come from the environment | The real APIs the lab calls (Notify, Miniflux) are described without code; a request that never went out is retried, and only a lost reply is `Uncertain`. From the lab: Notify's 200 and 202 answers and its idempotency header |
 | Serving contracts | **A program serves a contract with `impl Contract { … }`**: one function per operation, with the contract's types and defaults, run as one transaction; a command with `@key` takes the key last | A service written in Eyelang shares one contract with its callers, and a key can name an entity, so repeats need no dedupe table. From the lab: Notify, written in Eyelang |
 | Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
@@ -915,10 +918,17 @@ type Delivery =
   `Some` is the outcome, and `None` means the command never arrived, so it is sent again with the
   same key, which can't do it twice. A command without `@reconcile`, such as one to a service that
   takes no idempotency key, has no `.reconcile!()`: its caller matches `Uncertain(key)` and decides,
-  usually by stopping for a person. Nothing is ever resent on a guess.
+  usually by stopping for a person. Nothing is ever resent on a guess. A service that keeps what
+  each key did, as Notify does, names the command itself: with `@reconcile(send)`, reconciling
+  sends it again with the same key, and the service answers without doing it twice.
+- **Never sent is not uncertain.** A request that never reached the service (the connection was
+  refused, or the name didn't resolve) can't have done anything, so it is sent again, as a query
+  would be. Only a request that went out and whose reply was lost (a timeout, a broken connection,
+  or a 5xx answer to a command) is `Uncertain(key)`.
 - **Queries** are safe to repeat: one that can't reach its service is retried, while the run
   waits, and after a minute the run ends as `Failed(Unavailable(…))`. A query whose failures the
-  caller handles declares them in its result: `query page(url: String) -> Result(String, FetchError)`.
+  caller handles declares them in its result: `query page(url: String) -> Result(String, FetchError)`,
+  or, over HTTP, `Result(T, http.HttpError)`, which gets the failures instead of retrying.
 - **Events** are published with `notify.delivered.publish(d)`: from an entity method or an
   operation when the transaction commits, and from a job as a `!` step. `@key(field)` on an event
   names the field that tells one event from another, so an event delivered twice starts one run of
@@ -940,20 +950,74 @@ type Delivery =
     fn receipt(key) = Message(key).delivery()
   }
   ```
+- **Values as JSON.** Every value that leaves a program as JSON has one shape: in requests and
+  replies over HTTP, in recordings, in model schemas (section 19), in `toJson`, and in the types
+  generated for other languages, where a variant type becomes a discriminated union.
+  - A record is an object, with every field.
+  - A type whose variants have no fields is a string: `Normal` is `"Normal"`.
+  - Any other variant is an object tagged with `"kind"`, with its fields:
+    `{ "kind": "Accepted", "receipt": "r-41", "at": "…" }`. A positional field is `"value"`, or
+    `"value1"`, `"value2"`, … when there are several.
+  - A type that wraps one value, such as `| ReceiptId(String)`, is that value.
+  - `Some(x)` is `x`, and `None` is `null`; a missing field of an `Option` type is `None`.
+  - Lists, sets and tuples are arrays, and a map with string keys is an object.
+  - An `Instant` is an RFC 3339 string, a `Date` `"2026-10-12"`, a `Duration` a number of
+    milliseconds, and a `Size` a number of bytes.
+
+  Fields that a type doesn't declare are ignored when a value is read, so a service can add some
+  without breaking its callers.
+- **Over HTTP.** Attributes say how a contract's operations go over HTTP. The address and the
+  credentials come from the configuration, never from the code:
+
+  ```eye
+  @http(names: snake)                       # dedupeKey is dedupe_key, Normal is "normal"
+  @auth(bearer: "notify-token")             # Authorization: Bearer <secret("notify-token")>
+  contract Notify {
+    @http("POST /v1/send", status: { 200: Accepted, 202: Pending, 400: Refused, 403: Refused })
+    @key(required, header: "X-Actions-Idempotency-Key", field: "dedupe_key")
+    @reconcile(send)
+    command send(event: String, title: String, priority: Priority = Normal,
+      to: Option(List(UserId)) = None) -> Delivery
+  }
+  ```
+
+  - `@http("METHOD /path")` on an operation gives its request. A path segment `:name` takes the
+    argument of that name, `GET` and `DELETE` send the other arguments as query parameters (a list
+    as the parameter repeated), and the other methods send them as a JSON object.
+  - Arguments are sent with their defaults filled in; a `None` is left out, which is how JSON says
+    a value is absent.
+  - `@key(…, header: "…")` names the header that carries the key (`Idempotency-Key` without one),
+    and `field: "…"` puts it in the body too.
+  - `status: { 202: Pending }` reads a reply with that status as that variant, from the fields of
+    the body. Any other success is read as the operation's result type.
+  - `@auth(bearer: "secret")`, or `@auth(header: "X-Auth-Token", secret: "secret")`, sends a
+    secret with every request.
+  - A refused request (a 4xx that `status:` doesn't name) ends the run with a fault that shows the
+    reply: it is a bug in the program or its configuration, not an outcome to handle.
+
+  A program finds a contract's service at the URL in the environment variable named after its
+  module (`NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify`). A program that serves a
+  contract itself calls its own implementation, unless that variable is set.
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
   error, unless it is marked `@unwitnessed("why")`. A recording is a JSON file per contract module,
-  named after it (`receipts/notify.json`), that lists exchanges by operation and key:
+  named after it (`receipts/notify.json`), that lists exchanges by operation and key, each result
+  in the shape above:
 
   ```json
   { "contract": "Notify",
     "exchanges": [{ "op": "send", "key": "ireland-2026-10-10",
-                    "result": { "Accepted": { "receipt": "r-41", "at": "2026-10-10T07:40:02Z" } } }] }
+                    "result": { "kind": "Accepted", "receipt": "r-41", "at": "2026-10-10T07:40:02Z" } }] }
   ```
 
-  A variant is an object with the variant's name as its only key and its fields as a list or, when
-  they are named, an object; a type that wraps one value, such as `| ReceiptId(String)`, may be
-  written as the value. A command's lost reply is recorded as `{ "Uncertain": ["key"] }`.
+  A command's lost reply is recorded as `{ "kind": "Uncertain", "key": "…" }`. Recordings written
+  before this shape was settled, with a variant as its name's only key (`{ "Accepted": {…} }`), are
+  still read.
+- **Services without a contract,** such as web pages, are read with the standard `http` module:
+  `http.get!(url, headers: { "Accept": "text/html" }, via: proxy)` returns
+  `Result(Response, HttpError)`, with the status, the headers and the body as text. Any answer is
+  `Ok`, whatever its status; `Err` is `NoAnswer(reason)` or `TimedOut`. `via` is the URL of an HTTP
+  proxy to go through.
 - **Generated code for other languages** (types, clients and server stubs for Go, TypeScript, Rust
   and Python) is a build output, never committed.
 
@@ -1018,10 +1082,12 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
 ```
 
 - **Schemas come from types.** Records, variants, lists, maps with string keys, `Option`, tuples,
-  numbers, strings, booleans, dates and times have a derived `Schema` trait. A record becomes an
-  object with every field required (`Option` fields may be null); a variant becomes a tagged
-  union, `{"kind": "Breaking", "reason": "…"}`; `##` doc comments become descriptions. A type that
-  holds a `Secret`, a `Handle` or a function has no `Schema`, so it can't be asked for.
+  numbers, strings, booleans, dates and times have a derived `Schema` trait. The schema describes
+  the JSON shape of section 17: a record becomes an object with every field required (`Option`
+  fields may be null), a type whose variants have no fields an enum of strings, and any other
+  variant a tagged union, `{"kind": "Breaking", "reason": "…"}`; `##` doc comments become
+  descriptions. A type that holds a `Secret`, a `Handle` or a function has no `Schema`, so it can't
+  be asked for.
 - **The expected type picks the schema.** `ai.generate` returns `Result(a, AiError) where a:
   Schema`, so the type comes from where the result goes: here, the job's return type. When nothing
   says, write it: `let d: Digest = ai.generate!(…)?`.
@@ -1029,7 +1095,10 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   problems listed, and then returns `Err(Malformed(reply, problems))`.
 - **Providers are contracts.** `ai` declares contracts for Anthropic, OpenAI and OpenAI-compatible
   servers. A call has the effect `net` on its provider, the key comes from `secret`, and the
-  provider follows from the model's name unless `provider:` says otherwise.
+  provider follows from the model's name unless `provider:` says otherwise. The reference
+  interpreter speaks the OpenAI-compatible chat completions protocol with structured output, which
+  gateways such as the lab's offer for every model: `AI_URL` is the gateway's base URL, and
+  `secret("ai-key")` its key, if it needs one.
 - **In a job, every model call is a `!` step.** Its reply is recorded, so a resumed run neither calls
   the model again nor pays twice, and it sees the same answer.
 - **Tests replay recordings.** `with fakes(ai, from: "recordings/")` makes model-backed tests
@@ -1117,14 +1186,20 @@ clock:
 | `08:00.next(in: dublin, after: at)` | the first instant after `at` when that clock shows 08:00 |
 | `day.at(07:40, in: dublin)` | the instant that day at that time |
 | `day.format("%A %-d %B")` | the date written out: `Monday 12 October` |
+| `at.unix()` | seconds since 1970-01-01 00:00 UTC, which many APIs take |
 
-**Secrets.**
+**Secrets and configuration.** A secret is read by name when the program needs it: from the
+environment variable of that name in upper case, with `-` and `.` as `_`, or from the file of that
+name in the directory `$EYE_SECRETS`, where Kubernetes and systemd put mounted secrets. A contract
+sends its secret with `@auth` (section 17), so code rarely holds one.
 
 ```eye
-let token: Secret(String) = secret("telegram-bot-token")
-http.post(url, auth: bearer(token))        # bearer() accepts a Secret
+let token: Secret(String) = secret("telegram-bot-token")  # TELEGRAM_BOT_TOKEN
 log.info("token is {token}")               # compile error: Secret has no Show
 ```
+
+Configuration that isn't secret, such as a proxy's address, comes from `env.get("VPN_PROXY_URL")`,
+an `Option(String)`, with the effect `env`.
 
 **Tests.** A `test` block is a declaration. `eye test` runs the tests of every module of the
 program, the modules it imports from its own directory included. `with` applies a handler to the rest of the block:

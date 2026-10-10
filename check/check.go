@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"eyelang/ir"
@@ -284,20 +285,13 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 		m.decls = append(m.decls, func() { c.lowerFunc(m, f, d, fn, ctxPlain, nil, nil) })
 	case syntax.ExternDeclaration:
 		fn := &ir.Func{Name: text(f, nameNode), Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d), Extern: true}
+		if args, _, ok := attribute(f, d, "host"); ok && len(args) == 1 {
+			fn.Host = c.stringArg(f, args[0])
+		}
 		m.mod.Funcs[fn.Name] = fn
 		c.define(m, f, nameNode, fn.Name, fn)
-		m.decls = append(m.decls, func() {
-			for _, p := range d.ChildByField(syntax.FieldParameters).NamedChildren() {
-				param := &ir.Param{Name: text(f, p.ChildByField(syntax.FieldName)), Type: c.typeExpr(m, f, p.ChildByField(syntax.FieldType), nil)}
-				if def := p.ChildByField(syntax.FieldDefault); def != nil {
-					l := c.newFunc(m, f, fn.Name, pos(f, p), ctxGlobal)
-					param.Default = l.expr(def)
-				}
-				fn.Params = append(fn.Params, param)
-			}
-			fn.Return = c.typeExpr(m, f, d.ChildByField(syntax.FieldReturnType), nil)
-			fn.Uses, fn.HasUses = usesOf(f, d)
-		})
+		// Its parameters and defaults; it has no body.
+		m.decls = append(m.decls, func() { c.lowerFunc(m, f, d, fn, ctxPlain, nil, nil) })
 	case syntax.EntityDeclaration:
 		c.entityDecl(m, f, d)
 	case syntax.JobDeclaration:
@@ -376,7 +370,8 @@ func hasToken(f *ir.File, d *syntax.Node, tok string) bool {
 
 func (c *checker) typeDecl(m *module, f *ir.File, d *syntax.Node) {
 	nameNode := d.ChildByField(syntax.FieldName)
-	t := &ir.Type{Name: text(f, nameNode), Module: m.mod, Methods: map[string]*ir.Func{}, Pos: pos(f, d)}
+	t := &ir.Type{Name: text(f, nameNode), Module: m.mod, Methods: map[string]*ir.Func{}, Pos: pos(f, d),
+		Doc: docComment(f, d)}
 	if tp := d.ChildByField(syntax.FieldTypeParameters); tp != nil {
 		for _, p := range tp.NamedChildren() {
 			t.Params = append(t.Params, text(f, p))
@@ -385,8 +380,18 @@ func (c *checker) typeDecl(m *module, f *ir.File, d *syntax.Node) {
 	m.mod.Types[t.Name] = t
 	value := d.ChildByField(syntax.FieldValue)
 	if value.Kind == syntax.VariantList {
-		for _, vn := range value.NamedChildren() {
-			v := &ir.Variant{Name: text(f, vn.ChildByField(syntax.FieldName)), Type: t}
+		// A variant's `##` comment sits above its `|`.
+		doc := ""
+		for _, vn := range value.Children {
+			if vn.Kind != syntax.Variant {
+				doc = docComment(f, vn)
+				continue
+			}
+			if own := docComment(f, vn); own != "" {
+				doc = own
+			}
+			v := &ir.Variant{Name: text(f, vn.ChildByField(syntax.FieldName)), Type: t, Doc: doc}
+			doc = ""
 			t.Variants = append(t.Variants, v)
 			m.mod.Variants[v.Name] = v
 		}
@@ -423,7 +428,14 @@ func (c *checker) typeBody(m *module, f *ir.File, t *ir.Type, value *syntax.Node
 		}
 	case syntax.RecordType:
 		for _, field := range value.NamedChildren() {
-			t.Fields = append(t.Fields, text(f, field.ChildByField(syntax.FieldName)))
+			name := text(f, field.ChildByField(syntax.FieldName))
+			t.Fields = append(t.Fields, name)
+			if doc := docComment(f, field); doc != "" {
+				if t.FieldDocs == nil {
+					t.FieldDocs = map[string]string{}
+				}
+				t.FieldDocs[name] = doc
+			}
 		}
 		t.Alias = c.typeExpr(m, f, value, t.Params)
 	default:
@@ -574,6 +586,26 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 	ct := &ir.Contract{Name: text(f, nameNode), Module: m.mod, Ops: map[string]*ir.Op{}, Events: map[string]*ir.Event{}}
 	m.mod.Contracts[ct.Name] = ct
 	c.define(m, f, nameNode, ct.Name, ct)
+	if _, named, ok := attribute(f, d, "http"); ok {
+		if n := named["names"]; n != nil {
+			if text(f, n) != "snake" {
+				c.errorf(pos(f, n), "names: takes snake, for snake_case names on the wire")
+			}
+			ct.HTTP.Snake = true
+		}
+	}
+	if _, named, ok := attribute(f, d, "auth"); ok {
+		switch {
+		case named["bearer"] != nil:
+			ct.HTTP.AuthHeader, ct.HTTP.AuthBearer = "Authorization", true
+			ct.HTTP.AuthSecret = c.stringArg(f, named["bearer"])
+		case named["header"] != nil && named["secret"] != nil:
+			ct.HTTP.AuthHeader = c.stringArg(f, named["header"])
+			ct.HTTP.AuthSecret = c.stringArg(f, named["secret"])
+		default:
+			c.errorf(pos(f, d), `@auth takes bearer: "secret", or header: "X-Name", secret: "secret"`)
+		}
+	}
 	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
 		if member.Kind == syntax.EventDeclaration {
 			ev := &ir.Event{
@@ -598,6 +630,13 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			op.Reconcile = text(f, args[0])
 		}
 		op.Key = hasAttribute(f, member, "key")
+		if _, named, ok := attribute(f, member, "key"); ok {
+			op.KeyHeader = c.stringArg(f, named["header"])
+			op.KeyField = c.stringArg(f, named["field"])
+		}
+		if args, named, ok := attribute(f, member, "http"); ok {
+			op.HTTP = c.opHTTP(f, member, args, named)
+		}
 		ct.Ops[op.Name] = op
 		member := member
 		m.decls = append(m.decls, func() {
@@ -644,6 +683,101 @@ func attributeArgs(f *ir.File, d *syntax.Node, name string) []*syntax.Node {
 		}
 	}
 	return nil
+}
+
+// attribute returns the positional and named arguments of a declaration's
+// attribute @name, and whether it has one.
+func attribute(f *ir.File, d *syntax.Node, name string) ([]*syntax.Node, map[string]*syntax.Node, bool) {
+	for _, attr := range d.Children {
+		if attr.Kind != syntax.Attribute || text(f, attr.ChildByField(syntax.FieldName)) != name {
+			continue
+		}
+		var pos []*syntax.Node
+		named := map[string]*syntax.Node{}
+		if args := attr.ChildByField(syntax.FieldArguments); args != nil {
+			for _, a := range args.NamedChildren() {
+				if a.Kind == syntax.NamedArgument {
+					named[text(f, a.ChildByField(syntax.FieldName))] = a.ChildByField(syntax.FieldValue)
+				} else {
+					pos = append(pos, a)
+				}
+			}
+		}
+		return pos, named, true
+	}
+	return nil, nil, false
+}
+
+// stringArg is the text of an attribute's string argument, or "" without one.
+func (c *checker) stringArg(f *ir.File, n *syntax.Node) string {
+	if n == nil {
+		return ""
+	}
+	if n.Kind != syntax.String || len(n.NamedChildren()) > 1 {
+		c.errorf(pos(f, n), "a string without interpolation goes here")
+		return ""
+	}
+	return unescape(strings.Trim(text(f, n), `"`))
+}
+
+// opHTTP reads @http("METHOD /path", status: {200: Variant, …}) on an
+// operation.
+func (c *checker) opHTTP(f *ir.File, d *syntax.Node, args []*syntax.Node, named map[string]*syntax.Node) *ir.OpHTTP {
+	if len(args) != 1 {
+		c.errorf(pos(f, d), `@http takes the method and path: @http("POST /v1/send")`)
+		return nil
+	}
+	method, path, ok := strings.Cut(c.stringArg(f, args[0]), " ")
+	switch method {
+	case "GET", "POST", "PUT", "PATCH", "DELETE":
+	default:
+		ok = false
+	}
+	if !ok || !strings.HasPrefix(path, "/") {
+		c.errorf(pos(f, args[0]), `@http's first argument is a method and a path, such as "POST /v1/send"`)
+		return nil
+	}
+	h := &ir.OpHTTP{Method: method, Path: path}
+	if st := named["status"]; st != nil {
+		if st.Kind != syntax.Map {
+			c.errorf(pos(f, st), "status: takes a map from status codes to variants: {200: Accepted, 202: Pending}")
+			return h
+		}
+		h.Status = map[int]string{}
+		for _, e := range st.NamedChildren() {
+			k, v := e.ChildByField(syntax.FieldKey), e.ChildByField(syntax.FieldValue)
+			code, err := strconv.Atoi(text(f, k))
+			if err != nil || v.Kind != syntax.TypeIdent {
+				c.errorf(pos(f, e), "each status code maps to a variant's name: 202: Pending")
+				continue
+			}
+			h.Status[code] = text(f, v)
+		}
+	}
+	return h
+}
+
+// docComment returns the `##` lines directly above a node.
+func docComment(f *ir.File, n *syntax.Node) string {
+	first := n
+	for !first.IsToken() && len(first.Children) > 0 {
+		first = first.Children[0]
+	}
+	var run []string
+	for _, t := range first.Leading {
+		s := string(f.Src[t.Span.Start:t.Span.End])
+		switch {
+		case t.Kind == syntax.Whitespace:
+			if strings.Count(s, "\n") > 1 {
+				run = nil // a blank line ends a doc comment
+			}
+		case t.Kind == syntax.Comment && strings.HasPrefix(s, "##"):
+			run = append(run, strings.TrimPrefix(strings.TrimPrefix(s, "##"), " "))
+		default:
+			run = nil
+		}
+	}
+	return strings.TrimSpace(strings.Join(run, "\n"))
 }
 
 func hasAttribute(f *ir.File, d *syntax.Node, name string) bool {

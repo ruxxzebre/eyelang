@@ -11,18 +11,21 @@ pub type Format = Plain | Markdown
 
 pub type MessageId = | MessageId(String)
 
-## What Notify did with a message. Accepted means the outbox has it, not that
-## anyone has read it: quiet hours may hold it until morning.
+## What Notify did with a message.
 pub type Delivery =
-  | Accepted(message: MessageId, deliveries: Int)
-  | Refused(reason: Refusal)
+  ## The outbox has it for `deliveries` people: not proof that anyone read it,
+  ## since quiet hours may hold it until morning. A repeated key is `deduped`.
+  | Accepted(id: MessageId, deliveries: Int, deduped: Bool)
+  ## Notify is still admitting it. Sending again with the same key later
+  ## gives the outcome without sending it twice.
+  | Pending(actionId: String)
+  ## A bad request, or an event this caller may not send.
+  | Refused(error: String)
 
+## Why a question wasn't asked.
 pub type Refusal =
-  ## Nobody receives this event.
-  | NoRecipients
-  ## The caller may not send this event.
+  ## The caller may not ask this.
   | NotAllowed
-  | TooLong(limit: Int)
   ## A question needs 2 to 4 choices.
   | BadChoices
 
@@ -40,19 +43,27 @@ pub type Answered = { question: QuestionId, choice: String, by: UserId, at: Inst
 
 @port(3001)
 @allow(digest, trains, access)
+@http(names: snake)
+@auth(bearer: "notify-token")
 contract Notify {
   ## Sends a message to everyone who receives `event`, or only to the people
-  ## in `to`.
-  @key(required)
-  @reconcile(message)
+  ## in `to`. Notify keeps what each key did, so sending again with the same
+  ## key is how a lost reply is reconciled.
+  @http("POST /v1/send", status: { 200: Accepted, 202: Pending, 400: Refused, 403: Refused })
+  @key(required, header: "X-Actions-Idempotency-Key", field: "dedupe_key")
+  @reconcile(send)
   command send(
     event: String,
     title: String,
     body: String,
     priority: Priority = Normal,
     format: Format = Plain,
-    to: List(UserId) = [],
+    to: Option(List(UserId)) = None,
   ) -> Delivery
+
+  # The operations below have no @http: the lab's Notify offers them through
+  # other routes (choices on /v1/send, the private identity bridges), and the
+  # notifier module serves them in Eyelang.
 
   ## Asks one person, with 2 to 4 buttons. The question closes after
   ## `within`; an answer comes as an `answered` event.

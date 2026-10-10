@@ -1,6 +1,7 @@
 package interp
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -24,6 +25,18 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		args := in.evalArgs(f, c.Args)
 		switch fn := callee.(type) {
 		case *Closure:
+			if fn.Fn.Host != "" {
+				// A host function (ai.generate, http.get) is a step: its
+				// result is recorded, so a resumed run doesn't call it again.
+				if v, ok := in.replay(run, w.Pos); ok {
+					return v
+				}
+				prev := in.want
+				in.want = wanted(c)
+				v, _ := in.apply(fn, args, c.Pos)
+				in.want = prev
+				return in.record(run, v, c.Pos)
+			}
 			// A call to a function that itself waits isn't a step; the
 			// steps are the waiting calls inside it.
 			r, _ := in.apply(fn, args, c.Pos)
@@ -61,6 +74,9 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 	case *ir.MethodCall:
 		recv := in.eval(f, c.Recv)
 		args := in.evalArgs(f, c.Args)
+		if r, ok := recv.(*RunVal); ok && c.Name == "join" {
+			return in.join(run, r, c.Pos)
+		}
 		if v, ok := in.replay(run, w.Pos); ok {
 			return v
 		}
@@ -76,6 +92,49 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 	}
 	in.faultf(w.Pos, "this waiting call isn't supported yet")
 	return nil
+}
+
+// join waits for a run started earlier and returns its outcome:
+// Completed(value), or Failed(fault) if it stopped first. A run that ends
+// publishes its outcome as an event, run/<id>, which wakes the runs joining it.
+func (in *Interp) join(run *jobRun, target *RunVal, at ir.Pos) Value {
+	match := func(v Value) (Value, bool) { return v, true }
+	if run.cursor < len(run.Log) {
+		s := &run.Log[run.cursor]
+		if s.Event == "" {
+			run.cursor++
+			return in.decode(s.Value, at)
+		}
+		return in.resolveWait(run, s, match, nil, at)
+	}
+	if data, ok := in.rt.store.Run(target.ID); ok {
+		if r := decodeRun(data); r.Status == "done" || r.Status == "failed" {
+			return in.record(run, in.outcome(r, at), at)
+		}
+	}
+	s := in.waitStep(run, runEvent(target.ID), ir.Duration(100*365*24*time.Hour))
+	return in.resolveWait(run, s, match, nil, at)
+}
+
+func runEvent(id int64) string { return fmt.Sprintf("run/%d", id) }
+
+// outcome is how a finished run ended, as the prelude's Outcome.
+func (in *Interp) outcome(r *jobRun, at ir.Pos) Value {
+	pre := in.prog.Prelude.Variants
+	if r.Status == "done" {
+		return &Variant{V: pre["Completed"], Vals: []Value{in.decode(r.Result, at)}}
+	}
+	kind, arg := r.FaultKind, r.FaultArg
+	if kind == "" {
+		kind, arg = "Unreachable", r.Fault
+	}
+	fault := &Variant{V: pre[kind]}
+	if fault.V == nil {
+		fault = &Variant{V: pre["Unreachable"], Vals: []Value{r.Fault}}
+	} else if len(fault.V.Fields) == 1 {
+		fault.Vals = []Value{arg}
+	}
+	return &Variant{V: pre["Failed"], Vals: []Value{fault}}
 }
 
 // replay returns the result of the next recorded step, if the run has

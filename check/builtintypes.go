@@ -162,6 +162,13 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	case "trim", "lower", "upper":
 		b.arg(0, tString)
 		return tString
+	case "env.get":
+		x.top.effect("env")
+		b.arg(0, tString)
+		return option(tString)
+	case "secret":
+		b.arg(0, tString)
+		return con("Secret", tString)
 	case "parseInt":
 		b.arg(0, tString)
 		return result(tInt, tString)

@@ -4,7 +4,7 @@
     {
       "op": "send",
       "key": "sleep-refused-creative",
-      "result": { "Accepted": { "receipt": "r-41", "at": "2026-10-10T11:21:00Z" } }
+      "result": { "kind": "Accepted", "receipt": "r-41", "at": "2026-10-10T11:21:00Z" }
     }
   ]
 }

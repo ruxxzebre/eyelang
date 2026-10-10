@@ -41,4 +41,4 @@ pub type Decision = Approved(Approval) | Declined | Expired
 ## acted, and resending could do it twice. Every command can return it
 ## besides the variants its contract declares; `.reconcile!()` resolves it
 ## when the contract names a query for it.
-pub type Unconfirmed = | Uncertain(Key)
+pub type Unconfirmed = | Uncertain(key: Key)

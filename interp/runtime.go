@@ -61,6 +61,10 @@ type runtime struct {
 	seen     map[string]bool
 	// uncertain holds the commands whose reply was lost, by key.
 	uncertain map[string]sentCommand
+	// aiReplies are recorded model replies, when a test applies fakes(ai, …).
+	aiReplies []json.RawMessage
+	// fastRetries makes retries of unreachable services immediate, in tests.
+	fastRetries bool
 }
 
 // event is a published event, saved as bytes.
@@ -453,7 +457,11 @@ type jobRun struct {
 	Since  int64  `json:",omitempty"`
 	Result []byte `json:",omitempty"`
 	Fault  string `json:",omitempty"`
-	cursor int
+	// FaultKind and FaultArg say which of the prelude's Fault variants the
+	// run ended with; empty is Unreachable(Fault).
+	FaultKind string `json:",omitempty"`
+	FaultArg  string `json:",omitempty"`
+	cursor    int
 }
 
 // step is a durable step: a recorded result, a timer still running, or a
@@ -565,6 +573,7 @@ func (rt *runtime) step(id int64) {
 				case *Fault:
 					run.Status = "failed"
 					run.Fault = x.Error()
+					run.FaultKind, run.FaultArg = x.Kind, x.Arg
 					rt.failures = append(rt.failures, &Fault{Pos: x.Pos, Msg: "job " + job.Name + ": " + x.Msg})
 				default:
 					panic(r)
@@ -576,6 +585,12 @@ func (rt *runtime) step(id int64) {
 		run.Result = rt.in.encode(result, job.Pos)
 	}()
 	rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}})
+	if run.Status == "done" || run.Status == "failed" {
+		// Runs that join this one wake to its outcome.
+		name := runEvent(run.ID)
+		rt.events = append(rt.events, event{name: name, data: rt.in.encode(rt.in.outcome(run, job.Pos), job.Pos)})
+		rt.wake(name)
+	}
 }
 
 // save writes a run after it recorded a step.
