@@ -4,9 +4,12 @@ Status: **draft**. These decisions come from design sessions on 2026-10-10. The 
 [ROADMAP.md](ROADMAP.md). None of it is implemented yet: the code in this repository is Eyelang 1, a Monkey-style tree-walking interpreter that served
 as a testing ground (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 
-Eyelang 2 is a general-purpose, statically typed, compiled language. It is designed to make one
-kind of program easy to get right: code that manages data spread across many entities (users,
-devices, game worlds, apps) and jobs that run briefly and then wait for minutes, hours or days. It
+Eyelang 2 is a general-purpose, statically typed, compiled language for **software that keeps state
+and waits**: services, automations, schedulers and agents that run for days, hold data, call other
+systems that fail, and spend most of their time waiting. It is designed to make that kind of program
+as simple to write as a script and correct by construction: data spread across many entities
+(users, devices, game worlds, apps), and jobs that run briefly and then wait for minutes, hours or
+days. It
 is not a configuration DSL. Every feature below is an ordinary language construct that also works
 outside that domain.
 

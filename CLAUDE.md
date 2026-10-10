@@ -6,6 +6,28 @@ designed and built, for people and coding agents alike. The language is defined 
 [SPECS.md](SPECS.md), the syntax in [tree-sitter-eyelang/grammar.js](tree-sitter-eyelang/grammar.js),
 and the plan in [ROADMAP.md](ROADMAP.md); progress lives in the GitHub issues.
 
+## The main idea
+
+**Eyelang is for software that keeps state and waits:** services, automations, schedulers and agents
+that run for days, hold data, call other systems that fail, and spend most of their time waiting.
+It makes such programs as simple to write as a script, and correct by construction.
+
+Five pillars carry the idea. Everything else, including the functional core and safe parallelism,
+is a means to them:
+
+1. **Values, not shared objects.** Immutable data, local and visible mutation (`mut`), no aliasing.
+   This is why parallel code has no data races and memory needs no garbage collector.
+2. **State has an owner.** Shared data lives in entities with atomic methods.
+3. **Waiting is free and durable.** Jobs pause on `!` steps for as long as they need, cost no memory
+   while they wait, and survive restarts.
+4. **Boundaries are typed and failure is explicit.** Contracts for services, schemas for AI calls,
+   keyed and reconciled calls, `Result` instead of exceptions.
+5. **Costs and effects are visible.** `uses`, `!`, `mut`, `dyn`, budgets.
+
+**Scope test:** a feature belongs if it makes the general core better for everyone, or makes
+stateful, waiting, failure-prone programs simpler or safer, and it breaks none of the pillars.
+Long-running AI agents pass easily; a GUI toolkit or class inheritance would not.
+
 ## What we are building
 
 A great language: fast, concise, and a pleasure to read, type and review, that makes the
