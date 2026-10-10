@@ -144,7 +144,6 @@ func TestLexDiagnostics(t *testing.T) {
 	}
 }
 
-
 // checkRoundTrip checks the lexer's invariants: the tokens cover the source
 // exactly, in order, ending with a zero-width EOF; only Missing tokens are
 // empty; and the flags agree with the trivia before each token.
@@ -210,12 +209,32 @@ func FuzzLex(f *testing.F) {
 func exampleInputs(tb testing.TB) map[string]string {
 	tb.Helper()
 	inputs := map[string]string{}
+	for _, c := range corpusCases(tb) {
+		inputs[c.file+": "+c.name] = c.input
+	}
+	for i, src := range specExamples(tb) {
+		inputs[fmt.Sprintf("SPECS.md example %d", i+1)] = src
+	}
+	return inputs
+}
 
+// corpusCase is one test from tree-sitter-eyelang/test/corpus.
+type corpusCase struct {
+	file, name string
+	input      string
+	tree       string // expected tree in tree-sitter's corpus format
+	wantError  bool   // the test has the :error attribute
+}
+
+func corpusCases(tb testing.TB) []corpusCase {
+	tb.Helper()
 	files, err := filepath.Glob("../tree-sitter-eyelang/test/corpus/*.txt")
 	if err != nil || len(files) == 0 {
 		tb.Fatalf("no corpus files found: %v", err)
 	}
-	header := regexp.MustCompile(`(?m)^={3,}\n(.*)\n(?::\w+\n)*={3,}\n`)
+	header := regexp.MustCompile(`(?m)^={3,}\n(.*)\n((?::\w+\n)*)={3,}\n`)
+	divider := regexp.MustCompile(`(?m)^-{3,}$`)
+	var cases []corpusCase
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -229,20 +248,33 @@ func exampleInputs(tb testing.TB) map[string]string {
 				end = matches[i+1][0]
 			}
 			body := text[m[1]:end]
-			if sep := regexp.MustCompile(`(?m)^-{3,}$`).FindStringIndex(body); sep != nil {
+			c := corpusCase{
+				file:      filepath.Base(file),
+				name:      text[m[2]:m[3]],
+				wantError: strings.Contains(text[m[4]:m[5]], ":error"),
+			}
+			if sep := divider.FindStringIndex(body); sep != nil {
+				c.tree = strings.TrimSpace(body[sep[1]:])
 				body = body[:sep[0]]
 			}
-			inputs[filepath.Base(file)+": "+text[m[2]:m[3]]] = strings.Trim(body, "\n") + "\n"
+			c.input = strings.Trim(body, "\n") + "\n"
+			cases = append(cases, c)
 		}
 	}
+	return cases
+}
 
+// specExamples returns the eye code blocks of SPECS.md.
+func specExamples(tb testing.TB) []string {
+	tb.Helper()
 	spec, err := os.ReadFile("../SPECS.md")
 	if err != nil {
 		tb.Fatal(err)
 	}
+	var out []string
 	block := regexp.MustCompile("(?ms)^[ \t]*```eye\n(.*?)^[ \t]*```")
-	for i, m := range block.FindAllStringSubmatch(string(spec), -1) {
-		inputs[fmt.Sprintf("SPECS.md example %d", i+1)] = m[1]
+	for _, m := range block.FindAllStringSubmatch(string(spec), -1) {
+		out = append(out, m[1])
 	}
-	return inputs
+	return out
 }

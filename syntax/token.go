@@ -187,11 +187,14 @@ var tokenNames = [...]string{
 	KwFalse:          "false",
 }
 
-// String returns the token's text for punctuation and keywords, and its
-// tree-sitter node name for named tokens.
+// String returns the text of punctuation and keywords, and the tree-sitter
+// node name of named tokens and nodes.
 func (k Kind) String() string {
 	if int(k) < len(tokenNames) && tokenNames[k] != "" {
 		return tokenNames[k]
+	}
+	if name, ok := nodeNames[k]; ok {
+		return name
 	}
 	return "kind(" + strconv.Itoa(int(k)) + ")"
 }
