@@ -178,7 +178,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   A number followed by a unit name (`ms`, `s`, `min`, `h`, `day`, `days`, `week`, `weeks`, `B`,
   `KiB`, `MiB`, `GiB`) is a Duration or Size. A date or time of day is written without spaces;
   `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time.
-- **Strings** stay on one line. The escapes are `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\{`, `\}` and
+- **Strings:** a string's text stays on one line, though an interpolated expression may break
+  across lines. The escapes are `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\{`, `\}` and
   `\u{1F600}`. `{expression}` interpolates a value that has `Show`.
 - **Keywords:** `let var fn pub return if else match for in while break continue type trait impl
   entity state job view contract import test with start true false _`. A few more words are

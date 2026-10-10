@@ -47,7 +47,8 @@ module.exports = grammar({
     $._error_sentinel,
   ],
 
-  extras: $ => [/\s/, $.comment],
+  // ASCII whitespace only, as in the scanner and syntax/lexer.go.
+  extras: $ => [/[ \t\r\n\f\v]/, $.comment],
 
   reserved: {
     global: _ => KEYWORDS,
