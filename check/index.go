@@ -18,6 +18,9 @@ type Options struct {
 	// Module is the directory of the module to check, below the program's
 	// directory, with what it imports. Empty means the program's own module.
 	Module string
+	// All checks every module below the program's directory too, not
+	// only those the module imports: what finding references needs.
+	All bool
 }
 
 // Result is a checked program, its diagnostics, and an index of its names.
@@ -30,7 +33,7 @@ type Result struct {
 // Check checks the program in dir, as Program does, and also indexes what
 // each name refers to, for tools such as the language server.
 func Check(dir string, opts Options) *Result {
-	c := &checker{root: dir, modules: map[string]*module{}, overlay: opts.Overlay, index: &Index{}}
+	c := &checker{root: dir, modules: map[string]*module{}, overlay: opts.Overlay, index: &Index{}, all: opts.All}
 	path := ""
 	if opts.Module != "" {
 		rel, err := filepath.Rel(dir, opts.Module)
@@ -39,7 +42,163 @@ func Check(dir string, opts Options) *Result {
 		}
 	}
 	prog, diags := c.program(path)
+	c.indexDeclarations()
 	return &Result{Program: prog, Diagnostics: diags, Index: c.index}
+}
+
+// loadAll loads every module below the program's directory that isn't
+// loaded yet, when the checker was asked for all of them. Directories whose
+// names start with a dot, such as .eye and .git, are left out.
+func (c *checker) loadAll() {
+	if !c.all {
+		return
+	}
+	_ = filepath.WalkDir(c.root, func(dir string, e os.DirEntry, err error) error {
+		if err != nil || !e.IsDir() {
+			return nil
+		}
+		if dir != c.root && strings.HasPrefix(e.Name(), ".") {
+			return filepath.SkipDir
+		}
+		rel, err := filepath.Rel(c.root, dir)
+		if err != nil || rel == "." {
+			return nil
+		}
+		path := strings.ReplaceAll(filepath.ToSlash(rel), "/", ".")
+		if c.modules[path] != nil || !hasEyeFiles(dir) {
+			return nil
+		}
+		c.load(path, dir)
+		return nil
+	})
+}
+
+func hasEyeFiles(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".eye") {
+			return true
+		}
+	}
+	return false
+}
+
+// indexDeclarations records each declaration's own name as a use of it, so
+// that the name a declaration declares leads to it as its uses do.
+func (c *checker) indexDeclarations() {
+	if c.index == nil {
+		return
+	}
+	c.indexRecords()
+	add := func(target any) {
+		if at, ok := Definition(target); ok && at.File != nil && at.End > at.Offset {
+			c.use(at, target)
+		}
+	}
+	for _, m := range c.prog.Modules {
+		for _, g := range m.Globals {
+			add(g)
+		}
+		for _, t := range m.Types {
+			if len(t.Variants) == 1 && t.Variants[0].Name == t.Name {
+				// `type Id = | Id(String)`: both names are the variant.
+				if at, ok := variantName(t.Variants[0]); ok {
+					c.use(at, t.Variants[0])
+				}
+			} else {
+				add(t)
+			}
+			for _, v := range t.Variants {
+				add(v)
+				for _, f := range v.Fields {
+					if f.Name != "" {
+						add(Member{Of: v, Name: f.Name})
+					}
+				}
+			}
+			for _, f := range t.Fields {
+				add(Member{Of: t, Name: f})
+			}
+			for _, fn := range t.Methods {
+				add(fn)
+			}
+		}
+		for _, fn := range m.Funcs {
+			add(fn)
+		}
+		for _, e := range m.Entities {
+			add(e)
+			if e.ID != nil {
+				add(Member{Of: e, Name: e.ID.Name})
+			}
+			for _, st := range e.States {
+				add(Member{Of: e, Name: st.Name})
+			}
+			for _, fn := range e.Methods {
+				add(fn)
+			}
+		}
+		for _, j := range m.Jobs {
+			add(j)
+		}
+		for _, tr := range m.Traits {
+			add(tr)
+			for _, fn := range tr.Methods {
+				add(fn)
+			}
+		}
+		for _, f := range m.Files {
+			c.indexTypeVariables(f)
+		}
+		c.indexContracts(m)
+	}
+	for _, m := range c.prog.Modules {
+		for _, f := range m.Files {
+			c.indexAttributes(f)
+		}
+		for _, v := range m.Views {
+			add(v)
+		}
+		for _, ct := range m.Contracts {
+			add(ct)
+			for _, op := range ct.Ops {
+				add(op)
+				for _, p := range op.Params {
+					add(Member{Of: op, Name: p.Name})
+				}
+			}
+			for _, ev := range ct.Events {
+				add(ev)
+			}
+		}
+	}
+}
+
+// References returns the uses of target, its declaration's name among them.
+func (ix *Index) References(target any) []ir.Pos {
+	var out []ir.Pos
+	seen := map[ir.Pos]bool{}
+	for _, u := range ix.Uses {
+		if u.Target == target && !seen[u.At] {
+			seen[u.At] = true
+			out = append(out, u.At)
+		}
+	}
+	return out
+}
+
+// BuiltinType is a type the checker knows without a declaration, such as
+// Int, String or Zone.
+type BuiltinType struct{ Name string }
+
+// GoFile returns the path, as the compiler saw it, of a Go file of eye's
+// source, by its path in the repository, such as "check/types.go".
+func GoFile(rel string) string {
+	_, self, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(filepath.Dir(self)), filepath.FromSlash(rel))
 }
 
 // Index records, for each name in a program's source, what it refers to.
@@ -78,6 +237,9 @@ func (ix *Index) At(path string, offset int) (Use, bool) {
 
 // use records that the name at `at` refers to target.
 func (c *checker) use(at ir.Pos, target any) {
+	if l, ok := target.(Local); ok && l.At.File == nil {
+		return
+	}
 	if c.index != nil && at.File != nil && target != nil {
 		c.index.Uses = append(c.index.Uses, Use{At: at, Target: target})
 	}
@@ -125,16 +287,10 @@ func Definition(target any) (ir.Pos, bool) {
 		}
 		return nodePos(d.Pos.File, decl.ChildByField(syntax.FieldPattern), decl), true
 	case *ir.Variant:
-		decl := nodeOf(d.Type.Pos)
-		if decl == nil {
-			return ir.Pos{}, false
+		if len(d.Type.Variants) == 1 && d.Type.Variants[0] == d && d.Type.Name == d.Name {
+			return named(d.Type.Pos)
 		}
-		if v := decl.ChildByField(syntax.FieldValue); v != nil && v.Kind == syntax.VariantList {
-			if n := memberNamed(d.Type.Pos.File, v, d.Name); n != nil {
-				return nodePos(d.Type.Pos.File, n.ChildByField(syntax.FieldName), n), true
-			}
-		}
-		return named(d.Type.Pos)
+		return variantName(d)
 	case *ir.Contract:
 		f, decl := contractNode(d)
 		if decl == nil {
@@ -156,6 +312,20 @@ func Definition(target any) (ir.Pos, bool) {
 	return ir.Pos{}, false
 }
 
+// variantName is the name of a variant where it is declared.
+func variantName(d *ir.Variant) (ir.Pos, bool) {
+	decl := nodeOf(d.Type.Pos)
+	if decl == nil {
+		return ir.Pos{}, false
+	}
+	if v := decl.ChildByField(syntax.FieldValue); v != nil && v.Kind == syntax.VariantList {
+		if n := memberNamed(d.Type.Pos.File, v, d.Name); n != nil {
+			return nodePos(d.Type.Pos.File, n.ChildByField(syntax.FieldName), n), true
+		}
+	}
+	return named(d.Type.Pos)
+}
+
 // memberDefinition finds a record field, or an entity's state field or
 // identity.
 func memberDefinition(m Member) (ir.Pos, bool) {
@@ -165,6 +335,22 @@ func memberDefinition(m Member) (ir.Pos, bool) {
 		at = o.Pos
 	case *ir.Entity:
 		at = o.Pos
+	case *ir.Op:
+		at = o.Pos
+	case *ir.Variant:
+		if vn, ok := variantName(o); ok {
+			// The variant's node holds its payload: from its name up.
+			if decl := nodeOf(o.Type.Pos); decl != nil {
+				if v := decl.ChildByField(syntax.FieldValue); v != nil {
+					if n := memberNamed(o.Type.Pos.File, v, o.Name); n != nil {
+						at = pos(o.Type.Pos.File, n)
+						break
+					}
+				}
+			}
+			return vn, true
+		}
+		return ir.Pos{}, false
 	default:
 		return ir.Pos{}, false
 	}
@@ -311,4 +497,316 @@ func Embedded(path string) (repoPath string, src []byte, ok bool) {
 		return filepath.Join(dir, "std", name+".eye"), src, true
 	}
 	return "", nil, false
+}
+
+// GoText is a place in eye's Go source, found by its text: where a built-in
+// attribute, trigger or method is declared. File is relative to the
+// repository, as "check/attributes.go".
+type GoText struct{ File, Text string }
+
+// method is where the type checker handles a method it knows itself, such
+// as `run.join()` or `date.format(…)`.
+func method(name string) GoText {
+	return GoText{File: "check/infer.go", Text: `e.Name == "` + name + `"`}
+}
+
+// names keeps where the names in an expression are written, from lowering
+// until the type checker knows what they refer to.
+type names struct {
+	name   map[ir.Expr]ir.Pos            // of a Field or MethodCall
+	args   map[ir.Expr]map[string]ir.Pos // named arguments of a call
+	fields map[ir.Expr][]ir.Pos          // of a Record or RecordUpdate, by index
+	place  map[ir.Pos][]ir.Pos           // of an assignment target's path, by its position
+}
+
+// nameAt records where the name of a Field or MethodCall is written.
+func (c *checker) nameAt(e ir.Expr, at ir.Pos) {
+	if c.index == nil {
+		return
+	}
+	if c.names.name == nil {
+		c.names.name = map[ir.Expr]ir.Pos{}
+	}
+	c.names.name[e] = at
+}
+
+// argsAt records where a call's named arguments are named.
+func (c *checker) argsAt(e ir.Expr, f *ir.File, args *syntax.Node) {
+	if c.index == nil || args == nil {
+		return
+	}
+	for _, a := range args.NamedChildren() {
+		if a.Kind != syntax.NamedArgument {
+			continue
+		}
+		if c.names.args == nil {
+			c.names.args = map[ir.Expr]map[string]ir.Pos{}
+		}
+		if c.names.args[e] == nil {
+			c.names.args[e] = map[string]ir.Pos{}
+		}
+		name := a.ChildByField(syntax.FieldName)
+		c.names.args[e][text(f, name)] = pos(f, name)
+	}
+}
+
+// fieldsAt records where a record literal's or update's field names are.
+func (c *checker) fieldsAt(e ir.Expr, at []ir.Pos) {
+	if c.index == nil {
+		return
+	}
+	if c.names.fields == nil {
+		c.names.fields = map[ir.Expr][]ir.Pos{}
+	}
+	c.names.fields[e] = at
+}
+
+// useName records what the name of a Field or MethodCall refers to.
+func (c *checker) useName(e ir.Expr, target any) {
+	if at, ok := c.names.name[e]; ok {
+		c.use(at, target)
+	}
+}
+
+// useMethod records the method a MethodCall calls, and what its named
+// arguments name.
+func (c *checker) useMethod(e ir.Expr, m *ir.Func) {
+	c.useName(e, m)
+	c.useArgs(e, m)
+}
+
+// useArgs records the parameters a call's named arguments name.
+func (c *checker) useArgs(e ir.Expr, callee any) {
+	for name, at := range c.names.args[e] {
+		if p := paramOf(callee, name); p != nil {
+			c.use(at, p)
+		}
+	}
+}
+
+// paramOf is the target a named argument of a call of callee names.
+func paramOf(callee any, name string) any {
+	switch d := callee.(type) {
+	case *ir.Job:
+		if p := paramOf(d.Func, name); p != nil {
+			return p
+		}
+		return method("start") // after:, at: and key:, which start adds
+	case *ir.Func:
+		decl := nodeOf(d.Pos)
+		if decl == nil {
+			return nil
+		}
+		if ps := decl.ChildByField(syntax.FieldParameters); ps != nil {
+			for _, p := range ps.NamedChildren() {
+				if n := p.ChildByField(syntax.FieldName); n != nil && text(d.Pos.File, n) == name {
+					return Local{At: pos(d.Pos.File, n)}
+				}
+			}
+		}
+	case *ir.Op:
+		return Member{Of: d, Name: name}
+	case *ir.Variant:
+		return Member{Of: d, Name: name}
+	case *ir.Entity:
+		if d.ID != nil && d.ID.Name == name {
+			return Member{Of: d, Name: name}
+		}
+	case ir.Builtin, GoText:
+		return d // its parameters are the Go function's
+	}
+	return nil
+}
+
+// placeAt records where the names in an assignment's target are written:
+// each field of its path, the state field first when it starts at one.
+func (c *checker) placeAt(p ir.Pos, names []ir.Pos) {
+	if c.index == nil {
+		return
+	}
+	if c.names.place == nil {
+		c.names.place = map[ir.Pos][]ir.Pos{}
+	}
+	c.names.place[p] = names
+}
+
+// usePlace records what the i-th name of the target at p refers to.
+func (c *checker) usePlace(p ir.Pos, i int, target any) {
+	if at := c.names.place[p]; i < len(at) {
+		c.use(at[i], target)
+	}
+}
+
+// useField records the field a Field reads, from the type of its value.
+func (c *checker) useField(e ir.Expr, t typ, name string) {
+	if owner := c.memberOwner(t, name); owner != nil {
+		c.useName(e, Member{Of: owner, Name: name})
+	}
+}
+
+// useFields records the fields a record literal or update names.
+func (c *checker) useFields(e ir.Expr, t typ, names []string) {
+	at := c.names.fields[e]
+	for i, name := range names {
+		if i < len(at) && at[i].File != nil {
+			if owner := c.memberOwner(t, name); owner != nil {
+				c.use(at[i], Member{Of: owner, Name: name})
+			}
+		}
+	}
+}
+
+// memberOwner is the declaration that declares the field name of a value of
+// type t: an entity, a record type, or the one variant of a type.
+func (c *checker) memberOwner(t typ, name string) any {
+	x, ok := prune(t).(*tcon)
+	if !ok {
+		return nil
+	}
+	switch {
+	case x.entity != nil:
+		return x.entity
+	case x.name == "Ref" && x.decl == nil && len(x.args) == 1:
+		if s, ok := prune(x.args[0]).(*tcon); ok && s.entity != nil {
+			return s.entity
+		}
+	case x.decl != nil && x.decl.Alias != nil:
+		return x.decl
+	case x.decl != nil && len(x.decl.Variants) == 1:
+		return x.decl.Variants[0]
+	}
+	return nil
+}
+
+// indexRecords records the fields of record literals whose type the checker
+// found.
+func (c *checker) indexRecords() {
+	for e, at := range c.names.fields {
+		r, ok := e.(*ir.Record)
+		if !ok || r.Type == nil {
+			continue
+		}
+		for i, name := range r.Names {
+			if i < len(at) && at[i].File != nil {
+				c.use(at[i], Member{Of: r.Type, Name: name})
+			}
+		}
+	}
+}
+
+// indexTypeVariables records the type variables of each declaration: the
+// first place a name appears, or its entry in the type parameters, declares
+// it, and the others use it. A trait's or an impl's variables are seen in
+// their methods.
+func (c *checker) indexTypeVariables(f *ir.File) {
+	var walk func(n *syntax.Node, scopes []map[string]ir.Pos)
+	declare := func(scopes []map[string]ir.Pos, n *syntax.Node) {
+		name := text(f, n)
+		for i := len(scopes) - 1; i >= 0; i-- {
+			if at, ok := scopes[i][name]; ok {
+				c.use(pos(f, n), Local{At: at})
+				return
+			}
+		}
+		at := pos(f, n)
+		scopes[len(scopes)-1][name] = at
+		c.use(at, Local{At: at})
+	}
+	walk = func(n *syntax.Node, scopes []map[string]ir.Pos) {
+		switch n.Kind {
+		case syntax.TypeDeclaration, syntax.TraitDeclaration, syntax.ImplDeclaration, syntax.FunctionDeclaration,
+			syntax.FunctionSignature, syntax.ExternDeclaration:
+			scopes = append(scopes, map[string]ir.Pos{})
+		case syntax.Block:
+			return // bodies hold no type variables of their own
+		case syntax.TypeVariable:
+			inner := n
+			if kids := n.NamedChildren(); len(kids) == 1 && kids[0].Kind == syntax.Ident {
+				inner = kids[0]
+			}
+			if len(scopes) > 0 {
+				declare(scopes, inner)
+			}
+			return
+		case syntax.TypeParameters:
+			for _, p := range n.NamedChildren() {
+				if p.Kind == syntax.Ident && len(scopes) > 0 {
+					declare(scopes, p)
+				}
+			}
+			return
+		case syntax.Requirement:
+			if name := n.ChildByField(syntax.FieldName); name != nil && name.Kind == syntax.Ident && len(scopes) > 0 {
+				declare(scopes, name)
+			}
+		}
+		for _, k := range n.Children {
+			walk(k, scopes)
+		}
+	}
+	walk(f.Tree.Root, nil)
+}
+
+// indexContracts records the names a contract's attributes give:
+// @reconcile(query), @key(field) on an event, and the variants of
+// @http(status: {…}).
+func (c *checker) indexContracts(m *ir.Module) {
+	mod := c.modules[m.Path]
+	for _, ct := range m.Contracts {
+		f, decl := contractNode(ct)
+		if decl == nil || mod == nil {
+			continue
+		}
+		for _, member := range decl.ChildByField(syntax.FieldBody).NamedChildren() {
+			name := text(f, member.ChildByField(syntax.FieldName))
+			if args := attributeArgs(f, member, "reconcile"); len(args) == 1 {
+				if q := ct.Ops[text(f, args[0])]; q != nil {
+					c.use(pos(f, args[0]), q)
+				}
+			}
+			if ev := ct.Events[name]; ev != nil && ev.Type != nil && ev.Type.Decl != nil {
+				if args := attributeArgs(f, member, "key"); len(args) == 1 {
+					c.use(pos(f, args[0]), Member{Of: ev.Type.Decl, Name: text(f, args[0])})
+				}
+			}
+			if _, named, ok := attribute(f, member, "http"); ok && named["status"] != nil && named["status"].Kind == syntax.Map {
+				for _, e := range named["status"].NamedChildren() {
+					if v := e.ChildByField(syntax.FieldValue); v != nil && v.Kind == syntax.TypeIdent {
+						if d, ok := c.lookupType(mod, text(f, v)).(*ir.Variant); ok {
+							c.use(pos(f, v), d)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// indexAttributes leads the names in a built-in attribute's arguments that
+// name nothing in the program, such as `snake` in @http(names: snake), to
+// the attribute's declaration.
+func (c *checker) indexAttributes(f *ir.File) {
+	f.Tree.Root.Walk(func(n *syntax.Node) bool {
+		if n.Kind != syntax.Attribute {
+			return true
+		}
+		name := text(f, n.ChildByField(syntax.FieldName))
+		args := n.ChildByField(syntax.FieldArguments)
+		if _, known := attributes[name]; !known || args == nil {
+			return false
+		}
+		spec := GoText{File: "check/attributes.go", Text: `"` + name + `": {`}
+		for _, a := range args.NamedChildren() {
+			if a.Kind == syntax.NamedArgument {
+				a = a.ChildByField(syntax.FieldValue)
+			}
+			if a == nil || a.Kind != syntax.Ident {
+				continue
+			}
+			if _, done := c.index.At(f.Path, a.Span.Start); !done {
+				c.use(pos(f, a), spec)
+			}
+		}
+		return false
+	})
 }

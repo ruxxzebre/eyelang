@@ -1,8 +1,10 @@
 package lsp
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -78,5 +80,85 @@ func TestDefinition(t *testing.T) {
 	expect("host function", "interp/services.go", -1, 0)
 	if locs := get("nothing"); len(locs) != 0 {
 		t.Errorf("an empty line has a definition: %v", locs)
+	}
+}
+
+// TestReferences finds the uses of a function across a program's modules,
+// from its declaration, and goes from a method call and a built-in type to
+// their declarations.
+func TestReferences(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, src string) {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("eye.toml", "")
+	write("shapes/shapes.eye", "pub type Box = { side: Int }\n\nimpl Box {\n  pub fn area(self) -> Int = self.side * self.side\n}\n\npub fn unit() -> Box = { side: 1 }\n")
+	write("a/a.eye", "import shapes\n\nfn a() -> Int = shapes.unit().area()\n")
+	write("b/b.eye", "import shapes\n\nfn b(s: String) -> Int = shapes.unit().side\n")
+	shapes := pathURI(filepath.Join(dir, "shapes", "shapes.eye"))
+	a := pathURI(filepath.Join(dir, "a", "a.eye"))
+	b := pathURI(filepath.Join(dir, "b", "b.eye"))
+
+	s := newSession(t)
+	src, _ := os.ReadFile(filepath.Join(dir, "shapes", "shapes.eye"))
+	s.open(shapes, string(src))
+	src, _ = os.ReadFile(filepath.Join(dir, "a", "a.eye"))
+	s.open(a, string(src))
+	src, _ = os.ReadFile(filepath.Join(dir, "b", "b.eye"))
+	s.open(b, string(src))
+	refs := s.request("textDocument/references", map[string]any{
+		"textDocument": map[string]any{"uri": shapes},
+		"position":     map[string]any{"line": 6, "character": 9}, // pub fn unit
+		"context":      map[string]any{"includeDeclaration": false},
+	})
+	field := s.request("textDocument/references", map[string]any{
+		"textDocument": map[string]any{"uri": shapes},
+		"position":     map[string]any{"line": 0, "character": 18}, // side
+		"context":      map[string]any{"includeDeclaration": true},
+	})
+	method := s.request("textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": a},
+		"position":     map[string]any{"line": 2, "character": 31}, // .area()
+	})
+	builtin := s.request("textDocument/definition", map[string]any{
+		"textDocument": map[string]any{"uri": b},
+		"position":     map[string]any{"line": 2, "character": 9}, // String
+	})
+	msgs := s.run()
+	where := func(locs []location) []string {
+		var out []string
+		for _, l := range locs {
+			p, _ := uriPath(l.URI)
+			rel, err := filepath.Rel(dir, p)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				rel = filepath.Base(p)
+			}
+			out = append(out, fmt.Sprintf("%s:%d:%d", filepath.ToSlash(rel), l.Range.Start.Line, l.Range.Start.Character))
+		}
+		sort.Strings(out)
+		return out
+	}
+	var locs []location
+	response(t, msgs, refs, &locs)
+	if got, want := strings.Join(where(locs), " "), "a/a.eye:2:23 b/b.eye:2:32"; got != want {
+		t.Errorf("references to unit: %s, want %s", got, want)
+	}
+	response(t, msgs, field, &locs)
+	if got, want := strings.Join(where(locs), " "), "b/b.eye:2:39 shapes/shapes.eye:0:17 shapes/shapes.eye:3:34 shapes/shapes.eye:3:46 shapes/shapes.eye:6:25"; got != want {
+		t.Errorf("references to side: %s, want %s", got, want)
+	}
+	response(t, msgs, method, &locs)
+	if got, want := strings.Join(where(locs), " "), "shapes/shapes.eye:3:9"; got != want {
+		t.Errorf("area() goes to %s, want %s", got, want)
+	}
+	response(t, msgs, builtin, &locs)
+	if got := where(locs); len(got) != 1 || !strings.HasPrefix(got[0], "types.go:") {
+		t.Errorf("String goes to %v, want check/types.go", got)
 	}
 }

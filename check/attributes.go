@@ -167,6 +167,18 @@ func (c *checker) checkOwnAttributes(f *ir.File, d *syntax.Node) {
 		name := text(f, nameNode)
 		at := pos(f, attr)
 		specs, known := attributes[name]
+		if known {
+			spec := GoText{File: "check/attributes.go", Text: `"` + name + `": {`}
+			c.use(pos(f, nameNode), spec)
+			// Its argument names, and the words it takes, are declared there too.
+			if args := attr.ChildByField(syntax.FieldArguments); args != nil {
+				for _, a := range args.NamedChildren() {
+					if a.Kind == syntax.NamedArgument {
+						c.use(pos(f, a.ChildByField(syntax.FieldName)), spec)
+					}
+				}
+			}
+		}
 		if !known {
 			if near := nearestAttribute(name); near != "" {
 				c.errorf(at, "@%s isn't an attribute; did you mean @%s?", name, near)
@@ -394,6 +406,7 @@ func (c *checker) jobLimits(m *module, f *ir.File, d *syntax.Node, job *ir.Job) 
 			return -1
 		}
 		name := text(f, n)
+		c.use(pos(f, n), paramOf(job.Func, name))
 		for i, p := range job.Func.Params {
 			if p.Name == name {
 				return i

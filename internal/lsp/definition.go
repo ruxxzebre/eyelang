@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -78,19 +79,40 @@ func declaredName(d *document, offset int) *syntax.Node {
 // disk.
 func (s *server) checked(path string) *check.Result {
 	root := check.Root(path)
+	return check.Check(root, check.Options{Overlay: s.overlay(root), Module: filepath.Dir(path)})
+}
+
+// overlay holds the text of the open documents below root.
+func (s *server) overlay(root string) map[string][]byte {
 	overlay := map[string][]byte{}
 	for uri, d := range s.docs {
 		if p, ok := uriPath(uri); ok && strings.HasPrefix(p, root+string(filepath.Separator)) {
 			overlay[p] = d.text
 		}
 	}
-	return check.Check(root, check.Options{Overlay: overlay, Module: filepath.Dir(path)})
+	return overlay
 }
 
 // targetLocation returns where a use's target is declared.
 func (s *server) targetLocation(target any) (location, bool) {
-	if b, ok := target.(ir.Builtin); ok {
-		src, ok := interp.BuiltinSource(b.Name)
+	switch t := target.(type) {
+	case check.BuiltinType:
+		// Where the checker makes the type: `tString = con("String")`,
+		// `con("List", t)`, or else its entry among the built-in names.
+		for _, g := range []check.GoText{
+			{File: "check/types.go", Text: `con("` + t.Name + `"`},
+			{File: "check/builtintypes.go", Text: `con("` + t.Name + `"`},
+			{File: "check/check.go", Text: `"` + t.Name + `": true`},
+		} {
+			if loc, ok := s.goTextLocation(g); ok {
+				return loc, true
+			}
+		}
+		return location{}, false
+	case check.GoText:
+		return s.goTextLocation(t)
+	case ir.Builtin:
+		src, ok := interp.BuiltinSource(t.Name)
 		if !ok {
 			return location{}, false
 		}
@@ -101,6 +123,136 @@ func (s *server) targetLocation(target any) (location, bool) {
 		return location{}, false
 	}
 	return s.posLocation(at)
+}
+
+// goTextLocation finds the first line of a Go file of eye's source that
+// holds the text.
+func (s *server) goTextLocation(g check.GoText) (location, bool) {
+	path, ok := s.sourceFile(check.GoFile(g.File))
+	if !ok {
+		return location{}, false
+	}
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return location{}, false
+	}
+	for i, line := range strings.Split(string(src), "\n") {
+		if c := strings.Index(line, g.Text); c >= 0 {
+			start := Position{Line: i, Character: utf16Len([]byte(line[:c]))}
+			end := Position{Line: i, Character: start.Character + utf16Len([]byte(g.Text))}
+			return location{URI: pathURI(path), Range: Range{Start: start, End: end}}, true
+		}
+	}
+	return location{}, false
+}
+
+// references answers textDocument/references: every use of the name at p
+// in the program the file belongs to, across all its modules. A name
+// declared in the prelude or a standard module, or built in, is looked for
+// in every program in the workspace.
+func (s *server) references(d *document, p Position, withDecl bool) (any, *responseError) {
+	out := []location{}
+	path, ok := uriPath(d.uri)
+	if !ok {
+		return out, nil
+	}
+	root := check.Root(path)
+	res := s.checkAll(root, filepath.Dir(path))
+	use, ok := res.Index.At(path, d.offset(p))
+	if !ok {
+		return out, nil
+	}
+	key, global := s.targetKey(use.Target)
+	results := []*check.Result{res}
+	if global {
+		for _, r := range s.programs() {
+			if r != root {
+				results = append(results, s.checkAll(r, ""))
+			}
+		}
+	}
+	decl, _ := s.targetLocation(use.Target)
+	seen := map[location]bool{}
+	for _, res := range results {
+		for _, u := range res.Index.Uses {
+			if k, _ := s.targetKey(u.Target); k != key {
+				continue
+			}
+			loc, ok := s.posLocation(u.At)
+			if !ok || seen[loc] || !withDecl && loc == decl {
+				continue
+			}
+			seen[loc] = true
+			out = append(out, loc)
+		}
+	}
+	return out, nil
+}
+
+// checkAll checks a program, every module of it when it has an eye.toml,
+// with module, if given, among them.
+func (s *server) checkAll(root, module string) *check.Result {
+	opts := check.Options{Overlay: s.overlay(root), Module: module}
+	if _, err := os.Stat(filepath.Join(root, "eye.toml")); err == nil {
+		opts.All = true // without one, the program is its own directory only
+	}
+	return check.Check(root, opts)
+}
+
+// targetKey names a target the same way in every check of every program:
+// by where it is declared, a file eye carries by its name in eye, or by
+// what it is when it is built in. global reports whether programs other than
+// this one can use it.
+func (s *server) targetKey(target any) (key string, global bool) {
+	switch t := target.(type) {
+	case check.BuiltinType, check.GoText, ir.Builtin:
+		return fmt.Sprintf("%T %v", t, t), true
+	}
+	at, ok := check.Definition(target)
+	if !ok || at.File == nil {
+		return fmt.Sprintf("%T %p", target, target), false
+	}
+	path := embeddedName(at.File.Path)
+	return fmt.Sprintf("%s:%d", path, at.Offset), strings.HasPrefix(path, "<")
+}
+
+// embeddedName is the name eye gives a file it carries, for the copy of it
+// in the repository, so that a declaration in check/prelude.eye is the
+// prelude's.
+func embeddedName(path string) string {
+	p := filepath.ToSlash(path)
+	switch {
+	case strings.HasSuffix(p, "/check/prelude.eye"):
+		return "<prelude>"
+	case strings.HasSuffix(p, "/check/runtime/store.eye"):
+		return "<runtime store>"
+	}
+	if i := strings.LastIndex(p, "/check/std/"); i >= 0 && strings.HasSuffix(p, ".eye") {
+		return "<std " + strings.TrimSuffix(p[i+len("/check/std/"):], ".eye") + ">"
+	}
+	return path
+}
+
+// programs returns the roots of the programs in the workspace: the
+// directories that hold an eye.toml, outside hidden directories and
+// node_modules.
+func (s *server) programs() []string {
+	var out []string
+	for _, folder := range s.folders {
+		_ = filepath.WalkDir(folder, func(p string, e os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if e.IsDir() && p != folder && (strings.HasPrefix(e.Name(), ".") || e.Name() == "node_modules") {
+				return filepath.SkipDir
+			}
+			if !e.IsDir() && e.Name() == "eye.toml" {
+				out = append(out, filepath.Dir(p))
+			}
+			return nil
+		})
+	}
+	return out
 }
 
 // hostLocation returns the Go implementation of the extern fn whose name, or

@@ -64,6 +64,7 @@ func (c *checker) program(path string) (*ir.Program, []Diagnostic) {
 		return c.prog, c.diags
 	}
 	c.prog.Root = root.mod
+	c.loadAll()
 	for _, m := range c.order {
 		c.lowerModule(m)
 	}
@@ -94,6 +95,8 @@ type checker struct {
 	nextVar int
 	overlay map[string][]byte // unsaved files, by path
 	index   *Index            // nil unless a tool asked for it
+	all     bool              // load every module below root, for tools
+	names   names             // where names are written, until types resolve them
 }
 
 // module is a module being checked, with its namespaces.
@@ -497,6 +500,9 @@ func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string)
 		d := c.lookupType(m, name)
 		if _, ok := d.(ambiguous); !ok {
 			c.use(pos(f, n), d)
+		}
+		if d == nil && builtinTypes[name] {
+			c.use(pos(f, n), BuiltinType{Name: name})
 		}
 		switch d := d.(type) {
 		case *ir.Type:
@@ -924,6 +930,14 @@ func (c *checker) triggers(m *module, f *ir.File, d *syntax.Node, job *ir.Job) {
 		call := args.NamedChildren()[0]
 		if call.Kind == syntax.CallExpression {
 			kind := text(f, call.ChildByField(syntax.FieldFunction))
+			if kind == "enters" || kind == "leaves" || kind == "event" {
+				// To the code that reads it, below.
+				target := GoText{File: "check.go", Text: `(kind == "enters" || kind == "leaves") &&`}
+				if kind == "event" {
+					target.Text = `if kind == "event" &&`
+				}
+				c.use(pos(f, call.ChildByField(syntax.FieldFunction)), target)
+			}
 			viewArgs := call.ChildByField(syntax.FieldArguments).NamedChildren()
 			if (kind == "enters" || kind == "leaves") && len(viewArgs) == 1 && viewArgs[0].Kind == syntax.Ident {
 				v, ok := c.lookupValue(m, text(f, viewArgs[0])).(*ir.View)

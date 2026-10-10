@@ -8,17 +8,24 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
 - finer highlighting: contextual keywords (`type`, `state`, `view`, …) only where they are
   keywords, parameters, fields, variants, and **waiting calls** (`sleep!(…)`, `w.read!()`), which
   get the colour of control flow because a job may pause there.
-- **go to definition** (F12, or Ctrl/Cmd-click): to declarations in this module, in imported
-  modules, in the prelude and the standard modules (`check/prelude.eye`, `check/std/`), and to
-  the Go that implements a built-in function such as `print` or `now`. On an `extern fn` whose
-  `@host` the interpreter provides, such as `ai.generate`, it goes to the Go host function.
+- **go to definition** (F12, or Ctrl/Cmd-click) on any name: declarations in this module, in
+  imported modules, in the prelude and the standard modules (`check/prelude.eye`, `check/std/`);
+  locals, parameters, `self` and type variables; fields and methods (`x.name`, `x.send()`),
+  record fields and named arguments, by the types of values. Built-ins go to the Go behind them:
+  a function such as `print` or `now` to its implementation, a type such as `String` or `List`
+  to where the checker makes it, an attribute such as `@on` to its declaration, and an `extern
+  fn` whose `@host` the interpreter provides, such as `ai.generate`, to the Go host function.
+- **find references** (Shift-F12, or Ctrl/Cmd-click on a declaration): every use in the program,
+  across its modules. A name from the prelude, a standard module or the language itself is looked
+  for in every program in the workspace (each directory with an `eye.toml`).
 
-Hover and completion come with phase 2, and so does go-to-definition on fields and methods
-(`x.name`), which needs the types of values.
+Fields and methods resolve once the program type-checks: while it has errors, go-to-definition
+still finds every other name. Hover and completion are coming.
 
 ## Programs and eye.toml
 
-Go-to-definition checks the module of the file you are in, with what it imports. Imports are
+Go-to-definition checks the module of the file you are in, with what it imports; find references
+checks every module of the program. Imports are
 directories below the program's root, and the root is the nearest directory above the file that
 holds an `eye.toml` (it may be empty); without one, it is the file's own directory. So in this
 repository `testdata/lab/eye.toml` makes `testdata/lab/digest/digest.eye` part of the lab program,
