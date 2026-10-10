@@ -1,0 +1,594 @@
+// Package ir is the form programs take after checking: every name is resolved
+// to the declaration or local variable it means, pipes and string
+// interpolation are spelled out as calls, and locals live in numbered slots.
+// The interpreter runs it.
+//
+// Types aren't in it yet. The checker resolves names and checks where waiting
+// calls may appear; type inference (phase 2) will annotate this form rather
+// than replace it.
+package ir
+
+import (
+	"strconv"
+	"strings"
+
+	"eyelang/syntax"
+)
+
+// Program is a checked program: the module in the program's directory and
+// every module it imports.
+type Program struct {
+	Root    *Module
+	Prelude *Module
+	Modules []*Module // every module, the prelude first and the root last
+}
+
+// Pos is a place in a source file, for messages at run time.
+type Pos struct {
+	File   *File
+	Offset int
+	End    int // where the expression's text ends, when known
+}
+
+// Text returns the source text of the position's span.
+func (p Pos) Text() string {
+	if p.File == nil || p.End <= p.Offset {
+		return ""
+	}
+	return string(p.File.Src[p.Offset:p.End])
+}
+
+// File is one source file of a module.
+type File struct {
+	Path string
+	Src  []byte
+	Tree *syntax.File
+}
+
+// String gives the position as path:line:column.
+func (p Pos) String() string {
+	if p.File == nil {
+		return "<builtin>"
+	}
+	at := p.File.Tree.Lines.Position(p.Offset)
+	return p.File.Path + ":" + strconv.Itoa(at.Line) + ":" + strconv.Itoa(at.Column)
+}
+
+// Module is a directory of source files that share one namespace.
+type Module struct {
+	Path  string // import path: "" for the program's own module, "zeropod", "lab.notify"
+	Name  string // the last part of the path, the name it is imported as
+	Dir   string
+	Files []*File
+
+	Globals   []*Global // module-level `let`s, in source order
+	Types     map[string]*Type
+	Variants  map[string]*Variant // constructors by name
+	Funcs     map[string]*Func
+	Entities  map[string]*Entity
+	Jobs      map[string]*Job
+	Views     map[string]*View
+	Contracts map[string]*Contract
+	Tests     []*Test
+	Main      *Func
+}
+
+// Global is a module-level `let`. Its value is computed once, before the
+// program runs, in source order.
+type Global struct {
+	Name   string
+	Module *Module
+	Init   *Func // no parameters; returns the value
+	Index  int   // position in Module.Globals
+}
+
+// Type is a type declaration with variants, a record type, or an alias.
+type Type struct {
+	Name     string
+	Module   *Module
+	Params   []string   // type variables
+	Variants []*Variant // for a variant type
+	Fields   []string   // for a record type
+	Alias    *TypeExpr  // for an alias
+	Methods  map[string]*Func
+	Pos      Pos
+}
+
+// Newtype reports whether the type has one variant, named like the type, with
+// one positional field: `type WorldId = | WorldId(String)`. Such a value shows
+// as its field.
+func (t *Type) Newtype() bool {
+	return len(t.Variants) == 1 && t.Variants[0].Name == t.Name && len(t.Variants[0].Fields) == 1 &&
+		t.Variants[0].Fields[0].Name == ""
+}
+
+// Variant is one constructor of a variant type.
+type Variant struct {
+	Name   string
+	Type   *Type
+	Fields []VariantField
+}
+
+// VariantField is a payload field; Name is empty for a positional field.
+type VariantField struct {
+	Name string
+	Type *TypeExpr
+}
+
+// TypeExpr is a type as written: a name with arguments.
+type TypeExpr struct {
+	Name   string     // Int, List, Phase, a type variable, "()" for unit, "fn", "tuple", "record"
+	Decl   *Type      // the declaration, when the name is a declared type
+	Entity *Entity    // for Ref(Entity) and entity names
+	Args   []*TypeExpr
+	Fields []string // record type field names, matching Args
+}
+
+// Func is a function, method, lambda, job body, test body or initializer.
+type Func struct {
+	Name     string
+	Module   *Module
+	Params   []*Param
+	Slots    int  // locals, parameters included
+	Body     Expr // nil for a signature
+	Entity   *Entity
+	Receiver *Type // for methods in `impl Type`
+	HasSelf  bool  // a method that takes self
+	MutSelf  bool
+	Pub      bool
+	Return   *TypeExpr
+	Captures []Capture // for lambdas: values copied in when the lambda is made
+	Pos      Pos
+}
+
+// Param is a function parameter.
+type Param struct {
+	Name    string
+	Slot    int
+	Mut     bool
+	Default Expr // evaluated in the callee's frame, nil if required
+	Type    *TypeExpr
+}
+
+// Capture copies a value from the enclosing frame into a lambda's slot.
+type Capture struct {
+	From Expr // a Local, Self or SelfField of the enclosing function
+	Slot int
+}
+
+// Entity is an entity declaration.
+type Entity struct {
+	Name    string
+	Module  *Module
+	ID      *Param
+	States  []*State
+	Methods map[string]*Func
+	Pos     Pos
+}
+
+// State is a `state` field of an entity.
+type State struct {
+	Name    string
+	Type    *TypeExpr
+	Default *Func // nil if the field has no default
+}
+
+// Job is a job declaration.
+type Job struct {
+	Name     string
+	Module   *Module
+	Func     *Func
+	Triggers []Trigger
+	Pos      Pos
+}
+
+// Trigger starts a job: `@on(enters(view))` or `@on(leaves(view))`.
+type Trigger struct {
+	Kind string // "enters" or "leaves"
+	View *View
+}
+
+// View is a named pipeline over entities, kept up to date by the runtime.
+type View struct {
+	Name   string
+	Module *Module
+	Func   *Func // no parameters; returns the matching snapshots
+	Entity *Entity
+	Pos    Pos
+}
+
+// Contract describes another service.
+type Contract struct {
+	Name   string
+	Module *Module
+	Ops    map[string]*Op
+}
+
+// Op is a command or query of a contract.
+type Op struct {
+	Name      string
+	Contract  *Contract
+	Command   bool
+	Params    []*Param
+	Return    *TypeExpr
+	Reconcile string // the query that resolves an Uncertain outcome
+	Pos       Pos
+}
+
+// Test is a `test "name" { … }` block.
+type Test struct {
+	Name   string
+	Module *Module
+	Func   *Func
+	Pos    Pos
+}
+
+// ---------------------------------------------------------------- expressions
+
+// Expr is an expression or statement. Statements evaluate to `()`.
+type Expr interface{ Position() Pos }
+
+// At carries an expression's position.
+type At struct{ Pos Pos }
+
+// Position returns where the expression is.
+func (a At) Position() Pos { return a.Pos }
+
+type (
+	// Lit is a constant: *big.Int, float64, string, bool, rune, Unit,
+	// Duration, Size, Date, TimeOfDay or Instant.
+	Lit struct {
+		At
+		Value any
+	}
+	// EmptyBraces is `{}`: an empty record, map or set.
+	EmptyBraces struct{ At }
+	// Local reads a slot of the current frame.
+	Local struct {
+		At
+		Name string
+		Slot int
+	}
+	// Self is the receiver of a method; in an entity method, the state.
+	Self struct{ At }
+	// SelfField reads a state field in an entity method: `players`.
+	SelfField struct {
+		At
+		Name string
+	}
+	// Ref names a declaration: *Func, *Global, *Variant, *Entity, *Job,
+	// *View, *Op, *Module, *Type or a Builtin.
+	Ref struct {
+		At
+		Decl any
+	}
+	// Call calls a function value with arguments.
+	Call struct {
+		At
+		Func Expr
+		Args []Arg
+	}
+	// MethodCall calls a method on a value, found by the value's kind at run
+	// time: entity methods, `start` on a job, `impl` methods, built-in methods.
+	// RecvPlace is set when the receiver is a variable or a field of one, so
+	// a `mut self` method can write its change back.
+	MethodCall struct {
+		At
+		Recv      Expr
+		Name      string
+		Args      []Arg
+		RecvPlace *Place
+	}
+	// Waiting is a waiting call, `f!(x)`: a durable step in a job.
+	Waiting struct {
+		At
+		Call Expr // a Call or MethodCall
+	}
+	// Field reads a record field, a snapshot field or a state field of a reference.
+	Field struct {
+		At
+		Value Expr
+		Name  string
+	}
+	Index struct {
+		At
+		Value, Index Expr
+	}
+	Unary struct {
+		At
+		Op string
+		X  Expr
+	}
+	Binary struct {
+		At
+		Op   string
+		L, R Expr
+	}
+	If struct {
+		At
+		Cond, Then, Else Expr // Else may be nil
+	}
+	Match struct {
+		At
+		Value Expr
+		Arms  []Arm
+	}
+	// Block runs its expressions in order; its value is the last one's,
+	// or () if it ends with a statement.
+	Block struct {
+		At
+		Exprs []Expr
+		Value bool // the last expression gives the block's value
+	}
+	Let struct {
+		At
+		Pattern Pattern
+		Value   Expr
+		Else    Expr // for `let … else`, nil otherwise
+	}
+	Assign struct {
+		At
+		Target Place
+		Op     string // "=", "+=", …
+		Value  Expr
+	}
+	For struct {
+		At
+		Pattern Pattern
+		Iter    Expr
+		Body    Expr
+	}
+	While struct {
+		At
+		Cond, Body Expr
+	}
+	Break    struct{ At }
+	Continue struct{ At }
+	Return   struct {
+		At
+		Value Expr // nil for `return`
+	}
+	// Lambda makes a closure of Func, copying the captured values.
+	Lambda struct {
+		At
+		Func *Func
+	}
+	Record struct {
+		At
+		Names  []string
+		Values []Expr
+	}
+	RecordUpdate struct {
+		At
+		Base   Expr
+		Names  []string
+		Values []Expr
+	}
+	List struct {
+		At
+		Elems []Expr
+	}
+	Map struct {
+		At
+		Keys, Values []Expr
+	}
+	Tuple struct {
+		At
+		Elems []Expr
+	}
+	// Interpolate joins the shown values of its parts into a string.
+	Interpolate struct {
+		At
+		Parts []Expr
+	}
+	// Try is postfix `?`. Wrap is the caller's error type, for wrapping the
+	// error in the variant that holds its type.
+	Try struct {
+		At
+		X    Expr
+		Wrap *Type
+	}
+	// Default is `x ?? y`.
+	Default struct {
+		At
+		X, Or Expr
+	}
+	Range struct {
+		At
+		Start, End Expr // either may be nil in a slice
+		Inclusive  bool
+	}
+	// With applies a handler to the rest of a test: `with clock(…)`.
+	With struct {
+		At
+		Value Expr
+	}
+)
+
+// Arg is an argument of a call.
+type Arg struct {
+	Name  string // for a named argument
+	Value Expr
+	Mut   bool // `mut x`: the callee may change it, and the change is written back
+	Place Place
+}
+
+// Arm is a match arm.
+type Arm struct {
+	Pattern Pattern
+	Guard   Expr
+	Body    Expr
+}
+
+// Place is something that can be assigned: a local or the receiver (an
+// entity's state, or `self` in a `mut self` method), then field names.
+type Place struct {
+	Self bool // the receiver, rather than the local in Slot
+	Slot int
+	Path []string
+	Pos  Pos
+}
+
+// Builtin is a function provided by the runtime.
+type Builtin struct{ Name string }
+
+// Unit is the value ().
+type Unit struct{}
+
+// Duration is a length of time in nanoseconds.
+type Duration int64
+
+// Size is a number of bytes.
+type Size int64
+
+// Date is a calendar date.
+type Date struct{ Year, Month, Day int }
+
+// TimeOfDay is a time of day.
+type TimeOfDay struct{ Hour, Minute, Second int }
+
+// Instant is a date and time in a zone, as written; the interpreter resolves
+// the zone.
+type Instant struct {
+	Date Date
+	Time TimeOfDay
+	Zone string
+}
+
+// ---------------------------------------------------------------- patterns
+
+// Pattern is a pattern in `let`, `match`, `for` or a parameter.
+type Pattern interface{ isPattern() }
+
+type (
+	PWild struct{}
+	PBind struct {
+		Name string
+		Slot int
+	}
+	PLit struct{ Value any }
+	// PVariant matches a variant. Names are set for named fields; Rest is `..`.
+	PVariant struct {
+		Variant *Variant
+		Args    []Pattern
+		Names   []string
+		Rest    bool
+	}
+	PRecord struct {
+		Names []string
+		Pats  []Pattern
+		Rest  bool
+	}
+	PTuple struct{ Pats []Pattern }
+	// PList matches a list; Rest is the index of `..` or -1, and RestPat the
+	// pattern bound to the rest, if any.
+	PList struct {
+		Pats    []Pattern
+		Rest    int
+		RestPat Pattern
+	}
+	PRange struct {
+		Lo, Hi    any
+		Inclusive bool
+	}
+	POr struct{ Alts []Pattern }
+	// PEmpty matches an empty collection: `{}` in a pattern position.
+	PEmpty struct{}
+)
+
+func (PWild) isPattern()    {}
+func (PBind) isPattern()    {}
+func (PLit) isPattern()     {}
+func (PVariant) isPattern() {}
+func (PRecord) isPattern()  {}
+func (PTuple) isPattern()   {}
+func (PList) isPattern()    {}
+func (PRange) isPattern()   {}
+func (POr) isPattern()      {}
+func (PEmpty) isPattern()   {}
+
+// BuiltinDoc documents a built-in function for `eye doc`.
+type BuiltinDoc struct {
+	Name, Signature, Doc string
+	Group                string
+}
+
+// BuiltinDocs documents every function in Builtins and BuiltinModules, in
+// the order the reference lists them.
+var BuiltinDocs = []BuiltinDoc{
+	{"print", "fn print(values…)", "Writes the values, shown as string interpolation shows them and separated by spaces, and a line break to standard output.", "Output and failure"},
+	{"unreachable", "fn unreachable(why: String)", "Stops the program, or the job's run, as a fault: `Failed(Unreachable(why))`. It is for states the code has already ruled out, never for failures that can happen.", "Output and failure"},
+	{"log.debug", "fn log.debug(values…)", "Logs a line at debug level. A job that resumes doesn't log again what it logged before its last step.", "Output and failure"},
+	{"log.info", "fn log.info(values…)", "Logs a line at info level.", "Output and failure"},
+	{"log.warn", "fn log.warn(values…)", "Logs a line at warning level.", "Output and failure"},
+	{"log.error", "fn log.error(values…)", "Logs a line at error level.", "Output and failure"},
+
+	{"expect", "fn expect(condition: Bool)", "Fails the test if the condition is false. For a comparison it shows the value it got: `expected w.phase == Asleep, but w.phase is Running`.", "Tests"},
+	{"advance", "fn advance(by: Duration)", "Moves the test's clock forward. Each job run that wakes on the way runs, in the order of its wake time, before `advance` returns.", "Tests"},
+	{"clock", "fn clock(at: Instant) -> Handler", "Used as `with clock(2026-10-10 12:00 in \"Europe/Dublin\")`: sets the test's clock. Without it, a test's clock starts at 2026-01-01 00:00 UTC.", "Tests"},
+	{"fakes", "fn fakes(modules…, from: String) -> Handler", "Used as `with fakes(notify, from: \"receipts/\")`: calls to the contract modules replay the exchanges recorded in `receipts/notify.json`, checked against the contract's types.", "Tests"},
+
+	{"sleep", "fn sleep(for: Duration)", "In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes when the time comes, even after a restart. Outside jobs, `sleep` blocks; in tests it advances the clock.", "Time"},
+	{"now", "fn now() -> Instant", "The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run sees the same time.", "Time"},
+
+	{"size", "fn size(c: Collection(a)) -> Int", "The number of elements.", "Collections"},
+	{"isEmpty", "fn isEmpty(c: Collection(a)) -> Bool", "Whether there are no elements.", "Collections"},
+	{"add", "fn add(s: Set(a), x: a) -> Set(a)", "The set with x in it; on a list, the list with x at the end.", "Collections"},
+	{"remove", "fn remove(s: Set(a), x: a) -> Set(a)", "The set without x; on a map, the map without the key x.", "Collections"},
+	{"contains", "fn contains(c: Collection(a), x: a) -> Bool", "Whether x is an element; for a map, a key; for a string, a substring.", "Collections"},
+	{"insert", "fn insert(m: Map(k, v), key: k, value: v) -> Map(k, v)", "The map with key set to value.", "Collections"},
+	{"get", "fn get(m: Map(k, v), key: k) -> Option(v)", "The value for key, or `None`; on a list, the element at an index. Same as `m[key]`.", "Collections"},
+	{"first", "fn first(c: Collection(a)) -> Option(a)", "The first element, or `None`.", "Collections"},
+	{"last", "fn last(c: Collection(a)) -> Option(a)", "The last element, or `None`.", "Collections"},
+	{"map", "fn map(c: Collection(a), f: fn(a) -> b) -> List(b)", "Applies f to each element. On an Option or a Result, applies f to the value inside `Some` or `Ok`.", "Collections"},
+	{"filter", "fn filter(c: Collection(a), keep: fn(a) -> Bool) -> List(a)", "The elements for which keep is true; a set stays a set. Over `Entity.all` in a view, the runtime keeps the result up to date.", "Collections"},
+	{"find", "fn find(c: Collection(a), test: fn(a) -> Bool) -> Option(a)", "The first element for which test is true.", "Collections"},
+	{"any", "fn any(c: Collection(a), test: fn(a) -> Bool) -> Bool", "Whether test is true for some element.", "Collections"},
+	{"all", "fn all(c: Collection(a), test: fn(a) -> Bool) -> Bool", "Whether test is true for every element.", "Collections"},
+	{"count", "fn count(c: Collection(a), test: fn(a) -> Bool) -> Int", "How many elements test is true for; without test, the size.", "Collections"},
+	{"reduce", "fn reduce(c: Collection(a), start: b, f: fn(b, a) -> b) -> b", "Combines the elements, from start, left to right.", "Collections"},
+	{"sum", "fn sum(c: Collection(a)) -> a", "Adds the elements: numbers, durations or sizes.", "Collections"},
+	{"enumerate", "fn enumerate(c: Collection(a)) -> List((Int, a))", "Pairs each element with its index, from 0.", "Collections"},
+	{"drop", "fn drop(c: Collection(a), n: Int) -> List(a)", "Everything after the first n elements.", "Collections"},
+	{"take", "fn take(c: Collection(a), n: Int) -> List(a)", "The first n elements.", "Collections"},
+	{"reverse", "fn reverse(c: Collection(a)) -> List(a)", "The elements in reverse order.", "Collections"},
+	{"sort", "fn sort(c: Collection(a)) -> List(a) where a: Ord", "The elements in ascending order; equal elements keep their order.", "Collections"},
+	{"keys", "fn keys(m: Map(k, v)) -> List(k)", "The keys, in the order they were added.", "Collections"},
+	{"values", "fn values(m: Map(k, v)) -> List(v)", "The values, in the order their keys were added.", "Collections"},
+	{"entries", "fn entries(m: Map(k, v)) -> List((k, v))", "The key and value pairs.", "Collections"},
+	{"toList", "fn toList(c: Collection(a)) -> List(a)", "The elements as a list.", "Collections"},
+	{"toSet", "fn toSet(c: Collection(a)) -> Set(a)", "The elements as a set, without duplicates.", "Collections"},
+	{"join", "fn join(c: Collection(a), separator: String) -> String", "The shown elements, with separator between them.", "Collections"},
+	{"flatMap", "fn flatMap(c: Collection(a), f: fn(a) -> Collection(b)) -> List(b)", "Applies f to each element and joins the results.", "Collections"},
+	{"zip", "fn zip(a: Collection(a), b: Collection(b)) -> List((a, b))", "Pairs elements of a and b, as far as the shorter goes.", "Collections"},
+
+	{"lines", "fn lines(s: String) -> List(String)", "The lines of s, without their line breaks.", "Strings and numbers"},
+	{"split", "fn split(s: String, separator: String) -> List(String)", "The parts of s between separators.", "Strings and numbers"},
+	{"trim", "fn trim(s: String) -> String", "s without whitespace at either end.", "Strings and numbers"},
+	{"parseInt", "fn parseInt(s: String) -> Result(Int, String)", "Reads a whole number written in decimal.", "Strings and numbers"},
+	{"nonzero", "fn nonzero(n: Int) -> Option(NonZero(Int))", "`Some(n)` unless n is 0: what `/` and `%` take as a divisor.", "Strings and numbers"},
+	{"min", "fn min(a: t, b: t) -> t where t: Ord", "The smaller of a and b.", "Strings and numbers"},
+	{"max", "fn max(a: t, b: t) -> t where t: Ord", "The larger of a and b.", "Strings and numbers"},
+	{"abs", "fn abs(n: t) -> t", "n without its sign.", "Strings and numbers"},
+
+	{"enters", "enters(view)", "In `@on(enters(view))`: starts one run of the job for each entity that begins to match the view.", "Triggers"},
+	{"leaves", "leaves(view)", "In `@on(leaves(view))`: starts one run of the job for each entity that stops matching the view.", "Triggers"},
+}
+
+// Builtins are the functions every module can call without importing them.
+// The interpreter provides them; a test checks the two lists agree.
+var Builtins = func() []string {
+	var names []string
+	for _, d := range BuiltinDocs {
+		if !strings.Contains(d.Name, ".") {
+			names = append(names, d.Name)
+		}
+	}
+	return names
+}()
+
+// BuiltinModules are the standard modules every module can use without
+// importing them, with their functions.
+var BuiltinModules = map[string][]string{
+	"log": {"debug", "info", "warn", "error"},
+}

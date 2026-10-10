@@ -1,0 +1,550 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Eyelang",
+  "scopeName": "source.eyelang",
+  "fileTypes": [
+    "eye"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#chars"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#literals"
+    },
+    {
+      "include": "#calls"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.eyelang",
+          "begin": "##",
+          "end": "$",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.eyelang"
+            }
+          }
+        },
+        {
+          "name": "comment.line.number-sign.eyelang",
+          "begin": "#",
+          "end": "$",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.eyelang"
+            }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.eyelang",
+          "begin": "\"",
+          "end": "\"|$",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.eyelang"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.eyelang"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#escapes"
+            },
+            {
+              "include": "#interpolation"
+            }
+          ]
+        }
+      ]
+    },
+    "escapes": {
+      "patterns": [
+        {
+          "name": "constant.character.escape.eyelang",
+          "match": "\\\\(?:[nrt0\\\\\\\"'{}]|u\\{[0-9A-Fa-f]{1,6}\\})"
+        },
+        {
+          "name": "invalid.illegal.escape.eyelang",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "interpolation": {
+      "name": "meta.interpolation.eyelang",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.interpolation.begin.eyelang"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.interpolation.end.eyelang"
+        }
+      },
+      "contentName": "source.eyelang",
+      "patterns": [
+        {
+          "include": "#interpolation-braces"
+        },
+        {
+          "include": "$self"
+        }
+      ]
+    },
+    "interpolation-braces": {
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.braces.begin.eyelang"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.braces.end.eyelang"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#interpolation-braces"
+        },
+        {
+          "include": "$self"
+        }
+      ]
+    },
+    "chars": {
+      "patterns": [
+        {
+          "name": "string.quoted.single.char.eyelang",
+          "match": "(')(?:[^'\\\\\\n]|\\\\(?:[nrt0\\\\\\\"'{}]|u\\{[0-9A-Fa-f]{1,6}\\}))(')",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.char.begin.eyelang"
+            },
+            "2": {
+              "name": "punctuation.definition.char.end.eyelang"
+            }
+          }
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "match": "(@)([a-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.decorator.eyelang"
+            },
+            "2": {
+              "name": "entity.name.function.decorator.eyelang"
+            }
+          }
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "^\\s*(import)\\s+([a-z_][A-Za-z0-9_]*(?:\\.[a-z_][A-Za-z0-9_]*)*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.eyelang"
+            },
+            "2": {
+              "name": "entity.name.namespace.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(?:(pub)\\s+)?(?:(opaque)\\s+)?(type|entity|trait|contract)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.eyelang"
+            },
+            "2": {
+              "name": "storage.modifier.eyelang"
+            },
+            "3": {
+              "name": "storage.type.eyelang"
+            },
+            "4": {
+              "name": "entity.name.type.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(?:(pub)\\s+)?(impl)\\b(?=\\s+[A-Za-z_])",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.eyelang"
+            },
+            "2": {
+              "name": "storage.type.impl.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(?:(pub)\\s+)?(extern)\\s+(fn)\\s+([a-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.eyelang"
+            },
+            "2": {
+              "name": "storage.modifier.extern.eyelang"
+            },
+            "3": {
+              "name": "storage.type.function.eyelang"
+            },
+            "4": {
+              "name": "entity.name.function.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(?:(pub)\\s+)?(job)\\s+([a-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.eyelang"
+            },
+            "2": {
+              "name": "storage.type.job.eyelang"
+            },
+            "3": {
+              "name": "entity.name.function.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(?:(pub)\\s+)?(view)\\s+([a-z_][A-Za-z0-9_]*)(?=\\s*=)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.eyelang"
+            },
+            "2": {
+              "name": "storage.type.view.eyelang"
+            },
+            "3": {
+              "name": "variable.other.constant.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(test)\\s+(?=\\\")",
+          "captures": {
+            "1": {
+              "name": "storage.type.test.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(state)\\s+([a-z_][A-Za-z0-9_]*)(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "storage.type.state.eyelang"
+            },
+            "2": {
+              "name": "variable.other.property.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(migrate)\\s+(from)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.type.migrate.eyelang"
+            },
+            "2": {
+              "name": "keyword.other.from.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(command|query)\\s+([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "storage.type.eyelang"
+            },
+            "2": {
+              "name": "entity.name.function.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(event)\\s+([a-z_][A-Za-z0-9_]*)(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "storage.type.event.eyelang"
+            },
+            "2": {
+              "name": "variable.other.property.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b(on)\\s+(?=\\\")",
+          "captures": {
+            "1": {
+              "name": "keyword.other.on.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b(fn)\\s+([a-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "storage.type.function.eyelang"
+            },
+            "2": {
+              "name": "entity.name.function.eyelang"
+            }
+          }
+        },
+        {
+          "match": "^\\s*(with)\\b(?=\\s+\\S)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.with.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b(with)\\b(?=\\s+[a-z_][A-Za-z0-9_]*\\s*:)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.with.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b(uses|where)\\b(?=\\s+[A-Za-z_(])",
+          "captures": {
+            "1": {
+              "name": "keyword.other.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b(dyn)\\b(?=\\s+[A-Z])",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.dyn.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b(then)\\b(?!\\s*(?:[:,)]|[-+*/%]?=(?!=)))",
+          "captures": {
+            "1": {
+              "name": "keyword.control.eyelang"
+            }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "match": "\\b(?:if|else|match|for|in|while|break|continue|return)\\b",
+          "name": "keyword.control.eyelang"
+        },
+        {
+          "match": "\\b(?:let|var)\\b",
+          "name": "storage.type.eyelang"
+        },
+        {
+          "match": "\\bfn\\b",
+          "name": "storage.type.function.eyelang"
+        },
+        {
+          "match": "\\b(?:pub|mut)\\b",
+          "name": "storage.modifier.eyelang"
+        },
+        {
+          "match": "\\b(?:true|false)\\b",
+          "name": "constant.language.boolean.eyelang"
+        },
+        {
+          "match": "\\b_\\b",
+          "name": "variable.language.wildcard.eyelang"
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "match": "\\b\\d{4}-\\d{2}-\\d{2}\\b",
+          "name": "constant.numeric.date.eyelang"
+        },
+        {
+          "match": "\\b\\d{2}:\\d{2}(?::\\d{2})?\\b",
+          "name": "constant.numeric.time.eyelang"
+        },
+        {
+          "match": "\\b(\\d[\\d_]*(?:\\.\\d[\\d_]*)?)\\s+(ms|s|min|h|days?|weeks?|B|KiB|MiB|GiB)\\b",
+          "captures": {
+            "1": {
+              "name": "constant.numeric.eyelang"
+            },
+            "2": {
+              "name": "keyword.other.unit.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b\\d[\\d_]*(?:\\.\\d[\\d_]*(?:[eE][+-]?\\d[\\d_]*)?|[eE][+-]?\\d[\\d_]*)\\b",
+          "name": "constant.numeric.float.eyelang"
+        },
+        {
+          "match": "\\b\\d[\\d_]*\\b",
+          "name": "constant.numeric.integer.eyelang"
+        }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "match": "\\b([a-z_][A-Za-z0-9_]*)(!)(?=\\()",
+          "captures": {
+            "1": {
+              "name": "keyword.control.wait.eyelang"
+            },
+            "2": {
+              "name": "keyword.control.wait.eyelang"
+            }
+          }
+        },
+        {
+          "match": "\\b([a-z_][A-Za-z0-9_]*)(?=\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.call.eyelang"
+            }
+          }
+        },
+        {
+          "match": "(?<=\\.)[a-z_][A-Za-z0-9_]*\\b",
+          "name": "variable.other.property.eyelang"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b",
+          "name": "entity.name.type.eyelang"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "match": "\\|>",
+          "name": "keyword.operator.pipe.eyelang"
+        },
+        {
+          "match": "=>|->",
+          "name": "keyword.operator.arrow.eyelang"
+        },
+        {
+          "match": "\\.\\.=?",
+          "name": "keyword.operator.range.eyelang"
+        },
+        {
+          "match": "==|!=|<=|>=|<|>",
+          "name": "keyword.operator.comparison.eyelang"
+        },
+        {
+          "match": "&&|\\|\\||!",
+          "name": "keyword.operator.logical.eyelang"
+        },
+        {
+          "match": "[+\\-*/%]?=",
+          "name": "keyword.operator.assignment.eyelang"
+        },
+        {
+          "match": "[+\\-*/%]",
+          "name": "keyword.operator.arithmetic.eyelang"
+        },
+        {
+          "match": "\\?",
+          "name": "keyword.operator.error.eyelang"
+        },
+        {
+          "match": "\\|",
+          "name": "keyword.operator.variant.eyelang"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "match": ",",
+          "name": "punctuation.separator.comma.eyelang"
+        },
+        {
+          "match": ";",
+          "name": "punctuation.terminator.statement.eyelang"
+        },
+        {
+          "match": ":",
+          "name": "punctuation.separator.colon.eyelang"
+        },
+        {
+          "match": "\\.",
+          "name": "punctuation.accessor.eyelang"
+        },
+        {
+          "match": "[()]",
+          "name": "punctuation.section.parens.eyelang"
+        },
+        {
+          "match": "[\\[\\]]",
+          "name": "punctuation.section.brackets.eyelang"
+        },
+        {
+          "match": "[{}]",
+          "name": "punctuation.section.braces.eyelang"
+        }
+      ]
+    }
+  }
+}

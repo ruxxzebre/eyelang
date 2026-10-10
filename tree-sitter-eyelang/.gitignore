@@ -1,0 +1,11 @@
+# Written by `tree-sitter generate` from grammar.js; `task grammar` and CI regenerate them.
+/src/parser.c
+/src/grammar.json
+/src/node-types.json
+/src/tree_sitter/
+
+# Built parsers and debug output
+*.so
+*.dylib
+*.wasm
+/log.html

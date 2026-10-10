@@ -39,10 +39,11 @@ func NewLineEditor(in, out *os.File, histPath string) *LineEditor {
 	}
 }
 
-func (e *LineEditor) RestoreTerminal() {
-	if e.cookedState != nil {
-		term.Restore(e.fd, e.cookedState)
+func (e *LineEditor) RestoreTerminal() error {
+	if e.cookedState == nil {
+		return nil
 	}
+	return term.Restore(e.fd, e.cookedState)
 }
 
 func (e *LineEditor) LoadHistory() error {
@@ -185,19 +186,24 @@ func (e *LineEditor) readEscape() (key, rune, error) {
 }
 
 type lineState struct {
-	buf     []rune
-	cur     int
-	histIdx int
-	draft   []rune
+	buf      []rune
+	cur      int
+	histIdx  int
+	draft    []rune
 	hasDraft bool
 }
 
-func (e *LineEditor) Prompt(prompt string) (string, error) {
+func (e *LineEditor) Prompt(prompt string) (line string, err error) {
 	oldState, err := term.MakeRaw(e.fd)
 	if err != nil {
 		return "", err
 	}
-	defer term.Restore(e.fd, oldState)
+	defer func() {
+		// a terminal left in raw mode is unusable, so report it unless another error is already returned
+		if restoreErr := term.Restore(e.fd, oldState); restoreErr != nil && err == nil {
+			err = restoreErr
+		}
+	}()
 
 	st := &lineState{histIdx: len(e.history)}
 	e.redraw(prompt, st)

@@ -1,0 +1,238 @@
+================================================================================
+Binding, wildcard and literals
+================================================================================
+
+fn f() {
+  match x {
+    n => 1
+    _ => 2
+    0 => 3
+    -1 => 4
+    1.5 => 5
+    -0.5 => 6
+    "x" => 7
+    true => 8
+    () => 9
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (identifier)
+            (integer))
+          (match_arm
+            (wildcard)
+            (integer))
+          (match_arm
+            (integer)
+            (integer))
+          (match_arm
+            (negative_literal
+              (integer))
+            (integer))
+          (match_arm
+            (float)
+            (integer))
+          (match_arm
+            (negative_literal
+              (float))
+            (integer))
+          (match_arm
+            (string
+              (string_content))
+            (integer))
+          (match_arm
+            (boolean)
+            (integer))
+          (match_arm
+            (unit)
+            (integer)))))))
+
+================================================================================
+Variants
+================================================================================
+
+fn f() {
+  match x {
+    None => 1
+    Some(n) => 2
+    Some(Some(_)) => 3
+    Sent(receipt: r, at: _) => 4
+    Sent(receipt: r, ..) => 5
+    Refused(..) => 6
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (variant_pattern
+              (type_identifier))
+            (integer))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (identifier)))
+            (integer))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (variant_pattern
+                  (type_identifier)
+                  (pattern_arguments
+                    (wildcard)))))
+            (integer))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (field_pattern
+                  (identifier)
+                  (identifier))
+                (field_pattern
+                  (identifier)
+                  (wildcard))))
+            (integer))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (field_pattern
+                  (identifier)
+                  (identifier))
+                (rest_pattern)))
+            (integer))
+          (match_arm
+            (variant_pattern
+              (type_identifier)
+              (pattern_arguments
+                (rest_pattern)))
+            (integer)))))))
+
+================================================================================
+Records and lists
+================================================================================
+
+fn f() {
+  match x {
+    { name, age: 3 } => 1
+    { name, .. } => 2
+    {} => 3
+    [] => 4
+    [first, ..rest] => 5
+    [_, _, ..] => 6
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (record_pattern
+              (shorthand_field_pattern
+                (identifier))
+              (field_pattern
+                (identifier)
+                (integer)))
+            (integer))
+          (match_arm
+            (record_pattern
+              (shorthand_field_pattern
+                (identifier))
+              (rest_pattern))
+            (integer))
+          (match_arm
+            (record_pattern)
+            (integer))
+          (match_arm
+            (list_pattern)
+            (integer))
+          (match_arm
+            (list_pattern
+              (identifier)
+              (rest_pattern
+                (identifier)))
+            (integer))
+          (match_arm
+            (list_pattern
+              (wildcard)
+              (wildcard)
+              (rest_pattern))
+            (integer)))))))
+
+================================================================================
+Alternatives and guards
+================================================================================
+
+fn f() {
+  match x {
+    Asleep | Waking => 1
+    Running if busy => 2
+    1 | 2 | 3 => 3
+    Asleep
+    | Waking => 4
+  }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (block
+      (match_expression
+        (identifier)
+        (match_body
+          (match_arm
+            (or_pattern
+              (variant_pattern
+                (type_identifier))
+              (variant_pattern
+                (type_identifier)))
+            (integer))
+          (match_arm
+            (variant_pattern
+              (type_identifier))
+            (identifier)
+            (integer))
+          (match_arm
+            (or_pattern
+              (or_pattern
+                (integer)
+                (integer))
+              (integer))
+            (integer))
+          (match_arm
+            (or_pattern
+              (variant_pattern
+                (type_identifier))
+              (variant_pattern
+                (type_identifier)))
+            (integer)))))))

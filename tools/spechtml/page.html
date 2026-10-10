@@ -1,0 +1,151 @@
+{{if .Standalone}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{{end}}<title>Eyelang 2 Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column for the spec's prose, with tables and code allowed wider; the same system as the earlier eyelang pages. */
+:root {
+  --bg: #f3f6f6;
+  --surface: #ffffff;
+  --fg: #12212b;
+  --muted: #536570;
+  --rule: #d3dde0;
+  --accent: #0b6b74;
+  --accent-soft: #d6ebed;
+  --hot: #a8530c;
+  --good: #2f7a3a;
+  --warn: #9a6200;
+  --code-bg: #e9f0f1;
+
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --step--1: 0.875rem;
+  --step-0: 1.0625rem;
+  --step-1: 1.25rem;
+  --step-2: 1.6rem;
+  --step-3: 2.4rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1517; --surface: #142024; --fg: #e2ebee; --muted: #93a5ad; --rule: #263840;
+    --accent: #52c3cb; --accent-soft: #15383d; --hot: #f0a35a; --good: #7cc585; --warn: #e3b04f;
+    --code-bg: #101b1f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1517; --surface: #142024; --fg: #e2ebee; --muted: #93a5ad; --rule: #263840;
+  --accent: #52c3cb; --accent-soft: #15383d; --hot: #f0a35a; --good: #7cc585; --warn: #e3b04f;
+  --code-bg: #101b1f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  padding-inline: 16px;
+  padding-block: 0 4rem;
+}
+.page { max-width: 68rem; margin-inline: auto; display: grid; gap: 3rem; }
+.page > * { min-width: 0; }
+h1, h2, h3, h4 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: var(--step-3); font-weight: 800; font-stretch: 112%; letter-spacing: -0.01em; }
+h2 { font-size: var(--step-2); font-weight: 750; font-stretch: 108%; }
+h3 { font-size: var(--step-1); font-weight: 700; }
+p { margin: 0; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+code, pre { font-family: var(--mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--code-bg); padding: 0.08em 0.35em; border-radius: 4px; }
+.eyebrow {
+  font-family: var(--mono); font-size: var(--step--1); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent); font-weight: 600;
+}
+
+header { padding-top: 3rem; display: grid; gap: 1.1rem; }
+header .lede { font-size: var(--step-1); max-width: 46rem; }
+.reading {
+  border: 1px solid var(--rule); background: var(--surface); border-radius: 10px;
+  padding: 1.25rem 1.4rem; display: grid; gap: 0.75rem; max-width: 54rem;
+}
+.reading ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.4rem; }
+.reading strong { font-weight: 600; }
+.wait { color: var(--hot); font-family: var(--mono); font-weight: 700; }
+
+.toc { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; font-size: var(--step--1); }
+.toc a { text-decoration: none; border-bottom: 1px solid var(--rule); color: var(--fg); }
+.toc a:hover, .toc a:focus-visible { border-color: var(--accent); color: var(--accent); }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: var(--step--1); line-height: 1.45; }
+th, td { text-align: left; vertical-align: top; padding: 0.65rem 0.8rem; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--display); font-weight: 650; font-size: 0.82rem; letter-spacing: 0.02em; color: var(--muted); background: var(--bg); white-space: nowrap; }
+
+pre { margin: 0; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 0.9rem 1rem; overflow-x: auto; line-height: 1.5; font-size: 0.8rem; }
+pre.eye .k { color: var(--accent); font-weight: 600; }
+pre.eye .c { color: var(--muted); font-style: italic; }
+pre.eye .s { color: var(--good); }
+pre.eye .w { color: var(--hot); font-weight: 700; }
+pre.eye .a { color: var(--warn); font-weight: 600; }
+pre.eye .t { color: var(--fg); font-weight: 600; }
+pre.eye .n { color: var(--warn); }
+
+.spec { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 60rem; }
+.spec > * { margin: 0; min-width: 0; }
+.spec li { min-width: 0; }
+.spec > p, .spec > ul, .spec > ol { max-width: 46rem; }
+.spec > p + p, .spec > p + ul, .spec > ul + p, .spec > p + ol, .spec > ol + p, .spec > pre + p, .spec > div + p { margin-top: 0.8rem; }
+.spec h2 { margin-top: 3rem; padding-top: 1.4rem; border-top: 1px solid var(--rule); margin-bottom: 0.9rem; scroll-margin-top: 1rem; }
+.spec h3 { margin-top: 1.6rem; margin-bottom: 0.5rem; scroll-margin-top: 1rem; }
+.spec ul, .spec ol { padding-left: 1.3rem; display: grid; gap: 0.35rem; }
+.spec li > p + *, .spec li > ul, .spec li > ol, .spec li > pre, .spec li > .table-wrap { margin-top: 0.5rem; }
+.spec .table-wrap, .spec > pre { margin-top: 1rem; margin-bottom: 0.4rem; }
+.spec td code { white-space: nowrap; }
+.spec li code, .spec p code { overflow-wrap: anywhere; }
+.spec td:first-child { white-space: nowrap; }
+.spec td { min-width: 9rem; }
+.spec strong { font-weight: 600; }
+.spec > .toc { margin-top: 1.2rem; }
+footer { font-size: var(--step--1); color: var(--muted); }
+@media (max-width: 640px) {
+  :root { --step-3: 1.95rem; --step-2: 1.35rem; }
+  .spec td:first-child, .spec td code { white-space: normal; }
+}
+</style>
+{{if .Standalone}}</head>
+<body>
+{{end}}<div class="page">
+<header>
+  <div class="eyebrow">eyelang · language design draft</div>
+  <h1>Eyelang 2 Spec</h1>
+  <p class="lede">{{.Lede}}</p>
+  <div class="reading">
+    <div class="eyebrow">How to read it</div>
+    <ul>
+      <li><strong>Source of truth:</strong> <a href="{{.Repo}}SPECS.md"><code>SPECS.md</code></a>. This page is generated from it by <code>task spec</code>, and its examples are highlighted by Eyelang's own parser.</li>
+      <li><strong>Start with</strong> the decision log (section 2) and the tour (section 3). <a href="{{.Repo}}ROADMAP.md"><code>ROADMAP.md</code></a> has the build plan.</li>
+      <li>In the code, a <span class="wait">name!(…)</span> call is a point where a job can pause, and its state is saved.</li>
+    </ul>
+  </div>
+</header>
+<article class="spec">
+{{.Body}}
+</article>
+<footer>Generated from SPECS.md by tools/spechtml.</footer>
+</div>
+{{if .Standalone}}</body>
+</html>
+{{end}}

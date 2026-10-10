@@ -1,55 +1,110 @@
 version: "3"
 
 tasks:
-  run:
+  build:
+    desc: Build the eye command into bin/
     cmds:
-      - go run .
-    silent: true
+      - go build -o bin/eye ./cmd/eye
+
   test:
+    desc: Run all Go tests
     cmds:
       - go test ./...
-    silent: true
-  build_linux:
+
+  vet:
+    desc: Run go vet
     cmds:
-      - GOOS=linux GOARCH=amd64 go build -o bin/$(basename $(pwd))_linux_amd64
-    silent: true
-  build_darwin:
+      - go vet ./...
+
+  lint:
+    desc: Run golangci-lint (config in .golangci.yml)
     cmds:
-      - GOOS=darwin GOARCH=amd64 go build -o bin/$(basename $(pwd))_darwin_amd64
-    silent: true
-  build_darwin_default:
+      - golangci-lint run ./...
+
+  grammar:
+    desc: Generate the tree-sitter parser and run its corpus tests (needs tree-sitter-cli and a C compiler)
+    dir: tree-sitter-eyelang
     cmds:
-      - GOOS=darwin GOARCH=amd64 go build -o bin/$(basename $(pwd))
-    silent: true
-  build_windows:
+      - tree-sitter generate
+      - tree-sitter test
+      # Every query must compile and run on every file of the conformance suite.
+      - tree-sitter build -o ../bin/eyelang-grammar.so .
+      - for q in queries/*.scm; do tree-sitter query --lib-path ../bin/eyelang-grammar.so --lang-name eyelang "$q" ../testdata/syntax/valid/*.eye > /dev/null || exit 1; done
+
+  spec:
+    desc: Render SPECS.md as one HTML page, bin/spec.html, with examples highlighted by Eyelang's own parser
     cmds:
-      - GOOS=windows GOARCH=amd64 go build -o bin/$(basename $(pwd))_windows_amd64.exe
-    silent: true
-  build:
+      - go run ./tools/spechtml -o bin/spec.html
+
+  vscode:
+    desc: Test the VS Code extension (its grammar, and the extension running in a real VS Code against eye lsp) and package it into bin/eyelang.vsix (needs Node)
+    dir: editors/vscode
+    deps: [build]
     cmds:
-      - task: build_linux
-      - task: build_darwin
-      - task: build_windows
-  run_example:
+      - npm ci --no-fund --no-audit
+      - npm test
+      # The extension in a real VS Code. Set VSCODE_EXECUTABLE to use an installed one.
+      - if [ "$(uname)" = Linux ] && command -v xvfb-run > /dev/null; then xvfb-run -a npm run test:vscode; else npm run test:vscode; fi
+      - npm run package
+
+  generate:
+    desc: Regenerate everything derived from grammar.js and SPECS.md
     cmds:
-      - go run . ./examples/helloworld.eye:w
-    silent: true
-  test_supressed:
+      - cd tree-sitter-eyelang && tree-sitter generate
+      - go generate ./syntax
+      - go run ./tools/specexamples
+
+  generated:
+    desc: Fail if generated files in git don't match grammar.js and SPECS.md
     cmds:
-      - go test ./... | { grep -v 'no test files'; true; }
-    silent: true
+      - task: generate
+      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid testdata/programs/tour/tour.eye
+      - test -z "$(git ls-files --others --exclude-standard -- testdata/syntax/valid)"
+
+  conformance:
+    desc: Compare the hand-written parser with tree-sitter on every file in testdata/syntax and the corpus
+    env:
+      EYE_CONFORMANCE: "1"
+    cmds:
+      - go test ./syntax -run 'TestConformance' -count=1
+
+  fmt:
+    desc: Format the repository's Eyelang sources
+    cmds:
+      - go run ./cmd/eye fmt testdata/fmt/*.golden.eye
+
+  fmt-check:
+    desc: Fail if any of the repository's Eyelang sources isn't formatted
+    cmds:
+      - go run ./cmd/eye fmt --check testdata/fmt/*.golden.eye
+      # The programs, except the tour, which is the spec's text.
+      - go run ./cmd/eye fmt --check $(find testdata/programs -name '*.eye' ! -name tour.eye)
+
+  check:
+    desc: Everything CI runs - generated files, build, vet, lint, tests, formatting, the conformance suite, the grammar's tests and the VS Code extension
+    cmds:
+      - task: generated
+      - go build ./...
+      - task: vet
+      - task: lint
+      - task: test
+      - task: fmt-check
+      - task: conformance
+      - task: grammar
+      - task: vscode
+
   coverage:
+    desc: Show test coverage per package
     cmds:
       - go test -cover ./...
-    silent: true
+
   coverage_profile:
+    desc: Open an HTML coverage report
     cmds:
       - go test -coverprofile=coverage.out ./...
       - go tool cover -html=coverage.out
-    silent: true
-  benchmark_save:
-    cmds:
-      - go test -bench=. -benchmem -cpuprofile=cpu.out -memprofile=mem.out -benchtime=5s {{ .CLI_ARGS }} ./...
+
   benchmark:
+    desc: Run benchmarks
     cmds:
       - go test -bench=. -benchmem -benchtime=5s ./... {{ .CLI_ARGS }}

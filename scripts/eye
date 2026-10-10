@@ -1,0 +1,8 @@
+#!/bin/sh
+# Runs eye built from this checkout. go build does work only when the sources
+# have changed; otherwise it takes about a tenth of a second. The VS Code
+# extension runs bin/eye and restarts its language server when this rebuilds it.
+set -e
+root=$(cd "$(dirname "$0")/.." && pwd)
+(cd "$root" && go build -o bin/eye ./cmd/eye)
+exec "$root/bin/eye" "$@"

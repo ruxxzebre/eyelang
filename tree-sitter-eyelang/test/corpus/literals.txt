@@ -1,0 +1,403 @@
+================================================================================
+Integers and floats
+================================================================================
+
+let a = [0, 42, 1_000_000, 007, 1.5, 0.25, 6.02e23, 1_000.000_1, 2.5E-3]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (integer)
+      (integer)
+      (integer)
+      (integer)
+      (float)
+      (float)
+      (float)
+      (float)
+      (float))))
+
+================================================================================
+Booleans and unit
+================================================================================
+
+let a = [true, false, ()]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (boolean)
+      (boolean)
+      (unit))))
+
+================================================================================
+Durations
+================================================================================
+
+let a = [500 ms, 1 s, 20 min, 3 h, 1 day, 2 days, 1 week, 3 weeks, 1.5 h]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (integer)
+        (unit_name))
+      (duration
+        (float)
+        (unit_name)))))
+
+================================================================================
+Sizes
+================================================================================
+
+let a = [512 B, 64 KiB, 64 MiB, 6 GiB, 0.5 GiB]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (size
+        (integer)
+        (unit_name))
+      (size
+        (integer)
+        (unit_name))
+      (size
+        (integer)
+        (unit_name))
+      (size
+        (integer)
+        (unit_name))
+      (size
+        (float)
+        (unit_name)))))
+
+================================================================================
+Unit names are ordinary names elsewhere
+================================================================================
+
+let s = min(h, ms) + day
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (binary_expression
+      (call_expression
+        (identifier)
+        (arguments
+          (identifier)
+          (identifier)))
+      (identifier))))
+
+================================================================================
+Dates and times
+================================================================================
+
+let a = [2026-10-10, 07:40, 23:59:30]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (date)
+      (time)
+      (time))))
+
+================================================================================
+Date arithmetic is not a date
+================================================================================
+
+let a = [2026 - 10 - 10, 2026-10-10 - 1 day]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (binary_expression
+        (binary_expression
+          (integer)
+          (integer))
+        (integer))
+      (binary_expression
+        (date)
+        (duration
+          (integer)
+          (unit_name))))))
+
+================================================================================
+Instants and zoned times
+================================================================================
+
+let a = [2026-10-10 07:40 in "Europe/Dublin", 07:45 in "Europe/Dublin"]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (instant
+        (date)
+        (time)
+        (string
+          (string_content)))
+      (zoned_time
+        (time)
+        (string
+          (string_content))))))
+
+================================================================================
+Strings
+================================================================================
+
+let a = ["", "hello", "two words", "#not a comment"]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (string)
+      (string
+        (string_content))
+      (string
+        (string_content))
+      (string
+        (string_content)))))
+
+================================================================================
+String escapes
+================================================================================
+
+let a = "\n\r\t\0\\\"\{\}\u{1F600}"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (string
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence)
+      (escape_sequence))))
+
+================================================================================
+String interpolation
+================================================================================
+
+let a = "ireland-{day}-{f(x, "inner {y}")}{ z }"
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (string
+      (string_content)
+      (interpolation
+        (identifier))
+      (string_content)
+      (interpolation
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)
+            (string
+              (string_content)
+              (interpolation
+                (identifier))))))
+      (interpolation
+        (identifier)))))
+
+================================================================================
+Lists
+================================================================================
+
+let a = [[], [1], [1, 2,], [
+  1,
+  2,
+]]
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (list
+      (list)
+      (list
+        (integer))
+      (list
+        (integer)
+        (integer))
+      (list
+        (integer)
+        (integer)))))
+
+================================================================================
+Empty braces
+================================================================================
+
+let a = {}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (empty_braces)))
+
+================================================================================
+Records
+================================================================================
+
+let a = { name: "Ann", age: 3 }
+let b = { name, age, }
+let c = {
+  name: "Ann",
+  age: 3,
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (record
+      (field_initializer
+        (identifier)
+        (string
+          (string_content)))
+      (field_initializer
+        (identifier)
+        (integer))))
+  (let_statement
+    (identifier)
+    (record
+      (shorthand_field
+        (identifier))
+      (shorthand_field
+        (identifier))))
+  (let_statement
+    (identifier)
+    (record
+      (field_initializer
+        (identifier)
+        (string
+          (string_content)))
+      (field_initializer
+        (identifier)
+        (integer)))))
+
+================================================================================
+Record update
+================================================================================
+
+let a = { user with age: 4 }
+let b = { w.read() with phase: Asleep, players: {} }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (record_update
+      (identifier)
+      (field_initializer
+        (identifier)
+        (integer))))
+  (let_statement
+    (identifier)
+    (record_update
+      (call_expression
+        (field_expression
+          (identifier)
+          (identifier))
+        (arguments))
+      (field_initializer
+        (identifier)
+        (type_identifier))
+      (field_initializer
+        (identifier)
+        (empty_braces)))))
+
+================================================================================
+Maps
+================================================================================
+
+let a = { "a": 1, "b": 2 }
+let b = { 1: "one", (key(x)): 2 }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (let_statement
+    (identifier)
+    (map
+      (map_entry
+        (string
+          (string_content))
+        (integer))
+      (map_entry
+        (string
+          (string_content))
+        (integer))))
+  (let_statement
+    (identifier)
+    (map
+      (map_entry
+        (integer)
+        (string
+          (string_content)))
+      (map_entry
+        (parenthesized_expression
+          (call_expression
+            (identifier)
+            (arguments
+              (identifier))))
+        (integer)))))

@@ -1,0 +1,10 @@
+{
+  "contract": "Zeropod",
+  "exchanges": [
+    { "op": "restore", "key": "wake-survival", "result": { "NothingToRestore": null } },
+    { "op": "checkpoint", "key": "sleep-survival-3", "result": { "Done": ["ckpt-1"] } },
+    { "op": "restore", "key": "wake-creative", "result": { "Restored": { "from": "ckpt-0" } } },
+    { "op": "checkpoint", "key": "sleep-creative-3", "result": { "Refused": [{ "DiskFull": { "free": 1048576 } }] } },
+    { "op": "restore", "key": "wake-busy", "result": { "NothingToRestore": null } }
+  ]
+}
