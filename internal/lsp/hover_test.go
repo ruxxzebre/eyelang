@@ -67,6 +67,7 @@ pub fn size(s: Shape) -> Int = match s {
 		"prelude":  at(5, 3),  // Some
 		"nothing":  at(1, 0),
 		"newtype":  at(8, 23), // shapes.Name("none")
+		"keyword":  at(4, 3),  // let
 	}
 	msgs := s.run()
 	get := func(name string) string {
@@ -78,7 +79,7 @@ pub fn size(s: Shape) -> Int = match s {
 		return h.Contents.Value
 	}
 	for name, want := range map[string][]string{
-		"function": {"```eye\npub fn size(s: Shape) -> Int\n```", "The size of a shape. See `Box.side`."},
+		"function": {"```eye\npub fn size(s: Shape) -> Int\n```", "The size of a shape. See [`Box.side`](", "shapes.eye#L15)"},
 		"type":     {"pub type Shape =\n  | Square(Int)\n  | Dot\n```", "A shape on the plane."},
 		"variant":  {"Square(Int)", "Square, by its side.", "A variant of `Shape`."},
 		"field":    {"side: Int", "How long a side is.", "A field of `Box`."},
@@ -86,6 +87,7 @@ pub fn size(s: Shape) -> Int = match s {
 		"builtin":  {"fn print(", "standard output"},
 		"prelude":  {"Some(a)", "A variant of `Option`."},
 		"newtype":  {"pub type Name = | Name(String)", "Names a shape."},
+		"keyword":  {"`let`: Binds a name"},
 	} {
 		got := get(name)
 		for _, w := range want {

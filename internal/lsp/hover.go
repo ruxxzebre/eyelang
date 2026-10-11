@@ -27,11 +27,23 @@ func (s *server) hover(d *document, p Position) (any, *responseError) {
 	if !ok {
 		return nil, nil
 	}
-	use, ok := s.checked(path).Index.At(path, d.offset(p))
+	offset := d.offset(p)
+	res := s.checked(path)
+	use, ok := res.Index.At(path, offset)
 	if !ok {
-		return nil, nil
+		return s.keywordHover(d, offset)
 	}
-	text := describe(use.Target)
+	// Links in a doc comment are names in the module the comment is in.
+	link := func(name string) (string, bool) { return "`" + name + "`", true }
+	if at, ok := check.Definition(use.Target); ok && at.File != nil {
+		link = func(name string) (string, bool) {
+			if loc, ok := s.targetLocation(lookup(res, at.File.Path, name)); ok {
+				return fmt.Sprintf("[`%s`](%s)", name, lineLink(loc)), true
+			}
+			return "`" + name + "`", true
+		}
+	}
+	text := describe(use.Target, link)
 	if text == "" {
 		return nil, nil
 	}
@@ -43,17 +55,17 @@ func (s *server) hover(d *document, p Position) (any, *responseError) {
 
 // describe returns the hover text for what a name refers to: its signature
 // in an eye code block, then its doc comment.
-func describe(target any) string {
+func describe(target any, link func(string) (string, bool)) string {
 	switch t := target.(type) {
 	case ir.Builtin:
 		for _, b := range ir.BuiltinDocs {
 			if b.Name == t.Name {
-				return hoverText(b.Signature, b.Doc)
+				return hoverText(b.Signature, b.Doc, link)
 			}
 		}
 		return ""
 	case check.BuiltinType:
-		return hoverText("type "+t.Name, "A type built into the language.")
+		return hoverText("type "+t.Name, "A type built into the language.", link)
 	case check.Local:
 		return "" // its type isn't recorded yet
 	case *ir.Module:
@@ -63,7 +75,7 @@ func describe(target any) string {
 				break
 			}
 		}
-		return hoverText("import "+t.Path, doc)
+		return hoverText("import "+t.Path, doc, link)
 	}
 	at, ok := check.Definition(target)
 	if !ok || at.File == nil || at.File.Tree == nil {
@@ -94,7 +106,7 @@ func describe(target any) string {
 			doc = strings.TrimSpace(doc + "\n\nA field of `" + owner + "`.")
 		}
 	}
-	return hoverText(sig, doc)
+	return hoverText(sig, doc, link)
 }
 
 func ownerName(of any) string {
@@ -107,16 +119,39 @@ func ownerName(of any) string {
 	return ""
 }
 
-// hoverText puts a signature and a doc comment together. Links in the doc
-// comment show as code: the hover already sits on the code they name.
-func hoverText(sig, doc string) string {
+// hoverText puts a signature and a doc comment together, with the comment's
+// [Name] links made by link.
+func hoverText(sig, doc string, link func(string) (string, bool)) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "```eye\n%s\n```", sig)
 	if doc != "" {
-		doc = syntax.DocLinks(doc, func(name string) (string, bool) { return "`" + name + "`", true })
-		b.WriteString("\n\n" + doc)
+		b.WriteString("\n\n" + syntax.DocLinks(doc, link))
 	}
 	return b.String()
+}
+
+// lineLink is a link to a location that editors open at its line.
+func lineLink(loc location) string {
+	return fmt.Sprintf("%s#L%d", loc.URI, loc.Range.Start.Line+1)
+}
+
+// keywordHover describes the keyword or operator at offset: what it means,
+// and a link to the section of SPECS.md that defines it.
+func (s *server) keywordHover(d *document, offset int) (any, *responseError) {
+	tok, _ := keywordAt(d, offset)
+	if tok == nil {
+		return nil, nil
+	}
+	word := tok.Text(d.text)
+	summary, loc, ok := s.keywordDoc(word)
+	if !ok {
+		return nil, nil
+	}
+	text := "`" + word + "`: " + summary
+	if loc.URI != "" {
+		text += "\n\n[The rules in SPECS.md](" + lineLink(loc) + ")"
+	}
+	return hoverResult{Contents: markupContent{Kind: "markdown", Value: text}, Range: d.rangeOf(tok.Span)}, nil
 }
 
 // declarationAt finds the innermost node that declares the name starting at
@@ -165,4 +200,35 @@ func signature(n *syntax.Node, src []byte) string {
 		lines = append(lines, l)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// lookup finds what a doc comment's [Name] names, as Result.Lookup does, and
+// also a member of a type or entity: [Departure.delay], [Shape.Circle],
+// [World.join].
+func lookup(res *check.Result, path, name string) any {
+	if t := res.Lookup(path, name); t != nil {
+		return t
+	}
+	owner, member, ok := strings.Cut(name, ".")
+	if !ok {
+		return nil
+	}
+	switch o := res.Lookup(path, owner).(type) {
+	case *ir.Type:
+		if m := o.Methods[member]; m != nil {
+			return m
+		}
+		for _, v := range o.Variants {
+			if v.Name == member {
+				return v
+			}
+		}
+		return check.Member{Of: o, Name: member}
+	case *ir.Entity:
+		if m := o.Methods[member]; m != nil {
+			return m
+		}
+		return check.Member{Of: o, Name: member}
+	}
+	return nil
 }
