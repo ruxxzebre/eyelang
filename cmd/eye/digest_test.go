@@ -119,9 +119,26 @@ func labWithMain(t *testing.T) string {
 		t.Fatalf("copying the lab: %v\n%s", err, out)
 	}
 	_ = os.RemoveAll(filepath.Join(dir, ".eye"))
+	// morning is private to its module; only this copy makes it public, so that main can start it.
+	path := filepath.Join(dir, "digest", "digest.eye")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(src), "\njob morning(") != 1 {
+		t.Fatal("digest.eye no longer declares `job morning(` once; update labWithMain")
+	}
+	src = []byte(strings.Replace(string(src), "\njob morning(", "\npub job morning(", 1))
+	if err := os.WriteFile(path, src, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	main := "pub fn main() {\n  digest.morning.start(2026-10-12, key: \"exit-test\")\n}\n"
 	if err := os.WriteFile(filepath.Join(dir, "start.eye"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	// A copy that doesn't check would only show as a run that never asks the model.
+	if _, diags := check.Program(dir); len(diags) > 0 {
+		t.Fatalf("the lab with a main doesn't check: %v", diags)
 	}
 	return dir
 }

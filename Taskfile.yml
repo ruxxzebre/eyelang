@@ -63,13 +63,9 @@ tasks:
     cmds:
       - task: vscode:unit
       # On macOS the end-to-end test opens a VS Code window, and there is no xvfb to hide it in,
-      # so it runs only when asked: task vscode:e2e, or VSCODE_E2E=1. CI runs it on Linux.
-      - cmd: |
-          if [ "$(uname)" = Darwin ] && [ -z "$VSCODE_E2E" ]; then
-            echo "vscode:e2e skipped on macOS, where it opens a window: run task vscode:e2e, or set VSCODE_E2E=1"
-          else
-            {{.TASK_EXE}} vscode:e2e
-          fi
+      # so from here it runs only when asked: task vscode:e2e, or VSCODE_E2E=1. CI runs it on Linux.
+      - task: vscode:e2e
+        vars: {SKIP_WINDOW_ON_MACOS: "yes"}
       - task: vscode:package
 
   vscode:npm:
@@ -97,7 +93,14 @@ tasks:
     dir: editors/vscode
     deps: [build, vscode:npm]
     cmds:
-      - if [ "$(uname)" = Linux ] && command -v xvfb-run > /dev/null; then xvfb-run -a npm run test:vscode; else npm run test:vscode; fi
+      - |
+        if [ "{{.SKIP_WINDOW_ON_MACOS}}" = yes ] && [ "$(uname)" = Darwin ] && [ -z "$VSCODE_E2E" ]; then
+          echo "vscode:e2e skipped on macOS, where it opens a window: run task vscode:e2e, or set VSCODE_E2E=1"
+        elif [ "$(uname)" = Linux ] && command -v xvfb-run > /dev/null; then
+          xvfb-run -a npm run test:vscode
+        else
+          npm run test:vscode
+        fi
 
   vscode:package:
     desc: Package the extension into bin/eyelang.vsix
