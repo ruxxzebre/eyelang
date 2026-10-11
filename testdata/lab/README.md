@@ -29,4 +29,19 @@ environment:
 | `MINIFLUX_URL`, `MINIFLUX_KEY` | Miniflux, and its API key (`X-Auth-Token`) |
 | `NOTIFY_URL`, `NOTIFY_TOKEN` | Notify, and the digest's bearer token |
 | `FLARESOLVERR_URL`, `VPN_PROXY_URL` | FlareSolverr, and the VPN's HTTP proxy |
-| `AI_URL`, `AI_KEY`, `DIGEST_MODEL` | The OpenAI-compatible model gateway (CLIProxyAPI), its key, and the model |
+| `AI_URL`, `AI_KEY`, `DIGEST_MODEL` | The OpenAI-compatible model gateway (CLIProxyAPI), its key, and the model: `gpt-5.6-terra` when `DIGEST_MODEL` isn't set |
+| `AI_PRICES` | Prices of models the runtime doesn't know, in dollars per million tokens in and out: `gpt-5.6-terra=IN/OUT`. Required for the digest |
+
+The digest's `write` job has `@budget(usd: 0.50)`. The runtime knows the
+prices of Anthropic's models only, so a run on any other model needs that
+model's price in `AI_PRICES`. Without it, `write` fails before the model is
+asked: the run ends with a fault that names the model and `AI_PRICES`, and
+the morning job sends "Ireland digest not sent" instead of the briefing. Give
+the price the provider lists for the model, even when the gateway bills by
+subscription, since the budget is there to stop a runaway prompt. A gateway
+that names the model with its provider (`openai/gpt-5.6-terra`) is matched by
+the part after the slash.
+
+Secrets (`MINIFLUX_KEY`, `NOTIFY_TOKEN`, `AI_KEY`) can also be files named
+`miniflux-key`, `notify-token` and `ai-key` in the directory `$EYE_SECRETS`,
+which is how Kubernetes mounts them.
