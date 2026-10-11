@@ -111,10 +111,6 @@ pub extern type Approval
 ## current.
 pub extern type Version
 
-## An error with its context, for programs that only report errors: `?` turns any error with
-## `Show` into one, and `.context("reading {path}")` adds a line.
-pub extern type Problem
-
 ## An object foreign code owns, which can't be saved (SPECS.md section 18).
 pub extern type Handle(name)
 
@@ -455,6 +451,11 @@ pub extern fn isErr(r: Result(a, e)) -> Bool
 ## r with f applied to its error: `parse(s).mapErr(BadNumber)?` wraps the error in the caller's
 ## variant.
 pub extern fn mapErr(r: Result(a, e), f: fn(e) -> f) -> Result(a, f)
+
+## r with its error turned into a [Problem] that says what was being done:
+## `fs.readText(path).context("reading {path}")?`. On a Problem, it adds the line before the
+## others.
+pub extern fn context(r: Result(a, e), what: String) -> Result(a, Problem) where e: Show
 
 ## Reads a whole number written in decimal, or in another base from 2 to 36: `parseInt("ff",
 ## base: 16)` is 255. Spaces around it are ignored; the error says what was wrong.

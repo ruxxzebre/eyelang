@@ -58,7 +58,8 @@ func New(prog *ir.Program, out, log io.Writer) *Interp {
 		}
 	}
 	p := prog.Prelude
-	in.pre = preludeVariants{some: p.Variants["Some"], none: p.Variants["None"], ok: p.Variants["Ok"], err: p.Variants["Err"]}
+	in.pre = preludeVariants{some: p.Variants["Some"], none: p.Variants["None"], ok: p.Variants["Ok"], err: p.Variants["Err"],
+		problem: p.Variants["Problem"]}
 	in.rt = newRuntime(in)
 	return in
 }
@@ -1038,6 +1039,9 @@ func (in *Interp) try(v Value, x *ir.Try) Value {
 // wrapError puts an error into the variant of target whose one field holds
 // the error's type, when the error isn't already of type target.
 func (in *Interp) wrapError(err Value, target *ir.Type) Value {
+	if p := in.pre.problem; p != nil && target == p.Type {
+		return in.problem(err, nil)
+	}
 	ev, ok := err.(*Variant)
 	if target == nil || !ok || ev.V.Type == target {
 		return err

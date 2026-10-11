@@ -21,6 +21,7 @@ func builtinTable() map[string]*BuiltinFn {
 	taskBuiltins(add)
 	channelBuiltins(add)
 	stringBuiltins(add)
+	problemBuiltins(add)
 
 	add("print", func(in *Interp, args []Value, _ map[string]Value, _ ir.Pos) Value {
 		if in.replaying() {

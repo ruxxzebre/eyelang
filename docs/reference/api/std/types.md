@@ -256,15 +256,6 @@ type Version
 The version of something another service keeps, which a `@fresh` command checks is still
 current.
 
-## Problem {#Problem}
-
-```eye
-type Problem
-```
-
-An error with its context, for programs that only report errors: `?` turns any error with
-`Show` into one, and `.context("reading {path}")` adds a line.
-
 ## Handle {#Handle}
 
 ```eye

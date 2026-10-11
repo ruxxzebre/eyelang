@@ -35,6 +35,23 @@ Eyelang has no exceptions; failures are values of this type.
 `?` returns the error to the caller, wrapping it in the caller's error
 type when exactly one of its variants holds the error's type.
 
+### Problem {#Problem}
+
+```eye
+pub type Problem =
+  | Problem(
+    context: List(String),
+    error: String,
+  )
+```
+
+An error with what was being done when it happened, for programs that only
+report errors. In a function whose error type is Problem, `?` turns any
+error with `Show` into one, and `.context("reading {path}")` adds a line.
+
+It shows as its context, outermost first, then the error:
+`reading eye.toml: not a whole number: "x"`.
+
 ### Outcome(a) {#Outcome}
 
 ```eye

@@ -704,6 +704,16 @@ fn mapErr(r: Result(a, e), f: fn(e) -> f) -> Result(a, f)
 r with f applied to its error: `parse(s).mapErr(BadNumber)?` wraps the error in the caller's
 variant.
 
+### context {#context}
+
+```eye
+fn context(r: Result(a, e), what: String) -> Result(a, Problem) where e: Show
+```
+
+r with its error turned into a [`Problem`](./prelude#Problem) that says what was being done:
+`fs.readText(path).context("reading {path}")?`. On a Problem, it adds the line before the
+others.
+
 ### parseInt {#parseInt}
 
 ```eye

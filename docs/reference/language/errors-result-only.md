@@ -23,7 +23,9 @@ title: "Errors: Result only"
   }
   ```
 - **Programs that only report errors** can use the standard library's `Problem`: `?` turns any
-  error with `Show` into a `Problem`, and `.context("reading {path}")` adds a line to it.
+  error with `Show` into a `Problem`, and `.context("reading {path}")` adds a line to it. A
+  `Problem` shows its lines outermost first, then the error: `reading eye.toml: not a whole
+  number: "x"`.
 - There are no exceptions. Library functions are total: `xs[0]` and `first(xs)` return `Option`,
   and `parseInt(s)` returns `Result`.
 - **`unreachable("why")`** is the one way for code to stop itself. It ends the program, or the

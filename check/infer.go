@@ -1676,6 +1676,9 @@ func (x *fnCheck) try(e *ir.Try) typ {
 			c.typeErrorf(e.Pos, "? on a Result needs a function that returns a Result, and this one returns %s", show(ret))
 			return k.args[0]
 		}
+		if x.intoProblem(k.args[1], ret.args[1], e.Pos) {
+			return k.args[0]
+		}
 		if !x.converts(k.args[1], ret.args[1]) {
 			c.typeErrorf(e.Pos, "? can't pass on a %s from a function whose error is %s: none of its variants holds a %s; use .mapErr(…)?",
 				show(k.args[1]), show(ret.args[1]), show(k.args[1]))

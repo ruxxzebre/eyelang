@@ -137,7 +137,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | `?` on `Result` and `Option` | ✓ | ✓ | ✓ | [core: errors](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L124) |
 | `?` wraps the error in the one variant that holds it | ✓ | ✓ | ✓ | [core: errors](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L127), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L96) |
 | `.mapErr(…)` | ✓ | ✓ | ✓ | [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L120) |
-| `Problem` and `.context(…)` | ✓ | — | — | |
+| `Problem` and `.context(…)` | ✓ | ✓ | ✓ | [core: problems](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/problems.eye#L16), [problem_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/problem_test.go) |
 | Total library functions: `xs[i]` and `first` give `Option`, `parseInt` and `parseFloat` give `Result`, `toInt` gives `Option` | ✓ | ✓ | ✓ | [core: collections](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L165), [core: numbers](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/strings.eye#L45) |
 | String functions: `replace`, `words`, `endsWith`, `chars`, `code`, `fromCode`; Float `round`, `floor`, `ceil`, `toFloat` | ✓ | ✓ | ✓ | [core: strings](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/strings.eye#L24) |
 | `unreachable("why")` ends the program or run as a fault | ✓ | ✓ | ✓ | [interp_test.go: faults](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L153) |

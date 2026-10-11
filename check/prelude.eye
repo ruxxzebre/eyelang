@@ -14,6 +14,26 @@ pub type Option(a) = Some(a) | None
 ## type when exactly one of its variants holds the error's type.
 pub type Result(a, e) = Ok(a) | Err(e)
 
+## An error with what was being done when it happened, for programs that only
+## report errors. In a function whose error type is Problem, `?` turns any
+## error with `Show` into one, and `.context("reading {path}")` adds a line.
+##
+## It shows as its context, outermost first, then the error:
+## `reading eye.toml: not a whole number: "x"`.
+pub type Problem =
+  | Problem(
+    ## What was being done, outermost first.
+    context: List(String),
+    ## The error, as it shows.
+    error: String,
+  )
+
+impl Show for Problem {
+  fn show(self) -> String = match self {
+    Problem(context, error) => (context + [error]) |> join(": ")
+  }
+}
+
 ## How a run of a job ended: `Completed` with what the job returned, or
 ## `Failed` when it stopped first. `run.join!()` waits for it.
 pub type Outcome(a) = Completed(a) | Failed(Fault)
