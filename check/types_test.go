@@ -313,6 +313,23 @@ job j(xs: List(Int)) {
   sleep!(1 min)
   log.info("{f(1)}")
 }`, []string{"4:14: f is a function, which can't be saved, and it is still needed after a waiting call"}},
+		{"/ and % take a NonZero divisor", `fn a(t: Int, n: Int) -> Int = t / n
+fn b(t: Int) -> Int = t % 0
+fn c(t: Int, n: Int) -> Int = match nonzero(n) {
+  Some(d) => t / d
+  None => 0
+}
+fn d(t: Int) -> Int = t / 3 + t % -2
+fn e(mut t: Int, n: Int) { t /= n }
+fn half(x, y) = x / y
+fn f() = half(1, 0)
+fn g() -> Float = 1.0 / 0.0
+fn h() -> NonZero(Int) = 7`, []string{
+			"1:35: dividing by Int fails when it is 0, so / and % take a NonZero(Int): match nonzero(n), which is Some(n) unless it is 0, or divide by a literal other than 0",
+			"2:27: dividing by 0 has no answer",
+			"8:33: dividing by Int fails when it is 0",
+			"9:21: dividing by 0 has no answer",
+		}},
 		{"a minus sign and the built-in operators need types that have them", `type Money = { cents: Int }
 fn a() = -true
 fn b() = -Some(1)

@@ -38,6 +38,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§5", "a String where a Key or Zone is needed, an unknown zone", "strings become keys and zones where those are expected"},
 	{"§4", "an unknown zone in a time", "a time's zone is checked"},
 	{"§11", "an implicit conversion", "nothing converts implicitly"},
+	{"§10", "dividing an Int by what may be 0", "/ and % take a NonZero divisor"},
 	{"§7", "a change to a let", "a let can't change"},
 	{"§7", "a mut argument that isn't a var", "a mut argument is a var"},
 	{"§7", "a mut parameter passed without mut, or mut where none is", "a mut parameter is passed with mut, and only it"},

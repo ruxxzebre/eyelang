@@ -154,7 +154,7 @@ func TestFaults(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`test "t" { expect([1, 2] |> size == 3) }`, "expected [1, 2] |> size == 3, but [1, 2] |> size is 2"},
 		{`test "t" { unreachable("checked above") }`, "unreachable: checked above"},
-		{`test "t" { let a = 1 / 0 }`, "division by zero"},
+		{`test "t" { let a = 1 / 0 }`, ""}, // NonZero: the checker refuses it
 		{`job j() { sleep!(1 min); unreachable("in a job") }
 test "t" { j.start(); advance(2 min) }`, "job j: "},
 		{`import missing

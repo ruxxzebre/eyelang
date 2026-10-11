@@ -54,7 +54,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
 | `Int` with arbitrary precision | ✓ | ✓ | ✓ | [core: integers](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L56) |
-| `NonZero(Int)` divisors and `nonzero(n)` | ✓ | partial: `NonZero` is treated as its number type, so `a / b` checks for any `Int` | partial: dividing by zero ends the run as a fault | [interp_test.go: faults](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L153) |
+| `NonZero(Int)` divisors and `nonzero(n)` | ✓ | ✓ (`/` and `%` on an `Int` take a `NonZero(Int)` or a literal other than 0) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L316) |
 | `Float` | ✓ | ✓ | ✓ | [core: match](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L98) |
 | `Byte`, `Bytes`, `Int32`, `Int64`, `UInt32`, `UInt64` | ✓ | partial: the types are known, but `Int32.from`, `wrappingAdd` and the bit operations don't exist, and a char literal isn't read as a `Byte` | — | [lexer.eye](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/lexer.eye) |
 | `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`, `Size` | ✓ | ✓ | ✓ | [core: time](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L185) |

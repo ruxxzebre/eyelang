@@ -104,7 +104,24 @@ const (
 	litString
 	litInt
 	litBraces
+	litZero // the literal 0: an integer, and never a NonZero
 )
+
+// intLiteral reports whether a literal kind is an integer's.
+func (k litKind) intLiteral() bool { return k == litInt || k == litZero }
+
+// mergeLit is what two literals that must be one type may still take.
+func mergeLit(a, b litKind) (litKind, bool) {
+	switch {
+	case a == litNone || a == b:
+		return b, true
+	case b == litNone:
+		return a, true
+	case a.intLiteral() && b.intLiteral():
+		return litZero, true
+	}
+	return litNone, false
+}
 
 // unknownf reports why something can't be typed and returns unknown. It is
 // the only way to make an unknown type.
@@ -148,10 +165,13 @@ func (k litKind) allows(c *tcon) bool {
 	switch k {
 	case litString:
 		return c.decl == nil && c.entity == nil && (c.name == "String" || c.name == "Key" || c.name == "Zone")
-	case litInt:
+	case litInt, litZero:
 		switch c.name {
 		case "Int", "Int32", "Int64", "UInt32", "UInt64", "Byte":
 			return c.decl == nil
+		case "NonZero":
+			// Literals other than 0 qualify (SPECS.md §10).
+			return c.decl == nil && k == litInt
 		}
 		return false
 	case litBraces:
@@ -298,18 +318,14 @@ func (c *checker) bind(v *tvar, t typ, want, got typ) *mismatch {
 			v.ref = w
 			return nil
 		}
-		// Two variables: keep what either literal allows.
-		if w.lit == litNone || w.lit == v.lit {
-			w.lit = max(w.lit, v.lit)
-			v.ref = w
-			return nil
+		// Two variables: keep what both literals allow.
+		lit, ok := mergeLit(v.lit, w.lit)
+		if !ok {
+			return &mismatch{want: want, got: got}
 		}
-		if v.lit == litNone {
-			v.lit = w.lit // what the literal allows goes with it
-			w.ref = v
-			return nil
-		}
-		return &mismatch{want: want, got: got}
+		w.lit = lit
+		v.ref = w
+		return nil
 	}
 	if v.lit != litNone {
 		ct, ok := t.(*tcon)
@@ -383,7 +399,7 @@ func defaultLiteral(t typ) typ {
 		switch v.lit {
 		case litString:
 			v.ref = tString
-		case litInt:
+		case litInt, litZero:
 			v.ref = tInt
 		}
 	}
@@ -446,7 +462,7 @@ func writeType(b *strings.Builder, t typ, names map[*tvar]string) {
 			b.WriteString(x.name)
 		case x.lit == litString:
 			b.WriteString("String")
-		case x.lit == litInt:
+		case x.lit.intLiteral():
 			b.WriteString("Int")
 		case x.lit == litBraces:
 			b.WriteString("{}")
@@ -553,11 +569,9 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 	case "?":
 		return c.unknownf(at, "internal error: the checker doesn't know this kind of type")
 	case "NonZero":
-		// A NonZero divisor is approximated by its number type.
-		if len(t.Args) == 1 {
-			return c.fromExpr(t.Args[0], env, rigid)
+		if len(t.Args) != 1 {
+			return c.unknownf(at, "NonZero takes the number type it is of: NonZero(Int)")
 		}
-		return tInt
 	}
 	if t.Name != "" && t.Name[0] >= 'a' && t.Name[0] <= 'z' {
 		if v, ok := env[t.Name]; ok {
@@ -700,7 +714,7 @@ func toExpr(t typ) *ir.TypeExpr {
 		switch x.lit {
 		case litString:
 			return &ir.TypeExpr{Name: "String"}
-		case litInt:
+		case litInt, litZero:
 			return &ir.TypeExpr{Name: "Int"}
 		}
 	}

@@ -46,8 +46,9 @@ type typeState struct {
 	rows  map[*ir.Entity]map[int]*tcon
 	rowOf map[*ir.Type]*row
 	// deferred are trait requirements on types no body had decided when
-	// its function was checked.
-	deferred []requirement
+	// its function was checked, and divisions of such types.
+	deferred  []requirement
+	divisions []division
 }
 
 type zoneLit struct {
@@ -275,6 +276,7 @@ func (c *checker) checkTypes() {
 		}
 	}
 	c.checkZones()
+	c.settleDivisions()
 	c.settleDeferred()
 	c.checkRowReads()
 	c.checkEffects()
@@ -628,7 +630,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 			return tUnit
 		}
 		value := x.check(e.Value, nil)
-		result := x.arith(strings.TrimSuffix(e.Op, "="), target, value, e.Pos)
+		result := x.arith(strings.TrimSuffix(e.Op, "="), target, value, e.Value, e.Pos)
 		x.expect(e.Pos, target, result)
 		return tUnit
 	case *ir.For:
@@ -768,6 +770,9 @@ func orNil(t typ) typ {
 func (x *fnCheck) literal(e *ir.Lit, want typ) typ {
 	switch v := e.Value.(type) {
 	case *big.Int:
+		if v.Sign() == 0 {
+			return x.c.freshLit(litZero)
+		}
 		return x.c.freshLit(litInt)
 	case float64:
 		return tFloat
@@ -1564,13 +1569,13 @@ func (x *fnCheck) binary(e *ir.Binary) typ {
 	}
 	l := x.check(e.L, nil)
 	r := x.check(e.R, nil)
-	return x.arith(e.Op, l, r, e.Pos)
+	return x.arith(e.Op, l, r, e.R, e.Pos)
 }
 
 // arith is the type of `l op r` for + - * / %: the combinations the
 // built-in types have (SPECS.md §11), and a declared type's own operator
 // methods.
-func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
+func (x *fnCheck) arith(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
 	c := x.c
 	lt, rt := prune(l), prune(r)
 	name := func(t typ) string {
@@ -1579,7 +1584,7 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 		}
 		if v, ok := t.(*tvar); ok {
 			switch v.lit {
-			case litInt:
+			case litInt, litZero:
 				return "Int"
 			case litString:
 				return "String"
@@ -1599,6 +1604,20 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 			return out
 		}
 		return c.unknownf(at, "%s has no %s: implement %s for it, as `impl %s(%s, %s) for %s`", show(lt), op, opTrait(op), opTrait(op), show(lt), show(lt), show(lt))
+	}
+	if (op == "/" || op == "%") && (ln == "Int" || ln == "" && (rn == "Int" || rn == "NonZero")) {
+		// An Int is divided only by what can't be 0 (SPECS.md §10).
+		x.expect(at, tInt, l)
+		x.divisor(r, rhs, at)
+		return l
+	}
+	if lv, ok := lt.(*tvar); ok && !lv.rigid && lv.lit == litNone && (op == "/" || op == "%") {
+		if rv, ok := rt.(*tvar); ok && !rv.rigid && rv.lit == litNone {
+			// Untyped parameters, which later calls decide: if they are
+			// Ints, the divisor is checked then.
+			c.ts.divisions = append(c.ts.divisions, division{x: x, l: l, r: r, rhs: rhs, at: at})
+			return l
+		}
 	}
 	switch {
 	case ln == "Int" || rn == "Int" && ln == "":
@@ -1675,7 +1694,7 @@ func (x *fnCheck) negate(t typ, at ir.Pos) typ {
 	case tunknown:
 		return k
 	case *tvar:
-		if k.lit == litInt {
+		if k.lit.intLiteral() {
 			return k
 		}
 		if !k.rigid {
@@ -1705,6 +1724,39 @@ func (x *fnCheck) negate(t typ, at ir.Pos) typ {
 		}
 	}
 	return c.unknownf(at, "-%s isn't defined: only numbers and durations have a minus sign", show(defaultLiteral(t)))
+}
+
+// division is `l / r` of types not yet decided.
+type division struct {
+	x    *fnCheck
+	l, r typ
+	rhs  ir.Expr
+	at   ir.Pos
+}
+
+// settleDivisions checks the divisions that waited for the whole program:
+// a division of Ints takes a NonZero(Int) divisor, and one of other types
+// has the same type on both sides.
+func (c *checker) settleDivisions() {
+	for _, d := range c.ts.divisions {
+		if k, ok := defaultLiteral(d.l).(*tcon); ok && k.name == "Int" && k.decl == nil {
+			d.x.divisor(d.r, d.rhs, d.at)
+			continue
+		}
+		d.x.expect(d.at, d.l, d.r)
+	}
+}
+
+// divisor checks what an Int is divided by: a NonZero(Int), which a
+// literal other than 0 is too (SPECS.md §10).
+func (x *fnCheck) divisor(r typ, rhs ir.Expr, at ir.Pos) {
+	if v, ok := prune(r).(*tvar); ok && v.lit == litZero {
+		x.c.typeErrorf(rhs.Position(), "dividing by 0 has no answer")
+		return
+	}
+	if x.c.unify(con("NonZero", tInt), r) != nil {
+		x.c.typeErrorf(rhs.Position(), "dividing by %s fails when it is 0, so / and %% take a NonZero(Int): match nonzero(%s), which is Some(n) unless it is 0, or divide by a literal other than 0", show(defaultLiteral(r)), rhs.Position().Text())
+	}
 }
 
 func opTrait(op string) string {
