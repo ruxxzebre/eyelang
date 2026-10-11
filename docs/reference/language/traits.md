@@ -81,8 +81,19 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   fn double(n: t) -> t where t: Mul(Int, t) = n * 2
   ```
 
-  A private function that leaves its types out has one type, inferred from its body and its calls:
-  `fn double(n) = n * 2` doubles `Int`s. To work for any type with the operator, it says so.
+  A private function that leaves its types out is generic: what its body doesn't decide, each
+  call does, and the call must give types that have the operators the body uses.
+
+  ```eye
+  fn twice(n) = n + n
+
+  let a = twice(21)                            # 42, an Int
+  let b = twice(1.5)                           # 3.0, a Float
+  ```
+
+  A literal decides a type: in `fn double(n) = n * 2`, the `2` is an `Int`, so `double` takes
+  `Int`s, and `double(1.5)` is an error, as `1.5 * 2` is. A public function says what it takes, as
+  `fn double(n: t) -> t where t: Mul(Int, t)` above does.
 
   The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
   `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,

@@ -29,6 +29,10 @@ impl Counter {
 
 fn fib(n: Int) -> Int = if n < 2 then n else fib(n - 1) + fib(n - 2)
 
+# Generic: each call decides what the body leaves open (SPECS.md §6).
+fn doubled(n) = n + n
+fn swap(p) = match p { (a, b) => (b, a) }
+
 fn page(size: Int = 50, after: Option(Int) = None) -> String =
   "{size} after {after ?? 0}"
 
@@ -142,6 +146,15 @@ test "pipes put the value first, or where _ is" {
   expect(total == 20)
   expect(page() == "50 after 0")
   expect(page(after: Some(7), size: 10) == "10 after 7")
+}
+
+test "a private function without types is generic" {
+  expect(doubled(21) == 42)
+  expect(doubled(1.5) == 3.0)
+  expect(doubled("ab") == "abab")
+  expect(swap((1, "one")) == ("one", 1))
+  expect(swap(("x", true)) == (true, "x"))
+  expect([1, 2] |> map(doubled) == [2, 4])
 }
 
 test "closures capture values" {

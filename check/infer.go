@@ -33,7 +33,12 @@ type typeState struct {
 	callees  map[*ir.Func][]*ir.Func      // the functions each calls
 	jobSlots map[*ir.Func][]typ           // slot types of job bodies, for the Save check
 	steps    []stepResult                 // a job's `!` calls and what they return, for the Save check
-	zones    []zoneLit                    // string literals that may be zones
+	// inferred says how far a function whose types are inferred has got,
+	// and schemes holds the generic type each one has once it is checked.
+	inferred map[*ir.Func]inferState
+	schemes  map[*ir.Func]*scheme
+	active   []*ir.Func // the inferred functions being checked, innermost last
+	zones    []zoneLit  // string literals that may be zones
 	option   *ir.Type
 	result   *ir.Type
 	outcome  *ir.Type
@@ -47,9 +52,9 @@ type typeState struct {
 	rows  map[*ir.Entity]map[int]*tcon
 	rowOf map[*ir.Type]*row
 	// deferred are trait requirements on types no body had decided when
-	// its function was checked, and divisions of such types.
-	deferred  []requirement
-	divisions []division
+	// its function was checked, and ops are operators on such types.
+	deferred []requirement
+	ops      []pendingOp
 }
 
 type zoneLit struct {
@@ -85,6 +90,8 @@ type fnCheck struct {
 	outer   *fnCheck
 	top     *fnCheck // the outermost function, for effects and pending checks
 	waiting ir.Expr  // the call the innermost `!` marks
+	calling ir.Expr  // the callee of the call being checked
+	callAt  *ir.Pos  // where to report an operator of this generic body, for one call
 	records []pendingRecord
 	matches []pendingMatch
 	lets    []pendingLet
@@ -136,6 +143,7 @@ func (c *checker) checkTypes() {
 		params: map[*ir.Func][]typ{}, results: map[*ir.Func]typ{}, globals: map[*ir.Global]typ{},
 		checking: map[*ir.Global]bool{}, effects: map[*ir.Func]map[string]bool{},
 		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{},
+		inferred: map[*ir.Func]inferState{}, schemes: map[*ir.Func]*scheme{},
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
 		bounds: map[*tvar][]cbound{},
@@ -143,16 +151,6 @@ func (c *checker) checkTypes() {
 	}
 	c.fillImplMethods()
 	c.checkDyns()
-	type body struct {
-		fn     *ir.Func
-		kind   fnKind
-		entity *ir.Entity
-		self   *ir.Type
-		selfT  typ       // self's type, for a method of no declared type
-		trait  *ir.Trait // the trait whose default method this is
-		op     *ir.Op
-		want   typ
-	}
 	var bodies []body
 	for _, m := range c.prog.Modules {
 		for _, f := range m.Funcs {
@@ -239,48 +237,72 @@ func (c *checker) checkTypes() {
 		}
 	}
 	for _, b := range bodies {
-		x := c.newFnCheck(b.fn, b.kind, nil)
-		x.entity = b.entity
-		if b.entity != nil {
-			x.self = &tcon{name: b.entity.Name, entity: b.entity}
-		}
-		if b.self != nil {
-			self, env := c.declType(b.self)
-			for _, a := range self.args {
-				a.(*tvar).rigid = true
-			}
-			for name, v := range env {
-				v.(*tvar).name = name
-				x.env[name] = v
-			}
-			x.self = self
-		}
-		if b.selfT != nil {
-			x.self = b.selfT
-		}
-		if b.trait != nil {
-			x.self = x.traitSelf(b.trait)
-		}
-		var ret typ
-		if b.op != nil {
-			ret = x.operation(b.op)
-		} else {
-			ret = x.signature()
-		}
-		if b.want != nil {
-			ret = b.want
-		}
-		x.ret = ret
-		x.body(ret)
-		if b.kind == kindJob {
-			c.ts.jobSlots[b.fn] = x.slots
+		switch {
+		case c.ts.inferred[b.fn] != notInferred:
+			// checked already, where a call needed its type
+		case c.inferrable(b.fn):
+			c.inferFunc(b.fn)
+		default:
+			c.checkBody(b)
 		}
 	}
 	c.checkZones()
-	c.settleDivisions()
+	c.settleOps()
 	c.settleDeferred()
 	c.checkRowReads()
 	c.checkEffects()
+}
+
+// body is a function body to check, with what it is checked in.
+type body struct {
+	fn     *ir.Func
+	kind   fnKind
+	entity *ir.Entity
+	self   *ir.Type
+	selfT  typ       // self's type, for a method of no declared type
+	trait  *ir.Trait // the trait whose default method this is
+	op     *ir.Op
+	want   typ
+}
+
+// checkBody checks one body against its signature.
+func (c *checker) checkBody(b body) {
+	x := c.newFnCheck(b.fn, b.kind, nil)
+	x.entity = b.entity
+	if b.entity != nil {
+		x.self = &tcon{name: b.entity.Name, entity: b.entity}
+	}
+	if b.self != nil {
+		self, env := c.declType(b.self)
+		for _, a := range self.args {
+			a.(*tvar).rigid = true
+		}
+		for name, v := range env {
+			v.(*tvar).name = name
+			x.env[name] = v
+		}
+		x.self = self
+	}
+	if b.selfT != nil {
+		x.self = b.selfT
+	}
+	if b.trait != nil {
+		x.self = x.traitSelf(b.trait)
+	}
+	var ret typ
+	if b.op != nil {
+		ret = x.operation(b.op)
+	} else {
+		ret = x.signature()
+	}
+	if b.want != nil {
+		ret = b.want
+	}
+	x.ret = ret
+	x.body(ret)
+	if b.kind == kindJob {
+		c.ts.jobSlots[b.fn] = x.slots
+	}
 }
 
 func (c *checker) newFnCheck(fn *ir.Func, kind fnKind, outer *fnCheck) *fnCheck {
@@ -397,6 +419,15 @@ func (c *checker) resultType(fn *ir.Func, env typeEnv, rigid bool) typ {
 // funcType is the type of a declared function at one use: its type
 // variables are fresh.
 func (c *checker) funcType(fn *ir.Func, env typeEnv) *tfun {
+	if c.ts != nil && c.inferrable(fn) {
+		if c.ts.inferred[fn] == notInferred {
+			c.inferFunc(fn)
+		}
+		if s := c.ts.schemes[fn]; s != nil {
+			return c.instantiate(fn, s)
+		}
+		// Still being checked, as when it calls itself: one type until then.
+	}
 	if env == nil {
 		env = typeEnv{}
 	}
@@ -832,7 +863,13 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 				x.top.effect(u)
 			}
 		}
-		return c.funcType(d, nil)
+		f := c.funcType(d, nil)
+		if x.calling != ir.Expr(e) {
+			// Named as a value: it is called wherever it goes, with the
+			// types it is used at here.
+			x.useGeneric(f, d.Name, e.Pos)
+		}
+		return f
 	case *ir.Global:
 		return c.globalType(d)
 	case *ir.Variant:
@@ -958,7 +995,10 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 			}
 		}
 	}
+	prevCalling := x.calling
+	x.calling = e.Func // called here, so the call applies its bounds
 	callee := x.check(e.Func, nil)
+	x.calling = prevCalling
 	t := x.apply(callee, e.Args, want, calleeName(e.Func), e.Pos)
 	x.top.calls = append(x.top.calls, pendingCall{e, t})
 	if r, ok := e.Func.(*ir.Ref); ok {
@@ -1075,10 +1115,25 @@ func (x *fnCheck) args(f *tfun, args []ir.Arg, name string, at ir.Pos) {
 			x.c.typeErrorf(at, "%s needs an argument for %s", name, paramName(p, j))
 		}
 	}
-	for _, bu := range f.bounds {
-		x.top.reqs = append(x.top.reqs, requirement{t: bu.t, b: bu.b, at: at, where: name, role: bu.v})
-	}
+	x.useGeneric(f, name, at)
 	x.mutArgs(f, args, target, name)
+}
+
+// useGeneric records what a use of a generic function asks of the types it
+// is used at: the traits it requires of its type variables, and for an
+// inferred one the operators its body applies to them.
+func (x *fnCheck) useGeneric(f *tfun, name string, at ir.Pos) {
+	for _, bu := range f.bounds {
+		where := name
+		if bu.v == "" && bu.fn != "" {
+			where = bu.fn // an inferred function's requirement: "showing a value in a string, in show,"
+		}
+		x.top.reqs = append(x.top.reqs, requirement{t: bu.t, b: bu.b, at: at, where: where, role: bu.v})
+	}
+	for _, o := range f.ops {
+		o.callAt = at
+		x.c.ts.ops = append(x.c.ts.ops, o)
+	}
 }
 
 // mutArgs checks a call's `mut` arguments (SPECS.md §7): a mut parameter is
@@ -1594,8 +1649,19 @@ func (x *fnCheck) binary(e *ir.Binary) typ {
 
 // arith is the type of `l op r` for + - * / %: the combinations the
 // built-in types have (SPECS.md §11), and a declared type's own operator
-// methods.
+// methods. When the left side's type isn't decided yet, as an untyped
+// parameter's isn't, whether it has the operator waits for what decides it
+// (settleOps).
 func (x *fnCheck) arith(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
+	v, undecided := prune(l).(*tvar)
+	out := x.arithNow(op, l, r, rhs, at)
+	if undecided && !v.rigid && !v.never {
+		x.c.ts.ops = append(x.c.ts.ops, pendingOp{x: x, op: op, l: l, r: r, out: out, rhs: rhs, at: at})
+	}
+	return out
+}
+
+func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
 	c := x.c
 	lt, rt := prune(l), prune(r)
 	name := func(t typ) string {
@@ -1637,8 +1703,7 @@ func (x *fnCheck) arith(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
 	if lv, ok := lt.(*tvar); ok && !lv.rigid && lv.lit == litNone && (op == "/" || op == "%") {
 		if rv, ok := rt.(*tvar); ok && !rv.rigid && rv.lit == litNone {
 			// Untyped parameters, which later calls decide: if they are
-			// Ints, the divisor is checked then.
-			c.ts.divisions = append(c.ts.divisions, division{x: x, l: l, r: r, rhs: rhs, at: at})
+			// Ints, the divisor is checked then (see arith).
 			return l
 		}
 	}
@@ -1749,36 +1814,60 @@ func (x *fnCheck) negate(t typ, at ir.Pos) typ {
 	return c.unknownf(at, "-%s isn't defined: only numbers and durations have a minus sign", show(defaultLiteral(t)))
 }
 
-// division is `l / r` of types not yet decided.
-type division struct {
+// pendingOp is `l op r` of types not yet decided, giving out.
+type pendingOp struct {
 	x    *fnCheck
+	op   string
 	l, r typ
+	out  typ
 	rhs  ir.Expr
 	at   ir.Pos
+	// in names the generic functions it is inside, for one a call
+	// instantiated: its errors are reported at the call, and say where.
+	in     string
+	callAt ir.Pos
 }
 
-// settleDivisions checks the divisions that waited for the whole program:
-// a division of Ints takes a NonZero(Int) divisor, and one of other types
-// has the same type on both sides.
-func (c *checker) settleDivisions() {
-	for _, d := range c.ts.divisions {
-		if k, ok := defaultLiteral(d.l).(*tcon); ok && k.name == "Int" && k.decl == nil {
-			d.x.divisor(d.r, d.rhs, d.at)
+// settleOps checks the operators that waited for the whole program, now
+// that their calls have decided their types: `n + n` in `fn twice(n)` is
+// fine for Ints and an error for Bools, and a division of Ints takes a
+// NonZero(Int) divisor. A type still undecided may be any type.
+func (c *checker) settleOps() {
+	ops := c.ts.ops
+	c.ts.ops = nil
+	for _, o := range ops {
+		if v, ok := defaultLiteral(o.l).(*tvar); ok && !v.rigid {
 			continue
 		}
-		d.x.expect(d.at, d.l, d.r)
+		if o.in == "" {
+			o.x.expect(o.at, o.out, o.x.arith(o.op, o.l, o.r, o.rhs, o.at))
+			continue
+		}
+		// From a generic function's body: report at the call that gave
+		// these types, saying where in the function.
+		before := len(c.diags)
+		o.x.callAt = &o.callAt
+		o.x.expect(o.callAt, o.out, o.x.arith(o.op, o.l, o.r, o.rhs, o.callAt))
+		o.x.callAt = nil
+		for i := before; i < len(c.diags); i++ {
+			c.diags[i].Message = fmt.Sprintf("in %s, %s", o.in, c.diags[i].Message)
+		}
 	}
 }
 
 // divisor checks what an Int is divided by: a NonZero(Int), which a
 // literal other than 0 is too (SPECS.md §10).
 func (x *fnCheck) divisor(r typ, rhs ir.Expr, at ir.Pos) {
+	where := rhs.Position()
+	if x.callAt != nil {
+		where = *x.callAt // a generic function's division, for one call
+	}
 	if v, ok := prune(r).(*tvar); ok && v.lit == litZero {
-		x.c.typeErrorf(rhs.Position(), "dividing by 0 has no answer")
+		x.c.typeErrorf(where, "dividing by 0 has no answer")
 		return
 	}
 	if x.c.unify(con("NonZero", tInt), r) != nil {
-		x.c.typeErrorf(rhs.Position(), "dividing by %s fails when it is 0, so / and %% take a NonZero(Int): match nonzero(%s), which is Some(n) unless it is 0, or divide by a literal other than 0", show(defaultLiteral(r)), rhs.Position().Text())
+		x.c.typeErrorf(where, "dividing by %s fails when it is 0, so / and %% take a NonZero(Int): match nonzero(%s), which is Some(n) unless it is 0, or divide by a literal other than 0", show(defaultLiteral(r)), rhs.Position().Text())
 	}
 }
 

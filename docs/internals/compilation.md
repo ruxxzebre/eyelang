@@ -298,8 +298,8 @@ yet. So the compiler can see every use.
   ordinary functions, generated per type. Run-time lookups such as `typeOf` disappear.
 - **`dyn Trait`** is a pointer to the value and a table of the impl's methods, plus a drop
   function. It is the only run-time dispatch, and SPECS shows it in the type.
-- **Private functions** are one type for the whole program today, not generic (ROADMAP "What's
-  next", item 1). Specialising handles both, so this change doesn't wait on that one.
+- **Private functions** that leave their types out are generic (SPECS section 6), and are
+  specialised per use like any other generic function.
 - **Polymorphic recursion**, a generic function that calls itself at a bigger type, can't be
   specialised. It is rare; report it as an error at the call.
 - **Collection functions** (`map`, `filter`, `size`… over lists, sets, maps, ranges, `Option`

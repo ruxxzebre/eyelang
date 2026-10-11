@@ -258,14 +258,37 @@ pub fn partly() -> Instant uses {stdio} = now()`, []string{
 		{"effects pass through private functions", `import svc
 fn send(t: String) = svc.raw(t)
 pub fn f() = send("x")`, []string{"3:1: f uses net Svc.raw, which its signature doesn't list"}},
-		{"a type variable or an untyped parameter has only what its uses need", `fn show(x) -> String = "{x}"
+		{"a private function without types is generic, and each call meets its body's needs", `fn twice(n) = n + n
+fn half(x, y) = x / y
+fn label(x) = "<{x}>"
+fn outer(x) = label(x)
+fn double(n) = n * 2
+fn even(n) -> Bool = if n == 0 then true else odd(n - 1)
+fn odd(n) -> Bool = if n == 0 then false else even(n - 1)
+fn ok() -> (Int, Float, String, Int, Bool) =
+  (twice(2), twice(1.5), twice("a"), half(7, 2), even(4))
+fn a() = twice(true)
+fn b() = [true] |> map(twice)
+fn c() -> Byte = twice(1)
+fn d() = half(1, 0)
+fn e() = outer(secret("k"))
+fn f() -> Float = double(2.5)`, []string{
+			"10:10: in twice, Bool + Bool isn't defined",
+			"11:24: in twice, Bool + Bool isn't defined",
+			"12:18: in twice, Byte + Byte isn't defined",
+			"13:10: in half, dividing by 0 has no answer",
+			"14:10: showing a value in a string, in label, in outer, needs Show, and Secret(String) has no Show",
+			"15:19: expected Float, found Int",
+			"15:26: expected Int, found Float",
+		}},
+		{"a type variable or an untyped parameter has only what its uses need",`fn show(x) -> String = "{x}"
 fn leak() -> String = show(secret("a"))
 fn bigger(a, b) -> Bool = a > b
 fn f(g: fn() -> Int) -> Bool = bigger(g, g)
 fn call(x: a) = x()
 fn index(x: a) = x[0]`, []string{
-			"1:26: showing a value in a string needs Show, and Secret(String) has no Show",
-			"3:27: comparing with > needs Ord, and fn() -> Int has no Ord",
+			"2:23: showing a value in a string, in show, needs Show, and Secret(String) has no Show",
+			"4:32: comparing with >, in bigger, needs Ord, and fn() -> Int has no Ord",
 			"5:17: x's type is a, which may be any type, so it can't be called",
 			"6:18: a can't be indexed",
 		}},
@@ -338,7 +361,7 @@ fn h() -> NonZero(Int) = 7`, []string{
 			"1:35: dividing by Int fails when it is 0, so / and % take a NonZero(Int): match nonzero(n), which is Some(n) unless it is 0, or divide by a literal other than 0",
 			"2:27: dividing by 0 has no answer",
 			"8:33: dividing by Int fails when it is 0",
-			"9:21: dividing by 0 has no answer",
+			"10:10: in half, dividing by 0 has no answer",
 		}},
 		{"a minus sign and the built-in operators need types that have them", `type Money = { cents: Int }
 fn a() = -true

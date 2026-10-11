@@ -81,7 +81,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| Public functions with full signatures; private ones inferred | ✓ | partial: a private function's inferred type is one type for the whole program, not generic | ✓ | [core](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L30) |
+| Public functions with full signatures; private ones inferred, and generic where their bodies leave types open | ✓ | ✓ (each call decides the open types, and must give the operators and traits the body uses) | ✓ | [core](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L151), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L261) |
 | `let`, `var`, shadowing | ✓ | ✓ | ✓ | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L83) |
 | Lambdas: one expression, a block, several parameters, none | ✓ | ✓ | ✓ | [core: closures](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L147) |
 | Data-first pipes and `_` | ✓ | ✓ | ✓ | [core: pipes](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L134) |
@@ -105,7 +105,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | `mut self` methods, only on a `var` or `mut` parameter | ✓ | ✓ | ✓ | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L90), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L275) |
 | No aliasing: no variable passed as `mut` twice, or as `mut` and read | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L264) |
 | Closures can't capture a `var` or `mut` parameter | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L45), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L283) |
-| Updates in place when a value is unique | n/a | n/a | partial: values behave as copies, but the interpreter has no reference counts and copies them (in place comes with v0.4) | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L89) |
+| Updates in place when a value is unique | n/a | n/a | partial: appending to a list (`xs \|> add(x)`, `xs += [x]`, `xs + ys`) is in place in the interpreter; a set's `add`, a map's `insert`, `with` on records and `String +` still copy, since the interpreter has no reference counts (in place everywhere comes with v0.4) | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L89), [append_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/append_test.go#L63) |
 
 ## [Methods and generics](/reference/language/methods-and-generics)
 

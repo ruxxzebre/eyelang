@@ -46,9 +46,12 @@ for i in 0..n { log.info("{i}") }
   `page(size: size, after: after)`.
 - **Results.** A function without `->` returns `()` if its body is a block, and the value of its
   last expression is dropped; `fn double(n) = n * 2` returns its expression's type. A private
-  function may leave out parameter types too; they are inferred from its body and its calls, and
-  are the same at every call. `while true` without a `break` never ends but by `return`, so it can
-  stand where any value is expected.
+  function may leave out parameter types too. They are inferred from its body alone, and what the
+  body leaves open is generic: each call decides it afresh, so `fn twice(n) = n + n` adds `Int`s at
+  one call and `Float`s at the next, and a call that gives it a type without `+`, such as `Bool`,
+  is an error at that call. A body that reads a field or calls a method on such a parameter needs
+  its type written, since nothing in the body says which record it is. `while true` without a
+  `break` never ends but by `return`, so it can stand where any value is expected.
 - **A module-level `let`** binds a value computed once; `pub let dublin: Zone = "Europe/Dublin"`
   exports it, and other modules import it by name like any other declaration.
 - **A branch that is one assignment** needs no braces, as one that is one expression doesn't:

@@ -38,6 +38,9 @@ type (
 		// uses are the effects a function type states, which a call of a
 		// value of that type has (SPECS.md §12).
 		uses []string
+		// ops are an inferred generic function's operators on its type
+		// variables, which each call checks for its own types.
+		ops []pendingOp
 	}
 	ttuple struct{ elems []typ }
 	tvar   struct {

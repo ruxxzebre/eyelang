@@ -396,7 +396,12 @@ func (c *checker) preludeTrait(name string) *ir.Trait {
 // it (settleDeferred).
 func (x *fnCheck) settleRequirements() {
 	for _, r := range x.reqs {
-		if v, ok := defaultLiteral(r.t).(*tvar); ok && !v.rigid {
+		free := map[*tvar]bool{}
+		freeVars(defaultLiteral(r.t), free)
+		for _, a := range r.b.args {
+			freeVars(a, free)
+		}
+		if len(free) > 0 {
 			x.c.ts.deferred = append(x.c.ts.deferred, r)
 			continue
 		}

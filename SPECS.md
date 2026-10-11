@@ -129,6 +129,7 @@ construct that also works outside that domain.
 | Typed choices | **A type whose variants have no fields gets `T.variants()` and `T.parse(s)`, derived**: every variant in order, and `Some` of the variant named `s`, else `None` (section 11) | A person's choice, such as a button, is matched as a variant, so a misspelt or forgotten choice fails to compile, and the buttons come from the type the match uses. No syntax: they are calls on a type, as `Lexer.new` is (open question 15) |
 | Module roots | **`eye.toml` may list `modules`, more directories to find imports in**, searched after the program's own directory, in order (section 13) | A program deployed alone, such as the lab's digest, names the lab's modules in its `eye.toml` instead of reaching them through symbolic links that break and must list every module imported. From the lab: `deploy/digest` |
 | Native code | **Compiled programs are C, built by the `zig cc` that `eye` ships**, with Perceus reference counting, whole-program specialisation and jobs resuming from saved frames ([docs/internals/compilation.md](docs/internals/compilation.md)). `eye` itself stays free of cgo: the interpreter loads C libraries at run time without it | The workload needs memory and resume time more than the best code, and C at `-O2` gives both; the bootstrap seed is C anyway; Koka and Lean 4 compile reference-counted functional code to C. Shipping `zig cc` cross-compiles to all five release targets from any host, with the same compiler everywhere |
+| Generic private functions | **A private function that leaves its types out is generic**: its body is checked on its own, and each call decides afresh what the body leaves open, so `fn twice(n) = n + n` works on `Int`s and `Float`s alike. A call that gives types without the operators or traits the body uses is an error at the call. Functions that call each other share one type while they are checked (section 6) | One type for the whole program made a helper's first caller decide it for every other, and the error appeared at the second caller, far from the cause. Let-polymorphism is what ML and Haskell do for the same reason, and compiled code specialises each use (section 22) |
 
 ## 3. A tour
 
@@ -433,9 +434,12 @@ for i in 0..n { log.info("{i}") }
   `page(size: size, after: after)`.
 - **Results.** A function without `->` returns `()` if its body is a block, and the value of its
   last expression is dropped; `fn double(n) = n * 2` returns its expression's type. A private
-  function may leave out parameter types too; they are inferred from its body and its calls, and
-  are the same at every call. `while true` without a `break` never ends but by `return`, so it can
-  stand where any value is expected.
+  function may leave out parameter types too. They are inferred from its body alone, and what the
+  body leaves open is generic: each call decides it afresh, so `fn twice(n) = n + n` adds `Int`s at
+  one call and `Float`s at the next, and a call that gives it a type without `+`, such as `Bool`,
+  is an error at that call. A body that reads a field or calls a method on such a parameter needs
+  its type written, since nothing in the body says which record it is. `while true` without a
+  `break` never ends but by `return`, so it can stand where any value is expected.
 - **A module-level `let`** binds a value computed once; `pub let dublin: Zone = "Europe/Dublin"`
   exports it, and other modules import it by name like any other declaration.
 - **A branch that is one assignment** needs no braces, as one that is one expression doesn't:
@@ -708,8 +712,19 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   fn double(n: t) -> t where t: Mul(Int, t) = n * 2
   ```
 
-  A private function that leaves its types out has one type, inferred from its body and its calls:
-  `fn double(n) = n * 2` doubles `Int`s. To work for any type with the operator, it says so.
+  A private function that leaves its types out is generic: what its body doesn't decide, each
+  call does, and the call must give types that have the operators the body uses.
+
+  ```eye
+  fn twice(n) = n + n
+
+  let a = twice(21)                            # 42, an Int
+  let b = twice(1.5)                           # 3.0, a Float
+  ```
+
+  A literal decides a type: in `fn double(n) = n * 2`, the `2` is an `Int`, so `double` takes
+  `Int`s, and `double(1.5)` is an error, as `1.5 * 2` is. A public function says what it takes, as
+  `fn double(n: t) -> t where t: Mul(Int, t)` above does.
 
   The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
   `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,

@@ -145,7 +145,7 @@ fn b() uses {secret "a{1}b", secret "a\nb", secret "ok"} {}`, []string{
 			`2:21: a secret's name is plain text, as secret(…) is passed it: secret "telegram-bot-token"`,
 			`2:37: a secret's name is plain text, as secret(…) is passed it`,
 		}},
-		{"attributes name what exists",`pub type Sent = | Sent(Int)
+		{"attributes name what exists", `pub type Sent = | Sent(Int)
 pub type Ping = { id: Int }
 contract Svc {
   @key(required)
