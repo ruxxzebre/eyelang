@@ -93,8 +93,8 @@ file in `testdata/syntax/valid` gets an `invalid` scope or ends inside a string,
 answers the JSON-RPC client the extension uses. `npm run test:vscode` runs the extension in a real
 VS Code (downloaded once into `.vscode-test/`, or `VSCODE_EXECUTABLE`): it starts without a server,
 starts one when `bin/eye` appears, restarts it when `bin/eye` changes, and checks errors,
-formatting, the outline, semantic tokens and go-to-definition through it. On Linux without a
-display, run it under `xvfb-run`.
+formatting, the outline, semantic tokens, go-to-definition, find references and completion through
+it. On Linux without a display, run it under `xvfb-run`.
 
 It runs beside a VS Code you have open: the test copy gets a short user data directory of its own,
 and a `PATH` without any directory that holds an `eye` (such as `scripts/`, which direnv adds).

@@ -91,4 +91,15 @@ exports.run = async function run() {
   const refs = await vscode.commands.executeCommand('vscode.executeReferenceProvider', b.uri, new vscode.Position(3, 14));
   const files = refs.map((l) => path.relative(ws, l.uri.fsPath)).sort();
   assert.deepStrictEqual(files, ['b.eye', path.join('util', 'util.eye')]);
+
+  // Completion: a module's members after `util.`, and the keywords that start
+  // a declaration on an empty line.
+  const complete = async (line, character) => {
+    const list = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', b.uri, new vscode.Position(line, character));
+    return list.items.map((i) => (typeof i.label === 'string' ? i.label : i.label.label));
+  };
+  const members = await complete(3, 13);
+  assert.ok(members.includes('twice'), `util. offers ${members}`);
+  const keywords = await complete(1, 0);
+  assert.ok(keywords.includes('pub') && keywords.includes('entity'), `an empty line offers ${keywords}`);
 };
