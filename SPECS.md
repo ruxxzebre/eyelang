@@ -120,6 +120,14 @@ construct that also works outside that domain.
 | Program root | **`eye.toml` marks the directory a program starts from**; a file belongs to the nearest one above it, else to its own directory | Tools given one file, such as an editor jumping to a definition, must find the modules it imports: `lab/digest/digest.eye` imports `lab/home`. A marker file says so once, and it is the file that packages (open question 5) need anyway |
 | Built-in docs | **The built-ins are declared in Eyelang**, in `ir/builtin.eye`, with `extern type`, `extern fn` and `##` comments; the checker checks calls against those signatures and takes effects from their `uses`, and the interpreter implements them | Like Go's `builtin` package: an editor goes to a built-in's documented declaration as to any other, and the reference is written in one place, next to the signatures it describes. Since the checker uses them, the docs can't drift from the rules |
 | Doc comments | **`##` comments are Markdown, with a first-sentence summary, `[Name]` links that are checked, and a module doc at the top of a file**. One extractor feeds `eye doc`, the editor's hover and completion, and AI schemas | One source of documentation for people, editors and models. Checked links keep docs from pointing at renamed code, and the summary rule gives every list a short line without a second comment |
+| Answering approvals | **An answer names its request's `id`, and only the person in `from:` may give it.** The runtime refuses any other answer and logs it. Text matches only from the command line and in tests, and is refused when it matches more than one waiting approval. An `Approval` has `what` and `by` fields (section 15) | An `Approval` is the one value that stands for a person's consent, so the obvious routing job must be the safe one: one that forgets to check who pressed the button can't grant it, and an answer can't reach a request it wasn't meant for. From the lab: two runs asking "Restart the router?" were answered by one press (open question 17) |
+| Recorded steps | **`!` marks every recorded step in a job**: every outside effect, every entity call, publishing an event (`bus.pinged.publish!(…)`) and starting a child run (`digest.start!(day)`). The effects of section 12's table are inferred, `publish T`, `consume T`, `secret S` and `ffi` included. Output is not a step: `print` keeps `stdio` for signatures, and logging is not an effect (section 12) | Every point where a run can pause or commit is visible, with no exception to remember; output is a side channel for people, and marking it would put `!` on every log line (open questions 19 and 22) |
+| Foreign values | **`extern type` is the one way to name a value foreign code owns**; `Handle(name)` is gone. A program's `extern type` has no `Save`, `Show`, `Eq`, `Hash` or `Schema`, so it can't be saved, live across a `!`, printed, compared or asked of a model (section 18) | One obvious way, a name the checker tells apart from every other, and the saving rule applied to it: an `extern type` could be held across a `!` while a `Handle` couldn't (open question 21) |
+| Long runs | **A run's saved state is its live variables, not its history.** Jobs resume from saved frames, in the interpreter from v0.3 and in compiled code from v0.4; until then the interpreter replays a run's recorded steps. The language gets no `continue`-as-new | A run that never ends, such as the lab's train watcher, costs the same on its tenth day as on its first, with no new syntax (open question 9) |
+| Job code changes | **A paused run resumes only at a resume point that still exists with the same live variables**: the same function, the same `!`, and the same names and types live there. `eye run` refuses to start otherwise, as it does for entity rows it can't migrate, and names the job and its runs. Until runs have frames, replaying compares each recorded step's call with the call it replays and faults the run on a difference | A code change under a paused run is an error with a message, not a wrong value found later; the old job keeps its name until its runs finish, and the new code takes a new one. Finishing old runs on old code is rejected, since entities migrate forward and old code would read new state (open question 4) |
+| Typed choices | **A type whose variants have no fields gets `T.variants()` and `T.parse(s)`, derived**: every variant in order, and `Some` of the variant named `s`, else `None` (section 11) | A person's choice, such as a button, is matched as a variant, so a misspelt or forgotten choice fails to compile, and the buttons come from the type the match uses. No syntax: they are calls on a type, as `Lexer.new` is (open question 15) |
+| Module roots | **`eye.toml` may list `modules`, more directories to find imports in**, searched after the program's own directory, in order (section 13) | A program deployed alone, such as the lab's digest, names the lab's modules in its `eye.toml` instead of reaching them through symbolic links that break and must list every module imported. From the lab: `deploy/digest` |
+| Native code | **Compiled programs are C, built by the `zig cc` that `eye` ships**, with Perceus reference counting, whole-program specialisation and jobs resuming from saved frames ([docs/internals/compilation.md](docs/internals/compilation.md)). `eye` itself stays free of cgo: the interpreter loads C libraries at run time without it | The workload needs memory and resume time more than the best code, and C at `-O2` gives both; the bootstrap seed is C anyway; Koka and Lean 4 compile reference-counted functional code to C. Shipping `zig cc` cross-compiles to all five release targets from any host, with the same compiler everywhere |
 
 ## 3. A tour
 
@@ -368,8 +376,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 - **Entity references:** `Ref(World)` is an ID, not a pointer. It can be stored, sent and saved
   anywhere, and it can't be confused with `Ref(Player)`.
 - **Special types:** `Secret(a)` (no printing, no saving), `Approval` (only a human approval flow
-  can create one), `Key` (an idempotency key), `Run(a)` (a started job), `Handle(name)` (an object
-  owned by foreign code, section 18).
+  can create one; its `what` and `by` say what was approved and by whom), `Key` (an idempotency
+  key), `Run(a)` (a started job). A value that foreign code owns has an `extern type` (section 18).
 - **Opaque types:** `pub opaque type Lexer = { … }` exports the type but not its fields, so other
   modules use it only through its functions and methods.
 - **String literals take the type expected,** as record literals do: where a `Key` or a `Zone` is
@@ -652,9 +660,32 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 - What uses them asks for them: `==` needs `Eq` and `<` `Ord`; `"{x}"`, `print` and `log` need
   `Show`; `sort`, `min` and `max` need `Ord`, `toSet` `Hash`, `sum` `Add`; whatever a job saves
   needs `Save`, and `ai.generate` the `Schema` of the type it asks for.
-- `Secret(a)` deliberately has none of `Show`, `Save`, `Eq`, `Ord`, `Hash` or `Schema`, and a
-  function or a `Handle` has no `Show`, `Save` or `Schema`. Printing a secret, or holding one
-  across a `!`, is a compile error, and so is a record that holds one in either place.
+- `Secret(a)` deliberately has none of `Show`, `Save`, `Eq`, `Ord`, `Hash` or `Schema`, and nor
+  does a value of a program's `extern type` (section 18). A function has no `Show`, `Save` or
+  `Schema`. Printing a secret, or holding one across a `!`, is a compile error, and so is a record
+  that holds one in either place.
+- **Enums list and read their variants.** A type whose variants have no fields gets two functions
+  on the type, derived as the traits are: `T.variants()`, every variant in the order declared, and
+  `T.parse(s)`, `Some` of the variant whose name is `s`, else `None`. A choice that arrives as text,
+  such as a pressed button, is then matched as a variant, so a misspelt name or a forgotten choice
+  is a compile error:
+
+  ```eye
+  type Admission = Guest | Member | Refuse
+
+  fn admit(choice: String, user: UserId) -> Step =
+    match Admission.parse(choice) {
+      Some(Guest) => Admit(user, groups: toSet(["guests"]))
+      Some(Member) => Admit(user, groups: toSet(["members"]))
+      Some(Refuse) | None => Reject(user)
+    }
+
+  let buttons = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+  ```
+
+  `parse` takes the variant's name, which is what the derived `Show` writes, so
+  `T.parse("{v}")` is `Some(v)` unless an impl of `Show` writes something else. Whether a
+  choice's label should come from its `##` comment or from `Show` is open question 15.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
 - **Operators are traits.** `a + b` calls `Add`, and likewise `-` (`Sub`), `*` (`Mul`), `/`
   (`Div`), `%` (`Rem`) and unary `-` (`Neg`); `==` uses `Eq` and `<` uses `Ord`. A trait names the
@@ -706,7 +737,10 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 | `fs`, `process`, `stdio`, `env` | files, running programs, standard input and output, environment variables | Lets embedders and sandboxes grant them one by one |
 | `ffi` | calling an `extern fn` (section 18) | Marks code the compiler can't check |
 
-A private function's effects are inferred and never need writing.
+Every effect in the table is inferred, and a private function's effects never need writing. A
+public function that publishes an event, reads a secret or calls an `extern fn` lists it in
+`uses` as the table names it (`publish T`, `secret S`, `ffi`), as one that calls a service lists
+`net C.op`.
 
 - **Pure means no `uses`.** A public function without a `uses` clause is pure, and the compiler
   holds it to that: if `area` read a file, the error would say `area uses fs, which its signature
@@ -731,15 +765,35 @@ A private function's effects are inferred and never need writing.
 
   In a function's return type, the `uses` after a function type belongs to that function type.
 
-**`!` in jobs.** Inside a job, every call with an outside effect (`net`, `fs`, `process`, `clock`,
-`random`, `env`, `ffi`, `secret` and `entity`) is a `!` call: it runs once and its result is
-recorded, so a resumed run never repeats it and sees the same values. That holds for a function of
-the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without `!` is
-an error, `in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)`. Entity
-calls are `!` calls too (`w.read!()`, `w.markAsleep!()`): each commits in the same transaction as
-its checkpoint (section 15). Calls that only compute are ordinary, and `!` on one is an error.
-Outside jobs the same functions are called without `!` (section 13). Printing and logging are not
-steps (open question 22).
+**`!` in jobs.** Inside a job, `!` marks every recorded step: it runs once and its result is
+recorded, so a resumed run never repeats it and sees the same values. The steps are:
+
+- every call with an outside effect (`net`, `fs`, `process`, `clock`, `random`, `env`, `ffi`,
+  `secret` and `entity`), an `extern fn` included (`open!(path)`). That holds for a function of
+  the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without
+  `!` is an error, `in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)`;
+- entity calls (`w.read!()`, `w.markAsleep!()`), each committed in the same transaction as its
+  checkpoint (section 15);
+- publishing an event, `bus.pinged.publish!({ n: 1 })`, which is sent when the step commits;
+- starting a child run, `digest.start!(day)`, so a resumed run doesn't start it again.
+
+Calls that only compute are ordinary, and `!` on one is an error. Outside jobs the same functions
+are called without `!`: in `main` (section 13), in tests, and in entity methods and served
+operations, where publishing and starting a job are part of the transaction. **Output is not a
+step:** `print` has the effect `stdio`, which public signatures list, but in a job it is written
+without `!` and isn't recorded, and logging (`log.info`) is not an effect at all. Output is for
+people watching a run, not part of what the run computes.
+
+```eye
+import bus
+
+job ping(day: Date) {
+  bus.pinged.publish!({ n: 1 })              # a step: published when it commits
+  let child = digest.start!(day)             # a step: a resumed run doesn't start it twice
+  log.info("started {day}")                  # not a step
+  sleep!(1 min)
+}
+```
 
 ## 13. Programs and concurrency
 
@@ -785,8 +839,21 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   directory, from the file upward, that holds an `eye.toml`; without one, it belongs to the
   program in its own directory. So `lab/digest/digest.eye` belongs to the program in `lab/` when
   `lab/eye.toml` exists, and its `import home` finds `lab/home`. `eye check file.eye` and the
-  editor's go-to-definition use this rule. The file may be empty for now; what else it holds is
-  open question 5.
+  editor's go-to-definition use this rule. The file may be empty.
+- **`modules` in `eye.toml` names more directories to find imports in.** An import is looked for
+  below the program's own directory first, then below each listed directory, in order; the first
+  that has it wins. Paths are relative to the `eye.toml`, and each must stay inside the repository
+  (or the build's context), so that a copy of the program has everything it needs. A program
+  deployed alone, such as the lab's digest, is then its `eye.toml` and a file that imports what
+  it runs:
+
+  ```toml
+  # testdata/lab/deploy/digest/eye.toml
+  modules = ["../.."]                      # testdata/lab, where digest, home and notify are
+  ```
+
+  An import that no directory has is an error that lists every directory searched. This is the
+  one key `eye.toml` holds so far; what else it will hold is open question 5.
 
 **Concurrency** is structured. Tasks start inside one call, and all of them finish (or are
 cancelled) before that call returns, so no task outlives the code that started it.
@@ -840,7 +907,7 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
     a bug the test shows, not a hang.
   - `TaskGroup`, `Sender` and `Receiver` can't be saved, so channels can't be live across a `!`;
     jobs talk through entities and events.
-- **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
+- **In jobs**, concurrent durable steps are child runs (`digest.start!(day)`) joined with `all!` or
   `first!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
   since its steps couldn't be recorded in order: a `!` step in it, or a call that would need one,
   is an error.
@@ -925,9 +992,35 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 }
 ```
 
-- **`!` marks a checkpoint.** Every call with an outside effect in a job is a `!` call (section 12).
-  At each `!` the job's live variables are saved, and the call's result is recorded. A resumed or restarted run continues from the last checkpoint and never
-  repeats a recorded call.
+- **`!` marks a checkpoint.** Every recorded step in a job is a `!` call (section 12). A resumed
+  or restarted run continues from its last checkpoint: no recorded call runs again, and it sees
+  the values it saw. The interpreter does this by replaying the run's steps, each returning its
+  recorded result; from v0.3 it saves the job's live variables at each `!` instead, as compiled
+  jobs do (section 22).
+- **A paused run resumes only where its code still is.** Each `!` is a resume point, named by its
+  function, its place and the names and types of the variables live there. When the code changes
+  under a paused run so that its resume point is gone or holds different variables, `eye run`
+  refuses to start, as it does for entity rows no migration can bring forward, and says which job
+  and how many runs: `2 runs of watch are paused at a step that changed; finish them on the old
+  code, or end them with eye runs`. To change a job whose runs are paused, keep the old job under
+  its name until its runs finish and give the new code a new name, or end the old runs. Until
+  runs have frames, a replayed step whose call differs from the one recorded faults the run
+  instead: `the code of watch changed under this run at step 12`.
+- **Long runs.** A run's saved state is its live variables, so a job that loops for weeks costs no
+  more on its last day than on its first. While the interpreter still replays (until v0.3), each
+  wake replays every step so far, so a loop that never ends should end its run and start a new
+  one now and then; the start is a recorded step, so a crash doesn't start the new run twice:
+
+  ```eye
+  job watch(t: Ref(Traveller)) {
+    for _ in 0..80 {                         # about an hour of 45-second loops
+      let me = t.read!()
+      if me.pins == [] && me.aboard == None { return }
+      sleep!(45 s)
+    }
+    watch.start!(t)                          # carry on in a fresh run
+  }
+  ```
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a checkpoint is a compile error.
 - **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the
@@ -971,9 +1064,19 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   runtime publishes `approvals.requested`, an event of the standard `approvals` module, with the
   request's `id`, `what`, `from` and `until`. A program that imports `approvals` routes it with a
   job of its own, through Notify's buttons or anything else, and answers with
-  `approvals.answered.publish!({ what, approved, by })`. An answer goes to every waiting approval
-  whose text contains its `what`. `eye approve` and `eye decline` answer from the command line,
-  through the inbox of the program's `eye run`; tests answer with `approve(…)` and `decline(…)`.
+  `approvals.answered.publish!({ id, approved, by })`.
+  - **An answer goes to the request it names.** Its `id` is the request's, so two runs that ask
+    the same thing are answered one by one.
+  - **Only the person asked may answer.** `by` must be the request's `from`, both as text; the
+    runtime refuses any other answer, logs it, and the run keeps waiting. A routing job that
+    forgets to check who pressed a button therefore can't grant consent.
+  - **People at a command line, and tests, answer by text.** `eye approve TEXT` and
+    `eye decline TEXT` answer through the inbox of the program's `eye run` the one waiting
+    approval whose text contains `TEXT`; when several do, they answer none and list them with
+    their ids, and `eye approve --id ID` answers one. Tests answer with `approve(…)` and
+    `decline(…)`, which fail the test when their text matches more than one waiting approval.
+  - **An `Approval` says what was approved and by whom**: `ok.what` and `ok.by`, for audit logs.
+    It is still made only by `approval!`.
 
   ```eye
   import approvals
@@ -987,7 +1090,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     let Some(press) = next!(notify.answered, where: fn a: a.question == question, within: left) else {
       return
     }
-    approvals.answered.publish!({ what: r.what, approved: press.choice == yes.id, by: "{press.by}" })
+    approvals.answered.publish!({ id: r.id, approved: press.choice == yes.id, by: "{press.by}" })
   }
   ```
 - **A run's outcome** is `Outcome(a) = Completed(a) | Failed(Fault)`, from the prelude. A fault
@@ -997,14 +1100,15 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
   ```eye
   fn written(day: Date) -> Result(Article, DigestError) =
-    match write.start(day).join!() {
+    match write.start!(day).join!() {
       Completed(result) => result
       Failed(fault) => Err(Faulted(fault))
     }
   ```
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
-  part of the transaction) and from jobs, where it starts a child run; there the start is recorded
-  as a step, so a resumed run doesn't start the child again. Scheduled starts take
+  part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
+  is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't
+  start the child again. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.
@@ -1096,7 +1200,7 @@ type Delivery =
   caller handles declares them in its result: `query page(url: String) -> Result(String, FetchError)`,
   or, over HTTP, `Result(T, http.HttpError)`, which gets the failures instead of retrying.
 - **Events** are published with `notify.delivered.publish(d)`: from an entity method or an
-  operation when the transaction commits, and from a job as a `!` step. `@key(field)` on an event
+  operation when the transaction commits, and from a job as a `!` step, `notify.delivered.publish!(d)`. `@key(field)` on an event
   names the field that tells one event from another, so an event delivered twice starts one run of
   each `@on(event(…))` job.
 - **`@fresh`** on a command adds a required `basedOn: Version` argument and `Stale`/`Expired`
@@ -1205,20 +1309,25 @@ extern fn open(path: String) -> Result(Db, String)
 ```
 
 - An `extern fn` has a signature and no body. Calling one has the `ffi` effect, which public
-  signatures state like any other.
-- `@library` links a C function by its symbol. `@host` names a function that the Go program
-  embedding Eyelang registers through the embedding API; the standard library's own primitives are
-  provided the same way.
+  signatures state like any other, and in a job the call is a `!` step: `open!(path)`
+  (section 12).
+- `@library` links a C function by its symbol. The interpreter loads it from the library at run
+  time, without cgo, so `eye` itself needs no C toolchain; a compiled program calls it directly,
+  linked like any other symbol. `@host` names a function that the Go program embedding Eyelang
+  registers through the embedding API; the standard library's own primitives are provided the
+  same way.
 - Across the boundary go `Bool`, `Byte`, the fixed-width integers, `Float`, and `Bytes` and `String`
-  (copied). An object owned by foreign code is a `Handle(name)`, which can't be saved, so it can't
-  be live across a `!`.
+  (copied), and values of an `extern type`.
 - The compiler trusts an extern's signature. It can't check that the foreign side is total or that
   it has no other effects, which is why `ffi` shows up in every signature that depends on one.
-- **`extern type Db`** names a type whose values foreign code owns. Only extern functions make or
-  take one, so Eyelang code can't build one or look inside it, and like a `Handle` it can't be
-  saved. It is a type of its own, so a `Db` can't be passed where a `Socket` is expected. It may
-  take type parameters, `extern type Cursor(row)`, and an `extern fn` may have a `where` clause,
-  as a function does.
+- **`extern type Db`** names a type whose values foreign code owns, and it is the one way to name
+  one. Only extern functions make or take one, so Eyelang code can't build one or look inside it.
+  It has no `Save`, `Show`, `Eq`, `Hash` or `Schema`, so it can't be saved, and so can't be live
+  across a `!`, printed, compared or asked of a model: `d is a Db, which can't be saved, and it is
+  still needed after a waiting call`. It is a type of its own, so a `Db` can't be passed where a
+  `Socket` is expected. It may take type parameters, `extern type Cursor(row)`, and an
+  `extern fn` may have a `where` clause, as a function does. The built-in types declared as
+  `extern type` in `ir/builtin.eye` keep the traits they have.
 - An `extern fn`'s parameters may be named `in` and `for`, the labels calls use for a zone and a
   duration: `daily(at: Time, in: Zone)`. A function with a body can't, since it couldn't read
   them: they are keywords.
@@ -1276,8 +1385,8 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   the JSON shape of section 17: a record becomes an object with every field required (`Option`
   fields may be null), a type whose variants have no fields an enum of strings, and any other
   variant a tagged union, `{"kind": "Breaking", "reason": "…"}`; `##` doc comments become
-  descriptions. A type that holds a `Secret`, a `Handle` or a function has no `Schema`, so it can't
-  be asked for.
+  descriptions. A type that holds a `Secret`, a value of a program's `extern type` or a function
+  has no `Schema`, so it can't be asked for.
 - **The expected type picks the schema.** `ai.generate` returns `Result(a, AiError) where a:
   Schema`, so the type comes from where the result goes: here, the job's return type. When nothing
   says, write it: `let d: Digest = ai.generate!(…)?`.
@@ -1416,7 +1525,8 @@ way runs before `advance` goes on, and so does each schedule that fires, if its 
 test's own module (a test of the reminders doesn't start the NetBird sync). Jobs started by a call run as soon as the call returns, until
 they finish or wait, and so do runs that an event a test publishes starts or wakes:
 `notify.answered.publish(answer)` stands in for a person pressing a button, and
-`approve("delete 3 backups")` or `decline(…)` answers the `approval!` whose text contains it.
+`approve("delete 3 backups")` or `decline(…)` answers the `approval!` whose text contains it, and
+fails the test when several do.
 `expect(cond)` fails the test, and for a comparison shows the value it got:
 `expected w.phase == Asleep, but w.phase is Running`. A run that stops on a bug (`unreachable`, a
 fake with no recorded answer) fails the test too; one that ends as an outcome the program
@@ -1486,18 +1596,32 @@ diagnostics layer, and a conversion from its editor-oriented tree.
    methods, exhaustiveness, total arithmetic.
 4. Effect inference and checks: `uses`, the `!` rules, `Save` across checkpoints, and the
    no-aliasing rule for `mut`.
-5. Typed IR, plus a reference interpreter on that IR. The interpreter resumes a job by running it
-   again from the start: each step it already took returns its recorded result, so nothing outside
-   happens twice, and output from those steps isn't printed again. Used by the REPL and tests, with entities
-   and jobs on an in-memory store, structured concurrency on lightweight tasks, and `extern`
-   functions from the Go host or from C libraries loaded at run time (without cgo). `entity`, `job`, `contract` and `view` are each lowered into core
-   IR by their own pass, kept separate from the type checker. Nothing else in the compiler needs to
-   know about them, and the passes are already shaped like macros if metaprogramming is added after
-   v1.0.
+5. An untyped, resolved IR (`ir/`), and a reference interpreter on it. Every name points at its
+   declaration or a slot of its frame; entities, jobs, views and contracts are declarations of
+   the IR, which the interpreter runs directly. The interpreter resumes a job by running it again
+   from the start: each step it already took returns its recorded result, so nothing outside
+   happens twice, and output from those steps isn't printed again. Used by `eye run`, the REPL and
+   tests, with entities and jobs on an in-memory store, structured concurrency on lightweight
+   tasks, and `extern` functions from the Go host or from C libraries loaded at run time (without
+   cgo).
 6. The runtime pieces: the `Store` trait, the runner, the in-memory store written in Eyelang, and the
    Postgres store.
-7. Code generation to C with reference counting, as described in the compilation analysis,
-   [docs/internals/compilation.md](docs/internals/compilation.md) (a draft).
+7. The typed IR: the IR with a resolved type on every expression and every call resolved to its
+   target (ROADMAP task 7.1). The interpreter runs it too, and from v0.3 resumes jobs from saved
+   frames, produced by a pass that splits each waiting function into states, instead of replaying.
+   Then, on the way to code generation, generic code is specialised and `entity`, `job`,
+   `contract` and `view` are each lowered into core IR by their own pass, kept separate from the
+   type checker. Nothing else in the compiler needs to know about them, and the passes are already
+   shaped like macros if metaprogramming is added after v1.0.
+8. Code generation to C with reference counting, as the compilation design describes:
+   [docs/internals/compilation.md](docs/internals/compilation.md).
+
+**Native code: C, built by the `zig cc` that `eye` ships.** Decided 2026-10-11. The compiler emits
+C11, one file per module, through a low-level IR from which a second back end (QBE, for fast debug
+builds) could be printed later. `eye` releases ship `zig` beside `eye`, and `eye build` compiles
+the C it emits with `zig cc`, which cross-compiles to every release target from any host. `eye`
+itself stays free of cgo: it parses by hand, and loads C libraries at run time without a C
+toolchain; only `eye build` compiles C.
 
 **Self-hosting**, after native compilation (v0.4), starts with the lexer and parser:
 
@@ -1628,11 +1752,14 @@ operator. All binary operators associate to the left except `??`, which associat
    the type (section 11).
 3. **Exposing entities and jobs to other services:** a generated contract per entity, or explicit
    contracts only?
-4. **Job code upgrades:** when a new version changes what is live at a checkpoint, do paused runs
-   finish on the old version, or must the change come with a migration?
+4. **Job code upgrades:** decided on 2026-10-11: detect, and refuse. A paused run resumes only at
+   a resume point that still exists with the same live variables; `eye run` refuses to start
+   otherwise, and until runs have frames, replay faults a run whose recorded call differs from
+   the one it replays (section 15). Finishing old runs on old code is rejected, since entities
+   migrate forward. A `migrate` for a job's resume points waits for a program that needs it.
 5. **Packages:** `eye.toml` and an `eye.lock` that carries hashes (so Nix needs no placeholder
-   hash); registry or git only? `eye.toml` already marks a program's root (section 13); what it
-   holds beyond that is open.
+   hash); registry or git only? `eye.toml` marks a program's root and may list `modules`, more
+   directories to find imports in (section 13); what it holds beyond that is open.
 6. **REPL behaviour for jobs:** decided on 2026-10-10: `eye repl` runs jobs against the in-memory
    store on a clock that moves only when `:advance 20 min` says, as a test's does; `:runs` shows the
    runs as `eye runs` does. The session keeps its entities, runs and bindings while declarations
@@ -1658,12 +1785,13 @@ operator. All binary operators associate to the left except `??`, which associat
      was summarised?
    - A run that never ends, such as the lab's reminders watcher (`while true { …; sleep!(45 s) }`),
      keeps every step: four or more per loop, so 7,700 or more a day per person, each wake
-     replaying all of them, so its cost
-     grows with the square of its age. `eye run` warns past 1,000 steps and `eye runs` flags such
-     runs. The fix is the model section 15 describes, saving the live variables at each `!`
-     instead of the history, which compiled jobs will do; until then, a loop can end by starting
-     its job again (`watch.start(t)`) so that each run stays short. Should the language say so,
-     or offer `continue`-as-new for jobs?
+     replaying all of them, so its cost grows with the square of its age. `eye run` warns past
+     1,000 steps and `eye runs` flags such runs. Decided on 2026-10-11: runs save their live
+     variables at each `!` instead of their history, in the interpreter from v0.3 (ROADMAP task
+     7.3), and the language gets no `continue`-as-new. Until then, a loop ends its run and starts
+     a new one now and then (`watch.start!(t)`, section 15). If that pattern spreads before
+     frames land, a job method such as `watch.again!(t)`, which ends the run and starts the next
+     with the same key in one step and has `eye runs` link the two, could make it one call.
    - One process per journal (a file lock), and one per Postgres database and schema (an
      advisory lock). Several runners on one database is question 28.
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
@@ -1681,42 +1809,40 @@ operator. All binary operators associate to the left except `??`, which associat
 14. **`if let`.** Writing the lab, `if let Some(a) = answer then return Err(Taken(a))` came to hand
     twice, where today a `match` with a `None => ()` arm does the same in four lines. `let … else`
     covers the opposite case. Is a third form worth it, or does `match` stay the one way?
-15. **Typed choices.** A question's buttons are strings (`choice: "boarded"`), and the answer is
-    matched as a string. Could a variant type give the choices, with labels from `##` comments, and
-    the answer come back as that type?
+15. **Typed choices:** decided on 2026-10-11: a type whose variants have no fields gets
+    `T.variants()` and `T.parse(s)`, derived (section 11), so the answer is matched as a variant.
+    Contracts stay untyped over the choice, since Notify receives strings on the wire. Still open:
+    should a choice's label be its `##` comment, or its `Show`, with an impl where the text differs
+    from the variant's name? `##` comments are documentation, and using them as text for people
+    mixes two jobs; an impl of `Show` is the existing way to choose how a value is written. Until
+    this is decided, a label is the variant's `Show`.
 16. **What a fake received.** A test can't see which calls a fake answered, so the lab's digest
     records the keys it sent with in an entity to make sending testable. Should a test be able to
     ask `fakes(notify).sent(…)`, or fail when a recording has exchanges no call used?
 17. **Where approvals go:** decided on 2026-10-11: through the program. A run that waits at
     `approval!` publishes `approvals.requested`; the program routes it with a job of its own (the
     lab's `approving` module asks the operator on Notify) and answers with `approvals.answered`,
-    which `eye approve`, `eye decline` and tests also publish (section 15). Still open:
-    - Who may answer is not checked: an answer counts whoever gives it, and `from:` only tells the
-      program whom to ask. Should an answer whose `by` isn't `from` be refused?
-    - An answer matches by text, so two runs asking the same thing are answered together. Should
-      an answer name its request's `id` instead, with text only for people at a command line?
-    - An `Approval` can't be read: the checker now refuses `ok.by`, though the runtime knows who
-      approved and what. Should `Approval` have `what` and `by` fields, for audit logs?
+    which `eye approve`, `eye decline` and tests also publish (section 15). And decided on
+    2026-10-11: an answer names its request's `id`, and an answer whose `by` isn't the request's
+    `from` is refused; text matches only from the command line and in tests, and is refused when
+    it matches more than one waiting approval; an `Approval` has `what` and `by` fields.
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
-19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and
-    standard output are. Are logging, publishing an event and starting a job effects too, to be
-    stated with `uses`? (`publish T` is in the table of section 12; the checker doesn't infer it yet.)
-    In a job, publishing is written `publish!` but starting a child run is written `start`, though
-    both are recorded steps; if starting a job became an effect, it would take `!` too.
+19. **Which actions are effects?** Decided on 2026-10-11: every effect in section 12's table is
+    inferred, `publish T`, `consume T`, `secret S` and `ffi` included, and `!` marks every recorded
+    step in a job, so publishing is `publish!` and starting a child run `start!` (section 12).
+    Logging is not an effect.
 20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
     with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,
     `toSet` `Hash`, `sum` `Add`). A `Collection` trait would need traits over type constructors,
     which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.
-21. **`Handle(name)` and `extern type`:** both name what foreign code owns, and `extern type` is
-    checked as a type of its own. Should `Handle` go?
-22. **Printing in jobs.** `print` has the effect `stdio`, which by section 12's rule would make it
-    a `!` step in a job, yet `print!("…")` reads oddly and `log.info` isn't an effect at all. Today
-    neither is a step, and the interpreter keeps a replayed run quiet so that output isn't
-    repeated (`TestReplayDoesntRepeatOutput`). Should output stay outside the rule, with the
-    runtime keeping replays quiet, or should `print` lose `stdio` in jobs, or should logging
-    become an effect (question 19)?
+21. **`Handle(name)` and `extern type`:** decided on 2026-10-11: `Handle` goes, and `extern type`
+    is the one way to name what foreign code owns. A program's `extern type` has no `Save`,
+    `Show`, `Eq`, `Hash` or `Schema` (section 18).
+22. **Printing in jobs:** decided on 2026-10-11: output stays outside the `!` rule. `print` keeps
+    `stdio` for signatures but is not a step, logging is not an effect, and the interpreter keeps
+    a replayed run quiet until runs resume from frames, when nothing is replayed (section 12).
 23. **Where `!` goes on a helper.** Writing `fn stamp() = now()` and calling `stamp!()` makes the
     whole helper one recorded step; a helper that itself has `!` steps is called with `!` too, but
     then its steps are recorded one by one. The same mark means "record this call" in one case and

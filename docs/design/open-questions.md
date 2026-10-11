@@ -12,11 +12,14 @@ title: "Open questions"
    the type ([section 11](/reference/language/traits)).
 3. **Exposing entities and jobs to other services:** a generated contract per entity, or explicit
    contracts only?
-4. **Job code upgrades:** when a new version changes what is live at a checkpoint, do paused runs
-   finish on the old version, or must the change come with a migration?
+4. **Job code upgrades:** decided on 2026-10-11: detect, and refuse. A paused run resumes only at
+   a resume point that still exists with the same live variables; `eye run` refuses to start
+   otherwise, and until runs have frames, replay faults a run whose recorded call differs from
+   the one it replays ([section 15](/reference/language/jobs-and-waiting)). Finishing old runs on old code is rejected, since entities
+   migrate forward. A `migrate` for a job's resume points waits for a program that needs it.
 5. **Packages:** `eye.toml` and an `eye.lock` that carries hashes (so Nix needs no placeholder
-   hash); registry or git only? `eye.toml` already marks a program's root ([section 13](/reference/language/programs-and-concurrency)); what it
-   holds beyond that is open.
+   hash); registry or git only? `eye.toml` marks a program's root and may list `modules`, more
+   directories to find imports in ([section 13](/reference/language/programs-and-concurrency)); what it holds beyond that is open.
 6. **REPL behaviour for jobs:** decided on 2026-10-10: `eye repl` runs jobs against the in-memory
    store on a clock that moves only when `:advance 20 min` says, as a test's does; `:runs` shows the
    runs as `eye runs` does. The session keeps its entities, runs and bindings while declarations
@@ -42,12 +45,13 @@ title: "Open questions"
      was summarised?
    - A run that never ends, such as the lab's reminders watcher (`while true { …; sleep!(45 s) }`),
      keeps every step: four or more per loop, so 7,700 or more a day per person, each wake
-     replaying all of them, so its cost
-     grows with the square of its age. `eye run` warns past 1,000 steps and `eye runs` flags such
-     runs. The fix is the model [section 15](/reference/language/jobs-and-waiting) describes, saving the live variables at each `!`
-     instead of the history, which compiled jobs will do; until then, a loop can end by starting
-     its job again (`watch.start(t)`) so that each run stays short. Should the language say so,
-     or offer `continue`-as-new for jobs?
+     replaying all of them, so its cost grows with the square of its age. `eye run` warns past
+     1,000 steps and `eye runs` flags such runs. Decided on 2026-10-11: runs save their live
+     variables at each `!` instead of their history, in the interpreter from v0.3 (ROADMAP task
+     7.3), and the language gets no `continue`-as-new. Until then, a loop ends its run and starts
+     a new one now and then (`watch.start!(t)`, [section 15](/reference/language/jobs-and-waiting)). If that pattern spreads before
+     frames land, a job method such as `watch.again!(t)`, which ends the run and starts the next
+     with the same key in one step and has `eye runs` link the two, could make it one call.
    - One process per journal (a file lock), and one per Postgres database and schema (an
      advisory lock). Several runners on one database is question 28.
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
@@ -65,42 +69,40 @@ title: "Open questions"
 14. **`if let`.** Writing the lab, `if let Some(a) = answer then return Err(Taken(a))` came to hand
     twice, where today a `match` with a `None => ()` arm does the same in four lines. `let … else`
     covers the opposite case. Is a third form worth it, or does `match` stay the one way?
-15. **Typed choices.** A question's buttons are strings (`choice: "boarded"`), and the answer is
-    matched as a string. Could a variant type give the choices, with labels from `##` comments, and
-    the answer come back as that type?
+15. **Typed choices:** decided on 2026-10-11: a type whose variants have no fields gets
+    `T.variants()` and `T.parse(s)`, derived ([section 11](/reference/language/traits)), so the answer is matched as a variant.
+    Contracts stay untyped over the choice, since Notify receives strings on the wire. Still open:
+    should a choice's label be its `##` comment, or its `Show`, with an impl where the text differs
+    from the variant's name? `##` comments are documentation, and using them as text for people
+    mixes two jobs; an impl of `Show` is the existing way to choose how a value is written. Until
+    this is decided, a label is the variant's `Show`.
 16. **What a fake received.** A test can't see which calls a fake answered, so the lab's digest
     records the keys it sent with in an entity to make sending testable. Should a test be able to
     ask `fakes(notify).sent(…)`, or fail when a recording has exchanges no call used?
 17. **Where approvals go:** decided on 2026-10-11: through the program. A run that waits at
     `approval!` publishes `approvals.requested`; the program routes it with a job of its own (the
     lab's `approving` module asks the operator on Notify) and answers with `approvals.answered`,
-    which `eye approve`, `eye decline` and tests also publish ([section 15](/reference/language/jobs-and-waiting)). Still open:
-    - Who may answer is not checked: an answer counts whoever gives it, and `from:` only tells the
-      program whom to ask. Should an answer whose `by` isn't `from` be refused?
-    - An answer matches by text, so two runs asking the same thing are answered together. Should
-      an answer name its request's `id` instead, with text only for people at a command line?
-    - An `Approval` can't be read: the checker now refuses `ok.by`, though the runtime knows who
-      approved and what. Should `Approval` have `what` and `by` fields, for audit logs?
+    which `eye approve`, `eye decline` and tests also publish ([section 15](/reference/language/jobs-and-waiting)). And decided on
+    2026-10-11: an answer names its request's `id`, and an answer whose `by` isn't the request's
+    `from` is refused; text matches only from the command line and in tests, and is refused when
+    it matches more than one waiting approval; an `Approval` has `what` and `by` fields.
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
-19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and
-    standard output are. Are logging, publishing an event and starting a job effects too, to be
-    stated with `uses`? (`publish T` is in the table of [section 12](/reference/language/effects-and-signatures); the checker doesn't infer it yet.)
-    In a job, publishing is written `publish!` but starting a child run is written `start`, though
-    both are recorded steps; if starting a job became an effect, it would take `!` too.
+19. **Which actions are effects?** Decided on 2026-10-11: every effect in [section 12](/reference/language/effects-and-signatures)'s table is
+    inferred, `publish T`, `consume T`, `secret S` and `ffi` included, and `!` marks every recorded
+    step in a job, so publishing is `publish!` and starting a child run `start!` ([section 12](/reference/language/effects-and-signatures)).
+    Logging is not an effect.
 20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
     with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,
     `toSet` `Hash`, `sum` `Add`). A `Collection` trait would need traits over type constructors,
     which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.
-21. **`Handle(name)` and `extern type`:** both name what foreign code owns, and `extern type` is
-    checked as a type of its own. Should `Handle` go?
-22. **Printing in jobs.** `print` has the effect `stdio`, which by [section 12](/reference/language/effects-and-signatures)'s rule would make it
-    a `!` step in a job, yet `print!("…")` reads oddly and `log.info` isn't an effect at all. Today
-    neither is a step, and the interpreter keeps a replayed run quiet so that output isn't
-    repeated (`TestReplayDoesntRepeatOutput`). Should output stay outside the rule, with the
-    runtime keeping replays quiet, or should `print` lose `stdio` in jobs, or should logging
-    become an effect (question 19)?
+21. **`Handle(name)` and `extern type`:** decided on 2026-10-11: `Handle` goes, and `extern type`
+    is the one way to name what foreign code owns. A program's `extern type` has no `Save`,
+    `Show`, `Eq`, `Hash` or `Schema` ([section 18](/reference/language/calling-c-and-go)).
+22. **Printing in jobs:** decided on 2026-10-11: output stays outside the `!` rule. `print` keeps
+    `stdio` for signatures but is not a step, logging is not an effect, and the interpreter keeps
+    a replayed run quiet until runs resume from frames, when nothing is replayed ([section 12](/reference/language/effects-and-signatures)).
 23. **Where `!` goes on a helper.** Writing `fn stamp() = now()` and calling `stamp!()` makes the
     whole helper one recorded step; a helper that itself has `!` steps is called with `!` too, but
     then its steps are recorded one by one. The same mark means "record this call" in one case and

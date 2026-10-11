@@ -22,9 +22,35 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 }
 ```
 
-- **`!` marks a checkpoint.** Every call with an outside effect in a job is a `!` call ([section 12](/reference/language/effects-and-signatures)).
-  At each `!` the job's live variables are saved, and the call's result is recorded. A resumed or restarted run continues from the last checkpoint and never
-  repeats a recorded call.
+- **`!` marks a checkpoint.** Every recorded step in a job is a `!` call ([section 12](/reference/language/effects-and-signatures)). A resumed
+  or restarted run continues from its last checkpoint: no recorded call runs again, and it sees
+  the values it saw. The interpreter does this by replaying the run's steps, each returning its
+  recorded result; from v0.3 it saves the job's live variables at each `!` instead, as compiled
+  jobs do (section 22).
+- **A paused run resumes only where its code still is.** Each `!` is a resume point, named by its
+  function, its place and the names and types of the variables live there. When the code changes
+  under a paused run so that its resume point is gone or holds different variables, `eye run`
+  refuses to start, as it does for entity rows no migration can bring forward, and says which job
+  and how many runs: `2 runs of watch are paused at a step that changed; finish them on the old
+  code, or end them with eye runs`. To change a job whose runs are paused, keep the old job under
+  its name until its runs finish and give the new code a new name, or end the old runs. Until
+  runs have frames, a replayed step whose call differs from the one recorded faults the run
+  instead: `the code of watch changed under this run at step 12`.
+- **Long runs.** A run's saved state is its live variables, so a job that loops for weeks costs no
+  more on its last day than on its first. While the interpreter still replays (until v0.3), each
+  wake replays every step so far, so a loop that never ends should end its run and start a new
+  one now and then; the start is a recorded step, so a crash doesn't start the new run twice:
+
+  ```eye
+  job watch(t: Ref(Traveller)) {
+    for _ in 0..80 {                         # about an hour of 45-second loops
+      let me = t.read!()
+      if me.pins == [] && me.aboard == None { return }
+      sleep!(45 s)
+    }
+    watch.start!(t)                          # carry on in a fresh run
+  }
+  ```
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a checkpoint is a compile error.
 - **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the
@@ -68,9 +94,19 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   runtime publishes `approvals.requested`, an event of the standard `approvals` module, with the
   request's `id`, `what`, `from` and `until`. A program that imports `approvals` routes it with a
   job of its own, through Notify's buttons or anything else, and answers with
-  `approvals.answered.publish!({ what, approved, by })`. An answer goes to every waiting approval
-  whose text contains its `what`. `eye approve` and `eye decline` answer from the command line,
-  through the inbox of the program's `eye run`; tests answer with `approve(…)` and `decline(…)`.
+  `approvals.answered.publish!({ id, approved, by })`.
+  - **An answer goes to the request it names.** Its `id` is the request's, so two runs that ask
+    the same thing are answered one by one.
+  - **Only the person asked may answer.** `by` must be the request's `from`, both as text; the
+    runtime refuses any other answer, logs it, and the run keeps waiting. A routing job that
+    forgets to check who pressed a button therefore can't grant consent.
+  - **People at a command line, and tests, answer by text.** `eye approve TEXT` and
+    `eye decline TEXT` answer through the inbox of the program's `eye run` the one waiting
+    approval whose text contains `TEXT`; when several do, they answer none and list them with
+    their ids, and `eye approve --id ID` answers one. Tests answer with `approve(…)` and
+    `decline(…)`, which fail the test when their text matches more than one waiting approval.
+  - **An `Approval` says what was approved and by whom**: `ok.what` and `ok.by`, for audit logs.
+    It is still made only by `approval!`.
 
   ```eye
   import approvals
@@ -84,7 +120,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     let Some(press) = next!(notify.answered, where: fn a: a.question == question, within: left) else {
       return
     }
-    approvals.answered.publish!({ what: r.what, approved: press.choice == yes.id, by: "{press.by}" })
+    approvals.answered.publish!({ id: r.id, approved: press.choice == yes.id, by: "{press.by}" })
   }
   ```
 - **A run's outcome** is `Outcome(a) = Completed(a) | Failed(Fault)`, from the prelude. A fault
@@ -94,14 +130,15 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
   ```eye
   fn written(day: Date) -> Result(Article, DigestError) =
-    match write.start(day).join!() {
+    match write.start!(day).join!() {
       Completed(result) => result
       Failed(fault) => Err(Faulted(fault))
     }
   ```
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
-  part of the transaction) and from jobs, where it starts a child run; there the start is recorded
-  as a step, so a resumed run doesn't start the child again. Scheduled starts take
+  part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
+  is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't
+  start the child again. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.

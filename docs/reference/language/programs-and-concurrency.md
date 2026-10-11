@@ -48,8 +48,21 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   directory, from the file upward, that holds an `eye.toml`; without one, it belongs to the
   program in its own directory. So `lab/digest/digest.eye` belongs to the program in `lab/` when
   `lab/eye.toml` exists, and its `import home` finds `lab/home`. `eye check file.eye` and the
-  editor's go-to-definition use this rule. The file may be empty for now; what else it holds is
-  open question 5.
+  editor's go-to-definition use this rule. The file may be empty.
+- **`modules` in `eye.toml` names more directories to find imports in.** An import is looked for
+  below the program's own directory first, then below each listed directory, in order; the first
+  that has it wins. Paths are relative to the `eye.toml`, and each must stay inside the repository
+  (or the build's context), so that a copy of the program has everything it needs. A program
+  deployed alone, such as the lab's digest, is then its `eye.toml` and a file that imports what
+  it runs:
+
+  ```toml
+  # testdata/lab/deploy/digest/eye.toml
+  modules = ["../.."]                      # testdata/lab, where digest, home and notify are
+  ```
+
+  An import that no directory has is an error that lists every directory searched. This is the
+  one key `eye.toml` holds so far; what else it will hold is open question 5.
 
 **Concurrency** is structured. Tasks start inside one call, and all of them finish (or are
 cancelled) before that call returns, so no task outlives the code that started it.
@@ -103,7 +116,7 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
     a bug the test shows, not a hang.
   - `TaskGroup`, `Sender` and `Receiver` can't be saved, so channels can't be live across a `!`;
     jobs talk through entities and events.
-- **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
+- **In jobs**, concurrent durable steps are child runs (`digest.start!(day)`) joined with `all!` or
   `first!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
   since its steps couldn't be recorded in order: a `!` step in it, or a call that would need one,
   is an error.

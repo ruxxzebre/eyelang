@@ -34,9 +34,32 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 - What uses them asks for them: `==` needs `Eq` and `<` `Ord`; `"{x}"`, `print` and `log` need
   `Show`; `sort`, `min` and `max` need `Ord`, `toSet` `Hash`, `sum` `Add`; whatever a job saves
   needs `Save`, and `ai.generate` the `Schema` of the type it asks for.
-- `Secret(a)` deliberately has none of `Show`, `Save`, `Eq`, `Ord`, `Hash` or `Schema`, and a
-  function or a `Handle` has no `Show`, `Save` or `Schema`. Printing a secret, or holding one
-  across a `!`, is a compile error, and so is a record that holds one in either place.
+- `Secret(a)` deliberately has none of `Show`, `Save`, `Eq`, `Ord`, `Hash` or `Schema`, and nor
+  does a value of a program's `extern type` ([section 18](/reference/language/calling-c-and-go)). A function has no `Show`, `Save` or
+  `Schema`. Printing a secret, or holding one across a `!`, is a compile error, and so is a record
+  that holds one in either place.
+- **Enums list and read their variants.** A type whose variants have no fields gets two functions
+  on the type, derived as the traits are: `T.variants()`, every variant in the order declared, and
+  `T.parse(s)`, `Some` of the variant whose name is `s`, else `None`. A choice that arrives as text,
+  such as a pressed button, is then matched as a variant, so a misspelt name or a forgotten choice
+  is a compile error:
+
+  ```eye
+  type Admission = Guest | Member | Refuse
+
+  fn admit(choice: String, user: UserId) -> Step =
+    match Admission.parse(choice) {
+      Some(Guest) => Admit(user, groups: toSet(["guests"]))
+      Some(Member) => Admit(user, groups: toSet(["members"]))
+      Some(Refuse) | None => Reject(user)
+    }
+
+  let buttons = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+  ```
+
+  `parse` takes the variant's name, which is what the derived `Show` writes, so
+  `T.parse("{v}")` is `Some(v)` unless an impl of `Show` writes something else. Whether a
+  choice's label should come from its `##` comment or from `Show` is open question 15.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
 - **Operators are traits.** `a + b` calls `Add`, and likewise `-` (`Sub`), `*` (`Mul`), `/`
   (`Div`), `%` (`Rem`) and unary `-` (`Neg`); `==` uses `Eq` and `<` uses `Ord`. A trait names the

@@ -1,13 +1,11 @@
 # SPECS.md section 11, example 2.
-trait Add(rhs, out) {
-  fn add(self, other: rhs) -> out
-}
+type Admission = Guest | Member | Refuse
 
-type Money = { cents: Int }
+fn admit(choice: String, user: UserId) -> Step =
+  match Admission.parse(choice) {
+    Some(Guest) => Admit(user, groups: toSet(["guests"]))
+    Some(Member) => Admit(user, groups: toSet(["members"]))
+    Some(Refuse) | None => Reject(user)
+  }
 
-impl Add(Money, Money) for Money {
-  fn add(self, other: Money) -> Money = { cents: self.cents + other.cents }
-}
-
-let total = price + shipping                 # Money + Money
-fn double(n: t) -> t where t: Mul(Int, t) = n * 2
+let buttons = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })

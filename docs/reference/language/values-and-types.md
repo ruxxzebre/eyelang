@@ -68,8 +68,8 @@ title: "Values and types"
 - **Entity references:** `Ref(World)` is an ID, not a pointer. It can be stored, sent and saved
   anywhere, and it can't be confused with `Ref(Player)`.
 - **Special types:** `Secret(a)` (no printing, no saving), `Approval` (only a human approval flow
-  can create one), `Key` (an idempotency key), `Run(a)` (a started job), `Handle(name)` (an object
-  owned by foreign code, [section 18](/reference/language/calling-c-and-go)).
+  can create one; its `what` and `by` say what was approved and by whom), `Key` (an idempotency
+  key), `Run(a)` (a started job). A value that foreign code owns has an `extern type` ([section 18](/reference/language/calling-c-and-go)).
 - **Opaque types:** `pub opaque type Lexer = { … }` exports the type but not its fields, so other
   modules use it only through its functions and methods.
 - **String literals take the type expected,** as record literals do: where a `Key` or a `Zone` is

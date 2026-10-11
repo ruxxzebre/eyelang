@@ -53,7 +53,7 @@ type Delivery =
   caller handles declares them in its result: `query page(url: String) -> Result(String, FetchError)`,
   or, over HTTP, `Result(T, http.HttpError)`, which gets the failures instead of retrying.
 - **Events** are published with `notify.delivered.publish(d)`: from an entity method or an
-  operation when the transaction commits, and from a job as a `!` step. `@key(field)` on an event
+  operation when the transaction commits, and from a job as a `!` step, `notify.delivered.publish!(d)`. `@key(field)` on an event
   names the field that tells one event from another, so an event delivered twice starts one run of
   each `@on(event(…))` job.
 - **`@fresh`** on a command adds a required `basedOn: Version` argument and `Stale`/`Expired`
