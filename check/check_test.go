@@ -139,7 +139,13 @@ fn d() uses {publish Shop.nothing, consume Nowhere, secret token, entity "x", se
 			`8:60: secret names a secret as secret(…) is passed it, in quotes: secret "telegram-bot-token"`,
 			"8:74: entity names what it touches without quotes, as entity Order",
 		}},
-		{"attributes name what exists", `pub type Sent = | Sent(Int)
+		{"a secret's name in uses is plain text in quotes", `fn a() uses {secret """x"""} {}
+fn b() uses {secret "a{1}b", secret "a\nb", secret "ok"} {}`, []string{
+			`1:21: a secret's name is on one line: write it as "x"`,
+			`2:21: a secret's name is plain text, as secret(…) is passed it: secret "telegram-bot-token"`,
+			`2:37: a secret's name is plain text, as secret(…) is passed it`,
+		}},
+		{"attributes name what exists",`pub type Sent = | Sent(Int)
 pub type Ping = { id: Int }
 contract Svc {
   @key(required)

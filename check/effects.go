@@ -216,8 +216,14 @@ func (c *checker) checkEffectNames(m *module, f *ir.File, d *syntax.Node) {
 			c.errorf(pos(f, target), "%s names nothing: write uses {%s}", kind, kind)
 			continue
 		case kind == "secret":
-			if target.Kind != syntax.String || strings.ContainsAny(text(f, target), `{\`) {
+			name := text(f, target)
+			switch {
+			case target.Kind != syntax.String:
 				c.errorf(pos(f, target), `secret names a secret as secret(…) is passed it, in quotes: secret "telegram-bot-token"`)
+			case strings.HasPrefix(name, `"""`):
+				c.errorf(pos(f, target), `a secret's name is on one line: write it as "%s"`, strings.TrimSpace(strings.Trim(name, `"`)))
+			case strings.ContainsAny(name, `{\`):
+				c.errorf(pos(f, target), `a secret's name is plain text, as secret(…) is passed it: secret "telegram-bot-token"`)
 			}
 			continue
 		case target.Kind == syntax.String:
