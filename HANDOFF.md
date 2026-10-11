@@ -189,9 +189,12 @@ What every session that worked today said was left, at the end of the day. Claim
   from that worktree on http://localhost:5173. Its claim marks `docs/` as written by hand: tell
   them, or the user, before large changes there. Open: about 20 checker and interpreter bugs the
   tutorial and guide writers hit, most passing `eye check` and failing at run time. eyelang-15
-  holds the full list and asked the user whether to file them; lane B may have fixed some. They
-  include `Int * Duration`, iterating a view, `?` not wrapping `String` errors, `ai.generate` for
-  maps, tuples and `Time`, and a faulted run staying failed.
+  holds the full list and asked the user whether to file them; lane B may have fixed some.
+  `track/robustness` fixed `Int * Duration` (and `Size / Int`), iterating a view, `?` not
+  wrapping `String` errors, and `ai.generate` for maps, tuples, `Time` and `Size`. Still open: a
+  faulted run stays failed, and nothing restarts it (docs/guide/running.md, "Not yet"). That is a
+  missing command, `eye runs --retry ID` or similar, and needs a decision first: whether the
+  retried run replays the steps it recorded before the fault.
 - **eyelang-3b (editor and tasks).** Nothing open. Claim: `editors/vscode` and the `vscode:*`
   tasks; the rest of `Taskfile.yml` is shared. Open, low priority: CI could cache
   `editors/vscode/node_modules` by `package-lock.json` (about 4 s); the extension's README
