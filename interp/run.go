@@ -64,8 +64,14 @@ func runTest(prog *ir.Program, t *ir.Test) (res TestResult) {
 			}
 			res.Failure = f.Error()
 		}
-		if res.Failure == "" && len(in.rt.failures) > 0 {
-			res.Failure = in.rt.failures[0].Error()
+		// A job's run that stopped on a bug is usually why an expect after
+		// it failed, so it comes first.
+		if len(in.rt.failures) > 0 {
+			first := in.rt.failures[0].Error()
+			if res.Failure != "" && res.Failure != first {
+				first += "\n" + res.Failure
+			}
+			res.Failure = first
 		}
 	}()
 	in.callFunc(t.Func, nil, nil, nil, t.Pos)
