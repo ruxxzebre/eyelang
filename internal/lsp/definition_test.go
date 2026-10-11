@@ -130,6 +130,10 @@ func TestReferences(t *testing.T) {
 		"textDocument": map[string]any{"uri": b},
 		"position":     map[string]any{"line": 2, "character": 9}, // String
 	})
+	builtinImpl := s.request("textDocument/implementation", map[string]any{
+		"textDocument": map[string]any{"uri": b},
+		"position":     map[string]any{"line": 2, "character": 9},
+	})
 	msgs := s.run()
 	where := func(locs []location) []string {
 		var out []string
@@ -158,7 +162,11 @@ func TestReferences(t *testing.T) {
 		t.Errorf("area() goes to %s, want %s", got, want)
 	}
 	response(t, msgs, builtin, &locs)
-	if got := where(locs); len(got) != 1 || !strings.HasPrefix(got[0], "types.go:") {
-		t.Errorf("String goes to %v, want check/types.go", got)
+	if got := where(locs); len(got) != 1 || !strings.HasPrefix(got[0], "builtin.eye:") {
+		t.Errorf("String goes to %v, want ir/builtin.eye", got)
+	}
+	response(t, msgs, builtinImpl, &locs)
+	if len(locs) < 2 || !strings.HasSuffix(locs[0].URI, "/check/types.go") {
+		t.Errorf("String's implementations are %v, want check/types.go first, then the other Go that names it", where(locs))
 	}
 }

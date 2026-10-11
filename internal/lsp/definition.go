@@ -27,7 +27,8 @@ type location struct {
 // declared. A name declared in Eyelang goes to its declaration, in this
 // program, an imported module, the prelude or a standard module. A built-in
 // function goes to the Go that implements it, and so does the name of an
-// extern fn whose @host the interpreter provides.
+// extern fn whose @host the interpreter provides. A built-in type goes to its
+// declaration in builtin.eye, since the checker's Go only names it.
 func (s *server) definition(d *document, p Position) (any, *responseError) {
 	path, ok := uriPath(d.uri)
 	if !ok {
@@ -114,18 +115,14 @@ func (s *server) overlay(root string) map[string][]byte {
 func (s *server) targetLocation(target any) (location, bool) {
 	switch t := target.(type) {
 	case check.BuiltinType:
-		// Where the checker makes the type: `tString = con("String")`,
-		// `con("List", t)`, or else its entry among the built-in names.
-		for _, g := range []check.GoText{
-			{File: "check/types.go", Text: `con("` + t.Name + `"`},
-			{File: "check/builtintypes.go", Text: `con("` + t.Name + `"`},
-			{File: "check/check.go", Text: `"` + t.Name + `": true`},
-		} {
-			if loc, ok := s.goTextLocation(g); ok {
+		// Its documented declaration in builtin.eye: `extern type String`.
+		// The checker's Go only names it, so that is the fallback.
+		if at, ok := check.BuiltinDeclaration(t.Name, true); ok {
+			if loc, ok := s.posLocation(at); ok {
 				return loc, true
 			}
 		}
-		return location{}, false
+		return s.typeImplementation(t.Name)
 	case check.GoText:
 		return s.goTextLocation(t)
 	case ir.Builtin:
@@ -420,15 +417,28 @@ func pathURI(path string) string {
 
 // implementation answers textDocument/implementation. For a keyword or an
 // operator it lists every place eye implements it: the checker, the
-// interpreter, the Go parser and the grammar. For a name it is the
-// definition.
+// interpreter, the Go parser and the grammar. For a built-in type it is
+// every line of the checker and the interpreter that names it. For a name it
+// is the definition.
 func (s *server) implementation(d *document, p Position) (any, *responseError) {
 	if locs := s.keywordImplementations(d, d.offset(p)); len(locs) > 0 {
 		return locs, nil
 	}
 	// A name the prelude or std declares: where the runtime's Go makes it.
 	if path, ok := uriPath(d.uri); ok {
+		if embeddedName(path) == "<builtin>" {
+			if name := externTypeAt(d, d.offset(p)); name != "" {
+				if locs := s.typeImplementations(name); len(locs) > 0 {
+					return locs, nil
+				}
+			}
+		}
 		if use, ok := s.checked(path).Index.At(path, d.offset(p)); ok {
+			if t, ok := use.Target.(check.BuiltinType); ok {
+				if locs := s.typeImplementations(t.Name); len(locs) > 0 {
+					return locs, nil
+				}
+			}
 			if at, ok := check.Definition(use.Target); ok && at.File != nil && strings.HasPrefix(embeddedName(at.File.Path), "<") {
 				if locs := s.goSites(at.Text()); len(locs) > 0 {
 					return locs, nil
@@ -481,7 +491,7 @@ func (s *server) builtinImplementation(d *document, offset int) (location, bool)
 		name := n.Text(d.text)
 		switch decl.Kind {
 		case syntax.ExternTypeDeclaration:
-			return s.targetLocation(check.BuiltinType{Name: name})
+			return s.typeImplementation(name)
 		case syntax.ExternDeclaration:
 			for _, b := range ir.BuiltinDocs {
 				if pos, ok := check.BuiltinDeclaration(b.Name, false); ok && pos.Offset == n.Span.Start {
@@ -492,6 +502,51 @@ func (s *server) builtinImplementation(d *document, offset int) (location, bool)
 		}
 	}
 	return location{}, false
+}
+
+// typeImplementation is where the checker makes a built-in type:
+// `tString = con("String")`, `con("List", t)`, or else its entry among the
+// built-in names.
+func (s *server) typeImplementation(name string) (location, bool) {
+	for _, g := range []check.GoText{
+		{File: "check/types.go", Text: `con("` + name + `"`},
+		{File: "check/builtintypes.go", Text: `con("` + name + `"`},
+		{File: "check/check.go", Text: `"` + name + `": true`},
+	} {
+		if loc, ok := s.goTextLocation(g); ok {
+			return loc, true
+		}
+	}
+	return location{}, false
+}
+
+// externTypeAt returns the name an `extern type` declares at offset.
+func externTypeAt(d *document, offset int) string {
+	for _, decl := range d.file.Root.Children {
+		n := decl.ChildByField(syntax.FieldName)
+		if decl.Kind == syntax.ExternTypeDeclaration && n != nil && n.Span.Start <= offset && offset <= n.Span.End {
+			return n.Text(d.text)
+		}
+	}
+	return ""
+}
+
+// typeImplementations are the lines of eye's Go that give a built-in type
+// its meaning: where the checker makes it first, then every other line of
+// the checker and the interpreter that names it, such as its traits, its
+// type rules and how it is shown and saved.
+func (s *server) typeImplementations(name string) []location {
+	var out []location
+	first, ok := s.typeImplementation(name)
+	if ok {
+		out = append(out, first)
+	}
+	for _, loc := range s.goSites(name) {
+		if !ok || loc.URI != first.URI || loc.Range.Start.Line != first.Range.Start.Line {
+			out = append(out, loc)
+		}
+	}
+	return out
 }
 
 // commentWord returns the name at offset when offset is in a comment: a
