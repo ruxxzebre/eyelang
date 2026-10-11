@@ -86,9 +86,7 @@ first digest is the next morning's.
    ```
 
    This needs Go 1.25. The binary is static and carries its time zones, so a
-   `distroless/static` or `scratch` base is enough. Once the parser moves to
-   tree-sitter, the build needs cgo and a C compiler (`CGO_ENABLED=1`, with
-   `zig cc` or gcc for the target); `eye run` itself doesn't change.
+   `distroless/static` or `scratch` base is enough.
 2. Copy the program, following its links:
 
    ```sh
