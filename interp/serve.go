@@ -66,6 +66,13 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		return 1
 	}
 	in.rt.restore()
+	if hasJobs(prog) {
+		program := ""
+		if len(opts.Args) > 0 {
+			program = opts.Args[0]
+		}
+		fmt.Fprintln(stderr, in.rt.startLine(program, opts.Store, memoryText(in.rt.memLimit)))
+	}
 	if main := prog.Root.Main; main != nil {
 		var argv []argVal
 		if len(main.Params) > 0 {

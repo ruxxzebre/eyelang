@@ -114,6 +114,15 @@ the runner takes the node's memory from `/proc/meminfo`, not the pod's limit.
 It must be at least the write job's `@memory(256 MiB)`, or the write run
 fails as `OutOfMemory`; give the pod a limit above it, such as 512Mi.
 
+It logs one line when it starts, on stderr with the rest of its log, so a
+healthy pod's log is never empty: the program, the store (host, database
+and schema, never the user or password), the memory runs may hold, and the
+jobs, with when each scheduled one fires next:
+
+```
+eye run: started /program; store: postgres postgres-rw.lab.svc.cluster.local:5432/app schema lab; memory: 384 MiB; jobs: digest.command, digest.morning (next 2026-10-12 07:40 Europe/Dublin), digest.write
+```
+
 Run one replica, with `strategy: Recreate`: the store allows one `eye run` per
 database and schema, through an advisory lock, and a second one exits with
 "… is in use by another eye run".

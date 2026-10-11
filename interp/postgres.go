@@ -133,7 +133,7 @@ func (p *Postgres) connect(ctx context.Context) (*pgx.Conn, error) {
 		return nil, fmt.Errorf("the store's address: %v", err)
 	}
 	if p.name == "" {
-		p.name = fmt.Sprintf("postgres %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+		p.name = pgName(cfg)
 	}
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
@@ -152,6 +152,12 @@ func (p *Postgres) connect(ctx context.Context) (*pgx.Conn, error) {
 		p.name += " schema " + *schema
 	}
 	return conn, nil
+}
+
+// pgName names a database for messages and the log: its host, port and name,
+// and never its user or password.
+func pgName(cfg *pgx.ConnConfig) string {
+	return fmt.Sprintf("postgres %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 }
 
 // lock takes the advisory lock that says this runner writes the store: one
