@@ -545,8 +545,11 @@ func (x *fnb) ref(e *ir.Ref) *Value {
 		x.emit(&Runtime{Dst: v, Op: "type.value", Target: d.Name})
 	case ir.Builtin:
 		x.emit(&Runtime{Dst: v, Op: "builtin.value", Target: d.Name})
+	case ir.EnumFn:
+		x.emit(&Runtime{Dst: v, Op: "derived.value", Target: d.Type.Name + "." + d.Name})
 	default:
 		x.b.errs = append(x.b.errs, &Error{Pos: e.Pos, Msg: "the low IR can't name this yet"})
+		x.emit(&Const{Dst: v, Value: ir.Unit{}})
 	}
 	return v
 }
@@ -686,6 +689,13 @@ func (x *fnb) call(e *ir.Call) *Value {
 			args, names := x.args(e.Args)
 			v := x.value("", t)
 			x.emit(&Runtime{Dst: v, Op: "entity.ref", Target: d, Args: args, Names: names})
+			return v
+		case ir.EnumFn:
+			// T.variants() and T.parse(s), derived for an enum: the back
+			// end writes them for the type, which the result's says.
+			args, _ := x.args(e.Args)
+			v := x.value("", t)
+			x.emit(&Derived{Dst: v, Method: d.Name, Args: args})
 			return v
 		}
 	}
