@@ -259,3 +259,10 @@ test "a set or map grown from another leaves the other as it was" {
   let o = m |> insert("two", 22)
   expect(m["two"] == None && n["two"] == Some(2) && o["two"] == Some(22))
 }
+
+test "a whole number scales a duration or a size from either side" {
+  let k = 4
+  expect(3 * 5 min == 15 min && 5 min * 3 == 15 min)
+  expect(k * 1 h == 4 h && 1 h / k == 15 min)
+  expect(2 * 8 MiB == 16 MiB && 16 MiB / 2 == 8 MiB)
+}

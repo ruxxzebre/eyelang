@@ -939,6 +939,16 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 		return r
 	}
 	switch x := a.(type) {
+	case int64:
+		// `3 * 5 min`, the same as `5 min * 3`.
+		if op == "*" {
+			switch y := b.(type) {
+			case ir.Duration:
+				return ir.Duration(x) * y
+			case ir.Size:
+				return ir.Size(x) * y
+			}
+		}
 	case string:
 		if y, ok := b.(string); ok && op == "+" {
 			return x + y
@@ -975,9 +985,10 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 			case "*":
 				return x * ir.Duration(y)
 			case "/":
-				if y != 0 {
-					return x / ir.Duration(y)
+				if y == 0 {
+					in.faultf(at, "division by zero")
 				}
+				return x / ir.Duration(y)
 			}
 		}
 	case ir.Size:
@@ -990,8 +1001,14 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 				return x - y
 			}
 		case int64:
-			if op == "*" {
+			switch op {
+			case "*":
 				return x * ir.Size(y)
+			case "/":
+				if y == 0 {
+					in.faultf(at, "division by zero")
+				}
+				return x / ir.Size(y)
 			}
 		}
 	case time.Time:
