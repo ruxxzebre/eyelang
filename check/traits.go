@@ -609,6 +609,12 @@ func (c *checker) builtinHas(x *tcon, b cbound, seen map[*ir.Type]bool) (bool, s
 		if op := opOf(name); op != "" && len(b.args) == 2 {
 			return c.builtinOp(x, op, b.args)
 		}
+		if name == "Neg" && len(b.args) == 1 {
+			switch x.name {
+			case "Int", "Float", "Duration":
+				return c.unify(b.args[0], x) == nil, ""
+			}
+		}
 		return false, ""
 	}
 	parts := func(why string) (bool, string) {

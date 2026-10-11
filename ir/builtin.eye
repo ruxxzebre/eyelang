@@ -502,7 +502,7 @@ pub extern fn min(a: t, b: t) -> t where t: Ord
 pub extern fn max(a: t, b: t) -> t where t: Ord
 
 ## n without its sign.
-pub extern fn abs(n: t) -> t
+pub extern fn abs(n: t) -> t where t: Neg(t)
 
 # == Triggers
 

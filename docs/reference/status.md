@@ -153,7 +153,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | A one-variant wrapper shows as the value it wraps | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | Derived `Eq`, `Ord`, `Show`, `Hash`, `Save`, `Schema`, asked for where they are used | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L88), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L244) |
 | An impl of `Show` replaces the derived form | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L83) |
-| Operators as traits (`Add`, `Mul`, …); no implicit conversions | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L74), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L187) |
+| Operators as traits (`Add`, `Mul`, `Neg` for `-x`, …); no implicit conversions | ✓ | ✓ | partial: `-x` runs on numbers and durations, not through a declared type's impl of `Neg` | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L74), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 
 ## [Effects and signatures](/reference/language/effects-and-signatures)
 

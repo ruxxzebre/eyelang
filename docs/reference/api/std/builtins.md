@@ -834,7 +834,7 @@ The larger of a and b.
 ### abs {#abs}
 
 ```eye
-fn abs(n: t) -> t
+fn abs(n: t) -> t where t: Neg(t)
 ```
 
 n without its sign.

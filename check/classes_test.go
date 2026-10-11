@@ -70,6 +70,8 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§11", "a call whose types lack the callee's traits", "a call meets its callee's bounds"},
 	{"§11", "a type variable used with a trait it doesn't require", "a type variable has only the traits it requires"},
 	{"§11", "an operator a type doesn't implement", "operators need types that have them"},
+	{"§11", "a minus sign, or a built-in type's operator, that the type doesn't have", "a minus sign and the built-in operators need types that have them"},
+	{"§6", "return with a value of the wrong type, or with what isn't a handler", "return gives the function's type, and with a handler"},
 	{"§11", "showing what has no Show", "a value shown in a string has Show"},
 	{"§5", "{} where neither a map, a set nor a record is expected", "{} is an empty map, set or record"},
 	{"§5", "a field, method or index a type doesn't have, or a type a value can't have", "every type has only its own fields and methods"},

@@ -282,6 +282,40 @@ job j(xs: List(Int)) {
   sleep!(1 min)
   log.info("{f(1)}")
 }`, []string{"4:14: f is a function, which can't be saved, and it is still needed after a waiting call"}},
+		{"a minus sign and the built-in operators need types that have them", `type Money = { cents: Int }
+fn a() = -true
+fn b() = -Some(1)
+fn c() = "a" - "b"
+fn d(m: Money) = -m
+fn e(at: Instant) = at * 2 min
+fn f(x: t) -> t = -x
+fn g(x: t) -> t where t: Neg(t) = -x
+fn h(s: Set(Int)) = s + s
+fn k() = abs("x")
+fn ok(n: Int, d: Duration, f: Float) -> (Int, Duration, Float) = (-n, abs(-d), -f + -1.0)`, []string{
+			"2:10: -Bool isn't defined: only numbers and durations have a minus sign",
+			"3:10: -Option(Int) isn't defined: Option(Int) doesn't implement Neg",
+			"4:10: String - String isn't defined",
+			"5:18: Money has no -: implement Neg for it, as `impl Neg(Money) for Money`",
+			"6:21: Instant * … isn't defined: a time moves by adding or subtracting a Duration",
+			"7:19: -t needs t: Neg, and t may be any type: require it, as `where t: Neg(t)`",
+			"9:21: Set(Int) + Set(Int) isn't defined",
+			"10:10: abs needs t: Neg(String), and t is String here, which has no Neg",
+		}},
+		{"return gives the function's type, and with a handler", `fn a(n: Int) {
+  if n > 1 { return 5 }
+  print("x")
+}
+fn b(n: Int) {
+  if n > 1 { return }
+}
+test "t" {
+  with 5
+  expect(true)
+}`, []string{
+			"2:21: expected (), found Int",
+			"9:8: expected Handler, found Int",
+		}},
 		{"foreign code owns an extern type's values", `extern type Db
 extern fn open(path: String) -> Db
 extern fn close(d: Db)

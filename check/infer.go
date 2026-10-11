@@ -562,7 +562,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 			x.expect(e.X.Position(), tBool, t)
 			return tBool
 		}
-		return t
+		return x.negate(t, e.Pos)
 	case *ir.Binary:
 		return x.binary(e)
 	case *ir.Range:
@@ -645,11 +645,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		return c.never()
 	case *ir.Return:
 		if e.Value != nil {
-			want := x.ret
-			if r, ok := prune(want).(*tcon); ok && r.name == "()" && r.decl == nil {
-				want = nil
-			}
-			x.check(e.Value, want)
+			x.check(e.Value, x.ret)
 		}
 		return c.never()
 	case *ir.Lambda:
@@ -725,7 +721,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.check(e.Or, inner)
 		return inner
 	case *ir.With:
-		x.check(e.Value, nil)
+		x.check(e.Value, tHandler) // clock(…) or fakes(…)
 		return tUnit
 	}
 	return c.unknownf(e.Position(), "internal error: the checker doesn't know the expression %T", e)
@@ -1621,6 +1617,9 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 			return tSize
 		}
 		return same(tSize)
+	case (ln == "Instant" || ln == "Date") && op != "+" && op != "-":
+		x.expect(at, tDuration, r)
+		return c.unknownf(at, "%s %s … isn't defined: a time moves by adding or subtracting a Duration", ln, op)
 	case ln == "Instant":
 		if rn == "Instant" && op == "-" {
 			return tDuration
@@ -1630,6 +1629,8 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 	case ln == "Date":
 		x.expect(at, tDuration, r)
 		return tDate
+	case ln != "":
+		return c.unknownf(at, "%s %s %s isn't defined", show(defaultLiteral(lt)), op, show(defaultLiteral(rt)))
 	}
 	switch v := lt.(type) {
 	case *tvar:
@@ -1654,6 +1655,47 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 		return rt
 	}
 	return c.unknownf(at, "%s %s %s isn't defined", show(lt), op, show(rt))
+}
+
+// negate is the type of `-x`: a number's or a duration's own type, or what
+// the type's impl of Neg gives (SPECS.md §11).
+func (x *fnCheck) negate(t typ, at ir.Pos) typ {
+	c := x.c
+	neg := c.preludeTrait("Neg")
+	switch k := prune(t).(type) {
+	case tunknown:
+		return k
+	case *tvar:
+		if k.lit == litInt {
+			return k
+		}
+		if !k.rigid {
+			x.require(k, neg, []typ{k}, at, "-")
+			return k
+		}
+		for _, b := range c.ts.bounds[k] {
+			if b.trait == neg && len(b.args) == 1 {
+				return b.args[0]
+			}
+		}
+		return c.unknownf(at, "-%s needs %s: Neg, and %s may be any type: require it, as `where %s: Neg(%s)`", k.name, k.name, k.name, k.name, k.name)
+	case *tcon:
+		if k.decl != nil {
+			for _, impl := range k.decl.Impls {
+				if impl.Trait == neg && len(impl.Args) == 1 {
+					return c.fromExpr(impl.Args[0], envOf(k), false)
+				}
+			}
+			if k.decl.Module != x.top.fn.Module {
+				return c.unknownf(at, "-%s isn't defined: %s doesn't implement Neg", show(k), show(k))
+			}
+			return c.unknownf(at, "%s has no -: implement Neg for it, as `impl Neg(%s) for %s`", show(k), show(k), show(k))
+		}
+		if ok, _ := c.builtinHas(k, cbound{trait: neg, args: []typ{k}}, map[*ir.Type]bool{}); ok {
+			return k
+		}
+	}
+	return c.unknownf(at, "-%s isn't defined: only numbers and durations have a minus sign", show(defaultLiteral(t)))
 }
 
 func opTrait(op string) string {
