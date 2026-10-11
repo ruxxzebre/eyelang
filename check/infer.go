@@ -489,6 +489,7 @@ func (x *fnCheck) expect(at ir.Pos, want, got typ) bool {
 		if m.dyn != nil {
 			msg += fmt.Sprintf(": %s doesn't implement %s", show(m.lacks), m.dyn.trait.Name)
 		}
+		msg += x.c.offsetHint(want, got)
 		x.c.typeErrorf(at, "%s", msg)
 		return false
 	}
