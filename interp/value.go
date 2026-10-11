@@ -110,7 +110,6 @@ type (
 	// ApprovalVal is an Approval: a person's yes to what a job asked.
 	ApprovalVal struct{ What, By string }
 	TypeVal     struct{ Type *ir.Type }
-	ViewVal     struct{ View *ir.View }
 	// handler is what a `with` statement applies in a test.
 	handler interface{ apply(in *Interp, at ir.Pos) }
 )

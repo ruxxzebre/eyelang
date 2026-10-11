@@ -419,6 +419,23 @@ type viewScope struct {
 	snapshot *Record
 }
 
+// viewMembers is a view read as a value: the snapshots of the entities in it
+// now, a List(Entity) as the checker types it. Inside another view's check,
+// Entity.all still means the one entity being checked.
+func (rt *runtime) viewMembers(v *ir.View, at ir.Pos) *List {
+	result, _, _ := rt.in.callFunc(v.Func, nil, nil, nil, at)
+	switch r := result.(type) {
+	case *List:
+		return r
+	case *EntitySet:
+		return rt.all(r.Entity, at)
+	case *Set:
+		return &List{Elems: r.Elems}
+	}
+	rt.in.faultf(v.Pos, "a view must give a collection of %s, and this one gives %s", v.Entity.Name, kindName(result))
+	return nil
+}
+
 // updateViews checks the views over an entity that changed, and starts the
 // jobs triggered by it entering or leaving them.
 func (rt *runtime) updateViews(ref *EntityRef, state *Record, version int64) {

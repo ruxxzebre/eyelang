@@ -552,7 +552,7 @@ func (in *Interp) ref(x *ir.Ref) Value {
 	case *ir.Job:
 		return &JobVal{Job: d}
 	case *ir.View:
-		return &ViewVal{View: d}
+		return in.rt.viewMembers(d, x.Pos)
 	case *ir.Op:
 		return &OpVal{Op: d}
 	case *ir.Event:

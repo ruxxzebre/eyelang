@@ -260,7 +260,7 @@ Runs column says whether the runtime does what the attribute says.
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| A view is a pipeline over an entity set, kept up to date | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L24) |
+| A view is a pipeline over an entity set, kept up to date | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L24), [read by name](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/views.eye#L15) |
 | A view must start from an entity set | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L110) |
 | `enters(view)` and `leaves(view)` | ✓ | ✓ | partial: `leaves` has no test yet | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L54) |
 | Pipelines over entities compiled to SQL (v0.2) | n/a | n/a | — | |
