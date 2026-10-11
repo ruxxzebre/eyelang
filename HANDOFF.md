@@ -137,7 +137,20 @@ Library:
   time a fixed-width value is a plain Int, so a method can't tell `Int32` from `Byte`. They need
   the typed IR (#28) to record each literal's width or each call's resolved impl. `Int32.from(n)`
   also needs calls on built-in type names.
-- Not built: `fs.lines`, reading a file as bytes, fakes for `process`.
+- Not built: `fs.lines`, reading a file as bytes, fakes for `process`, regular expressions. The
+  digest's `plain()` strips HTML without them.
+
+Syntax, open since the parser freeze ended (from the 2026-10-11 lane list, none started):
+- Open questions 13 (`eye fmt` and the two forms of `if`), 14 (`if let`), 25 (naming a record's
+  type at its literal) and 31 (`Option` parameters with defaults). Each needs a decision first.
+- A character literal read as a `Byte`, so list patterns over `Bytes` work. It needs the checker
+  and possibly syntax, and the self-hosted lexer (ROADMAP "What's next", item 4) needs it.
+
+Lab:
+- `trains.watch` (`testdata/lab/trains/trains.eye`) is still a `while true` loop that sleeps 45 s,
+  about 7,700 steps a day. Each wake replays every step so far, so its cost grows with the run's
+  age. Until saved frames (7.3, #76) land, give it the restart pattern SPECS §15 describes: end
+  the run and start the job again with `watch.start!(t)`, about every hour.
 
 ## Next work, in order
 
