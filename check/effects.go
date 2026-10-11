@@ -232,6 +232,10 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 			c.typeErrorf(w.Pos, "a task in a job can only compute, since its steps couldn't be recorded: start a child run for this step instead")
 			return false
 		}
+		if r, ok := e.(*ir.Ref); ok {
+			c.namedStep(r, job, all, task)
+			return true
+		}
 		call, ok := e.(*ir.Call)
 		if !ok {
 			return true
@@ -239,6 +243,14 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 		r, ok := call.Func.(*ir.Ref)
 		if !ok {
 			return true
+		}
+		// The callee is called here, not named as a value: only its
+		// arguments are visited.
+		args := func() bool {
+			for _, a := range call.Args {
+				walk(a.Value, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, task) })
+			}
+			return false
 		}
 		var name, effect string
 		step := false
@@ -272,7 +284,7 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 				step = true
 			}
 		default:
-			return true // contract operations and entities are checked as they are lowered
+			return args() // contract operations and entities are checked as they are lowered
 		}
 		switch {
 		case task && step:
@@ -282,9 +294,38 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 		case waiting && !step:
 			c.typeErrorf(call.Pos, "%s neither waits nor reaches outside the program, so it isn't a durable step: write %s(…) without !", name, name)
 		}
-		return true
+		return args()
 	}
 	walk(job.Body, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, false) })
+}
+
+// namedStep reports a function named as a value in a job when calling it
+// would be a durable step: wherever it is called, such as inside map, its
+// calls aren't recorded. A lambda that calls it with ! is.
+func (c *checker) namedStep(r *ir.Ref, job *ir.Func, all map[*ir.Func]map[string]bool, task bool) {
+	var name, effect string
+	switch d := r.Decl.(type) {
+	case *ir.Func:
+		name = d.Name
+		set := effectsOf(d, all)
+		if effect = outside(set); set["wait"] {
+			effect = "wait"
+		}
+	case *ir.Op:
+		name, effect = d.Name, "net "+d.Contract.Name+"."+d.Name
+	case ir.Builtin:
+		name = d.Name
+		effect, _ = c.builtinStep(d.Name)
+	}
+	if effect == "" {
+		return
+	}
+	if task {
+		c.typeErrorf(r.Pos, "a task in a job can only compute, and %s uses %s: start a child run for this step instead", name, effect)
+		return
+	}
+	text := r.Pos.Text()
+	c.typeErrorf(r.Pos, "in a job, %s uses %s, so each call of it is a durable step, and named as a value its calls aren't recorded: pass a lambda that calls it with !, as fn …: %s!(…)", text, effect, text)
 }
 
 // walk calls visit for e and, if visit returns true, everything in it.

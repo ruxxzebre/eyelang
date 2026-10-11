@@ -808,6 +808,15 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 	c := x.c
 	switch d := e.Decl.(type) {
 	case *ir.Func:
+		// A function named as a value may be called anywhere it goes, so
+		// its effects count where it is named, as a lambda's do where it is
+		// written (SPECS.md §12): `xs |> map(stamp)` uses what stamp uses.
+		x.top.callee(d)
+		if d.Extern && d.HasUses {
+			for _, u := range d.Uses {
+				x.top.effect(u)
+			}
+		}
 		return c.funcType(d, nil)
 	case *ir.Global:
 		return c.globalType(d)
@@ -823,6 +832,7 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 		}
 		return c.unknownf(e.Pos, "internal error: view %s has no entity", d.Name)
 	case *ir.Op:
+		x.top.effect("net " + d.Contract.Name + "." + d.Name)
 		return c.opType(d)
 	case *ir.Event:
 		return con("Event", c.fromExpr(d.Type, typeEnv{}, false))

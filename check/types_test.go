@@ -258,6 +258,23 @@ pub fn partly() -> Instant uses {stdio} = now()`, []string{
 		{"effects pass through private functions", `import svc
 fn send(t: String) = svc.raw(t)
 pub fn f() = send("x")`, []string{"3:1: f uses net Svc.raw, which its signature doesn't list"}},
+		{"effects pass through functions named as values", `import svc
+fn stamp(n: Int) -> Instant = now()
+pub fn stamps(xs: List(Int)) -> List(Instant) = xs |> map(stamp)
+pub fn later() -> Instant {
+  let g = stamp
+  g(1)
+}
+pub fn sends(xs: List(String)) = xs |> map(svc.raw)
+job j(xs: List(Int)) {
+  let a = xs |> map(stamp)
+  let b = xs |> map(fn x: stamp!(x))
+}`, []string{
+			"3:1: stamps uses clock, which its signature doesn't list",
+			"4:1: later uses clock, which its signature doesn't list",
+			"8:1: sends uses net Svc.raw, which its signature doesn't list",
+			"10:21: in a job, stamp uses clock, so each call of it is a durable step, and named as a value its calls aren't recorded: pass a lambda that calls it with !",
+		}},
 		{"a job's arguments are saved", `job j(token: Secret(String)) { sleep!(1 min) }`,
 			[]string{"1:1: j's argument token is a Secret, which can't be saved"}},
 		{"what can't be saved isn't held across a !", `job j() {
