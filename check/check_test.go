@@ -52,6 +52,14 @@ type U = | A`, []string{"2:4: f is declared twice in this module", "4:6: A is de
   var a = 1
   let g = fn: a + 1
 }`, []string{"3:15: a closure can't capture a, a var"}},
+		{"a closure changes its own vars, not those outside", `fn f() {
+  var a = 1
+  let g = fn {
+    var b = 0
+    b += 1
+    a = b
+  }
+}`, []string{"6:5: a closure can't capture a, a var"}},
 		{"waiting calls only in jobs", `entity E(id: Int) {
   state n: Int = 0
   pub fn m() { sleep!(1 min) }

@@ -182,7 +182,11 @@ run time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@de
 | A task fails, and the call fails with it | ✓ | n/a | ✓ | [tasks_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tasks_test.go#L70) |
 | `parallelMap` in a job only with a pure function | ✓ | — | ✓ (the run fails) | [interp_test.go: faults](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L162) |
 | Cheap tasks with small, growing stacks | n/a | n/a | partial: Go goroutines for now | |
-| Task groups, `spawn` and channels (v0.2) | ✓ | — | — | |
+| Task groups, `spawn` and channels (v0.2) | ✓ | ✓ | ✓ | [programs/tasks](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tasks/tasks.eye#L77), [channels_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/channels_test.go#L116) |
+| A failing task cancels its group | ✓ | n/a | ✓ | [channels_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/channels_test.go#L31) |
+| A group whose tasks all wait for channels nobody can change fails | ✓ | n/a | partial: on the system clock, a group inside another task isn't checked, and waits | [channels_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/channels_test.go#L61) |
+| A channel can't be live across a `!` | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L224) |
+| A task group in a job only computes, in its spawned tasks too | ✓ | ✓ | ✓ (the run fails) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L200) |
 | Child runs joined with `all!` and `first!` | ✓ | — (resolved as the collection functions `all` and `first`) | — | |
 
 ## [Entities](/reference/language/entities)

@@ -1145,6 +1145,8 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			c.useName(e, method("publish"))
 			x.args(&tfun{params: []fparam{{name: "value", t: r.args[0]}}, ret: tUnit}, e.Args, "publish", e.Pos)
 			return tUnit
+		case r.decl == nil && r.entity == nil && (r.name == "TaskGroup" || r.name == "Sender" || r.name == "Receiver"):
+			return x.channelMethod(r, e)
 		case e.Name == "reconcile" && r.decl != nil:
 			c.useName(e, method("reconcile"))
 			x.inferArgs(e.Args)
@@ -1234,6 +1236,31 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	if r, ok := prune(recv).(*tcon); ok && (r.decl != nil || r.entity != nil) {
 		c.typeErrorf(e.Pos, "%s has no method %s", show(recv), e.Name)
 	}
+	x.inferArgs(e.Args)
+	return unknown
+}
+
+// channelMethod checks group.spawn(f), send.put(x), send.close() and
+// receive.take(): the methods of a task group and a channel's two ends.
+func (x *fnCheck) channelMethod(r *tcon, e *ir.MethodCall) typ {
+	c := x.c
+	sig := func(ret typ, params ...fparam) typ {
+		c.useName(e, method(e.Name))
+		x.args(&tfun{params: params, ret: ret}, e.Args, r.name+"."+e.Name, e.Pos)
+		return ret
+	}
+	switch {
+	case r.name == "TaskGroup" && e.Name == "spawn":
+		return sig(tUnit, fparam{name: "f", t: &tfun{ret: c.fresh()}})
+	case r.name == "Sender" && e.Name == "put":
+		return sig(tUnit, fparam{name: "value", t: r.args[0]})
+	case r.name == "Sender" && e.Name == "close":
+		return sig(tUnit)
+	case r.name == "Receiver" && e.Name == "take":
+		return sig(&tcon{name: "Option", decl: c.ts.option, args: []typ{r.args[0]}})
+	}
+	methods := map[string]string{"TaskGroup": "spawn", "Sender": "put and close", "Receiver": "take, and a for loop reads it"}
+	c.typeErrorf(e.Pos, "%s has no method %s; its methods are %s", show(r), e.Name, methods[r.name])
 	x.inferArgs(e.Args)
 	return unknown
 }
@@ -1765,7 +1792,7 @@ func (x *fnCheck) elemOf(t typ, at ir.Pos) typ {
 	case *tcon:
 		if r.decl == nil && r.entity == nil {
 			switch r.name {
-			case "List", "Set", "Iter", "Range":
+			case "List", "Set", "Iter", "Range", "Receiver":
 				return r.args[0]
 			case "Map":
 				return &ttuple{elems: []typ{r.args[0], r.args[1]}}

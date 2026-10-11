@@ -117,6 +117,19 @@ pub extern type Handle(name)
 ## with `@on(event(…))`.
 pub extern type Event(a)
 
+## A running task group, as `taskGroup(fn group { … })` gives it: `group.spawn(fn { … })` starts
+## another task, which the group waits for. It can't be saved, so it can't be live across a `!`.
+pub extern type TaskGroup
+
+## The end of a channel that puts: `send.put(x)` waits while the channel is full, and
+## `send.close()` ends it, after which a put fails. It can't be saved.
+pub extern type Sender(a)
+
+## The end of a channel that takes: `for x in receive { … }` reads until the channel is closed and
+## empty, and `receive.take()` gives the next value, or `None` once it is closed and empty. It
+## can't be saved.
+pub extern type Receiver(a)
+
 ## What the collection functions take: any of List, Set, Map, Range, Option, and String where it
 ## makes sense. It stands for those here; programs write the collection's own type.
 pub extern type Collection(a)
@@ -248,6 +261,16 @@ pub extern fn race(fs: List(fn() -> a)) -> a
 ## Runs f, and returns `Some(result)` if it finishes in time, or `None`, cancelling it at its next
 ## wait, if it doesn't.
 pub extern fn timeout(after: Duration, f: fn() -> a) -> Option(a)
+
+## Runs f with a new task group, and returns f's result once every task the group spawned has
+## finished. If a task fails, the others are cancelled at their next wait and the group fails with
+## it; if every task left waits for a channel that no task will put into or close, the group fails.
+pub extern fn taskGroup(f: fn(TaskGroup) -> a) -> a
+
+## A channel that holds at most capacity values, as a `Sender` and a `Receiver`. A put waits while
+## it is full, so a fast producer can't fill memory. Channels aren't durable: jobs talk through
+## entities and events.
+pub extern fn channel(capacity: Int) -> (Sender(a), Receiver(a))
 
 # == Waiting
 

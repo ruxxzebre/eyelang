@@ -26,25 +26,52 @@ import (
 // same.
 
 // taskCtx is what a running task is: cancelled through ctx on the system
-// clock, and run by a scheduler on a test's.
+// clock, and run by a scheduler on a test's. grp is the task group it
+// belongs to on the system clock, if any.
 type taskCtx struct {
 	ctx context.Context
 	v   *vtask
+	grp *rgroup
 }
 
 // vtask is a task on a test's clock. Tasks are goroutines, but only one runs
 // at a time: a task that waits hands control back to its scheduler, which
 // resumes the task that wakes first (the one started first, on a tie) and
 // moves the clock to its wake time, so every run of a test is the same.
+//
+// A task that waits for a channel is blocked rather than sleeping: it has no
+// wake time, and becomes ready when another task changes the channel.
 type vtask struct {
 	index    int
+	s        *vsched
 	sched    chan *vtask // where it hands control back: it waits or finished
 	resume   chan bool   // the scheduler's go-ahead; true cancels the task
 	wake     time.Time
 	started  bool
 	sleeping bool
+	blocked  bool
 	done     bool
 	result   taskResult
+}
+
+// ready makes a task that was blocked on a channel ready to run now. The
+// task that runs its scheduler may itself be blocked, because every task it
+// runs was, or asleep until a later time: it is woken now too, and so on up.
+func (v *vtask) ready(now time.Time) {
+	if !v.blocked {
+		return
+	}
+	v.blocked, v.sleeping, v.wake = false, true, now
+	for o := v.s.owner; o != nil; o = o.s.owner {
+		switch {
+		case o.blocked:
+			o.blocked, o.sleeping, o.wake = false, true, now
+		case o.sleeping && o.wake.After(now):
+			o.wake = now
+		default:
+			return
+		}
+	}
 }
 
 // cancelSignal unwinds a task that was cancelled.
@@ -139,7 +166,11 @@ func (in *Interp) runTasks(fns []func(*Interp) Value, limit int, first bool, wit
 	if in.rt.real {
 		return in.runParallel(fns, limit, first, within, at)
 	}
-	return in.runVirtual(fns, limit, first, within)
+	s := in.newVsched(limit, first, at)
+	for _, fn := range fns {
+		s.add(fn)
+	}
+	return s.run(within)
 }
 
 // child is the interpreter as a task sees it: the same program and shared
@@ -165,99 +196,175 @@ func (in *Interp) runTask(fn func(*Interp) Value) (r taskResult) {
 	return r
 }
 
-// runVirtual runs tasks on a test's clock: one at a time, each until it
-// waits or finishes, always resuming the one that wakes first. The caller
-// waits through its own pause, so tasks inside tasks share one timeline.
-func (in *Interp) runVirtual(fns []func(*Interp) Value, limit int, first bool, within time.Duration) ([]taskResult, int) {
-	sched := make(chan *vtask)
-	tasks := make([]*vtask, len(fns))
-	for i := range fns {
-		tasks[i] = &vtask{index: i, sched: sched, resume: make(chan bool)}
+// vsched runs tasks on a test's clock: one at a time, each until it waits
+// or finishes, always resuming the one that wakes first. The task that runs
+// the scheduler (its owner) waits through its own pause, so tasks inside
+// tasks share one timeline. A task group adds tasks while it runs.
+type vsched struct {
+	in       *Interp
+	at       ir.Pos
+	ch       chan *vtask
+	tasks    []*vtask
+	fns      []func(*Interp) Value
+	owner    *vtask // the task that runs this scheduler; nil at the top
+	limit    int    // tasks running at once; 0 for no limit
+	first    bool   // the first to finish cancels the rest
+	running  int
+	next     int // the first task not started yet
+	winner   int
+	stopping bool
+	finished bool
+	fault    any
+}
+
+func (in *Interp) newVsched(limit int, first bool, at ir.Pos) *vsched {
+	s := &vsched{in: in, at: at, ch: make(chan *vtask), limit: limit, first: first, winner: -1}
+	if t := in.currentTask(); t != nil {
+		s.owner = t.v
 	}
+	return s
+}
+
+// add adds a task, which starts when the running one waits.
+func (s *vsched) add(fn func(*Interp) Value) {
+	v := &vtask{index: len(s.tasks), s: s, sched: s.ch, resume: make(chan bool)}
+	s.tasks = append(s.tasks, v)
+	s.fns = append(s.fns, fn)
+}
+
+// settle takes control back from the task that ran: it waits or finished.
+func (s *vsched) settle() {
+	v := <-s.ch
+	if !v.done {
+		return
+	}
+	s.running--
+	switch r := v.result; {
+	case r.fault != nil:
+		if s.fault == nil {
+			s.fault = r.fault
+		}
+		s.stopping = true
+	case !r.cancelled && s.winner < 0:
+		s.winner = v.index
+		s.stopping = s.stopping || s.first
+	}
+}
+
+// cancel cancels every task that has started and not finished: each wakes
+// at its wait and unwinds. Those not started yet never will be.
+func (s *vsched) cancel() {
+	for _, v := range s.tasks {
+		if v.started && !v.done {
+			v.sleeping, v.blocked = false, false
+			v.resume <- true
+			s.settle()
+		}
+	}
+	for _, v := range s.tasks[s.next:] {
+		v.result.cancelled = true
+	}
+	s.next = len(s.tasks)
+}
+
+// run runs the tasks until all have finished, or until within, and returns
+// what each ended with and which finished first.
+func (s *vsched) run(within time.Duration) ([]taskResult, int) {
+	in := s.in
+	defer func() {
+		s.finished = true
+		if p := recover(); p != nil {
+			// The owner was cancelled while it waited for its tasks: they
+			// are cancelled with it.
+			s.cancel()
+			panic(p)
+		}
+	}()
 	var deadline time.Time
 	if within > 0 {
 		deadline = in.rt.now.Add(within)
 	}
-	winner, running, next := -1, 0, 0
-	stopping := false
-	var fault any
-	// settle takes control back from the task that ran: it waits or finished.
-	settle := func() {
-		v := <-sched
-		if !v.done {
-			return
-		}
-		running--
-		switch r := v.result; {
-		case r.fault != nil:
-			if fault == nil {
-				fault = r.fault
-			}
-			stopping = true
-		case !r.cancelled && winner < 0:
-			winner = v.index
-			stopping = stopping || first
-		}
-	}
 	for {
-		for !stopping && next < len(fns) && running < limit {
-			v, fn := tasks[next], fns[next]
+		for !s.stopping && s.next < len(s.tasks) && (s.limit <= 0 || s.running < s.limit) {
+			v, fn := s.tasks[s.next], s.fns[s.next]
 			child := in.child(&taskCtx{v: v})
 			v.started = true
-			running++
-			next++
+			s.running++
+			s.next++
 			go func() {
 				v.result = child.runTask(fn)
-				v.done, v.sleeping = true, false
-				sched <- v
+				v.done, v.sleeping, v.blocked = true, false, false
+				s.ch <- v
 			}()
-			settle()
+			s.settle()
 		}
-		if stopping {
-			// Cancel the rest: each wakes at its wait and unwinds.
-			for _, v := range tasks {
-				if v.started && !v.done {
-					v.sleeping = false
-					v.resume <- true
-					settle()
-				}
-			}
-			for _, v := range tasks[next:] {
-				v.result.cancelled = true
-			}
+		if s.stopping {
+			s.cancel()
 			break
 		}
 		var soonest *vtask
-		for _, v := range tasks {
-			if v.started && !v.done && v.sleeping && (soonest == nil || v.wake.Before(soonest.wake)) {
+		blocked := false
+		for _, v := range s.tasks {
+			if !v.started || v.done {
+				continue
+			}
+			blocked = blocked || v.blocked
+			if v.sleeping && (soonest == nil || v.wake.Before(soonest.wake)) {
 				soonest = v
 			}
 		}
 		if soonest == nil {
-			break
+			if !blocked {
+				break
+			}
+			if s.owner == nil {
+				// Every task waits for a channel, and no task is left to
+				// put into one or close it.
+				s.fault = &Fault{Pos: s.at, Msg: "every task here waits for a channel that no task will put into or close"}
+				s.stopping = true
+				continue
+			}
+			// A task outside may still change the channel: the owner waits
+			// for it, blocked too.
+			s.owner.park()
+			continue
 		}
 		if !deadline.IsZero() && soonest.wake.After(deadline) {
 			if d := deadline.Sub(in.rt.now); d > 0 {
 				in.pause(d)
+				continue
 			}
-			stopping = true
+			s.stopping = true
 			continue
 		}
 		if d := soonest.wake.Sub(in.rt.now); d > 0 {
+			// The owner may be woken earlier, when a task outside makes one
+			// of these ready: look again then.
 			in.pause(d)
+			continue
 		}
 		soonest.sleeping = false
 		soonest.resume <- false
-		settle()
+		s.settle()
 	}
-	if fault != nil {
-		panic(fault)
+	if s.fault != nil {
+		panic(s.fault)
 	}
-	results := make([]taskResult, len(tasks))
-	for i, v := range tasks {
+	results := make([]taskResult, len(s.tasks))
+	for i, v := range s.tasks {
 		results[i] = v.result
 	}
-	return results, winner
+	return results, s.winner
+}
+
+// park hands control back to the task's scheduler until something makes it
+// ready; a cancelled task unwinds.
+func (v *vtask) park() {
+	v.blocked, v.sleeping = true, false
+	v.sched <- v
+	if <-v.resume {
+		panic(cancelSignal{})
+	}
 }
 
 // runParallel runs tasks on goroutines on the system clock.

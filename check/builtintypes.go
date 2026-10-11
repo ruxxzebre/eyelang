@@ -166,6 +166,16 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		b.arg(0, tDuration)
 		b.arg(1, fn(t))
 		return option(t)
+	case "taskGroup":
+		t := c.fresh()
+		b.arg(0, fn(t, con("TaskGroup")))
+		return t
+	case "channel":
+		a := c.fresh()
+		if b.name("capacity", tInt) == nil {
+			c.typeErrorf(at, "channel needs a capacity: how many values it holds before a put waits, as channel(capacity: 64)")
+		}
+		return &ttuple{elems: []typ{con("Sender", a), con("Receiver", a)}}
 	case "next":
 		event := c.fresh()
 		b.arg(0, con("Event", event))

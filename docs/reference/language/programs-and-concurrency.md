@@ -90,7 +90,19 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
   })
   ```
 
-  Channels aren't durable and can't be live across a `!`; jobs talk through entities and events.
+  - `taskGroup` runs its function as the group's first task and returns that function's result
+    once every task has finished. A task may spawn more, so work found on the way joins the same
+    group. If a task fails, the others are cancelled at their next wait and the group fails with
+    it.
+  - `channel(capacity: n)` gives a `Sender(a)` and a `Receiver(a)`, and holds at most `n` values,
+    at least one. `send.put(x)` parks while it is full, `send.close()` ends it, and a put after
+    that fails. `for x in receive` reads until the channel is closed and empty, and
+    `receive.take()` gives `Some` of the next value, or `None` once it is closed and empty.
+  - A group whose tasks all wait for channels that no task will put into or close would wait
+    forever, so it fails instead, at the `taskGroup` call: a producer that forgets `close()` is
+    a bug the test shows, not a hang.
+  - `TaskGroup`, `Sender` and `Receiver` can't be saved, so channels can't be live across a `!`;
+    jobs talk through entities and events.
 - **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
   `first!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
   since its steps couldn't be recorded in order: a `!` step in it, or a call that would need one,

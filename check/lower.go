@@ -366,10 +366,8 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 			l.errorf(root, "%s can't change: it is a let or a parameter; declare it with var, or as a mut parameter", name)
 			return p, false
 		}
-		if l.parent != nil {
-			l.errorf(root, "a closure can't change %s", name)
-			return p, false
-		}
+		// A var found here is the closure's own: lookupLocal refuses to
+		// capture one from outside.
 		p.Slot = v.slot
 		return p, true
 	}

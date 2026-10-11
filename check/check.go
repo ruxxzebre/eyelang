@@ -505,7 +505,7 @@ var builtinTypes = map[string]bool{
 	"Date": true, "Time": true, "Duration": true, "Zone": true, "Schedule": true, "Size": true,
 	"List": true, "Map": true, "Set": true, "Iter": true, "Ref": true, "Run": true, "Key": true,
 	"Secret": true, "Approval": true, "Version": true, "Problem": true, "Handle": true, "Range": true,
-	"Event": true,
+	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true,
 }
 
 // typeExpr resolves a type as written.

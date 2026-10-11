@@ -780,6 +780,12 @@ func kindName(v Value) string {
 		return "Ref(" + x.Entity.Name + ")"
 	case *Closure, *BuiltinFn:
 		return "a function"
+	case *GroupVal:
+		return "TaskGroup"
+	case *SenderVal:
+		return "Sender"
+	case *ReceiverVal:
+		return "Receiver"
 	}
 	return fmt.Sprintf("%T", v)
 }

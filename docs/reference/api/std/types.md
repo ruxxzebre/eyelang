@@ -282,6 +282,34 @@ type Event(a)
 Something a contract's service publishes: jobs wait for one with `next!(…)` or start on one
 with `@on(event(…))`.
 
+## TaskGroup {#TaskGroup}
+
+```eye
+type TaskGroup
+```
+
+A running task group, as `taskGroup(fn group { … })` gives it: `group.spawn(fn { … })` starts
+another task, which the group waits for. It can't be saved, so it can't be live across a `!`.
+
+## Sender {#Sender}
+
+```eye
+type Sender(a)
+```
+
+The end of a channel that puts: `send.put(x)` waits while the channel is full, and
+`send.close()` ends it, after which a put fails. It can't be saved.
+
+## Receiver {#Receiver}
+
+```eye
+type Receiver(a)
+```
+
+The end of a channel that takes: `for x in receive { … }` reads until the channel is closed and
+empty, and `receive.take()` gives the next value, or `None` once it is closed and empty. It
+can't be saved.
+
 ## Collection {#Collection}
 
 ```eye

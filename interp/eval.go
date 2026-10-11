@@ -724,6 +724,9 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 	if v, ok := in.timeMethod(recv, name, args, at); ok {
 		return v, nil
 	}
+	if v, ok := in.channelMethod(recv, name, args, at); ok {
+		return v, nil
+	}
 	if b, ok := in.builtins[name]; ok {
 		pos, named := split(args)
 		return b.Fn(in, append([]Value{recv}, pos...), named, at), nil
@@ -1120,6 +1123,13 @@ func (in *Interp) forLoop(f *frame, x *ir.For) {
 	case *EntitySet:
 		for _, v := range in.rt.all(it.Entity, x.Pos).Elems {
 			if each(v) {
+				return
+			}
+		}
+	case *ReceiverVal:
+		for {
+			v, ok := in.take(it.c, x.Pos)
+			if !ok || each(v) {
 				return
 			}
 		}

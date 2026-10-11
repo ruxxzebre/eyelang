@@ -240,6 +240,26 @@ fn timeout(after: Duration, f: fn() -> a) -> Option(a)
 Runs f, and returns `Some(result)` if it finishes in time, or `None`, cancelling it at its next
 wait, if it doesn't.
 
+### taskGroup {#taskGroup}
+
+```eye
+fn taskGroup(f: fn(TaskGroup) -> a) -> a
+```
+
+Runs f with a new task group, and returns f's result once every task the group spawned has
+finished. If a task fails, the others are cancelled at their next wait and the group fails with
+it; if every task left waits for a channel that no task will put into or close, the group fails.
+
+### channel {#channel}
+
+```eye
+fn channel(capacity: Int) -> (Sender(a), Receiver(a))
+```
+
+A channel that holds at most capacity values, as a `Sender` and a `Receiver`. A put waits while
+it is full, so a fast producer can't fill memory. Channels aren't durable: jobs talk through
+entities and events.
+
 ## Waiting
 
 ### poll {#poll}

@@ -63,3 +63,62 @@ test "tasks inside tasks share one clock" {
   expect(now() - start == 2 min)
   expect(Log("done").lines == ["in1", "out", "in2"])
 }
+
+## Puts 1 to n into a channel, writing down each put once it is done, then
+## closes the channel.
+fn produce(send: Sender(Int), n: Int) {
+  for i in 1..=n {
+    send.put(i)
+    Log("flow").add("put {i}")
+  }
+  send.close()
+}
+
+test "a channel of capacity 1 holds one value: each put waits for the take before it" {
+  let total = taskGroup(fn group {
+    let (send, receive) = channel(capacity: 1)
+    group.spawn(fn { produce(send, 3) })
+    var sum = 0
+    for n in receive {
+      Log("flow").add("took {n}")
+      sum += n
+    }
+    sum
+  })
+  expect(total == 6)
+  expect(Log("flow").lines == ["put 1", "took 1", "put 2", "took 2", "put 3", "took 3"])
+}
+
+test "a group waits for every task it spawned, and tasks spawn more" {
+  let start = now()
+  taskGroup(fn group {
+    group.spawn(fn { after(2 min, "a") })
+    group.spawn(fn {
+      after(1 min, "b")
+      group.spawn(fn { after(3 min, "c") })
+    })
+  })
+  expect(now() - start == 4 min)
+  expect(Log("done").lines == ["b", "a", "c"])
+}
+
+test "take gives None once the channel is closed and empty" {
+  let (send, receive) = channel(capacity: 2)
+  send.put("x")
+  send.close()
+  expect(receive.take() == Some("x"))
+  expect(receive.take() == None)
+}
+
+test "waits overlap in a group, as in parallelMap" {
+  let start = now()
+  let names = taskGroup(fn group {
+    let (send, receive) = channel(capacity: 8)
+    for n in [3, 1, 2] {
+      group.spawn(fn { send.put(after(1 min * n, "{n}")) })
+    }
+    [receive.take(), receive.take(), receive.take()]
+  })
+  expect(names == [Some("1"), Some("2"), Some("3")])
+  expect(now() - start == 3 min)
+}

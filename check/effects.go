@@ -193,8 +193,9 @@ var stepBuiltins = map[string]string{
 }
 
 // taskBuiltins are the built-in functions that run the functions given to
-// them as tasks.
-var taskBuiltins = map[string]bool{"parallelMap": true, "both": true, "race": true, "timeout": true}
+// them as tasks. taskGroup runs its function as the group's first task, so
+// the functions it spawns are inside one too.
+var taskBuiltins = map[string]bool{"parallelMap": true, "both": true, "race": true, "timeout": true, "taskGroup": true}
 
 // outside reports the first effect in a set that reaches outside the
 // program, which in a job makes a call a durable step (SPECS.md §12):
@@ -410,8 +411,11 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 	fromDecl := func(_ *ir.Type, te *ir.TypeExpr, x *tcon) typ { return c.fromExpr(te, envOf(x), false) }
 	switch x := prune(t).(type) {
 	case *tcon:
-		if x.decl == nil && (x.name == "Secret" || x.name == "Handle") {
-			return x.name
+		if x.decl == nil && x.entity == nil {
+			switch x.name {
+			case "Secret", "Handle", "TaskGroup", "Sender", "Receiver":
+				return x.name
+			}
 		}
 		for _, a := range x.args {
 			if s := unsaveable(a); s != "" {

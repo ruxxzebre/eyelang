@@ -21,6 +21,7 @@ func builtinTable() map[string]*BuiltinFn {
 	add := func(name string, fn builtinFunc) { t[name] = &BuiltinFn{Name: name, Fn: fn} }
 	scheduleBuiltins(add)
 	taskBuiltins(add)
+	channelBuiltins(add)
 
 	add("print", func(in *Interp, args []Value, _ map[string]Value, _ ir.Pos) Value {
 		if in.replaying() {

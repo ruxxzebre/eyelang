@@ -236,6 +236,14 @@ job j() -> List(Int) {
 			"4:5: a task in a job can only compute, since its steps couldn't be recorded: start a child run for this step instead",
 			"7:39: a task in a job can only compute, and stamp uses clock: start a child run for this step instead",
 		}},
+		{"a task group in a job only computes, in its spawned tasks too", `job j() -> Int {
+  taskGroup(fn group {
+    group.spawn(fn { sleep!(1 min) })
+    1 + 1
+  })
+}`, []string{
+			"3:22: a task in a job can only compute, since its steps couldn't be recorded: start a child run for this step instead",
+		}},
 		{"a public function states its effects", `pub fn stamp() -> Instant = now()
 pub fn stated() -> Instant uses {clock} = now()
 pub fn partly() -> Instant uses {stdio} = now()`, []string{
@@ -252,6 +260,21 @@ pub fn f() = send("x")`, []string{"3:1: f uses net Svc.raw, which its signature 
   sleep!(1 min)
   log.info("{f(1)}")
 }`, []string{"4:14: f is a function, which can't be saved, and it is still needed after a waiting call"}},
+		{"a channel isn't held across a !", `job j() {
+  let (send, receive) = channel(capacity: 1)
+  sleep!(1 min)
+  send.put(1)
+}`, []string{"4:3: send is a Sender, which can't be saved, and it is still needed after a waiting call"}},
+		{"a channel has a capacity, and its ends their methods", `fn f() {
+  let (send, receive) = channel()
+  send.put(1)
+  send.take()
+  let n: Option(String) = receive.take()
+}`, []string{
+			"2:25: channel needs a capacity: how many values it holds before a put waits, as channel(capacity: 64)",
+			"4:3: Sender(Int) has no method take; its methods are put and close",
+			"5:27: expected Option(String), found Option(Int)",
+		}},
 		{"operators need types that have them", `type Money = { cents: Int }
 fn f(a: Money, b: Money) = a + b`, []string{"2:28: Money has no +: implement Add for it"}},
 		{"a trait's methods take self", `trait Named {
