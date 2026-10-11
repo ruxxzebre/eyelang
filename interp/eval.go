@@ -937,8 +937,8 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 		}
 	case *List:
 		if y, ok := b.(*List); ok && op == "+" {
-			elems := make([]Value, 0, len(x.Elems)+len(y.Elems))
-			return &List{Elems: append(append(elems, x.Elems...), y.Elems...)}
+			// `xs += [x]` and `xs + ys` append in place when they can.
+			return x.appended(y.Elems...)
 		}
 	case float64:
 		if y, ok := b.(float64); ok {

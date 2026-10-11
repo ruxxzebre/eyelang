@@ -11,10 +11,37 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"eyelang/ir"
 )
+
+// growth is how much of a backing array the lists that share it use.
+type growth struct{ used atomic.Int64 }
+
+// appended returns l with vals after its elements, l itself unchanged. It
+// takes constant time on average, so a list built one element at a time,
+// `xs = xs |> add(x)` or `xs += [x]`, takes linear time, not quadratic.
+//
+// A list made by appended shares a backing array, with room to spare, with
+// the list it came from. Appending to the list that uses all of the array
+// writes into the spare room: no other list can see those slots, since each
+// reads only its own length. Appending to an older list, whose next slot
+// another list already holds, copies. The compare-and-swap makes that safe
+// when tasks append to one list at once.
+func (l *List) appended(vals ...Value) *List {
+	n, m := len(l.Elems), len(l.Elems)+len(vals)
+	if g := l.grow; g != nil && m <= cap(l.Elems) && g.used.CompareAndSwap(int64(n), int64(m)) {
+		return &List{Elems: append(l.Elems, vals...), grow: g}
+	}
+	elems := make([]Value, m, max(2*m, 4))
+	copy(elems, l.Elems)
+	copy(elems[n:], vals)
+	g := &growth{}
+	g.used.Store(int64(m))
+	return &List{Elems: elems, grow: g}
+}
 
 // Value is a run-time value: int64 or *big.Int, float64, string, bool, rune,
 // ir.Unit, ir.Duration, ir.Size, ir.Date, ir.TimeOfDay, time.Time, or one of
@@ -22,8 +49,13 @@ import (
 type Value any
 
 type (
-	List struct{ Elems []Value }
-	Set  struct {
+	List struct {
+		Elems []Value
+		// grow is shared by the lists that share Elems' backing array: how
+		// much of it they use. See appended.
+		grow *growth
+	}
+	Set struct {
 		Elems []Value
 		index map[string]int
 	}

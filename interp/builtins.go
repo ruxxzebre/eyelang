@@ -137,7 +137,7 @@ func builtinTable() map[string]*BuiltinFn {
 		case Empty:
 			return newSet([]Value{args[1]})
 		case *List:
-			return &List{Elems: append(append([]Value(nil), c.Elems...), args[1])}
+			return c.appended(args[1])
 		}
 		in.faultf(at, "add takes a Set or a List, and this is %s", kindName(args[0]))
 		return nil
