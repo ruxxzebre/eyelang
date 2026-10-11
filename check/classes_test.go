@@ -105,6 +105,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§15", "a declared type holding what can't be saved", "what a job saves has Save, field by field"},
 	{"§15", "an unknown or misplaced attribute", "attributes are declared"},
 	{"§15", "an attribute's wrong argument", "attribute arguments"},
+	{"§17", "@reconcile or an event's @key naming what doesn't exist", "attributes name what exists"},
 	{"§15", "a deadline at a time of day without its zone", "a deadline at a time of day needs its zone"},
 	{"§15", "a schedule given the wrong type", "a schedule's time"},
 	{"§16", "a view that doesn't start from entities", "views start from an entity set"},

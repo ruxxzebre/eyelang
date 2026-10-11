@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -747,6 +748,7 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			c.errorf(pos(f, d), `@auth takes bearer: "secret", or header: "X-Name", secret: "secret"`)
 		}
 	}
+	names := map[any]*syntax.Node{} // an op's @reconcile argument, an event's @key argument
 	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
 		if member.Kind == syntax.EventDeclaration {
 			ev := &ir.Event{
@@ -756,6 +758,7 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			}
 			if args := attributeArgs(f, member, "key"); len(args) == 1 {
 				ev.Key = text(f, args[0])
+				names[ev] = args[0]
 			}
 			ct.Events[ev.Name] = ev
 			member := member
@@ -769,6 +772,7 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 		op := &ir.Op{Name: text(f, mn), Contract: ct, Command: member.Kind == syntax.CommandDeclaration, Pos: pos(f, member)}
 		if args := attributeArgs(f, member, "reconcile"); len(args) == 1 {
 			op.Reconcile = text(f, args[0])
+			names[op] = args[0]
 		}
 		op.Key = hasAttribute(f, member, "key")
 		if _, named, ok := attribute(f, member, "key"); ok {
@@ -795,6 +799,8 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			op.Return = c.typeExpr(m, f, member.ChildByField(syntax.FieldReturnType), nil)
 		})
 	}
+	// What its attributes name exists, once its types are known.
+	m.decls = append(m.decls, func() { c.contractNames(f, ct, names) })
 	// A module that holds one contract offers its operations as its own:
 	// `notify.send(…)` for `contract Notify { command send … }`.
 	m.decls = append([]func(){func() {
@@ -815,6 +821,33 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 }
 
 // attributeArgs returns the arguments of a declaration's attribute @name.
+// contractNames checks what a contract's attributes name: a command's
+// @reconcile names a query of the contract that finds the command's result
+// by its key, or the command itself, which the service answers again for
+// the same key (SPECS.md §17); and an event's @key names a field of its
+// type.
+func (c *checker) contractNames(f *ir.File, ct *ir.Contract, names map[any]*syntax.Node) {
+	for decl, n := range names {
+		switch d := decl.(type) {
+		case *ir.Op:
+			q := ct.Ops[d.Reconcile]
+			switch {
+			case q == d:
+			case q == nil:
+				c.errorf(pos(f, n), "@reconcile names a query of %s, or the command itself, and %s has no operation %s", ct.Name, ct.Name, d.Reconcile)
+			case q.Command:
+				c.errorf(pos(f, n), "@reconcile names a query, or the command itself, and %s is another command", q.Name)
+			case len(q.Params) != 1 || q.Params[0].Type == nil || q.Params[0].Type.Name != "Key" || q.Return == nil || q.Return.Name != "Option":
+				c.errorf(pos(f, n), "@reconcile names a query that finds a command's result by its key: query %s(key: Key) -> Option(…)", q.Name)
+			}
+		case *ir.Event:
+			if t := d.Type; t != nil && t.Decl != nil && t.Decl.Alias != nil && t.Decl.Alias.Name == "record" && !slices.Contains(t.Decl.Alias.Fields, d.Key) {
+				c.errorf(pos(f, n), "@key names the field that tells %s's events apart, and %s has no field %s", d.Name, t.Decl.Name, d.Key)
+			}
+		}
+	}
+}
+
 func attributeArgs(f *ir.File, d *syntax.Node, name string) []*syntax.Node {
 	for _, attr := range d.Children {
 		if attr.Kind == syntax.Attribute && text(f, attr.ChildByField(syntax.FieldName)) == name {

@@ -104,6 +104,31 @@ contract C {}`, []string{
 			"11:11: @limit has no argument every:",
 			"13:1: @fresh goes on a command, not on a contract",
 		}},
+		{"attributes name what exists", `pub type Sent = | Sent(Int)
+pub type Ping = { id: Int }
+contract Svc {
+  @key(required)
+  @reconcile(nosuch)
+  command a(text: String) -> Sent
+  @key(required)
+  @reconcile(b)
+  command c(text: String) -> Sent
+  command b(text: String) -> Sent
+  @key(required)
+  @reconcile(wrong)
+  command d(text: String) -> Sent
+  query wrong(n: Int) -> Sent
+  @key(required)
+  @reconcile(e)
+  command e(text: String) -> Sent
+  @key(nope)
+  event pings: Ping on "svc.pings"
+}`, []string{
+			"5:14: @reconcile names a query of Svc, or the command itself, and Svc has no operation nosuch",
+			"8:14: @reconcile names a query, or the command itself, and b is another command",
+			"12:14: @reconcile names a query that finds a command's result by its key: query wrong(key: Key) -> Option(…)",
+			"18:8: @key names the field that tells pings's events apart, and Ping has no field nope",
+		}},
 		{"a deadline at a time of day needs its zone", `@deadline(13:40)
 job a() {}`, []string{"1:11: @deadline at a time of day needs its zone"}},
 		{"main starts a job once, by key", `job j(n: Int) {}
