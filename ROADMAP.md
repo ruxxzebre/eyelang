@@ -420,12 +420,13 @@ Also owed, found while preparing the digest's deploy. Each is small enough to be
   admits runs against the host's memory, read from `/proc/meminfo` (`interp/hostmem_linux.go`).
   In a container, the cgroup limit is the real one, and a runner that ignores it is killed by the
   kernel instead of pausing runs.
-- **`xs += [x]` copies the whole list each time**, so a loop that builds a list is quadratic in
-  the interpreter (status.md, "Updates in place when unique"). Compiled code fixes it with
-  reference counts (docs/internals/compilation.md); the interpreter can fix appends without them:
-  a list's buffer can record how many of its elements are in use, and a list whose length is that
-  number can append in place, since every other list on the buffer sees only a shorter prefix; any
-  other list copies first.
+- Done: **`xs += [x]` copied the whole list each time**, so a loop that built a list was quadratic
+  in the interpreter (status.md, "Updates in place when unique"). Compiled code fixes it with
+  reference counts (docs/internals/compilation.md); the interpreter fixes appends without them:
+  a list's buffer records how many of its elements are in use, and a list whose length is that
+  number appends in place, since every other list on the buffer sees only a shorter prefix; any
+  other list copies first. A set's `add` and a map's `insert` of a new key work the same way
+  (`interp/value.go`, `shelf`).
 
 ### Phase 6: Contracts — [#7](https://github.com/ruxxzebre/eyelang/issues/7) · v0.3
 

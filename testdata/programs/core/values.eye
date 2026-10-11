@@ -247,3 +247,15 @@ test "a time's zone can be a value" {
   let ignore = fn _: 1
   expect(ignore("x") == 1)
 }
+
+test "a set or map grown from another leaves the other as it was" {
+  let a = {} |> add(1)
+  let b = a |> add(2)
+  let c = a |> add(2) |> add(3)
+  expect(a == {} |> add(1) && !(a |> contains(2)))
+  expect(b |> size == 2 && c |> size == 3)
+  let m = { "one": 1 }
+  let n = m |> insert("two", 2)
+  let o = m |> insert("two", 22)
+  expect(m["two"] == None && n["two"] == Some(2) && o["two"] == Some(22))
+}

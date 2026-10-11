@@ -6,11 +6,13 @@ package interp
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -60,13 +62,17 @@ type (
 		// much of it they use. See appended.
 		grow *growth
 	}
+	// Set is a set value, its elements in the order they were added. Make
+	// one with newSet or added; never write into Elems.
 	Set struct {
 		Elems []Value
-		index map[string]int
+		shelf *shelf // shared with the sets Elems shares an array with
 	}
+	// Map is a map value, its entries in the order they were inserted.
+	// Make one with newMap or with; never write into Keys or Vals.
 	Map struct {
 		Keys, Vals []Value
-		index      map[string]int
+		shelf      *shelf // shared with the maps Keys shares an array with
 	}
 	Record struct {
 		Names []string
@@ -111,51 +117,163 @@ type (
 
 // ---------------------------------------------------------------- constructors
 
-func newSet(elems []Value) *Set {
-	s := &Set{index: map[string]int{}}
-	for _, e := range elems {
-		k := keyOf(e)
-		if _, ok := s.index[k]; ok {
-			continue
+// shelf is what sets, or maps, made one from another share, so that adding
+// to one takes constant time on average, as appending to a list does (see
+// appended): the arrays their elements sit in, and the slot of each key.
+//
+// Slots fill in order and never change once filled, and each set or map
+// uses the first n of them, n its own length. So each key is in at most one
+// slot, and a set holds a key when the key's slot is below its length: an
+// older, shorter set never sees what a newer one added. A set that uses
+// every filled slot adds a key by filling the next one, which no other set
+// can see; any other set copies its own slots to a new shelf first. The
+// lock makes that safe when tasks add to sets on one shelf at once.
+type shelf struct {
+	mu    sync.RWMutex
+	index map[string]int // each key's slot; len(index) slots are filled
+	keys  []Value        // Set.Elems' or Map.Keys' array, to its capacity
+	vals  []Value        // Map.Vals' array, to its capacity; nil for a set
+}
+
+// slot finds key k among the first n slots.
+func (sh *shelf) slot(k string, n int) (int, bool) {
+	if sh == nil {
+		return 0, false
+	}
+	sh.mu.RLock()
+	i, ok := sh.index[k]
+	sh.mu.RUnlock()
+	return i, ok && i < n
+}
+
+// fill puts a key, and its value for a map, in slot n, if n is the next
+// slot to fill and there is room; k is key's keyOf. It reports whether it
+// did. The caller has checked that no slot below n holds k.
+func (sh *shelf) fill(n int, k string, key, val Value) bool {
+	if sh == nil {
+		return false
+	}
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	if _, taken := sh.index[k]; taken || len(sh.index) != n || n >= len(sh.keys) {
+		return false
+	}
+	sh.keys[n] = key
+	if sh.vals != nil {
+		sh.vals[n] = val
+	}
+	sh.index[k] = n
+	return true
+}
+
+// newShelf returns a shelf of its own for keys, and vals for a map, with
+// room for more; old is the shelf they came from, or nil.
+func newShelf(old *shelf, keys, vals []Value, isMap bool) *shelf {
+	n := len(keys)
+	sh := &shelf{keys: make([]Value, max(2*n, 4))}
+	copy(sh.keys, keys)
+	if isMap {
+		sh.vals = make([]Value, len(sh.keys))
+		copy(sh.vals, vals)
+	}
+	if old != nil {
+		// Taking every key from a full shelf is quicker than working them
+		// out again.
+		old.mu.RLock()
+		if len(old.index) == n {
+			sh.index = maps.Clone(old.index)
 		}
-		s.index[k] = len(s.Elems)
-		s.Elems = append(s.Elems, e)
+		old.mu.RUnlock()
+	}
+	if sh.index == nil {
+		sh.index = make(map[string]int, len(sh.keys))
+		for i, k := range keys {
+			sh.index[keyOf(k)] = i
+		}
+	}
+	return sh
+}
+
+func newSet(elems []Value) *Set {
+	s := &Set{}
+	for _, e := range elems {
+		s = s.added(e)
 	}
 	return s
 }
 
+// added returns s with v in it, s itself unchanged. It takes constant time
+// on average; see shelf.
+func (s *Set) added(v Value) *Set {
+	k, n := keyOf(v), len(s.Elems)
+	if _, ok := s.shelf.slot(k, n); ok {
+		return s
+	}
+	sh := s.shelf
+	if !sh.fill(n, k, v, nil) {
+		sh = newShelf(s.shelf, s.Elems, nil, false)
+		sh.keys[n] = v
+		sh.index[k] = n
+	}
+	return &Set{Elems: sh.keys[: n+1 : n+1], shelf: sh}
+}
+
 func (s *Set) has(v Value) bool {
-	_, ok := s.index[keyOf(v)]
+	_, ok := s.shelf.slot(keyOf(v), len(s.Elems))
 	return ok
 }
 
+// keys returns the keyOf of each element, in no order.
+func (s *Set) keys() []string {
+	out := make([]string, 0, len(s.Elems))
+	if sh := s.shelf; sh != nil {
+		sh.mu.RLock()
+		if len(sh.index) == len(s.Elems) {
+			for k := range sh.index {
+				out = append(out, k)
+			}
+		}
+		sh.mu.RUnlock()
+	}
+	if len(out) != len(s.Elems) {
+		out = out[:0]
+		for _, e := range s.Elems {
+			out = append(out, keyOf(e))
+		}
+	}
+	return out
+}
+
 func newMap(keys, vals []Value) *Map {
-	m := &Map{index: map[string]int{}}
+	m := &Map{}
 	for i, k := range keys {
 		m = m.with(k, vals[i])
 	}
 	return m
 }
 
-// with returns a copy of m with key set to val.
+// with returns m with key set to val, m itself unchanged. Inserting a new
+// key takes constant time on average (see shelf); replacing a key's value
+// copies the map.
 func (m *Map) with(key, val Value) *Map {
-	k := keyOf(key)
-	out := &Map{Keys: append([]Value(nil), m.Keys...), Vals: append([]Value(nil), m.Vals...), index: make(map[string]int, len(m.index)+1)}
-	for kk, i := range m.index {
-		out.index[kk] = i
+	k, n := keyOf(key), len(m.Keys)
+	i, has := m.shelf.slot(k, n)
+	sh := m.shelf
+	switch {
+	case has:
+		sh = newShelf(m.shelf, m.Keys, m.Vals, true)
+		sh.vals[i] = val
+		return &Map{Keys: sh.keys[:n:n], Vals: sh.vals[:n:n], shelf: sh}
+	case !sh.fill(n, k, key, val):
+		sh = newShelf(m.shelf, m.Keys, m.Vals, true)
+		sh.keys[n], sh.vals[n] = key, val
+		sh.index[k] = n
 	}
-	if i, ok := out.index[k]; ok {
-		out.Vals[i] = val
-		return out
-	}
-	out.index[k] = len(out.Keys)
-	out.Keys = append(out.Keys, key)
-	out.Vals = append(out.Vals, val)
-	return out
+	return &Map{Keys: sh.keys[: n+1 : n+1], Vals: sh.vals[: n+1 : n+1], shelf: sh}
 }
 
 func (m *Map) get(key Value) (Value, bool) {
-	i, ok := m.index[keyOf(key)]
+	i, ok := m.shelf.slot(keyOf(key), len(m.Keys))
 	if !ok {
 		return nil, false
 	}
@@ -370,11 +488,7 @@ func writeKey(b *strings.Builder, v Value) {
 		}
 		b.WriteString(")")
 	case *Set:
-		keys := make([]string, 0, len(x.Elems))
-		for k := range x.index {
-			keys = append(keys, k)
-		}
-		writeSorted(b, keys)
+		writeSorted(b, x.keys())
 	case *Map:
 		keys := make([]string, 0, len(x.Keys))
 		for i, k := range x.Keys {

@@ -130,12 +130,9 @@ func builtinTable() map[string]*BuiltinFn {
 		in.need(args, 2, "add", at)
 		switch c := args[0].(type) {
 		case *Set:
-			if c.has(args[1]) {
-				return c
-			}
-			return newSet(append(append([]Value(nil), c.Elems...), args[1]))
+			return c.added(args[1])
 		case Empty:
-			return newSet([]Value{args[1]})
+			return (&Set{}).added(args[1])
 		case *List:
 			return c.appended(args[1])
 		}

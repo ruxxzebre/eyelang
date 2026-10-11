@@ -100,10 +100,11 @@ Runtime and tools:
 - `http.get` and `ai.generate` should retry an unreachable service the way contract calls do
   (see the risk above).
 - `ai.generate` has no `reasoning_effort` parameter; the TypeScript digest sends "medium".
-- Building a set or map one element at a time is quadratic: `add` on a set and inserting into a
-  map copy the value. The shared-array idea behind constant-time list appends works if lookups
-  also check that the index found is below the value's own length. String building is most of
-  what is left of `plain()`'s 0.47 s. Session eyelang-55 knows this code.
+- Replacing a key's value in a map (`m |> insert(k, f(m[k]))`, counting words) still copies the
+  map, so a loop that updates one map is quadratic. Adding a set's element or a map's new key no
+  longer is: they share a `shelf` the way lists share a buffer (`interp/value.go`). Slots are
+  written once, so a replaced value needs a different structure. String building is most of
+  what is left of `plain()`'s 0.47 s.
 
 Checker:
 - A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`
@@ -169,7 +170,7 @@ What every session that worked today said was left, at the end of the day. Claim
 
 - **eyelang-20 (phase 5, v0.2.0, merges into dev).** Nothing unmerged. Claim: `dev` (merges in
   the main checkout) and `tools/next`; the next session that merges takes the `dev` claim.
-  Open: maps and sets built one element at a time are quadratic (above).
+  Open: a loop that replaces values in one map is quadratic (above).
 - **eyelang-77 (lanes B to F, this handoff).** All lanes stopped and merged, `track/runtime-wip`
   last. Its worktrees `handoff` and `runtime` are merged and can be removed.
 - **eyelang-55 (language server, parser).** Nothing unmerged; `ts-parser`, `list-append`,
