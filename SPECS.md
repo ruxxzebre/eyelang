@@ -977,7 +977,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `@limit(n, per: duration, by: param)` | at most `n` runs begin in any window of that length, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)`. A run over the rate waits until the window lets it begin |
 
   `@concurrency`, `@limit` and `@deadline` are enforced by the runtime; the others are checked, and
-  enforced as the runtime grows (`@memory`, `@priority` and `@budget` are not yet).
+  enforced as the runtime grows (`@budget` is, section 19; `@memory` and `@priority` are not yet).
 
 ## 16. Views and triggers
 
@@ -1223,19 +1223,30 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   says, write it: `let d: Digest = ai.generate!(…)?`.
 - **Replies are checked.** If a reply doesn't match the schema, the call asks once more with the
   problems listed, and then returns `Err(Malformed(reply, problems))`.
-- **Providers are contracts.** `ai` declares contracts for Anthropic, OpenAI and OpenAI-compatible
-  servers. A call has the effect `net` on its provider, the key comes from `secret`, and the
-  provider follows from the model's name unless `provider:` says otherwise. The reference
-  interpreter speaks the OpenAI-compatible chat completions protocol with structured output, which
-  gateways such as the lab's offer for every model: `AI_URL` is the gateway's base URL, and
-  `secret("ai-key")` its key, if it needs one.
+- **Providers.** `ai.Provider` is `Anthropic` (the Messages API), `OpenAI` (chat completions) or
+  `Gateway`, an OpenAI-compatible server such as the lab's, which serves every model. A call has
+  the effect `net`, and each provider's address and key come from the environment and `secret`:
+  `ANTHROPIC_URL` and `secret("anthropic-api-key")`, `OPENAI_URL` and `secret("openai-api-key")`,
+  `AI_URL` and `secret("ai-key")`. `provider: Some(ai.Anthropic)` names one; without it, a gateway
+  answers every call when `AI_URL` is set, since a deployment that has one routes through it, and
+  otherwise the model's name decides: `claude-…` is Anthropic, `gpt-…` and `o1`, `o3`… OpenAI.
 - **In a job, every model call is a `!` step.** Its reply is recorded, so a resumed run neither calls
   the model again nor pays twice, and it sees the same answer.
 - **Tests replay recordings.** `with fakes(ai, from: "recordings/")` makes model-backed tests
   deterministic and free, and a recording that no longer matches the schema fails its test.
   `eye test --live` runs them against the real models.
 - **Budgets.** `@budget(usd: 5, tokens: 2_000_000)` on a job or function works like `@memory`: a call
-  that would go over it isn't sent, and the run ends as `Failed(OverBudget)`.
+  that would go over it isn't sent, and the run ends as `Failed(OverBudget)`. A job's budget is for
+  its run, a function's for each call of it, and a call counts against every budget it runs
+  under. Each reply's tokens, and their price, are recorded with its step, so a resumed run counts
+  them again and a restart doesn't reset the budget. A call is sent only if the budget leaves
+  room for its prompt and at least 64 tokens of reply, and the reply is limited to what is left;
+  a reply cut off there ends the run as `Failed(OverBudget)` too. Prices are known for Anthropic's
+  models, and a deployment gives others in `AI_PRICES` (`"gpt-5.5=1.25/10"`: dollars per million
+  tokens in and out); a provider that reports what a call cost is taken at its word. A budget in
+  dollars for a model whose price isn't known isn't kept quietly by tokens instead: the call
+  stops with a fault that says to give the price. Recordings may say what a reply spent
+  (`"usage": {"input": 900, "output": 100}`), and tests count it.
 
 **Tools are functions.** Eyelang functions passed as `tools:` become the model's tools. A tool's
 parameter types give its input schema and its `##` comment its description, and the runtime runs

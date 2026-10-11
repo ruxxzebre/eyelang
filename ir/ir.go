@@ -198,7 +198,16 @@ type Func struct {
 	// Bounds are the requirements on its type variables, from `where` and
 	// from traits used as parameter types.
 	Bounds []Bound
+	// Budget is its @budget: what the model calls made while it runs may
+	// spend. A job's is on its Func.
+	Budget *Budget
 	Pos    Pos
+}
+
+// Budget is @budget(usd:, tokens:); a negative limit is one it doesn't set.
+type Budget struct {
+	USD    float64
+	Tokens int64
 }
 
 // Param is a function parameter.

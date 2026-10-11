@@ -325,6 +325,7 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 		if fn.Name == "main" {
 			m.mod.Main = fn
 		}
+		fn.Budget = budget(f, d)
 		m.decls = append(m.decls, func() { c.lowerFunc(m, f, d, fn, ctxPlain, nil, nil) })
 	case syntax.ExternTypeDeclaration:
 		// A type foreign code owns: no variants, fields or alias, so only
@@ -351,7 +352,7 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 		c.entityDecl(m, f, d)
 	case syntax.JobDeclaration:
 		job := &ir.Job{Name: text(f, nameNode), Module: m.mod, Pos: pos(f, d)}
-		job.Func = &ir.Func{Name: job.Name, Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d)}
+		job.Func = &ir.Func{Name: job.Name, Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d), Budget: budget(f, d)}
 		m.mod.Jobs[job.Name] = job
 		c.define(m, f, nameNode, job.Name, job)
 		m.decls = append(m.decls, func() {

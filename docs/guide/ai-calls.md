@@ -147,17 +147,12 @@ job decides what that means for the program. Here a person sorts the ticket:
 | Case | When |
 |---|---|
 | `Malformed(reply, problems)` | Two replies didn't match the type |
-| `ProviderError(status, message)` | The gateway answered with an error, couldn't be reached (status 0), or the reply didn't finish |
+| `ProviderError(status, message)` | The provider answered with an error, couldn't be reached (status 0), or the reply didn't finish |
 | `Declined(reason)` | The model declined to answer |
 
 A failed call is not retried, apart from the one extra request for a malformed reply. Decide in the
 code what a failure costs. In the [approvals tutorial](/tutorial/approvals) a failed summary costs
 the summary, not the request; here it sends the ticket to a person.
-
-::: info Not yet
-Today a refusal comes back as `ProviderError(…)` with the message `the model declined: …`, not as
-`Declined`.
-:::
 
 ## In a job, a call is a recorded step
 
@@ -197,27 +192,62 @@ The tests are free, fast, and the same on every run. To make a recording, save a
 the model, or write the value you want to test against.
 
 ::: warning
-A test without `fakes(ai, …)` calls the real gateway if `AI_URL` is set in the environment.
+A test without `fakes(ai, …)` calls the real provider if its address or key is set in the environment.
 :::
 
 See [Testing with time and recordings](/guide/testing) for more on recordings and test clocks.
 
-## Configuring the gateway
+## Choosing the provider
 
-The interpreter talks to any gateway that offers the OpenAI-compatible chat completions API with
-structured output. Two settings come from the environment:
+Three providers answer model calls, each with structured output, and `ai.Provider` names them:
 
-| Setting | What it is |
-|---|---|
-| `AI_URL` | The gateway's base URL, including the version: `http://gateway:8317/v1`. Requests go to `$AI_URL/chat/completions` |
-| `secret("ai-key")` | The gateway's key, sent as `Authorization: Bearer …`, if it needs one: `AI_KEY`, or the file `ai-key` in `$EYE_SECRETS` |
+| Provider | Protocol | Address | Key |
+|---|---|---|---|
+| `Anthropic` | the Messages API | `ANTHROPIC_URL`, or `https://api.anthropic.com` | `secret("anthropic-api-key")`: `ANTHROPIC_API_KEY` |
+| `OpenAI` | chat completions | `OPENAI_URL`, or `https://api.openai.com/v1` | `secret("openai-api-key")`: `OPENAI_API_KEY` |
+| `Gateway` | OpenAI-compatible chat completions, for any model | `AI_URL`, including the version: `http://gateway:8317/v1` | `secret("ai-key")`, if it needs one: `AI_KEY` |
 
-The `model:` argument is passed to the gateway as it is, so use the names your gateway knows.
-Without `AI_URL`, the first call stops its run:
+Which one answers a call:
+
+1. The one `provider:` names: `ai.generate!(model: "claude-opus-5-5", prompt: text, provider: Some(ai.Anthropic))`.
+2. Otherwise, the gateway, when `AI_URL` is set. A deployment that has a gateway sends every model
+   through it, and the `model:` argument goes to it as it is, so use the names your gateway knows.
+3. Otherwise, the model's name: `claude-…` goes to Anthropic, and `gpt-…`, `o1`, `o3` and the like
+   to OpenAI. Any other name needs a gateway, and the call stops its run without one:
 
 ```text
-main.eye:59:3: job triage: ai.generate needs a model gateway: set AI_URL to its base URL, such as http://gateway:8317/v1
+main.eye:12:3: job sort: ai.generate needs a model gateway for house-model: set AI_URL to its base URL, such as http://gateway:8317/v1, or name the provider with provider:
 ```
+
+## Budgets
+
+`@budget(usd:, tokens:)` on a job limits what the model calls of one run spend; on a function, what
+one call of it spends. Every call counts against each budget it runs under.
+
+```eye
+@budget(usd: 0.50)
+job summarise(text: String) -> Result(Summary, ai.AiError) {
+  ai.generate!(model: "claude-sonnet-5-5", prompt: text)
+}
+```
+
+- A call is sent only if the budget leaves room for its prompt and at least 64 tokens of reply,
+  and the reply is limited to what is left. Otherwise the call isn't sent, and the run ends as
+  `Failed(OverBudget)`; a reply cut off at the limit ends it the same way. A caller that must
+  report it starts the work as a child run and joins it, as the lab's digest does.
+- What each reply spent is recorded with its step, so a run that resumes after a restart counts it
+  again: a restart doesn't refill the budget.
+- Dollars need prices. Anthropic's models are known; for others, the deployment gives the price in
+  `AI_PRICES`, as dollars per million tokens in and out: `AI_PRICES="gpt-5.5=1.25/10,house=0/0"`.
+  A gateway that reports what a call cost (`usage.cost`) is taken at its word. A budget in dollars
+  for a model with no known price isn't quietly kept by tokens instead; the call stops:
+
+```text
+main.eye:12:3: job write: @budget(usd: 0.5) can't be kept, since the price of house-model isn't known: give it in AI_PRICES, such as AI_PRICES="house-model=3/15" for $3 per million tokens in and $15 out, or limit the budget by tokens
+```
+
+- In tests, a recording may say what a reply spent, and the budget counts it:
+  `{"op": "generate", "result": {…}, "usage": {"input": 900, "output": 100}}`.
 
 See [Running in production](/guide/running#configuration) for the other settings.
 
@@ -226,9 +256,7 @@ See [Running in production](/guide/running#configuration) for the other settings
 - **Tools and agents.** Passing functions as `tools:`, and running coding agents with the `agents`
   module, are designed (see [AI models and agents](/reference/language/ai-models-and-agents)) but
   not built.
-- **Budgets.** `@budget(usd:, tokens:)` passes the checker, but isn't enforced yet.
 - **`eye test --live`**, which runs model-backed tests against real models.
-- **Providers.** There is no `provider:` argument yet; every call goes to `AI_URL`.
 
 ## See also
 

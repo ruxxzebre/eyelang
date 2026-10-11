@@ -49,7 +49,30 @@ type recording struct {
 		Key    string          `json:"key"`
 		Args   json.RawMessage `json:"args"`
 		Result json.RawMessage `json:"result"`
+		Usage  *recordedUsage  `json:"usage"`
 	} `json:"exchanges"`
+}
+
+// recordedReply is a model's reply in a recording, and what it spent, if
+// the recording says: `"usage": {"input": 1200, "output": 300}`, with
+// `"usd"` when the price was known.
+type recordedReply struct {
+	Result json.RawMessage
+	Usage  *recordedUsage
+}
+
+type recordedUsage struct {
+	Input  int64    `json:"input"`
+	Output int64    `json:"output"`
+	USD    *float64 `json:"usd"`
+}
+
+// spent is what the recorded reply counts against a budget.
+func (r recordedReply) spent(model string) spend {
+	if r.Usage == nil {
+		return spend{}
+	}
+	return usage(model, r.Usage.Input, r.Usage.Output, r.Usage.USD)
 }
 
 // fakesHandler is the value of `fakes(…)`.
@@ -140,7 +163,7 @@ func (in *Interp) recorded(raw json.RawMessage, t *ir.TypeExpr) (Value, error) {
 // loadReplies reads recorded model replies for `with fakes(ai, …)`: an
 // "exchanges" list whose results are the replies, each the value asked for,
 // used in order.
-func (in *Interp) loadReplies(path string, at ir.Pos) []json.RawMessage {
+func (in *Interp) loadReplies(path string, at ir.Pos) []recordedReply {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		in.faultf(at, "no recordings for ai: %v", err)
@@ -149,9 +172,9 @@ func (in *Interp) loadReplies(path string, at ir.Pos) []json.RawMessage {
 	if err := json.Unmarshal(data, &rec); err != nil {
 		in.faultf(at, "%s: %v", path, err)
 	}
-	replies := []json.RawMessage{}
+	replies := []recordedReply{}
 	for _, e := range rec.Exchanges {
-		replies = append(replies, e.Result)
+		replies = append(replies, recordedReply{Result: e.Result, Usage: e.Usage})
 	}
 	return replies
 }

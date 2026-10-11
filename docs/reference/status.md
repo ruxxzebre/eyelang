@@ -23,8 +23,8 @@ listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/
 along with the test that reports it.
 
 **The biggest gaps today.** Waits that need a person or the host (`reserve!`, `lock!`, `all!`,
-`first!`, ending an entity), coding agents and model tools, `@memory`, `@priority` and `@budget` at
-run time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destructive`,
+`first!`, ending an entity), coding agents and model tools, `@memory` and `@priority` at run
+time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destructive`,
 `@unwitnessed`), `fs` and `process`, fixed-width integers, and native compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
@@ -141,7 +141,7 @@ run time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@de
 | `Problem` and `.context(…)` | ✓ | — | — | |
 | Total library functions: `xs[i]` and `first` give `Option`, `parseInt` gives `Result` | ✓ | ✓ | ✓ | [core: collections](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L165) |
 | `unreachable("why")` ends the program or run as a fault | ✓ | ✓ | ✓ | [interp_test.go: faults](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L153) |
-| Runtime faults as a run's outcome | ✓ | ✓ | partial: `Unreachable`, `DeadlinePassed` and `Unavailable` happen; `OverBudget`, `OutOfMemory` and `Killed` never do | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
+| Runtime faults as a run's outcome | ✓ | ✓ | partial: `Unreachable`, `DeadlinePassed`, `Unavailable` and `OverBudget` happen; `OutOfMemory` and `Killed` never do | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 
 ## [Traits](/reference/language/traits)
 
@@ -240,7 +240,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@limit(n, per: duration, by: param)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L92) |
 | `@deadline(duration)`, `@deadline(time, in: zone)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | `@memory(size)`, `@priority(p)` | ✓ | ✓ | — (v0.2) | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L71) |
-| `@budget(usd:, tokens:)` | ✓ | ✓ | — (v0.2) | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L71) |
+| `@budget(usd:, tokens:)` | ✓ | ✓ | ✓ | [ai_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go) |
 | `@version(N)` | ✓ | ✓ | ✓ | [migrations_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/migrations_test.go#L14) |
 | `@key`, `@reconcile` | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | `@http`, `@auth` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
@@ -295,11 +295,11 @@ Runs column says whether the runtime does what the attribute says.
 | `ai.generate!`, with the schema taken from the type expected | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L243), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L376) |
 | Only types with `Schema` can be asked for | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L249) |
 | A reply is checked, asked for once more, then `Err(Malformed(…))` | n/a | n/a | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L243) |
-| Providers | ✓ | partial: no `provider:` argument | partial: an OpenAI-compatible gateway (`AI_URL`) only | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
+| Providers: Anthropic, OpenAI and a gateway, by `provider:` or by the model's name | ✓ | ✓ | ✓ | [ai_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go) |
 | In a job, a model call is a recorded step | ✓ | ✓ | ✓ | [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L116) |
 | Tests replay recordings with `fakes(ai, …)` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L272) |
 | `eye test --live` | n/a | n/a | — | |
-| `@budget` | ✓ | ✓ | — (v0.2) | |
+| `@budget`: tokens and dollars, counted again on replay, the call that would go over not sent | ✓ | ✓ | ✓ | [ai_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go) |
 | Tools: functions passed as `tools:`, `@destructive` tools | ✓ | — (`generate` has no `tools:`) | — | |
 | Coding agents: the `agents` module | ✓ | — (no such module) | — | |
 

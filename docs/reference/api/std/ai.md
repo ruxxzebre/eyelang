@@ -32,6 +32,24 @@ Why a model call gave no value.
 - <span id="AiError-Declined"></span>`Declined(reason: String)`: The model declined to answer.
 - <span id="AiError-ProviderError"></span>`ProviderError(status: Int, message: String)`: The provider answered with an error.
 
+### Provider {#Provider}
+
+```eye
+pub type Provider =
+  | Anthropic
+  | OpenAI
+  | Gateway
+```
+
+Who answers a model call.
+
+- <span id="Provider-Anthropic"></span>`Anthropic`: Anthropic's Messages API, at `ANTHROPIC_URL` or api.anthropic.com, with
+  the key `secret("anthropic-api-key")`.
+- <span id="Provider-OpenAI"></span>`OpenAI`: OpenAI's chat completions, at `OPENAI_URL` or api.openai.com, with the
+  key `secret("openai-api-key")`.
+- <span id="Provider-Gateway"></span>`Gateway`: An OpenAI-compatible server at `AI_URL`, such as a gateway that serves
+  many models, with the key `secret("ai-key")` if it needs one.
+
 ## Functions
 
 ### generate {#generate}
@@ -42,6 +60,7 @@ pub extern fn generate(
   model: String,
   system: String = "",
   prompt: String,
+  provider: Option(Provider) = None,
 ) -> Result(a, AiError) uses {net}
 ```
 
@@ -49,4 +68,13 @@ Asks a model for a value of the type the result is used as: its JSON
 Schema comes from that type, and the reply is checked and decoded into it.
 In a job, `ai.generate!(…)` is a recorded step, so a resumed run neither
 calls the model again nor pays twice.
+
+Without `provider:`, a gateway answers every call when `AI_URL` is set;
+otherwise the model's name decides: `claude-…` is [`Anthropic`](./ai#Provider-Anthropic), `gpt-…` and
+`o1`, `o3`, `o4` … are [`OpenAI`](./ai#Provider-OpenAI).
+
+A `@budget` on the job or function counts each reply's tokens and price. A
+call is sent only if the budget leaves room for its prompt and some reply,
+and the reply is cut off where the budget ends; a call that doesn't fit
+ends the run as `Failed(OverBudget)`.
 

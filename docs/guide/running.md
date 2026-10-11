@@ -147,8 +147,10 @@ nothing yet.)
 | Variable | What it sets | Read by |
 |---|---|---|
 | `<MODULE>_URL` | The base URL of the service behind a contract module: `NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify` | Every call to that contract |
-| `AI_URL` | The model gateway's base URL, such as `http://gateway:8317/v1` | `ai.generate` |
-| A secret's name in upper case, with `-` and `.` as `_` | A secret: `PAYMENTS_TOKEN` for `secret("payments-token")` | `secret(…)`, `@auth`, and the gateway's key `ai-key` |
+| `AI_URL` | The model gateway's base URL, such as `http://gateway:8317/v1`; when set, it answers every model | `ai.generate` |
+| `ANTHROPIC_URL`, `OPENAI_URL` | Where Anthropic's and OpenAI's APIs are, if not at their usual addresses | `ai.generate` |
+| `AI_PRICES` | Prices of models for `@budget(usd:)`, in dollars per million tokens in and out: `gpt-5.5=1.25/10,…` | `@budget` |
+| A secret's name in upper case, with `-` and `.` as `_` | A secret: `PAYMENTS_TOKEN` for `secret("payments-token")` | `secret(…)`, `@auth`, and the providers' keys `ai-key`, `anthropic-api-key` and `openai-api-key` |
 | `EYE_SECRETS` | A directory with one file per secret, named after it, read when the variable isn't set | `secret(…)` |
 | Any name you choose | Configuration that isn't secret, such as a proxy's address | `env.get("VPN_PROXY_URL")` |
 
@@ -175,7 +177,7 @@ main.eye:42:16: job collect: secret "payments-token" isn't set: set PAYMENTS_TOK
 and from the [AI calls guide's program](/guide/ai-calls):
 
 ```text
-main.eye:59:3: job triage: ai.generate needs a model gateway: set AI_URL to its base URL, such as http://gateway:8317/v1
+main.eye:59:3: job triage: ai.generate asks Anthropic for claude-sonnet-5-5, and has no key: set ANTHROPIC_API_KEY, or put it in $EYE_SECRETS/anthropic-api-key
 ```
 
 A program that serves a contract itself (with `impl`) calls its own implementation, unless that

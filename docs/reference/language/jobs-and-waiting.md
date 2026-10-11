@@ -88,4 +88,4 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `@limit(n, per: duration, by: param)` | at most `n` runs begin in any window of that length, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)`. A run over the rate waits until the window lets it begin |
 
   `@concurrency`, `@limit` and `@deadline` are enforced by the runtime; the others are checked, and
-  enforced as the runtime grows (`@memory`, `@priority` and `@budget` are not yet).
+  enforced as the runtime grows (`@budget` is, [section 19](/reference/language/ai-models-and-agents); `@memory` and `@priority` are not yet).

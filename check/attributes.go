@@ -398,6 +398,23 @@ func editDistance(a, b string) int {
 
 // ---------------------------------------------------------------- what the runtime enforces
 
+// budget reads @budget(usd:, tokens:) on a job or function, whose arguments
+// were checked already; nil without one.
+func budget(f *ir.File, d *syntax.Node) *ir.Budget {
+	_, named, ok := attribute(f, d, "budget")
+	if !ok {
+		return nil
+	}
+	b := &ir.Budget{USD: -1, Tokens: -1}
+	if n := named["usd"]; n != nil {
+		b.USD, _ = strconv.ParseFloat(strings.ReplaceAll(text(f, n), "_", ""), 64)
+	}
+	if n := named["tokens"]; n != nil {
+		b.Tokens, _ = strconv.ParseInt(strings.ReplaceAll(text(f, n), "_", ""), 10, 64)
+	}
+	return b
+}
+
 // jobLimits reads the attributes the runtime enforces on a job's runs:
 // @concurrency, @limit and @deadline. Their arguments were checked already.
 func (c *checker) jobLimits(m *module, f *ir.File, d *syntax.Node, job *ir.Job) {

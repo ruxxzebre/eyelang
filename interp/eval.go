@@ -30,6 +30,10 @@ type Interp struct {
 	session  *Session     // the REPL's session, when the program is one
 	task     *taskCtx     // the task this interpreter runs, for parallelMap and friends
 	g        *gil         // guards shared state while tasks run on goroutines
+	budgets  []*budget    // the @budgets being kept, outermost first
+	// stepSpend collects what the model calls of the step being taken
+	// spent, which the step records; nil outside a step.
+	stepSpend *spend
 }
 
 // New prepares to run prog, printing to out and logging to log.
@@ -136,7 +140,12 @@ func (in *Interp) callFunc(fn *ir.Func, self Value, captured []Value, args []arg
 		fr.slots[c.Slot] = captured[i]
 	}
 	paramOf := in.bind(fn, fr, args, at)
-	result := in.runBody(fr)
+	var result Value
+	if fn.Budget != nil {
+		result = in.underBudget(fn, func() Value { return in.runBody(fr) })
+	} else {
+		result = in.runBody(fr)
+	}
 	final := make([]Value, len(args))
 	for i, p := range paramOf {
 		if p >= 0 {

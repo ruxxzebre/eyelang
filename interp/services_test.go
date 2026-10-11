@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -80,7 +81,8 @@ func TestDigestOverHTTP(t *testing.T) {
 				"action": null, "sources": [{"title": "RTÉ", "url": "https://rte.ie/rent"}]}]},
 			{"heading": "Coming up in Dublin", "stories": []}]}`
 		reply, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{
-			"finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": briefing}}}})
+			"finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": briefing}}},
+			"usage": map[string]any{"prompt_tokens": 2000, "completion_tokens": 400}})
 		_, _ = w.Write(reply)
 	}))
 	defer gateway.Close()
@@ -110,6 +112,7 @@ func TestDigestOverHTTP(t *testing.T) {
 	t.Setenv("AI_URL", gateway.URL+"/v1")
 	t.Setenv("AI_KEY", "ai-secret")
 	t.Setenv("DIGEST_MODEL", "test-model")
+	t.Setenv("AI_PRICES", "test-model=1/4") // the digest's @budget is in dollars
 	t.Setenv("NOTIFY_URL", notify.URL)
 	t.Setenv("NOTIFY_TOKEN", "notify-secret")
 
@@ -144,6 +147,24 @@ func TestDigestOverHTTP(t *testing.T) {
 	}
 	if props, _ := schema["properties"].(map[string]any); props["highlights"] == nil || props["sections"] == nil {
 		t.Errorf("schema = %v", schema)
+	}
+	// Each write's model call recorded what it spent: 2,400 tokens at $1 in
+	// and $4 out per million.
+	calls := 0
+	for _, id := range in.rt.store.Runs() {
+		data, _ := in.rt.store.Run(id)
+		for _, s := range decodeRun(data).Log {
+			if s.Call != "ai.generate" {
+				continue
+			}
+			calls++
+			if s.Tokens != 2400 || math.Abs(s.USD-0.0036) > 1e-9 {
+				t.Errorf("the model call's step spent %d tokens and $%g", s.Tokens, s.USD)
+			}
+		}
+	}
+	if calls == 0 {
+		t.Error("no step called ai.generate")
 	}
 	if via, _ := flareRequest["proxy"].(map[string]any); flareRequest["cmd"] != "request.get" || via["url"] != proxy.URL {
 		t.Errorf("FlareSolverr request = %v", flareRequest)

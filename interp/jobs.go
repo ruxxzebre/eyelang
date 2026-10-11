@@ -31,15 +31,25 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 			if fn.Fn.Host != "" || !fn.Fn.Waits {
 				// A host function (ai.generate, http.get), or a function
 				// that reaches outside without waiting, is a step: its
-				// result is recorded, so a resumed run doesn't call it again.
-				if v, ok := in.replay(run, w.Pos); ok {
-					return v
+				// result is recorded, so a resumed run doesn't call it again,
+				// and what its model calls spent counts against @budget again.
+				if run.cursor < len(run.Log) {
+					s := run.Log[run.cursor]
+					if v, ok := in.replay(run, w.Pos); ok {
+						in.charge(spend{s.Tokens, s.USD})
+						return v
+					}
 				}
-				prev := in.want
-				in.want = wanted(c)
+				in.call = fn.Fn.Host
+				if in.call == "" {
+					in.call = fn.Fn.Name
+				}
+				prev, prevSpend := in.want, in.stepSpend
+				in.want, in.stepSpend = wanted(c), &spend{}
 				v, _ := in.apply(fn, args, c.Pos)
-				in.want = prev
-				return in.record(run, v, c.Pos)
+				spent := *in.stepSpend
+				in.want, in.stepSpend = prev, prevSpend
+				return in.recordSpend(run, v, spent, c.Pos)
 			}
 			// A call to a function that itself waits isn't a step; the
 			// steps are the waiting calls inside it.
@@ -188,7 +198,12 @@ func methodName(recv Value, name string) string {
 }
 
 func (in *Interp) record(run *jobRun, v Value, at ir.Pos) Value {
-	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: in.rt.seq()})
+	return in.recordSpend(run, v, spend{}, at)
+}
+
+// recordSpend records a step that spent tokens and money on model calls.
+func (in *Interp) recordSpend(run *jobRun, v Value, s spend, at ir.Pos) Value {
+	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: in.rt.seq(), Tokens: s.Tokens, USD: s.USD})
 	run.cursor++
 	in.rt.save(run)
 	return v

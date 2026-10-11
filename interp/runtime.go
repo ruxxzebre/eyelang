@@ -31,7 +31,7 @@ type runtime struct {
 	// uncertain holds the commands whose reply was lost, by key.
 	uncertain map[string]sentCommand
 	// aiReplies are recorded model replies, when a test applies fakes(ai, …).
-	aiReplies []json.RawMessage
+	aiReplies []recordedReply
 	// fastRetries makes retries of unreachable services immediate, in tests.
 	fastRetries bool
 	// scheduled holds the jobs started by schedules, once computed.
@@ -519,6 +519,10 @@ type step struct {
 	Seq    int64  `json:",omitempty"`
 	Event  string `json:",omitempty"` // next! is waiting for this event
 	Since  int64  `json:",omitempty"` // and looks at events after this one
+	// What the step's model calls spent, which counts against @budget
+	// again when the run is replayed.
+	Tokens int64   `json:",omitempty"`
+	USD    float64 `json:",omitempty"`
 }
 
 func (r *jobRun) encode() []byte {
@@ -698,7 +702,7 @@ func (rt *runtime) step(id int64) {
 			}
 		}()
 		if run.DeadlineAt > 0 && rt.now.UnixNano() >= run.DeadlineAt {
-			panic(&Fault{Pos: job.Pos, Msg: job.Name + " passed its @deadline", Kind: "DeadlinePassed"})
+			runFault(job.Pos, "DeadlinePassed", "%s passed its @deadline", job.Name)
 		}
 		result, _, _ := rt.in.callFunc(job.Func, nil, nil, args, job.Pos)
 		run.Status = "done"

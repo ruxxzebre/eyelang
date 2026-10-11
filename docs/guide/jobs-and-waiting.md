@@ -242,8 +242,8 @@ public function that waits says `uses {wait}` in its signature, and is called wi
 
 ::: info Not yet
 `reserve!`, `lock!`, and `all!` and `first!` for joining several runs are designed but not built;
-join child runs one after another, as `nightly` does. `@memory`, `@priority` and `@budget` are
-checked but not enforced. `approval!` is answered only by tests for now. See
+join child runs one after another, as `nightly` does. `@memory` and `@priority` are checked but
+not enforced; `@budget` is (see [AI calls](/guide/ai-calls#budgets)). `approval!` is answered only by tests for now. See
 [What runs today](/reference/status#jobs-and-waiting).
 :::
 
