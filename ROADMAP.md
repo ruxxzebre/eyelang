@@ -1,8 +1,9 @@
 # Eyelang 2 roadmap
 
-**Status, 2026-10-11:** v0.1.0 is ready on `dev` (phases 0–4 done), waiting to be tagged; parts of
-phases 5 and 6 are built early (journal store, contracts over HTTP, model calls). Development and
-releases happen on `dev`; `main` stays at Eyelang 1 until that changes.
+**Status, 2026-10-11:** v0.1.0 is released (phases 0–4; tag `v0.1.0`, 2026-10-10). Work goes on
+toward v0.2 (phase 5), whose tasks are listed below; parts of phases 5 and 6 were built early
+(journal store, contracts over HTTP, model calls). Development and releases happen on `dev`; `main`
+stays at Eyelang 1 until that changes.
 
 What runs today, feature by feature: [docs/reference/status.md](docs/reference/status.md).
 
@@ -171,15 +172,16 @@ expressions and declarations.
 
 | Task | Issue |
 |---|---|
-| 3.1 Typed IR and lowering | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
+| 3.1 Typed IR and lowering: moved to phase 7 as 7.1 | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
 | 3.2 Reference interpreter for the core language | [#29](https://github.com/ruxxzebre/eyelang/issues/29) |
 | 3.3 Standard library basics | [#30](https://github.com/ruxxzebre/eyelang/issues/30) |
 | 3.4 `eye run`, `eye test` and the REPL | [#31](https://github.com/ruxxzebre/eyelang/issues/31) |
 | 3.5 Structured concurrency on lightweight tasks | [#41](https://github.com/ruxxzebre/eyelang/issues/41) |
-| 3.6 `extern` functions: Go host functions and C libraries | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
+| 3.6 `extern` functions: moved to phase 6 as 6.1 | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
 
-Order: 3.1 → 3.2 → 3.4. 3.3 can start alongside 3.2; 3.6 alongside 3.3, since the standard
-library's primitives are host functions. 3.5 needs 3.2.
+Order: 3.2 → 3.4. 3.3 can start alongside 3.2. 3.5 needs 3.2. The interpreter runs on the untyped IR
+of the thin slice, so the typed IR waits for native compilation, which needs it; the standard
+library's own host functions work, so other programs' externs wait for phase 6.
 
 ### Phase 4: Entities, jobs and views in memory — [#5](https://github.com/ruxxzebre/eyelang/issues/5) · v0.1 release
 
@@ -206,8 +208,23 @@ restarts of the runner and the database, and costs only the runner's memory whil
 same program runs unchanged on the in-memory store. The phase also brings `dyn Trait`, which
 selecting a store at run time needs, task groups with bounded channels (SPECS.md §8 and §13), and
 typed model calls with `ai.generate!`, since the digest summarises with a model (§19).
-Tasks will be broken down when v0.1 is close to done; durability for the in-memory store (SPECS.md
-open question 9) is decided then.
+Durability for the in-memory store (SPECS.md open question 9) was decided on 2026-10-10: the
+journal, which `eye run` already uses.
+
+| Task | Issue |
+|---|---|
+| 5.1 `dyn Trait` as a type of its own | [#45](https://github.com/ruxxzebre/eyelang/issues/45) |
+| 5.2 The Postgres store, chosen when a program starts | [#46](https://github.com/ruxxzebre/eyelang/issues/46) |
+| 5.3 Durable runs on Postgres survive restarts of the runner and the database | [#47](https://github.com/ruxxzebre/eyelang/issues/47) |
+| 5.4 Typed model calls: providers and `@budget` | [#48](https://github.com/ruxxzebre/eyelang/issues/48) |
+| 5.5 Task groups, `spawn` and bounded channels | [#49](https://github.com/ruxxzebre/eyelang/issues/49) |
+| 5.6 `@memory` and `@priority` enforced at run time | [#50](https://github.com/ruxxzebre/eyelang/issues/50) |
+| 5.7 `approval!` reaches people | [#51](https://github.com/ruxxzebre/eyelang/issues/51) |
+| 5.8 `!` on every outside call in a job | [#52](https://github.com/ruxxzebre/eyelang/issues/52) |
+| 5.9 The morning digest on Postgres, and the v0.2 release | [#53](https://github.com/ruxxzebre/eyelang/issues/53) |
+
+Order: 5.1 → 5.2 → 5.3. 5.4, 5.5, 5.6, 5.7 and 5.8 can run in any order, alongside them; 5.4 and
+5.6 both add run-time faults, so they share the code that ends a run. 5.9 comes last.
 
 ### Phase 6: Contracts — [#7](https://github.com/ruxxzebre/eyelang/issues/7) · v0.3
 
@@ -218,10 +235,20 @@ The phase also brings coding agents (SPECS.md §19): a job starts a Claude Code 
 serves Eyelang functions to it as tools, and gets a typed result back, surviving restarts while it
 waits.
 
+| Task | Issue |
+|---|---|
+| 6.1 `extern` functions: Go host functions and C libraries (from phase 3) | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
+
+The rest of the phase's tasks are added when v0.2 is close to done.
+
 ### Phase 7: Native compilation — [#8](https://github.com/ruxxzebre/eyelang/issues/8) · v0.4
 
 Done when the morning digest runs as a native job process, with its idle cost and resume time
 measured and recorded here.
+
+| Task | Issue |
+|---|---|
+| 7.1 Typed IR and lowering (from phase 3) | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
 
 ### After v0.4: Self-hosting
 
