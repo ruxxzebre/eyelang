@@ -32,9 +32,15 @@ Checked: 2026-10-11
   [testdata/lab/README.md](testdata/lab/README.md) says how to deploy `deploy/digest`. What is
   left is the user's choices (the price in `AI_PRICES`, the Postgres schema, whether it first runs
   in shadow mode beside the TypeScript digest) and the cluster work (eyelang-af).
-- Closed tasks whose exit tests weren't met: the carry-over task under the phases lists them
+- Closed tasks whose exit tests weren't met: carry-over tasks C.1 to C.7 under the phases
   (`end(ok)`, `lock!`, `all!` and `first!`, `cron`, the `NonZero` divisor error, `eye fmt
   --signatures`, 10,000 waiting tasks, the spec's examples through the checker).
+- The decisions of 2026-10-11 ([docs/internals/proposals.md](docs/internals/proposals.md), all
+  accepted) change code that v0.2 shipped: approvals answered by id and only by the person asked
+  (C.8, #71, the lab's main security gap, so before the homelab relies on approvals), `!` on
+  publishing and starting child runs (C.9, #72), a job changed under a paused run faulting
+  instead of replaying wrong values (C.10, #73), and module roots in `eye.toml` (C.11, #74),
+  which lets the digest's deploy drop its symbolic links.
 - Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
   not built: `World.all |> filter(…)` loads every entity. **Recommendation:** not phase 6. SQL
   saves nothing while the runner holds every entity in memory, which both stores do today (the
@@ -50,22 +56,23 @@ Checked: 2026-10-11
    generic. Then the rest of the
    checker's partial rows in status.md (`NonZero`, `opaque`, effects that aren't inferred).
 2. The digest in the homelab, closing phase 5's exit criterion.
-3. Phase 6 (v0.3): its tasks are written out below the phase (6.2 to 6.9, beside 6.1, #42).
-   Their issues are created once the user has read them. `@port` and `@allow` (6.2) need `pub`
-   and `opaque` enforced first, from item 1.
+3. Phase 6 (v0.3): its tasks are below the phase, each with its issue (6.1 to 6.12). `@port` and
+   `@allow` (6.2) need `pub` and `opaque` enforced first, from item 1. v0.3 also brings the
+   typed IR (7.1, #28) and jobs resuming from saved frames in the interpreter (7.3, #76), pulled
+   forward from phase 7 so that the lab's never-ending runs stop growing (open question 9).
 4. Self-hosting's early start: an Eyelang lexer as a test program, checked by the conformance
    suite. Not begun.
-5. Phase 7 (v0.4), after 1: typed IR (#28), code generation, reference counting with in-place
-   updates, generic specialisation, jobs as short-lived processes. The design is
-   [docs/internals/compilation.md](docs/internals/compilation.md): C as the back end, Perceus
-   reference counting, whole-program specialisation, and jobs resuming from saved frames.
+5. Phase 7 (v0.4), after 1: code generation to C built by the `zig cc` that `eye` ships,
+   reference counting with in-place updates, generic specialisation, and jobs compiled to state
+   machines, where a waiting run is a record in the store. The design is
+   [docs/internals/compilation.md](docs/internals/compilation.md); its tasks are below the phase
+   (7.2 to 7.6).
 
-Decisions waiting on the user are drafted in
-[docs/internals/proposals.md](docs/internals/proposals.md): approvals answered by id (open
-question 17, the lab's main security gap), which actions are effects (19, 22), `Handle` against
-`extern type` (21), long runs and code changes under paused runs (9, 4), typed choices (15), and
-three places where SPECS.md, this file and the code disagree, among them what "jobs as
-short-lived processes" means beside one runner per store (28).
+The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all
+accepted on 2026-10-11, with the C back end and a shipped `zig cc` for phase 7; SPECS.md's
+decision log records each. `eye` itself stays free of cgo. Still open for the user: how the Go
+runner hosts compiled code without cgo (compilation.md, section 1), and whether a choice's label
+comes from its `##` comment or its `Show` (open question 15).
 
 Open questions 1–32 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
 `Self` (24) and what `@memory` measures (26) bear on phase 7.
@@ -76,8 +83,8 @@ Open questions 1–32 in [SPECS.md](SPECS.md) are settled as real programs ask; 
 |---|---|---|
 | **v0.1** | 0–4 | Write, check, format, run and test Eyelang 2 programs, including entities, jobs and views, against an in-memory store with a controllable clock |
 | v0.2 | 5 | Run jobs durably, with Postgres selectable as the store; typed model calls; `dyn Trait`, task groups and channels; `@memory`, `@priority` and `@budget` enforced; approvals that reach people; the morning digest runs in the lab |
-| v0.3 | 6 | Describe other services with contracts; network policy and Go/TypeScript types are derived from them; jobs run coding agents |
-| v0.4 | 7 | Compile to native code with reference counting; jobs run as short-lived processes |
+| v0.3 | 6 | Describe other services with contracts; network policy and Go/TypeScript types are derived from them; jobs run coding agents; jobs resume from saved frames, so a run that never ends stops growing |
+| v0.4 | 7 | Compile to native code through C, with reference counting; jobs compiled to state machines, and a waiting run is a record in the store |
 | v1.0 | — | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation |
 
 **Scope is open.** It was frozen until the tour in SPECS.md §3 ran under `eye test`; since the thin
@@ -301,48 +308,104 @@ still owed ("What's next").
 
 ### Carried over: exit tests that closed tasks left unmet
 
-Several tasks were closed with v0.1.0 and v0.2.0 although part of their "Done when" wasn't met.
-One task carries what is left, checked against the code on 2026-10-11; it may be split when its
-issue is created.
+Several tasks were closed with v0.1.0 and v0.2.0 although part of their "Done when" wasn't met,
+checked against the code on 2026-10-11 (C.1 to C.7, one per closed task). The decisions of
+2026-10-11 add four more that change what v0.2 shipped (C.8 to C.11). None has a phase issue;
+each names the closed issue it continues.
 
 | Task | Issue |
 |---|---|
-| C.1 What closed tasks left unmet | to create |
+| C.1 Entities: `end(ok)`, and tests of rollback and the single writer (from 4.1) | [#65](https://github.com/ruxxzebre/eyelang/issues/65) |
+| C.2 Waiting: `lock!`, `all!` and `first!` (from 4.4) | [#66](https://github.com/ruxxzebre/eyelang/issues/66) |
+| C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
+| C.4 `NonZero` divisors checked (from 2.4) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
+| C.5 `eye fmt --signatures` (from 2.6) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
+| C.6 10,000 waiting tasks within a memory budget (from 3.5) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
+| C.7 Every SPECS.md example passes the checker (phase 2's exit test) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
+| C.8 Approvals answered by id, and only by the person asked | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
+| C.9 `!` on publishing and starting child runs; every effect inferred | [#72](https://github.com/ruxxzebre/eyelang/issues/72) |
+| C.10 A job changed under a paused run faults instead of replaying | [#73](https://github.com/ruxxzebre/eyelang/issues/73) |
+| C.11 Module roots in `eye.toml` | [#74](https://github.com/ruxxzebre/eyelang/issues/74) |
 
-- **4.1 (#32), entities.** `end(ok)` doesn't exist (`eye check` says "undefined name end"), so
-  retiring an entity without an `Approval` can't fail to compile. No test checks a rollback after
-  a fault part way through a multi-entity call, the single-writer rule, or that a job started by a
-  method that rolled back never runs. The issue's "rollback when a method returns `Err`" no longer
-  holds: an `Err` is a value and commits (the guide's entities page says so); only a fault rolls
-  back.
-- **4.4 (#35), waiting.** `lock!` is undefined. `all!` and `first!` resolve to the collection
+What each task is, until its issue holds it:
+
+- **C.1 Entities (#32, 4.1).** `end(ok)` doesn't exist (`eye check` says "undefined name end"),
+  so retiring an entity without an `Approval` can't fail to compile. No test checks a rollback
+  after a fault part way through a multi-entity call, the single-writer rule, or that a job
+  started by a method that rolled back never runs. The issue's "rollback when a method returns
+  `Err`" no longer holds: an `Err` is a value and commits (the guide's entities page says so);
+  only a fault rolls back.
+  **Done when:** `end(ok)` ends an entity and calling it without an `Approval` fails to compile;
+  tests show a fault part way through a multi-entity call rolling back every entity, one writer
+  at a time per entity, and a job started by a rolled-back method never running.
+- **C.2 Waiting (#35, 4.4).** `lock!` is undefined. `all!` and `first!` resolve to the collection
   functions `all` and `first`, and `eye check` refuses them with `!` ("all neither waits nor
   reaches outside the program"). So there is no test of `first!` between an approval and a
   timeout, or of a lock that expires while its holder waits.
-- **4.5 (#36), schedules.** `@on(cron("…", in: zone))` is refused ("@on takes a schedule, such
-  as daily(…)"). The daylight-saving behaviour is built and tested for `daily` at 01:30 in
+  **Done when:** `lock!`, `all!` and `first!` work as SPECS §15's table says, with a test of
+  `first!` between an approval and a timeout and one of a lock that expires while its holder
+  waits.
+- **C.3 Schedules (#36, 4.5).** `@on(cron("…", in: zone))` is refused ("@on takes a schedule,
+  such as daily(…)"). The daylight-saving behaviour is built and tested for `daily` at 01:30 in
   Dublin (`testdata/programs/schedules`), but it can't be chosen: `onGap:` and `onOverlap:` don't
   exist. `leaves(view)` is tested only by the guide's program
   (`docs/guide/code/views-events-schedules`), and an entity that enters, leaves and enters again
   has no test.
-- **2.4 (#24), total arithmetic.** `pub fn div(a: Int, b: Int) -> Int = a / b` checks:
+  **Done when:** `cron` schedules fire in their zone; `onGap:` and `onOverlap:` choose the
+  policy, each with a test across a change; `leaves` and an entity that enters, leaves and
+  enters again have tests in `testdata/programs`.
+- **C.4 `NonZero` (#24, 2.4).** `pub fn div(a: Int, b: Int) -> Int = a / b` checks:
   `NonZero(Int)` is treated as `Int`, so dividing by a plain `Int` variable is not an error.
-- **2.6 (#26), effects.** `eye fmt --signatures` doesn't exist ("flag provided but not defined").
-- **3.5 (#41), tasks.** No test runs 10,000 waiting tasks within a stated memory budget.
-- **Phase 2's exit test,** "all SPECS.md examples pass the checker": no test runs the checker on
-  them. Run one by one, 4 of the 33 example files check; most of the others are fragments that
-  use names they don't declare. They need a context to check in (a stub module per section, or
-  a header naming what an example assumes) before the test can exist.
-
-**Done when:** each point above is built, or has its test, or is dropped from SPECS.md by a
-decision; and the phase 2 test checks every example in SPECS.md.
+  **Done when:** dividing by an `Int` that isn't a nonzero literal or a `NonZero(Int)` is an error
+  that says to use `nonzero(n)`, with a test in `check/classes_test.go`; the lab still checks.
+- **C.5 `eye fmt --signatures` (#26, 2.6).** It doesn't exist ("flag provided but not defined").
+  **Done when:** `eye fmt --signatures` writes each public function's inferred `uses` into its
+  signature, and a test shows it on a file with a missing and a stale `uses`.
+- **C.6 Many tasks (#41, 3.5).** No test runs 10,000 waiting tasks within a stated memory budget.
+  **Done when:** a test starts 10,000 tasks that wait, and checks the memory they hold against a
+  budget stated in the test.
+- **C.7 SPECS.md's examples through the checker (phase 2's exit test, #3).** No test runs the
+  checker on them. Run one by one, 4 of the 33 example files check; most of the others are
+  fragments that use names they don't declare. They need a context to check in (a stub module
+  per section, or a header naming what an example assumes) before the test can exist.
+  **Done when:** a test checks every example in SPECS.md, each in its context, and fails on an
+  example that doesn't check.
+- **C.8 Approvals by id (#51, 5.7; open question 17).** `approvals.Answer` names its request's
+  `id` instead of `what`. The runtime matches answers by id and refuses one whose `by` isn't the
+  request's `from`, logging it. `eye approve TEXT` and `eye decline TEXT` answer the one waiting
+  approval whose text contains `TEXT`, refuse when several do and list them with their ids, and
+  `eye approve --id ID` answers one. `approve(…)` and `decline(…)` in tests fail when their text
+  matches more than one. `Approval` gets `what` and `by` fields. The lab's `approving` module
+  publishes the id. SPECS §15 has the rules.
+  **Done when:** tests show two runs asking the same thing answered one by one, an answer by
+  someone other than `from` refused while the run keeps waiting, an ambiguous `eye approve` and
+  test `approve(…)` refused, and `ok.by` read in a job; the lab's tests pass.
+- **C.9 Every recorded step marked (#52, 5.8, and #26, 2.6; open questions 19 and 22).** The
+  checker infers `publish T`, `consume T`, `secret S` and `ffi`, so a public function that
+  publishes, reads a secret or calls an extern must list it in `uses`; in a job it requires
+  `publish!`, `start!` on a child run and `!` on an extern call, and refuses `!` on them
+  elsewhere. `print` keeps `stdio` but is not a step; logging is not an effect. `eye fix` (or
+  the formatter) adds the `!` to existing code. SPECS §12 has the rules.
+  **Done when:** `check/classes_test.go` has a test for each error with its span; the lab, the
+  tour, the docs' programs and `testdata/programs` check with the new `!`.
+- **C.10 Changed jobs under paused runs (open question 4).** Until runs have frames (7.3),
+  `replay` in `interp/jobs.go` compares each recorded step's call with the call it replays, and
+  faults the run on a difference ("the code of watch changed under this run at step 12") instead
+  of decoding the wrong value. The check at start-up, which refuses to run on a changed resume
+  point, comes with 7.3. SPECS §15 has the rules.
+  **Done when:** a test pauses a run, changes the job's order of steps, and the resumed run ends
+  with that fault rather than a wrong value; `eye runs` shows the fault.
+- **C.11 Module roots in `eye.toml`.** `modules = ["../.."]` in a program's `eye.toml` names more
+  directories to find imports in, after the program's own, in order (SPECS §13). The checker's
+  module lookup (`check/index.go`) reads it, as do `eye check FILE` and the editor.
+  `testdata/lab/deploy/digest` loses its symbolic links, and the lab's README copies the lab
+  instead of following them.
+  **Done when:** a test finds an import through `modules`, another shows the error listing every
+  directory searched, and `eye check` and `eye test` pass on `testdata/lab/deploy/digest` without
+  links.
 
 Also owed, found while preparing the digest's deploy. Each is small enough to be its own task:
 
-- **Module roots in `eye.toml`.** `testdata/lab/deploy/digest` reaches the lab's modules through
-  symbolic links. `eye.toml` could name extra directories to find modules in instead (open
-  question 5 already leaves what `eye.toml` holds open); see
-  [docs/internals/proposals.md](docs/internals/proposals.md).
 - **`eye runs` shows what a step's model calls spent.** Each step records its tokens and dollars
   for `@budget` (`step.Tokens`, `step.USD` in `interp/runtime.go`), but `eye runs` doesn't show
   them, so nobody can see what a morning's digest cost.
@@ -370,14 +433,17 @@ waits.
 | Task | Issue |
 |---|---|
 | 6.1 `extern` functions: Go host functions and C libraries (from phase 3) | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
-| 6.2 `@port` and `@allow` enforced | to create |
-| 6.3 `@fresh` and `@destructive` | to create |
-| 6.4 Go and TypeScript types, clients and server stubs from contracts | to create |
-| 6.5 Network policy from contracts | to create |
-| 6.6 Notify's boundary generated from its contract | to create |
-| 6.7 Model tools: functions passed as `tools:` | to create |
-| 6.8 The `agents` module: coding-agent sessions owned by jobs | to create |
-| 6.9 `eye test --live`, and recording real exchanges | to create |
+| 6.2 `@port` and `@allow` enforced | [#54](https://github.com/ruxxzebre/eyelang/issues/54) |
+| 6.3 `@fresh` and `@destructive` | [#55](https://github.com/ruxxzebre/eyelang/issues/55) |
+| 6.4 Go and TypeScript types, clients and server stubs from contracts | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
+| 6.5 Network policy from contracts | [#57](https://github.com/ruxxzebre/eyelang/issues/57) |
+| 6.6 Notify's boundary generated from its contract | [#58](https://github.com/ruxxzebre/eyelang/issues/58) |
+| 6.7 Model tools: functions passed as `tools:` | [#59](https://github.com/ruxxzebre/eyelang/issues/59) |
+| 6.8 The `agents` module: coding-agent sessions owned by jobs | [#60](https://github.com/ruxxzebre/eyelang/issues/60) |
+| 6.9 `eye test --live`, and recording real exchanges | [#61](https://github.com/ruxxzebre/eyelang/issues/61) |
+| 6.10 `extern type` replaces `Handle`, and can't be saved | [#62](https://github.com/ruxxzebre/eyelang/issues/62) |
+| 6.11 Enums: `T.variants()` and `T.parse(s)` | [#63](https://github.com/ruxxzebre/eyelang/issues/63) |
+| 6.12 A test sees what a fake received | [#64](https://github.com/ruxxzebre/eyelang/issues/64) |
 
 What each task is, until its issue holds it:
 
@@ -440,30 +506,102 @@ What each task is, until its issue holds it:
 - **6.9 `eye test --live`.** Runs tests against the real services and models instead of their
   recordings, for the modules named (`--live ai,notify`), and skips a test with a message when a
   service's address or secret is missing. `--record` writes what the real services answered as
-  recordings that a plain `eye test` then replays. Also lets a test see what a fake received
-  (open question 16), so the digest's `Day.sent` workaround can go.
+  recordings that a plain `eye test` then replays.
   **Done when:** `eye test --live ai testdata/lab` runs the digest's model test against a real
   model when its key is set and skips it otherwise; `--record` writes a recording that the next
   `eye test` replays and passes.
+- **6.10 `extern type` replaces `Handle` (open question 21).** `Handle(name)` leaves
+  `ir/builtin.eye`, the checker and SPECS; a program's `extern type` has no `Save`, `Show`, `Eq`,
+  `Hash` or `Schema` (`unsaveable` in `check/effects.go`, `check/traits.go`), while the built-in
+  types declared as `extern type` keep their traits. `testdata/syntax/valid/extern.eye` uses an
+  `extern type`. SPECS §18 has the rules.
+  **Done when:** holding a value of a program's `extern type` across a `!` is a compile error
+  with a test, as are printing, comparing and asking a model for one; `Handle` is undefined.
+- **6.11 Enums (open question 15).** A type whose variants have no fields gets `T.variants()`
+  and `T.parse(s)`, derived as the traits are (SPECS §11), in the checker and the interpreter.
+  The lab's buttons (`access.eye`, `approving.eye`, `trains.eye`) then come from enums and are
+  matched as variants. Labels are the variant's `Show` until open question 15 decides otherwise.
+  **Done when:** tests show both functions, `parse` of an unknown name giving `None`, a
+  misspelt variant and a missing arm in a match on `T.parse(…)` failing to compile, and
+  `variants()` refused on a type with fields; the lab's NetBird admission matches an enum.
+- **6.12 What a fake received (open question 16).** A test can't see which calls a fake
+  answered, so the digest records the keys it sent with in an entity (`Day.sent`) to make sending
+  testable. A test should be able to ask a fake what it received, for example `received(op)`,
+  and fail when a recording has exchanges no call used. The form is still open question 16; the
+  task settles it in SPECS first.
+  **Done when:** SPECS §20 says how a test reads what a fake received; a test in
+  `testdata/programs` checks a call's arguments that way; the digest's `Day.sent` workaround is
+  gone.
 
-Order: 6.1 any time; its C libraries are cheaper once track A brings cgo into the build. 6.2
-after `pub` and `opaque` are enforced, then 6.5. 6.4, then 6.6. 6.3 any time. 6.7 after typed
-function types, then 6.8. 6.9 any time, and early: the lab's tests need it. Pipelines compiled to
-SQL are not part of this phase ("What's next").
+Order: 6.1 any time; the interpreter loads C libraries without cgo, as `eye` stays free of it.
+6.10 before or with 6.1. 6.2 after `pub` and `opaque` are enforced, then 6.5. 6.4, then 6.6. 6.3
+any time. 6.7 after typed function types, then 6.8. 6.9 and 6.12 any time, and early: the lab's
+tests need them. 6.11 any time. Pipelines compiled to SQL are not part of this phase ("What's
+next").
 
 ### Phase 7: Native compilation — [#8](https://github.com/ruxxzebre/eyelang/issues/8) · v0.4
 
-Done when the morning digest runs as a native job process, with its idle cost and resume time
-measured and recorded here.
+Done when the morning digest runs as a native job, with its idle cost and resume time measured
+and recorded here. A waiting run is a record in the store, not a process: v0.4's runner is a
+native process that executes runs as compiled state machines, one runner per store (decision of
+2026-10-11, [proposals](docs/internals/proposals.md), contradiction 1).
+
+The design is [docs/internals/compilation.md](docs/internals/compilation.md): C as the back end,
+compiled by the `zig cc` that `eye` ships (decided 2026-10-11), Perceus reference counting,
+whole-program specialisation, and jobs resuming from saved frames.
 
 | Task | Issue |
 |---|---|
 | 7.1 Typed IR and lowering (from phase 3) | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
+| 7.2 Low IR and specialisation | [#75](https://github.com/ruxxzebre/eyelang/issues/75) |
+| 7.3 Jobs as state machines, resuming from saved frames | [#76](https://github.com/ruxxzebre/eyelang/issues/76) |
+| 7.4 The C back end and the core runtime | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
+| 7.5 Reference counting and reuse | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
+| 7.6 The runner hosts compiled programs, and the digest runs natively | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
 
-The design is [docs/internals/compilation.md](docs/internals/compilation.md), which also drafts
-the phase's other tasks (7.2 to 7.6): low IR and specialisation, jobs as state machines, the C
-back end, reference counting with reuse, and the runner hosting compiled programs. They are added
-here when phase 6 is close to done.
+- **7.1 Typed IR.** The checker keeps what it computes: a resolved type on every expression,
+  every call resolved to its target, the impls each generic call's `where` bounds use, and each
+  function's effects. The interpreter runs it, and a record knows its type, so `typeOf` goes.
+  **Done when:** no expression of any program in the repository (the lab, `testdata/programs`,
+  the docs' programs, the tour) has `unknown` or an unresolved type variable, and
+  `eye check --ir` prints the typed IR, covered by golden tests.
+- **7.2 Low IR and specialisation.** A second IR built from the typed IR, which C is printed
+  from: monomorphic, in blocks with named values, with `dup`, `drop` and reuse explicit. Generic
+  code is specialised from the program's roots; entities, jobs, views and contracts are lowered
+  here, each by its own pass (compilation.md, sections 3 and 5).
+  **Done when:** every repository program lowers to monomorphic low IR; the lab's generic code is
+  specialised; polymorphic recursion is reported as an error at the call.
+- **7.3 Jobs as state machines (open questions 9 and 4).** A pass splits each waiting function
+  into states, and a checkpoint saves the stack of frames (code, state, live variables) instead
+  of a log of steps. The interpreter runs it in v0.3, ahead of the rest of the phase. Runs saved
+  as step logs are replayed once and then saved as frames. A run's record keeps its resume
+  point's identity, and `eye run` refuses to start when a paused run's resume point changed
+  (SPECS §15); `eye runs` names such runs. SPECS §15 then drops its sentence about replay. Until
+  this lands, the lab's never-ending watcher ends its run and starts a new one now and then. If
+  that pattern spreads first, a job method such as `watch.again!(t)` could do it in one step
+  (open question 9); that is not a task yet.
+  **Done when:** every job test passes with jobs resuming from frames, in the interpreter; the
+  train watcher's record stays the same size over a simulated week; changing a job under a
+  paused run stops `eye run` with the job and the number of runs.
+- **7.4 The C back end and the core runtime.** C11 printed from the low IR, one file per module,
+  with `#line` directives, compiled by `zig cc` (`-O0` for tests, `-O2` for `eye build`). The core
+  runtime (allocation, reference counts, `Int` with big integers, strings, collections, hashing,
+  formatting, `fs`, `process`, `stdio`) is written in C. `eye` releases ship `zig`.
+  **Done when:** `eye build` makes a native binary of `testdata/programs/core` on the five
+  release targets, and its tests pass.
+- **7.5 Reference counting and reuse.** Perceus: precise `dup` and `drop`, borrowed parameters,
+  reuse in `match`, and in-place updates when a value is unique; `mut` parameters become
+  pointers.
+  **Done when:** a loop that appends to a list runs in linear time and allocates once per growth;
+  a test counts allocations and frees and finds no leak in the core programs.
+- **7.6 The runner hosts compiled programs.** The Go runner calls a compiled program's interface
+  (run `main`, run a test, call an entity method, step a job, encode and decode saved types)
+  without cgo in `eye`; how it loads the program is open in compilation.md, section 1.
+  **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
+  memory and resume time are measured and recorded in this file.
+
+Order: 7.1, then 7.3, both in v0.3. 7.2 after 7.1, then 7.4, then 7.5. 7.6 last, after 7.3 and
+7.5.
 
 ### After v0.4: Self-hosting
 
