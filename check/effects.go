@@ -789,30 +789,23 @@ func (c *checker) checkSave(j *ir.Job) {
 	for _, p := range j.Func.Params {
 		defined[p.Slot] = -1
 	}
-	var waits []int
-	reported := map[int]bool{}
-	use := func(slot, at int, pos ir.Pos, name string) {
-		if slot >= len(slots) || reported[slot] {
-			return
-		}
-		what := c.unsaveable(slots[slot])
-		if what == "" {
-			return
-		}
-		from, ok := defined[slot]
-		if !ok {
-			return
-		}
-		for _, w := range waits {
-			if w > from && w < at {
-				reported[slot] = true
-				c.typeErrorf(pos, "%s is a %s, which can't be saved, and it is still needed after a waiting call: get it again after the `!`", name, what)
-				return
-			}
-		}
+	// A value is needed after a waiting call when one comes between where
+	// it is bound and where it is read, or when it is bound before a loop,
+	// read inside it, and the loop waits: the next turn reads it after the
+	// wait.
+	type use struct {
+		slot, from, at int
+		pos            ir.Pos
+		name           string
 	}
+	type loop struct{ start, end int }
+	var waits []int
+	var uses []use
+	var loops []loop
 	visit := func(e ir.Expr, waiting bool) {
 		switch e := e.(type) {
+		case *ir.While:
+			loops = append(loops, loop{e.Pos.Offset, e.Pos.End})
 		case *ir.Waiting:
 			waits = append(waits, e.Pos.End)
 		case *ir.Let:
@@ -820,6 +813,7 @@ func (c *checker) checkSave(j *ir.Job) {
 				defined[s] = e.Pos.Offset
 			}
 		case *ir.For:
+			loops = append(loops, loop{e.Pos.Offset, e.Pos.End})
 			for _, s := range bound(e.Pattern) {
 				defined[s] = e.Pos.Offset
 			}
@@ -830,10 +824,42 @@ func (c *checker) checkSave(j *ir.Job) {
 				}
 			}
 		case *ir.Local:
-			use(e.Slot, e.Pos.Offset, e.Pos, e.Name)
+			if from, ok := defined[e.Slot]; ok {
+				uses = append(uses, use{e.Slot, from, e.Pos.Offset, e.Pos, e.Name})
+			}
 		}
 	}
 	walkJob(j.Func.Body, visit)
+	waitsIn := func(start, end int) bool {
+		for _, w := range waits {
+			if w > start && w <= end {
+				return true
+			}
+		}
+		return false
+	}
+	reported := map[int]bool{}
+	for _, u := range uses {
+		if u.slot >= len(slots) || reported[u.slot] {
+			continue
+		}
+		what := c.unsaveable(slots[u.slot])
+		if what == "" {
+			continue
+		}
+		if waitsIn(u.from, u.at-1) {
+			reported[u.slot] = true
+			c.typeErrorf(u.pos, "%s is a %s, which can't be saved, and it is still needed after a waiting call: get it again after the `!`", u.name, what)
+			continue
+		}
+		for _, l := range loops {
+			if u.from < l.start && l.start <= u.at && u.at < l.end && waitsIn(l.start, l.end) {
+				reported[u.slot] = true
+				c.typeErrorf(u.pos, "%s is a %s, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop", u.name, what)
+				break
+			}
+		}
+	}
 }
 
 // walkJob walks a job's body for the Save check: a lambda's captures are

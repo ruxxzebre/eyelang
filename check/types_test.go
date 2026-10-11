@@ -394,6 +394,22 @@ job j(xs: List(Int)) {
   sleep!(1 min)
   log.info("{f(1)}")
 }`, []string{"4:14: f is a function, which can't be saved, and it is still needed after a waiting call"}},
+		{"what can't be saved isn't held across a ! on the next turn of a loop", `job j() {
+  let pick = fn x: x * 2
+  var n = 0
+  while n < 3 {
+    n = n + pick(1)
+    sleep!(1 min)
+  }
+}
+job fine() {
+  var n = 0
+  while n < 3 {
+    let pick = fn x: x * 2
+    n = n + pick(1)
+    sleep!(1 min)
+  }
+}`, []string{"5:13: pick is a function, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop"}},
 		{"/ and % take a NonZero divisor", `fn a(t: Int, n: Int) -> Int = t / n
 fn b(t: Int) -> Int = t % 0
 fn c(t: Int, n: Int) -> Int = match nonzero(n) {

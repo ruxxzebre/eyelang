@@ -111,6 +111,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§14", "a migration with effects", "a migration is pure"},
 	{"§15", "a job argument that can't be saved", "a job's arguments are saved"},
 	{"§15", "what can't be saved held across a !", "what can't be saved isn't held across a !"},
+	{"§15", "what can't be saved, bound before a loop that waits and read in it", "what can't be saved isn't held across a ! on the next turn of a loop"},
 	{"§18", "a value of an extern type saved, shown or compared", "foreign code owns an extern type's values"},
 	{"§15", "a declared type holding what can't be saved", "what a job saves has Save, field by field"},
 	{"§15", "an unknown or misplaced attribute", "attributes are declared"},
