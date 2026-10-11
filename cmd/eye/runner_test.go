@@ -66,6 +66,23 @@ pub fn main() {
 // in the middle of the sleep, and when eye run starts again the job finishes
 // when its sleep was meant to end.
 func TestRunSurvivesKill(t *testing.T) {
+	survivesKill(t, nil, func(dir string) (interp.Store, error) {
+		return interp.ReadJournal(filepath.Join(dir, ".eye", "journal"))
+	})
+}
+
+// The same on the Postgres store (SPECS.md §15): the runs live in the
+// database, and nothing in the program's directory.
+func TestRunSurvivesKillOnPostgres(t *testing.T) {
+	url := testPostgres(t)
+	survivesKill(t, []string{"--store", url}, func(string) (interp.Store, error) {
+		return interp.ReadPostgres(url)
+	})
+}
+
+// survivesKill runs the kill test with eye run's store arguments, reading
+// the store with read.
+func survivesKill(t *testing.T, storeArgs []string, read func(dir string) (interp.Store, error)) {
 	dir := program(t, map[string]string{"main.eye": `
 job ring(name: String) -> String {
   sleep!(3 s)
@@ -77,20 +94,20 @@ pub fn main() {
   ring.start("kitchen", key: "kitchen")
 }
 `})
-	journal := filepath.Join(dir, ".eye", "journal")
 	prog, diags := check.Program(dir)
 	if len(diags) > 0 {
 		t.Fatal(diags)
 	}
 	runs := func() []interp.RunInfo {
-		store, err := interp.ReadJournal(journal)
+		store, err := read(dir)
 		if err != nil {
 			return nil
 		}
 		return interp.Runs(prog, store)
 	}
+	args := append(append([]string{"run"}, storeArgs...), dir)
 
-	first, out := eyeProcess(t, "run", dir)
+	first, out := eyeProcess(t, args...)
 	var wake time.Time
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if rs := runs(); len(rs) == 1 && rs[0].Status == "sleeping" {
@@ -111,7 +128,7 @@ pub fn main() {
 		t.Fatalf("after the kill the run is %s, want sleeping", rs[0].Status)
 	}
 
-	second, out := eyeProcess(t, "run", dir)
+	second, out := eyeProcess(t, args...)
 	done := make(chan error, 1)
 	go func() { done <- second.Wait() }()
 	select {
@@ -132,7 +149,7 @@ pub fn main() {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"runs", dir, "1"}, &stdout, &stderr); code != 0 {
+	if code := run(append(append([]string{"runs"}, storeArgs...), dir, "1"), &stdout, &stderr); code != 0 {
 		t.Fatalf("eye runs: exit %d: %s", code, stderr.String())
 	}
 	for _, want := range []string{`#1 ring("kitchen")  done: "kitchen rang"`, "1. sleep, slept until"} {
