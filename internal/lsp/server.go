@@ -412,7 +412,14 @@ func symbolFor(d *document, n *syntax.Node, member bool) (documentSymbol, bool) 
 	case syntax.Migration:
 		name = "from " + name
 	case syntax.TestDeclaration:
-		name = strings.Trim(name, `"`)
+		if t := strings.Trim(name, `"`); t != "" {
+			name = t
+		}
+	}
+	if strings.TrimSpace(name) == "" {
+		// A declaration still being typed; VS Code rejects the whole outline
+		// over one symbol without a name.
+		return documentSymbol{}, false
 	}
 	sym := documentSymbol{
 		Name: name, Detail: detail, Kind: kind,

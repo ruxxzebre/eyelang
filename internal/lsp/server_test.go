@@ -225,6 +225,43 @@ func TestDocumentSymbols(t *testing.T) {
 	}
 }
 
+// VS Code rejects the whole outline if one symbol has an empty name, and a
+// declaration being typed often has none yet.
+func TestDocumentSymbolsHaveNames(t *testing.T) {
+	for _, src := range []string{
+		"fn \n",
+		"fn () {}\n",
+		"entity {\n  fn \n}\n",
+		"entity E {\n  state \n  fn \n}\n",
+		"type T = | \n",
+		"type = Int\n",
+		"test \"\" {}\n",
+		"let = 1\n",
+		"job \n",
+		"impl {}\n",
+		"trait {}\n",
+		"contract {}\n",
+	} {
+		s := newSession(t)
+		s.open("file:///f.eye", src)
+		id := s.request("textDocument/documentSymbol", doc("file:///f.eye"))
+		msgs := s.run()
+
+		var syms []documentSymbol
+		response(t, msgs, id, &syms)
+		var walk func(syms []documentSymbol)
+		walk = func(syms []documentSymbol) {
+			for _, sym := range syms {
+				if strings.TrimSpace(sym.Name) == "" {
+					t.Errorf("%q: a %s symbol has no name", src, sym.Detail)
+				}
+				walk(sym.Children)
+			}
+		}
+		walk(syms)
+	}
+}
+
 func TestFoldingRanges(t *testing.T) {
 	s := newSession(t)
 	s.open("file:///f.eye", "# one\n# two\nfn f() {\n  1\n}\n")
