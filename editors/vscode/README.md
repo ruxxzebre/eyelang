@@ -11,10 +11,12 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
 - **go to definition** (F12, or Ctrl/Cmd-click) on any name: declarations in this module, in
   imported modules, in the prelude and the standard modules (`check/prelude.eye`, `check/std/`);
   locals, parameters, `self` and type variables; fields and methods (`x.name`, `x.send()`),
-  record fields and named arguments, by the types of values. Built-ins go to the Go behind them:
-  a function such as `print` or `now` to its implementation, a type such as `String` or `List`
-  to where the checker makes it, an attribute such as `@on` to its declaration, and an `extern
-  fn` whose `@host` the interpreter provides, such as `ai.generate`, to the Go host function.
+  record fields and named arguments, by the types of values. A function such as `print` or `now`
+  goes to the Go that implements it, a type such as `String` or `List` to its documented `extern
+  type` in `ir/builtin.eye`, an attribute such as `@on` to its declaration, and an `extern fn`
+  whose `@host` the interpreter provides, such as `ai.generate`, to the Go host function. Go to
+  Implementations on a built-in type lists every line of the checker and the interpreter that
+  names it.
 - **find references** (Shift-F12, or Ctrl/Cmd-click on a declaration): every use in the program,
   across its modules. A name from the prelude, a standard module or the language itself is looked
   for in every program in the workspace (each directory with an `eye.toml`).
