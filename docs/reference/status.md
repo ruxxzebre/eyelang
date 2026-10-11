@@ -70,7 +70,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | Iteration with `for`; `s.chars()`; lazy `xs.iter()` | ✓ | partial: `iter` isn't built, so the checker reports it as a method that doesn't exist | partial: lists, sets, ranges, maps and `s.chars()` work; `iter` and `Iter` don't exist | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L94), [core: strings](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/strings.eye#L49) |
 | `Ref(E)`, different for each entity | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L35) |
 | `Secret(a)`: no printing, no saving | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L180) |
-| `Approval`, made only by `approval!` | ✓ | partial: nothing requires one yet | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L186) |
+| `Approval`, made only by `approval!` | ✓ | partial: nothing requires one yet, and its `what` and `by` can't be read ([#71](https://github.com/ruxxzebre/eyelang/issues/71)) | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L186) |
 | `Key`, `Run(a)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | A program's `extern type`, whose values foreign code owns: not saved, shown or compared (`Handle` is gone, open question 21) | ✓ | ✓ | — (no foreign code yet) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 | `opaque` types | ✓ | ✓ (other modules can't read, write, build or match its fields or variants) | ✓ as an ordinary type | [visibility_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/visibility_test.go#L35), [spec-08 example](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/spec-08-methods-and-generics-1.eye) |
@@ -153,6 +153,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | A one-variant wrapper shows as the value it wraps | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | Derived `Eq`, `Ord`, `Show`, `Hash`, `Save`, `Schema`, asked for where they are used | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L88), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L244) |
 | An impl of `Show` replaces the derived form | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L83) |
+| `T.variants()` and `T.parse(s)` on enums | ✓ | — ([#63](https://github.com/ruxxzebre/eyelang/issues/63)) | — | |
 | Operators as traits (`Add`, `Mul`, `Neg` for `-x`, …); no implicit conversions | ✓ | ✓ | partial: `-x` runs on numbers and durations, not through a declared type's impl of `Neg` | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L74), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 
 ## [Effects and signatures](/reference/language/effects-and-signatures)
@@ -162,11 +163,11 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | `uses` on public functions; none means pure; a private function's uses clause and a trait method's are held too; effect names are checked | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
 | Effects inferred through private functions and callbacks, and functions passed by name | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L261) |
 | `wait`, `net C.op`, `entity E`, `clock`, `stdio`, `env` | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
-| `secret S`, `publish T`, `consume T`, `ffi` | ✓ | — (not inferred; open question 19) | n/a | |
+| `secret S`, `publish T`, `consume T`, `ffi` | ✓ | — (not inferred yet; decided, [#72](https://github.com/ruxxzebre/eyelang/issues/72)) | n/a | |
 | `fs`, `process`, `random` | ✓ | — | — (no `fs` or `process` module, no `random()`) | |
 | Function types in signatures: `f: fn(Int) -> Int` | ✓ | ✓ (a function has none of the derived traits, so it can't be shown, compared or saved) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L406) |
 | Function types kept in data state their effects | ✓ | partial: calling a function value counts the effects its type states; a function whose effects its type doesn't state can still be stored in one | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L272) |
-| In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | ✓ (and `!` on a call that only computes is an error; printing and logging aren't steps, open question 22) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L158), [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L106) |
+| In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | partial: publishing (`publish!`), starting a child run (`start!`) and calling an extern aren't required to take `!` yet ([#72](https://github.com/ruxxzebre/eyelang/issues/72)); `!` on a call that only computes is an error, and printing and logging aren't steps | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L158), [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L106) |
 
 ## [Programs and concurrency](/reference/language/programs-and-concurrency)
 
@@ -179,6 +180,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | `eye repl` | n/a | ✓ | ✓ | [repl_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/repl/repl_test.go#L41) |
 | Modules as directories; `import a.b` and `import a.b.{Name}`; other modules use only what is `pub` | ✓ | ✓ | ✓ | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L150), [visibility_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/visibility_test.go#L35), [lab](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/lab.eye) |
 | `eye.toml` marks a program's root | n/a | ✓ | ✓ | [index_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/index_test.go#L151) |
+| `modules` in `eye.toml`: more directories to find imports in | n/a | — ([#74](https://github.com/ruxxzebre/eyelang/issues/74)) | — | |
 | `parallelMap`, `both`, `race`, `timeout`, with waits that overlap | ✓ | partial: what a task captures isn't checked | ✓ | [programs/tasks](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tasks/tasks.eye#L18), [tasks_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tasks_test.go#L16) |
 | A task fails, and the call fails with it | ✓ | n/a | ✓ | [tasks_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tasks_test.go#L70) |
 | A task a job starts (`parallelMap`, `both`, `race`, `timeout`, `taskGroup`) only computes | ✓ | ✓ | ✓ (the run fails, should one get past the checker) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L232) |
@@ -217,9 +219,11 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | The journal store for one machine | n/a | n/a | ✓ | [store_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L16) |
 | The Postgres store: `eye run --store postgres://…`, one runner per database and schema | n/a | n/a | ✓ | [postgres_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/postgres_test.go), [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go) |
 | Runs survive a restart of the runner, and the database stopping or not answering | n/a | n/a | ✓ | [durable_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/durable_test.go), [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go) |
+| Jobs resume from saved frames, not by replaying their steps | n/a | n/a | — (replay today; [#76](https://github.com/ruxxzebre/eyelang/issues/76), for v0.3) | |
+| A job changed under a paused run is caught, not replayed into wrong values | n/a | n/a | — ([#73](https://github.com/ruxxzebre/eyelang/issues/73)) | |
 | A waiting run holds no goroutine, only its saved bytes | n/a | n/a | ✓ | [durable_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/durable_test.go) || `sleep!`, `sleepUntil!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L41), [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L236) |
 | `poll!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L93) |
-| `approval!`, with requests published as `approvals.requested` and answered by `approvals.answered`, `eye approve` or `eye decline` | ✓ | ✓ | ✓ | [lab approving](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/approving/approving.eye#L14), [approve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/approve_test.go#L16) |
+| `approval!`, with requests published as `approvals.requested` and answered by `approvals.answered`, `eye approve` or `eye decline` | ✓ | ✓ | partial: answers match by text and anyone's answer counts; by `id`, and only from `from:`, is [#71](https://github.com/ruxxzebre/eyelang/issues/71) | [lab approving](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/approving/approving.eye#L14), [approve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/approve_test.go#L16) |
 | `next!`, which misses no event | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L45) |
 | `reserve!` | ✓ | ✓ | ✓ | [programs/memory](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/memory/memory.eye#L42) |
 | `lock!` | ✓ | — (undefined) | — | |
