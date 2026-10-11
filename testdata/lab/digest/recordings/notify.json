@@ -11,6 +11,11 @@
       "op": "send",
       "key": "ireland-2026-10-12",
       "result": { "kind": "Accepted", "id": "m-8", "deliveries": 1, "deduped": false }
+    },
+    {
+      "op": "send",
+      "key": "ireland-2026-10-12-failed",
+      "result": { "kind": "Accepted", "id": "m-9", "deliveries": 1, "deduped": false }
     }
   ]
 }

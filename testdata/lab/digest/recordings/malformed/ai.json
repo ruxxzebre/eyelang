@@ -1,0 +1,55 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    {
+      "result": {
+        "highlights": [
+          "Rent cap extended"
+        ],
+        "sections": [
+          {
+            "heading": "Dublin",
+            "items": [
+              {
+                "headline": "Rent cap extended",
+                "text": "To 2027.",
+                "action": null,
+                "sources": [
+                  {
+                    "title": "RTÉ",
+                    "link": "https://www.rte.ie/news/rent"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "result": {
+        "highlights": [
+          "Rent cap extended"
+        ],
+        "sections": [
+          {
+            "heading": "Dublin",
+            "items": [
+              {
+                "headline": "Rent cap extended",
+                "text": "To 2027.",
+                "action": null,
+                "sources": [
+                  {
+                    "title": "RTÉ",
+                    "link": "https://www.rte.ie/news/rent"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

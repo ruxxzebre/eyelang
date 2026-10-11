@@ -1,0 +1,44 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    {
+      "result": {
+        "highlights": [],
+        "sections": [
+          {
+            "heading": "Temporary protection (Ukrainians)",
+            "stories": []
+          },
+          {
+            "heading": "Immigration",
+            "stories": []
+          },
+          {
+            "heading": "Ireland",
+            "stories": []
+          },
+          {
+            "heading": "Dublin",
+            "stories": []
+          },
+          {
+            "heading": "Coming up in Dublin",
+            "stories": []
+          },
+          {
+            "heading": "Money & housing",
+            "stories": []
+          },
+          {
+            "heading": "Transport & weather",
+            "stories": []
+          }
+        ]
+      },
+      "usage": {
+        "input": 9000,
+        "output": 120
+      }
+    }
+  ]
+}

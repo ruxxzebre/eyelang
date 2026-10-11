@@ -671,6 +671,23 @@ func TestDigestReportsMinifluxRefusingACategory(t *testing.T) {
 	}
 }
 
+// A model that writes nothing from news that had items failed: the write
+// ends as EmptyBriefing, and the morning sends the failure notice, not a
+// briefing of "Nothing new" in every section.
+func TestDigestRefusesAnEmptyBriefing(t *testing.T) {
+	lab := digestStandIns(t)
+	t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+	lab.briefing = `{"highlights": [], "sections": [{"heading": "Ireland", "stories": []}, {"heading": "Dublin", "stories": []}]}`
+	in, run := runDigestJob(t, "../testdata/lab", "morning")
+	if got := show(in.decode(run.Result, ir.Pos{})); got != "Err(EmptyBriefing(items: 7))" {
+		t.Errorf("morning returned %s", got)
+	}
+	if len(lab.sends) != 1 || lab.keys[0] != "ireland-2026-10-12-failed" ||
+		!strings.Contains(fmt.Sprint(lab.sends[0]["body"]), "EmptyBriefing(items: 7)") {
+		t.Errorf("Notify got %v", lab.sends)
+	}
+}
+
 // The model is asked as the TypeScript digest asks it: today's date and the
 // window, then the sections in order, each with its brief, its entries and
 // its pages.
@@ -707,5 +724,22 @@ func TestDigestTellsTheModelTodayAndTheWindow(t *testing.T) {
 	want := "Temporary protection (Ukrainians)|Immigration|Ireland|Dublin|Coming up in Dublin|Money & housing|Transport & weather"
 	if strings.Join(headings, "|") != want || items != 7 || pages != 16 {
 		t.Errorf("sections %v with %d items and %d pages, want %s, 7 and 16 (the two read with the browser have almost no text)", headings, items, pages, want)
+	}
+}
+
+// A reply whose fields are named otherwise than the briefing's schema says is
+// sent back once with the problem, and then ends the write as Malformed: it
+// is never read as a briefing with empty sections.
+func TestDigestRefusesARenamedField(t *testing.T) {
+	lab := digestStandIns(t)
+	t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+	lab.briefing = `{"highlights": [], "sections": [{"heading": "Ireland", "items": []}]}`
+	in, run := runDigestWrite(t)
+	got := show(in.decode(run.Result, ir.Pos{}))
+	if !strings.HasPrefix(got, "Err(WriteFailed(Malformed(") || !strings.Contains(got, "missing field stories") {
+		t.Errorf("write returned %s", got)
+	}
+	if lab.asked() != 2 {
+		t.Errorf("the model was asked %d times, want 2: once, and once more with the problem", lab.asked())
 	}
 }

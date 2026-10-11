@@ -283,6 +283,8 @@ the model call spent yet. What a bad morning shows, and what to do:
 | write `failed: … set MINIFLUX_URL …` (or another service's) | A variable is missing | Set it, the same way |
 | morning `done: Err(NoReaders)` | Notify queued it for nobody | Subscribe someone to the event in Notify |
 | morning `done: Err(NotSent(…))` | Notify refused it | Check the token and that the event is in its scope |
+| morning `done: Err(EmptyBriefing(items: N))` | The model wrote no story from N feed items | Look at the write run's `ai.generate` step: what the model answered |
+| morning `done: Err(WriteFailed(Malformed(…)))` | The model's reply didn't match the briefing's schema, twice | The reply and the problem are in the fault; check the gateway passes `response_format` on |
 | write `failed: … miniflux.… was refused with status 400 …` | Miniflux refused a call: the key, or a category or feed it won't take | The reply is in the fault |
 | morning `done: Err(MinifluxAway)` | Miniflux stayed paused for six hours | Nothing: readers got "Ireland digest not sent" |
 | morning `sleeping` | Waiting for the write run, which waits for Miniflux while it is paused | Nothing |

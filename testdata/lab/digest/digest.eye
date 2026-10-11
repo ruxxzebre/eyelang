@@ -37,6 +37,9 @@ type DigestError =
   | StillPending(action: String)
   ## The writing run ended without a result: a deadline, a budget, a crash.
   | Faulted(Fault)
+  ## The model wrote no story and no highlight, though it was given `items`
+  ## feed items: a failed call, not a quiet day, so nothing is sent.
+  | EmptyBriefing(items: Int)
 
 # ---------------------------------------------------------------- the schedule
 
@@ -124,6 +127,10 @@ job write(day: Date) -> Result(Article, DigestError) {
     system: prompt,
     prompt: news.input |> toJson,
   ).mapErr(WriteFailed)?
+  let items = news.input.sections |> map(fn s: s.items |> size) |> sum
+  if items > 0 && briefing.highlights == [] && !(briefing.sections |> any(fn s: s.stories != [])) {
+    return Err(EmptyBriefing(items:))
+  }
   let article: Article = {
     day,
     title: "Ireland & Dublin — {day.format("%A %-d %B")}",
@@ -793,17 +800,32 @@ let prompt = """
   want to know what changed that could affect their legal status, money, home
   and city, without reading the news all day.
 
-  The input lists the briefing's sections in order. Each has a heading, a brief
-  saying what belongs in it, feed items and the text of pages without a feed.
+  The input is JSON: today's date, the window items were published in, and the
+  briefing's sections in order. Each section has a heading, a brief saying what
+  belongs in it, feed items (source, title, url, published time, opening text)
+  and pages (a source page's text, links written [text](url)); a page lists
+  items with their own dates.
 
-  - Use only facts in the input. Never guess dates, numbers or rules.
-  - From pages, take only items dated within the last day or, for events, from
-    today through the next seven days.
-  - Merge reports of the same story into one, with every source.
-  - Follow each section's brief on how many stories to give. Don't pad.
-  - Leave out sport results, celebrity news, crime without wider consequence,
-    opinion columns and advertising.
-  - Plain, calm English. The whole briefing reads in five minutes.
+  - Highlights: at most three, the most important things today across all
+    sections.
+  - One section for each section given, with exactly its heading, in the given
+    order.
+  - Each story has a short headline, then one to three plain sentences on what
+    happened and what it means for the reader, and every source that reported
+    it. Merge reports of the same story into one story with each source.
+  - Set the action when the reader may need to do something (a deadline,
+    renewal, application window, or a change to payments or accommodation),
+    and say what and by when.
+  - Use only facts in the input. Never guess dates, numbers or rules. When an
+    item's opening text is too short to tell what it means, say only what it
+    says.
+  - From pages, take only items dated within the window, or, for events,
+    happening from today through the next seven days.
+  - Follow each section's brief on how many stories to give. A section with
+    nothing that matters has no stories. Do not pad.
+  - Leave out sport results, celebrity news, crime reports without wider
+    consequence, opinion columns and advertising.
+  - Plain, calm English; the whole briefing reads in five minutes.
   """
 
 fn render(b: Briefing, news: News) -> String {
@@ -898,6 +920,24 @@ test "a feed Miniflux won't subscribe to is reported, and the digest goes on" {
   expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
   let Some(article) = Day(2026-10-12).article else { unreachable("the morning wrote no briefing") }
   expect(article.document |> contains("- Immigration Service Delivery: Miniflux could not subscribe (Unable to find a feed at this URL)"))
+}
+
+test "a reply that doesn't match the briefing's schema is an error, never an empty briefing" {
+  with fakes(notify, miniflux, flaresolverr, http, from: "recordings/")
+  with fakes(ai, from: "recordings/malformed/")
+  with clock(2026-10-12 06:30 in "UTC")
+  advance(10 min)
+  expect(Day(2026-10-12).article == None)
+  expect(Day(2026-10-12).sent == {})
+}
+
+test "a briefing with nothing in it, from news with items, isn't sent" {
+  with fakes(notify, miniflux, flaresolverr, http, from: "recordings/")
+  with fakes(ai, from: "recordings/empty/")
+  with clock(2026-10-12 06:30 in "UTC")
+  advance(10 min)
+  expect(Day(2026-10-12).article == None)
+  expect(Day(2026-10-12).sent == {})
 }
 
 test "/digest in a group chat gets silence" {
