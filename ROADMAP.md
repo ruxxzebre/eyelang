@@ -4,12 +4,24 @@
 2026-10-10). Development and releases happen on `dev`; `main` stays at Eyelang 1 until that
 changes.
 
-What runs today, feature by feature: [docs/reference/status.md](docs/reference/status.md).
+What gets built, in what order, and how we know each part is done. The language itself is defined
+in [SPECS.md](SPECS.md); what runs today, feature by feature, in
+[docs/reference/status.md](docs/reference/status.md).
+
+**Status lives in the GitHub issues**, not in this file. Each phase has an issue, and each task in
+v0.1 is a sub-issue of its phase. A pull request closes its task issue (`Closes #N`), and a phase
+is done when all its sub-issues are closed and its exit test passes.
 
 ## What's next
 
-The answer to "what's next?". Keep it current: when a task lands, or a check finds a gap, change
-this list in the same commit. Check it against the code before relying on it.
+`task next` answers "what's next?" from what is true now: the last release and what landed since,
+this section, the open issues, the gaps [docs/reference/status.md](docs/reference/status.md)
+lists (`task next -- --all` names each), and who works on what. This section holds only what
+those can't say, so it stays short: what is owed, and the order. Change it in the commit that
+changes it, and set the date below when you check it; `task next -- --check`, part of
+`task check`, fails when it was checked before the last release or names a closed issue.
+
+Checked: 2026-10-11
 
 **Owed by releases already made**
 
@@ -19,26 +31,11 @@ this list in the same commit. Check it against the code before relying on it.
 - Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
   not built: `World.all |> filter(…)` loads every entity. Not yet a task of any phase.
 
-**Gaps in the core**, which phase 7 and self-hosting need closed, so they come first:
-
-- Function types in signatures aren't typed: a lambda passed for `f: fn(Int) -> Int`, and what
-  calling `f` returns, aren't checked.
-- A private function's inferred type is one type for the whole program, not generic.
-- `NonZero`, `opaque`, and the effects of functions kept in data aren't enforced; the effects
-  `secret`, `publish`, `consume` and `ffi` aren't inferred.
-- `Bytes` and fixed-width integers have no operations, and `s.chars()`, `xs.iter()` and
-  `s.slice()` don't exist (and aren't reported as missing).
-
-**Designed, not built:** `lock!`, `all!` and `first!`, ending an entity with `end(ok)`, `cron(…)`
-schedules, `Problem` and `.context(…)`, `fs`, `process` and `random`, the `Killed` fault,
-`onGap:` and `onOverlap:`, `with memory(…)` in tests, and several runners on one Postgres database.
-
-**Built, not tested:** `start(at:)`, `@on(leaves(view))`, `$EYE_SECRETS`, a rollback after a fault,
-and `Type.f()` through a module (`lex.Lexer.new`), which fails.
-
 **Ahead, in order**
 
-1. The core gaps above, function types and generic private functions first.
+1. The gaps in the core that phase 7 and self-hosting need closed: function types in signatures
+   aren't typed, and a private function's inferred type isn't generic. Then the rest of the
+   checker's partial rows in status.md (`NonZero`, `opaque`, effects that aren't inferred).
 2. The digest in the homelab, closing phase 5's exit criterion.
 3. Phase 6 (v0.3) broken into tasks, beside 6.1 (#42): `@port` and `@allow` enforced (its exit
    test), `@fresh` and `@destructive`, Notify generated from its contract, Go and TypeScript types
@@ -51,13 +48,6 @@ and `Type.f()` through a module (`lex.Lexer.new`), which fails.
 
 Open questions 1–31 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
 `Self` (24) and what `@memory` measures (26) bear on phase 7.
-
-What gets built, in what order, and how we know each part is done. The language itself is defined
-in [SPECS.md](SPECS.md).
-
-**Status lives in the GitHub issues**, not in this file. Each phase has an issue, and each task in
-v0.1 is a sub-issue of its phase. A pull request closes its task issue (`Closes #N`), and a phase
-is done when all its sub-issues are closed and its exit test passes.
 
 ## Versions
 
@@ -334,22 +324,20 @@ merges cleanly:
 - **Rebase before reporting.** Before a track reports, it rebases onto the current `dev` tip and
   runs the checks again; the report gives the rebased commit. Whoever merges announces each new tip
   to the tracks still running.
-- **Own paths, and say so.** Each active track lists the paths it changes, and others leave them
-  alone or ask first. Files every track touches (SPECS.md's status line, decision log and open
-  questions; ROADMAP.md) are merged by whoever merges, after `task generate`.
+- **Claim paths, and release them.** A track says which paths it changes when it starts, and gives
+  them back when its work is merged: `task claim -- WHO PATH…` and
+  `task claim -- --release WHO`. Claims live in the repository's git config, which every
+  worktree shares and nothing commits, so `task next` always shows them as they are, with their
+  age. Others leave claimed paths alone or ask first. A claim a day old whose worktree has no new
+  commits is stale: ask, then take it. Files every track touches (SPECS.md's status line, decision
+  log and open questions; ROADMAP.md) are merged by whoever merges, after `task generate`.
+- **One merger in the main checkout.** Tracks work in worktrees of their own, on branches named
+  `track/…`. The main checkout belongs to whoever claims `dev`: only they commit there or leave
+  files uncommitted, and they merge what tracks hand them. `task next` lists every worktree with
+  what it holds that `dev` doesn't, and the main checkout's uncommitted files.
+- **Remove what is merged.** A worktree that `task next` shows as merged into dev, with nothing
+  uncommitted, is removed: `git worktree remove PATH`.
 - **Close issues by commit.** A commit that finishes a task says `Closes #N`; the
   `Close issues` workflow closes it when the commit reaches `dev`, since GitHub does that only for
   the default branch. (It skips the push that creates a branch; issues finished before `dev` existed
   are closed by hand.)
-
-Paths owned now (2026-10-11):
-
-| Who | Worktree or branch | Paths |
-|---|---|---|
-| Main session (release) | — | `.github/workflows`; ROADMAP.md, CHANGELOG.md |
-| eyelang-20 (phase 5, merges) | `dev` in the main checkout | merges into `dev`; phase 5's paths in `check/`, `interp/`, `cmd/eye` and SPECS.md |
-| eyelang-42 (docs site) | `docs-site` | `docs/`, `tools/specpages`, `internal/apidoc`, `cmd/eye/doc.go` |
-| eyelang-55 (language server) | `lsp-*` | `internal/lsp` except completion, `check/index.go`, `check/resolve_test.go` |
-| eyelang-17 (completion) | `dev` | `internal/lsp/completion.go`, the completion case in `internal/lsp/server.go` |
-| eyelang-3b (editor and tasks) | — | `Taskfile.yml`, `editors/vscode` |
-| eyelang-de (process) | — | `CLAUDE.md` |

@@ -159,6 +159,18 @@ tasks:
       - task: grammar
       - task: vscode
       - task: docs
+      # ROADMAP.md's What's next was checked since the last release, and names no closed issue.
+      - go run ./tools/next --check
+
+  next:
+    desc: Say what's next - the last release, ROADMAP.md's priorities, open issues, the gaps in status.md, and who works on what (--all lists every gap)
+    cmds:
+      - go run ./tools/next {{.CLI_ARGS}}
+
+  claim:
+    desc: Say which paths a session changes - task claim -- WHO PATH…; task next lists claims, and task claim -- --release WHO gives them back
+    cmds:
+      - go run ./tools/next {{if hasPrefix "--release" .CLI_ARGS}}release {{trimPrefix "--release " .CLI_ARGS}}{{else}}claim {{.CLI_ARGS}}{{end}}
 
   coverage:
     desc: Show test coverage per package
