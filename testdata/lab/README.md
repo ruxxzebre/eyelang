@@ -103,16 +103,23 @@ first digest is the next morning's.
 ### The command
 
 ```sh
-eye run --memory-limit 384MiB /program
+eye run /program
 ```
 
 with `EYE_STORE` set to the database (below), or `--store postgres://…`
 instead of `EYE_STORE`. It runs until SIGTERM, which stops it cleanly; a
 restart carries on where it stopped, and a run killed in the middle of a step
-does that step again. `--memory-limit` is needed in a container: without it
-the runner takes the node's memory from `/proc/meminfo`, not the pod's limit.
-It must be at least the write job's `@memory(256 MiB)`, or the write run
-fails as `OutOfMemory`; give the pod a limit above it, such as 512Mi.
+does that step again.
+
+The memory runs may hold is the pod's limit: the runner reads its cgroup's
+(`/sys/fs/cgroup/memory.max` with cgroup v2, `memory.limit_in_bytes` with
+v1) and takes it when it is lower than the node's memory. It must be at
+least the write job's `@memory(256 MiB)`, or the write run fails as
+`OutOfMemory`; give the pod a limit above it, such as 512Mi. To give runs
+less than the pod has, leaving room for the runner itself, say so:
+`eye run --memory-limit 384MiB /program`. The line it starts with (below)
+shows which it took
+(`memory: 512 MiB, the cgroup's limit`).
 
 It logs one line when it starts, on stderr with the rest of its log, so a
 healthy pod's log is never empty: the program, the store (host, database
@@ -120,7 +127,7 @@ and schema, never the user or password), the memory runs may hold, and the
 jobs, with when each scheduled one fires next:
 
 ```
-eye run: started /program; store: postgres postgres-rw.lab.svc.cluster.local:5432/app schema lab; memory: 384 MiB; jobs: digest.command, digest.morning (next 2026-10-12 07:40 Europe/Dublin), digest.write
+eye run: started /program; store: postgres postgres-rw.lab.svc.cluster.local:5432/app schema lab; memory: 512 MiB, the cgroup's limit; jobs: digest.command, digest.morning (next 2026-10-12 07:40 Europe/Dublin), digest.write
 ```
 
 Run one replica, with `strategy: Recreate`: the store allows one `eye run` per

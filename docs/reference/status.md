@@ -246,7 +246,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@concurrency(n, by: param)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L73) |
 | `@limit(n, per: duration, by: param)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L92) |
 | `@deadline(duration)`, `@deadline(time, in: zone)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
-| `@memory(size)`, `@priority(p)` | ✓ | ✓ | ✓ (what a run holds is its saved state; open question 26) | [programs/memory](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/memory/memory.eye#L20) |
+| `@memory(size)`, `@priority(p)` | ✓ | ✓ | ✓ (what a run holds is its saved state; open question 26); the runner has its cgroup's limit, or `--memory-limit` | [programs/memory](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/memory/memory.eye#L20), [cgroup_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/cgroup_test.go) |
 | `@budget(usd:, tokens:)` | ✓ | ✓ | ✓ | [ai_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go) |
 | `@version(N)` | ✓ | ✓ | ✓ | [migrations_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/migrations_test.go#L14) |
 | `@key`, `@reconcile` | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |

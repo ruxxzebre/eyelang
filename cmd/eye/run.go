@@ -43,7 +43,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	journal := fs.String("journal", "", "the journal that keeps entities, runs and events (default program-directory/.eye/journal)")
 	memory := fs.Bool("memory", false, "keep everything in memory, so nothing survives the process")
 	store := fs.String("store", "", "keep entities, runs and events in this Postgres database, postgres://… (default $EYE_STORE)")
-	memLimit := fs.String("memory-limit", "", "the memory runs may hold, which @memory and reserve! wait for, such as 512MiB (default the host's memory)")
+	memLimit := fs.String("memory-limit", "", "the memory runs may hold, which @memory and reserve! wait for, such as 512MiB (default the cgroup's limit, such as a container's, or the host's memory)")
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]")
 		fmt.Fprintln(stderr)

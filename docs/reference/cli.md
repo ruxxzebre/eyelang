@@ -89,7 +89,7 @@ a program its own schema. One eye run at a time writes a journal or a schema.
   -memory
     	keep everything in memory, so nothing survives the process
   -memory-limit string
-    	the memory runs may hold, which @memory and reserve! wait for, such as 512MiB (default the host's memory)
+    	the memory runs may hold, which @memory and reserve! wait for, such as 512MiB (default the cgroup's limit, such as a container's, or the host's memory)
   -store string
     	keep entities, runs and events in this Postgres database, postgres://… (default $EYE_STORE)
 ```

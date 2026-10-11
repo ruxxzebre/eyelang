@@ -25,7 +25,9 @@ type RunOptions struct {
 	// `eye decline` write and the runner publishes; "" reads none.
 	Inbox string
 	// MemoryLimit is the memory runs may hold, in bytes, which @memory and
-	// reserve! are admitted against; 0 is the host's memory.
+	// reserve! are admitted against; 0 is the limit of the cgroup the
+	// process runs in, or the host's memory when that is lower or there
+	// is none.
 	MemoryLimit int64
 }
 
@@ -41,8 +43,14 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in.rt.real = true
 	in.rt.now = time.Now()
 	in.rt.memLimit = opts.MemoryLimit
+	memory := memoryText(in.rt.memLimit)
 	if in.rt.memLimit == 0 {
-		in.rt.memLimit = hostMemory()
+		var from string
+		in.rt.memLimit, from = runnerMemory("/", hostMemory())
+		memory = memoryText(in.rt.memLimit)
+		if in.rt.memLimit > 0 {
+			memory += ", " + from
+		}
 	}
 	if opts.Store != nil {
 		in.rt.useStore(opts.Store)
@@ -71,7 +79,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		if len(opts.Args) > 0 {
 			program = opts.Args[0]
 		}
-		fmt.Fprintln(stderr, in.rt.startLine(program, opts.Store, memoryText(in.rt.memLimit)))
+		fmt.Fprintln(stderr, in.rt.startLine(program, opts.Store, memory))
 	}
 	if main := prog.Root.Main; main != nil {
 		var argv []argVal
