@@ -258,6 +258,26 @@ pub fn partly() -> Instant uses {stdio} = now()`, []string{
 		{"effects pass through private functions", `import svc
 fn send(t: String) = svc.raw(t)
 pub fn f() = send("x")`, []string{"3:1: f uses net Svc.raw, which its signature doesn't list"}},
+		{"effects don't escape through traits or private uses clauses", `trait Clock {
+  fn read(self) -> Instant
+}
+trait Stamp {
+  fn stamp(self) -> Instant uses {clock}
+}
+type Real = { n: Int }
+impl Clock for Real {
+  fn read(self) -> Instant = now()
+}
+impl Stamp for Real {
+  fn stamp(self) -> Instant = now()
+}
+fn quiet() -> Instant uses {} = now()
+pub fn later() -> Instant = quiet()
+pub fn through(s: dyn Stamp) -> Instant = s.stamp()`, []string{
+			"9:3: read uses clock, which Clock.read doesn't list, and a call through the trait counts only what the trait says: add uses {clock} to the trait's method",
+			"14:1: quiet uses clock, which its uses clause doesn't list",
+			"16:1: through uses clock, which its signature doesn't list",
+		}},
 		{"effects pass through functions named as values", `import svc
 fn stamp(n: Int) -> Instant = now()
 pub fn stamps(xs: List(Int)) -> List(Instant) = xs |> map(stamp)

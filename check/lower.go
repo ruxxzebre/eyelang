@@ -93,6 +93,7 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 	fn.Return = c.typeExpr(m, f, d.ChildByField(syntax.FieldReturnType), nil)
 	c.lowerBounds(m, f, d, fn)
 	fn.Uses, fn.HasUses = usesOf(f, d)
+	c.checkEffectNames(m, f, d)
 	l.wrap = errorType(fn.Return)
 	if body := d.ChildByField(syntax.FieldBody); body != nil {
 		fn.Body = l.expr(body)
@@ -110,7 +111,7 @@ func usesOf(f *ir.File, d *syntax.Node) ([]string, bool) {
 	for _, e := range clause.NamedChildren() {
 		kind := text(f, e.ChildByField(syntax.FieldKind))
 		if target := e.ChildByField(syntax.FieldTarget); target != nil {
-			kind += " " + text(f, target)
+			kind += " " + strings.Join(strings.Fields(text(f, target)), "")
 		}
 		out = append(out, kind)
 	}

@@ -121,6 +121,19 @@ contract C {
 			"8:14: d is a type variable, and an operation's values cross the wire, so their types are named in full",
 			"9:17: e is a type variable, and an event's values cross the wire, so its type is named in full",
 		}},
+		{"a uses clause lists effects that exist", `entity Order(id: Int) {}
+contract Shop {
+  command buy(n: Int) -> Int
+}
+fn a() uses {nonsense} {}
+fn b() uses {net Nowhere.send, net Shop.sell, net Shop.buy, net} {}
+fn c() uses {entity Ghost, entity Order, clock now} {}`, []string{
+			"5:14: nonsense isn't an effect: an effect is clock, consume, entity, env, ffi, fs, net, process, publish, random, secret, stdio or wait",
+			"6:18: net names a contract and its operation, as net Notify.send, and there is no contract Nowhere here",
+			"6:36: contract Shop has no operation sell",
+			"7:21: entity names an entity, and there is no entity Ghost here",
+			"7:48: clock names nothing: write uses {clock}",
+		}},
 		{"attributes name what exists", `pub type Sent = | Sent(Int)
 pub type Ping = { id: Int }
 contract Svc {

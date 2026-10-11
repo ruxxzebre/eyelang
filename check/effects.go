@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"eyelang/ir"
+	"eyelang/syntax"
 )
 
 // Effects (SPECS.md §12) are inferred inside and stated at the boundary: a
@@ -23,15 +24,17 @@ func (c *checker) checkEffects() {
 		if m.Dir == "" && m != c.prog.Root {
 			continue // the prelude and the standard modules
 		}
+		// A public function states its effects, and so does a private one
+		// with a uses clause: its callers count what it states.
 		var fns []*ir.Func
 		for _, f := range m.Funcs {
-			if f.Pub && !f.Extern && f.Body != nil {
+			if (f.Pub || f.HasUses) && !f.Extern && f.Body != nil {
 				fns = append(fns, f)
 			}
 		}
 		for _, t := range m.Types {
 			for _, f := range t.Methods {
-				if f.Pub && f.Body != nil {
+				if (f.Pub || f.HasUses) && f.Body != nil && f.Receiver == t {
 					fns = append(fns, f)
 				}
 			}
@@ -40,6 +43,7 @@ func (c *checker) checkEffects() {
 		for _, f := range fns {
 			c.checkUses(f, all[f])
 		}
+		c.checkImplEffects(m, all)
 	}
 	c.checkMigrationEffects(all)
 	for f, set := range all {
@@ -95,6 +99,39 @@ func (c *checker) allEffects() map[*ir.Func]map[string]bool {
 	return all
 }
 
+// checkImplEffects reports an impl's method that does more than its trait's
+// method states: a call through the trait, as on a dyn value, counts only
+// what the trait says (SPECS.md §12).
+func (c *checker) checkImplEffects(m *ir.Module, all map[*ir.Func]map[string]bool) {
+	for _, impl := range m.Impls {
+		if impl.Trait == nil {
+			continue
+		}
+		var names []string
+		for name := range impl.Methods {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			f, sig := impl.Methods[name], impl.Trait.Methods[name]
+			if sig == nil || f == sig || f.Body == nil {
+				continue // not the trait's, or its default
+			}
+			var extra []string
+			for e := range all[f] {
+				if !covered(sig.Uses, e) {
+					extra = append(extra, e)
+				}
+			}
+			if len(extra) > 0 {
+				sort.Strings(extra)
+				list := strings.Join(extra, ", ")
+				c.typeErrorf(f.Pos, "%s uses %s, which %s.%s doesn't list, and a call through the trait counts only what the trait says: add uses {%s} to the trait's method", f.Name, list, impl.Trait.Name, name, list)
+			}
+		}
+	}
+}
+
 // checkUses reports effects a public function has but doesn't state.
 func (c *checker) checkUses(f *ir.Func, effects map[string]bool) {
 	var extra []string
@@ -124,6 +161,86 @@ func covered(uses []string, effect string) bool {
 		}
 	}
 	return false
+}
+
+// effectKinds are the effects a uses clause may list (SPECS.md §12), and
+// whether each names what it touches: `net Notify.send`, `entity Order`.
+var effectKinds = map[string]bool{
+	"wait": false, "net": true, "entity": true, "clock": false, "random": false, "fs": false,
+	"process": false, "stdio": false, "env": false, "ffi": false, "secret": true, "publish": true,
+	"consume": true,
+}
+
+// checkEffectNames checks a uses clause's effects: each is one SPECS.md §12
+// lists, and the contract, operation or entity it names exists.
+func (c *checker) checkEffectNames(m *module, f *ir.File, d *syntax.Node) {
+	clause := d.ChildByField(syntax.FieldEffects)
+	if clause == nil {
+		return
+	}
+	for _, e := range clause.NamedChildren() {
+		kindNode, target := e.ChildByField(syntax.FieldKind), e.ChildByField(syntax.FieldTarget)
+		kind := text(f, kindNode)
+		named, ok := effectKinds[kind]
+		switch {
+		case !ok:
+			var kinds []string
+			for k := range effectKinds {
+				kinds = append(kinds, k)
+			}
+			sort.Strings(kinds)
+			c.errorf(pos(f, kindNode), "%s isn't an effect: an effect is %s", kind, orList(kinds))
+			continue
+		case target == nil:
+			continue // `net` covers every operation, `entity` every entity
+		case !named:
+			c.errorf(pos(f, target), "%s names nothing: write uses {%s}", kind, kind)
+			continue
+		}
+		name := strings.Join(strings.Fields(text(f, target)), "")
+		switch kind {
+		case "net":
+			ctName, opName, hasOp := strings.Cut(name, ".")
+			ct := c.contractIn(m, ctName)
+			switch {
+			case ct == nil:
+				c.errorf(pos(f, target), "net names a contract and its operation, as net Notify.send, and there is no contract %s here", ctName)
+			case hasOp && ct.Ops[opName] == nil:
+				c.errorf(pos(f, target), "contract %s has no operation %s", ctName, opName)
+			}
+		case "entity":
+			if c.entityIn(m, name) == nil {
+				c.errorf(pos(f, target), "entity names an entity, and there is no entity %s here", name)
+			}
+		}
+	}
+}
+
+// contractIn finds a contract by name in a module or the modules it
+// imports.
+func (c *checker) contractIn(m *module, name string) *ir.Contract {
+	if ct, ok := m.types[name].(*ir.Contract); ok {
+		return ct
+	}
+	for _, imp := range m.imports {
+		if ct, ok := imp.types[name].(*ir.Contract); ok {
+			return ct
+		}
+	}
+	return nil
+}
+
+// entityIn finds an entity by name in a module or the modules it imports.
+func (c *checker) entityIn(m *module, name string) *ir.Entity {
+	if e, ok := m.types[name].(*ir.Entity); ok {
+		return e
+	}
+	for _, imp := range m.imports {
+		if e, ok := imp.types[name].(*ir.Entity); ok {
+			return e
+		}
+	}
+	return nil
 }
 
 // bodiesOf lists the functions of a module that have bodies.

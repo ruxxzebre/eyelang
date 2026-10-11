@@ -1171,6 +1171,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	if _, isSelf := e.Recv.(*ir.Self); isSelf && x.entity != nil {
 		if m, ok := x.entity.Methods[e.Name]; ok {
 			c.useMethod(e, m)
+			x.top.callee(m) // its effects count here
 			return x.applyFunc(m, nil, e.Args, e.Name, e.Pos)
 		}
 	}
@@ -1188,6 +1189,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				}
 				if m, ok := s.entity.Methods[e.Name]; ok {
 					c.useMethod(e, m)
+					x.top.callee(m) // its effects count here
 					x.privateMethod(m, e)
 					return x.applyFunc(m, nil, e.Args, s.entity.Name+"."+e.Name, e.Pos)
 				}
@@ -1245,6 +1247,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		// A dyn value has its trait's methods, looked up at run time.
 		if m, ok := r.trait.Methods[e.Name]; ok && m.HasSelf {
 			c.useMethod(e, m)
+			x.top.callee(m) // its effects count here
 			env := typeEnv{}
 			for i, p := range r.trait.Params {
 				if i < len(r.args) {
@@ -1263,6 +1266,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			for _, b := range c.ts.bounds[r] {
 				if m, ok := b.trait.Methods[e.Name]; ok && m.HasSelf {
 					c.useMethod(e, m)
+					x.top.callee(m) // its effects count here
 					env := typeEnv{}
 					for i, p := range b.trait.Params {
 						if i < len(b.args) {
@@ -1285,6 +1289,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	if r, ok := prune(recv).(*tcon); ok && r.decl == nil && r.entity == nil {
 		if m := c.implMethod(r, e.Name); m != nil {
 			c.useMethod(e, m)
+			x.top.callee(m) // its effects count here
 			return x.applyFunc(m, typeEnv{}, e.Args, r.name+"."+e.Name, e.Pos)
 		}
 	}

@@ -159,7 +159,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| `uses` on public functions; none means pure | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
+| `uses` on public functions; none means pure; a private function's uses clause and a trait method's are held too; effect names are checked | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
 | Effects inferred through private functions and callbacks, and functions passed by name | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L261) |
 | `wait`, `net C.op`, `entity E`, `clock`, `stdio`, `env` | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
 | `secret S`, `publish T`, `consume T`, `ffi` | ✓ | — (not inferred; open question 19) | n/a | |

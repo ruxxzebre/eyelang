@@ -83,6 +83,8 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§11", "a function shown, compared or saved", "a function has none of the derived traits"},
 	{"§12", "a public function's unstated effects", "a public function states its effects"},
 	{"§12", "effects through private functions", "effects pass through private functions"},
+	{"§12", "an impl's method doing more than its trait's states, or a private function more than its uses clause", "effects don't escape through traits or private uses clauses"},
+	{"§12", "an effect that doesn't exist, or names what doesn't", "a uses clause lists effects that exist"},
 	{"§12", "effects through a function named as a value, and in a job, its calls that aren't steps", "effects pass through functions named as values"},
 	{"§12", "a waiting call where nothing waits", "waiting calls only in jobs"},
 	{"§12", "a durable step without !", "durable steps in jobs need !"},
