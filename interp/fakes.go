@@ -91,6 +91,10 @@ func (h *fakesHandler) apply(in *Interp, at ir.Pos) {
 			in.rt.aiReplies = in.loadReplies(filepath.Join(base, h.dir, "ai.json"), at)
 			continue
 		}
+		if m.Path == "http" && m.Dir == "" {
+			in.rt.httpFakes = in.loadHTTPFakes(filepath.Join(base, h.dir, "http.json"), at)
+			continue
+		}
 		if len(m.Contracts) != 1 {
 			in.faultf(at, "fakes take modules that declare one contract, and %s declares %d", m.Name, len(m.Contracts))
 		}

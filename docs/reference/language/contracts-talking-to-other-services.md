@@ -140,6 +140,9 @@ type Delivery =
   `http.get!(url, headers: { "Accept": "text/html" }, via: proxy)` returns
   `Result(Response, HttpError)`, with the status, the headers and the body as text. Any answer is
   `Ok`, whatever its status; `Err` is `NoAnswer(reason)` or `TimedOut`. `via` is the URL of an HTTP
-  proxy to go through.
+  proxy to go through. In tests, `with fakes(http, from: "recordings/")` answers `http.get` from
+  `recordings/http.json`: `"contract": "http"`, and an exchange per URL, with `"op": "get"`, the
+  URL as its `"key"` and `http.get`'s result (`{ "kind": "Ok", "value": { "status": 200, … } }`).
+  An exchange without a key answers every other URL; a URL nothing answers fails the test.
 - **Generated code for other languages** (types, clients and server stubs for Go, TypeScript, Rust
   and Python) is a build output, never committed.

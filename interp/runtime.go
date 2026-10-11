@@ -32,6 +32,8 @@ type runtime struct {
 	uncertain map[string]sentCommand
 	// aiReplies are recorded model replies, when a test applies fakes(ai, …).
 	aiReplies []recordedReply
+	// httpFakes answer http.get, when a test applies fakes(http, …).
+	httpFakes *httpFakes
 	// fastRetries makes retries of unreachable services immediate, in tests.
 	fastRetries bool
 	// scheduled holds the jobs started by schedules, once computed.

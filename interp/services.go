@@ -417,6 +417,9 @@ func (in *Interp) callHost(fn *ir.Func, args []argVal, at ir.Pos) Value {
 
 // hostHTTPGet is http.get: an answer of any status is Ok; Err is no answer.
 func hostHTTPGet(in *Interp, params map[string]Value, at ir.Pos) Value {
+	if v, ok := in.fakeHTTPGet(params, at); ok {
+		return v
+	}
 	target, _ := params["url"].(string)
 	headers := http.Header{}
 	if m, ok := params["headers"].(*Map); ok {
