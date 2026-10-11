@@ -31,7 +31,7 @@ func (b *builder) lowerInstance(in *instance) {
 	x.cur = x.newBlock()
 
 	var params []ir.Ty
-	var result ir.Ty = tyUnit
+	result := tyUnit
 	if in.lambda != nil {
 		if ft, ok := x.ty(in.lambda).(*ir.TFun); ok {
 			params, result = ft.Params, ft.Ret
@@ -604,7 +604,7 @@ func (x *fnb) callArgs(target *ir.Func, as []ir.Arg, fn *Func, offset int) ([]*V
 	}
 	for i, v := range vals {
 		if v == nil {
-			var t ir.Ty = tyUnit
+			t := tyUnit
 			if offset+i < len(fn.Params) {
 				t = fn.Params[offset+i].Ty
 			}
@@ -1163,7 +1163,7 @@ func (x *fnb) try(e *ir.Try) *Value {
 	if isOption {
 		x.emit(&MakeVariant{Dst: out, Variant: pre["None"]})
 	} else {
-		var errTy ir.Ty = tyUnit
+		errTy := tyUnit
 		if c != nil && len(c.Args) == 2 {
 			errTy = c.Args[1]
 		}
