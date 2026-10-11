@@ -131,9 +131,10 @@ tasks:
       - go test ./syntax -run 'TestConformance' -count=1
 
   fuzz:
-    desc: Fuzz the parser against the tree-sitter grammar for a while (FUZZTIME, default 2m); failures land in syntax/testdata/fuzz
+    desc: Fuzz the parser against the tree-sitter grammar for a while (FUZZTIME, default 2m; FUZZWORKERS, default 4); failures land in syntax/testdata/fuzz
     cmds:
-      - go test ./syntax -run '^$' -fuzz FuzzParse -fuzztime {{.FUZZTIME | default "2m"}}
+      # Four workers by default, so a fuzz run doesn't take over a machine others are building on.
+      - go test ./syntax -run '^$' -fuzz FuzzParse -fuzztime {{.FUZZTIME | default "2m"}} -parallel {{.FUZZWORKERS | default "4"}}
 
   fmt:
     desc: Format the repository's Eyelang sources
