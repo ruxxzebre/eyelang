@@ -266,11 +266,16 @@ func (p *parser) parameter() *Node {
 	if p.at(KwMut) {
 		b.add(p.bump())
 	}
-	if p.at(Underscore) {
+	switch {
+	case p.at(Underscore):
 		w := p.start(Wildcard)
 		w.add(p.bump())
 		b.field(FieldName, w.done(p))
-	} else {
+	case p.at(KwIn), p.at(KwFor):
+		// The labels built-ins take, `in:` and `for:`; only an extern fn
+		// may use them, which the checker sees to.
+		b.field(FieldName, p.bumpAs(Ident))
+	default:
 		b.field(FieldName, p.expect(Ident))
 	}
 	if p.at(Colon) {

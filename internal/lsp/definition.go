@@ -34,6 +34,12 @@ func (s *server) definition(d *document, p Position) (any, *responseError) {
 		return nil, nil
 	}
 	offset := d.offset(p)
+	if embeddedName(path) == "<builtin>" {
+		// In builtin.eye, a declared name goes on to the Go behind it.
+		if loc, ok := s.builtinImplementation(d, offset); ok {
+			return []location{loc}, nil
+		}
+	}
 	res := s.checked(path)
 	if use, ok := res.Index.At(path, offset); ok {
 		if loc, ok := s.targetLocation(use.Target); ok {
@@ -246,6 +252,8 @@ func embeddedName(path string) string {
 		return "<prelude>"
 	case strings.HasSuffix(p, "/check/runtime/store.eye"):
 		return "<runtime store>"
+	case strings.HasSuffix(p, "/ir/builtin.eye"):
+		return "<builtin>"
 	}
 	if i := strings.LastIndex(p, "/check/std/"); i >= 0 && strings.HasSuffix(p, ".eye") {
 		return "<std " + strings.TrimSuffix(p[i+len("/check/std/"):], ".eye") + ">"
@@ -432,14 +440,58 @@ func (s *server) implementation(d *document, p Position) (any, *responseError) {
 }
 
 // declaration answers textDocument/declaration. For a keyword or an operator
-// it is the section of SPECS.md that defines it; for a name, the definition.
+// it is the section of SPECS.md that defines it; for a built-in, its
+// documented declaration in ir/builtin.eye; for a name, the definition.
 func (s *server) declaration(d *document, p Position) (any, *responseError) {
 	if tok, _ := keywordAt(d, d.offset(p)); tok != nil {
 		if _, loc, ok := s.keywordDoc(tok.Text(d.text)); ok && loc.URI != "" {
 			return []location{loc}, nil
 		}
 	}
+	if path, ok := uriPath(d.uri); ok {
+		if use, ok := s.checked(path).Index.At(path, d.offset(p)); ok {
+			var at ir.Pos
+			switch t := use.Target.(type) {
+			case ir.Builtin:
+				at, ok = check.BuiltinDeclaration(t.Name, false)
+			case check.BuiltinType:
+				at, ok = check.BuiltinDeclaration(t.Name, true)
+			default:
+				ok = false
+			}
+			if ok {
+				if loc, ok := s.posLocation(at); ok {
+					return []location{loc}, nil
+				}
+			}
+		}
+	}
 	return s.definition(d, p)
+}
+
+// builtinImplementation is the Go behind the declaration in builtin.eye
+// whose name is at offset: a function's implementation, or where the checker
+// makes a type.
+func (s *server) builtinImplementation(d *document, offset int) (location, bool) {
+	for _, decl := range d.file.Root.Children {
+		n := decl.ChildByField(syntax.FieldName)
+		if n == nil || offset < n.Span.Start || offset > n.Span.End {
+			continue
+		}
+		name := n.Text(d.text)
+		switch decl.Kind {
+		case syntax.ExternTypeDeclaration:
+			return s.targetLocation(check.BuiltinType{Name: name})
+		case syntax.ExternDeclaration:
+			for _, b := range ir.BuiltinDocs {
+				if pos, ok := check.BuiltinDeclaration(b.Name, false); ok && pos.Offset == n.Span.Start {
+					name = b.Name // log.info, by its @host
+				}
+			}
+			return s.targetLocation(ir.Builtin{Name: name})
+		}
+	}
+	return location{}, false
 }
 
 // commentWord returns the name at offset when offset is in a comment: a

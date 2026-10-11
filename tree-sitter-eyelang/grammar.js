@@ -163,9 +163,11 @@ module.exports = grammar({
     parameters: $ => seq('(', commaSep($.parameter), ')'),
 
     // `mut` lets the function change the caller's variable; `_` ignores an argument.
+    // `in` and `for` name parameters only of an extern fn, which has no body to read them; the
+    // checker says so for the others.
     parameter: $ => seq(
       optional('mut'),
-      field('name', choice($.identifier, $.wildcard)),
+      field('name', choice($._label, $.wildcard)),
       optional(seq(':', field('type', $._type))),
       optional(seq('=', field('default', $._expression))),
     ),

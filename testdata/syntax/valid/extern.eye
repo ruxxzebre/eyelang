@@ -23,3 +23,7 @@ extern fn open(path: String) -> Result(Db, String) uses {ffi}
 
 @host("lab.sort")
 extern fn sorted(rows: List(row)) -> List(row) where row: Ord
+
+# An extern fn's parameters may be named in and for, the labels calls use.
+@host("lab.at")
+extern fn at(time: Time, in: Zone, for: Duration) -> Instant

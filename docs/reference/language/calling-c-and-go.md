@@ -33,6 +33,9 @@ extern fn open(path: String) -> Result(Db, String)
   saved. It is a type of its own, so a `Db` can't be passed where a `Socket` is expected. It may
   take type parameters, `extern type Cursor(row)`, and an `extern fn` may have a `where` clause,
   as a function does.
+- An `extern fn`'s parameters may be named `in` and `for`, the labels calls use for a zone and a
+  duration: `daily(at: Time, in: Zone)`. A function with a body can't, since it couldn't read
+  them: they are keywords.
 - **eye's own built-ins are declared the same way**, in `ir/builtin.eye`: an `extern type` for each
   built-in type, such as `Int` and `List(a)`, and an `extern fn` for each built-in function, each
   with its `##` documentation. Programs never import it; tools read it, so hover, Go to

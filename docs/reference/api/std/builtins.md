@@ -14,10 +14,12 @@ Functions every module can call without importing anything. Collection functions
 ### print {#print}
 
 ```eye
-fn print(values…)
+fn print(values: List(a))
 ```
 
-Writes the values, shown as string interpolation shows them and separated by spaces, and a line break to standard output.
+Writes the values, shown as string interpolation shows them and separated by spaces, and a line
+break to standard output. It takes any number of values, written as separate arguments:
+`print("took", d)`.
 
 ### unreachable {#unreachable}
 
@@ -25,39 +27,45 @@ Writes the values, shown as string interpolation shows them and separated by spa
 fn unreachable(why: String)
 ```
 
-Stops the program, or the job's run, as a fault: `Failed(Unreachable(why))`. It is for states the code has already ruled out, never for failures that can happen.
+Stops the program, or the job's run, as a fault: `Failed(Unreachable(why))`. It is for states
+the code has already ruled out, never for failures that can happen.
 
 ### log.debug {#log-debug}
 
 ```eye
-fn log.debug(values…)
+fn log.debug(values: List(a))
 ```
 
-Logs a line at debug level. A job that resumes doesn't log again what it logged before its last step.
+Logs a line at debug level. A job that resumes doesn't log again what it logged before its last
+step.
+It takes any number of values, written as separate arguments.
 
 ### log.info {#log-info}
 
 ```eye
-fn log.info(values…)
+fn log.info(values: List(a))
 ```
 
 Logs a line at info level.
+It takes any number of values, written as separate arguments.
 
 ### log.warn {#log-warn}
 
 ```eye
-fn log.warn(values…)
+fn log.warn(values: List(a))
 ```
 
 Logs a line at warning level.
+It takes any number of values, written as separate arguments.
 
 ### log.error {#log-error}
 
 ```eye
-fn log.error(values…)
+fn log.error(values: List(a))
 ```
 
 Logs a line at error level.
+It takes any number of values, written as separate arguments.
 
 ## Tests
 
@@ -67,7 +75,8 @@ Logs a line at error level.
 fn expect(condition: Bool)
 ```
 
-Fails the test if the condition is false. For a comparison it shows the value it got: `expected w.phase == Asleep, but w.phase is Running`.
+Fails the test if the condition is false. For a comparison it shows the value it got: `expected
+w.phase == Asleep, but w.phase is Running`.
 
 ### advance {#advance}
 
@@ -75,7 +84,8 @@ Fails the test if the condition is false. For a comparison it shows the value it
 fn advance(by: Duration)
 ```
 
-Moves the test's clock forward. Each job run that wakes on the way runs, in the order of its wake time, before `advance` returns.
+Moves the test's clock forward. Each job run that wakes on the way runs, in the order of its
+wake time, before `advance` returns.
 
 ### clock {#clock}
 
@@ -83,7 +93,8 @@ Moves the test's clock forward. Each job run that wakes on the way runs, in the 
 fn clock(at: Instant) -> Handler
 ```
 
-Used as `with clock(2026-10-10 12:00 in "Europe/Dublin")`: sets the test's clock. Without it, a test's clock starts at 2026-01-01 00:00 UTC.
+Used as `with clock(2026-10-10 12:00 in "Europe/Dublin")`: sets the test's clock. Without it, a
+test's clock starts at 2026-01-01 00:00 UTC.
 
 ### approve {#approve}
 
@@ -104,10 +115,12 @@ In a test, declines the request a job is waiting for in `approval!(…)` whose t
 ### fakes {#fakes}
 
 ```eye
-fn fakes(modules…, from: String) -> Handler
+fn fakes(modules: List(Module), from: String) -> Handler
 ```
 
-Used as `with fakes(notify, from: "receipts/")`: calls to the contract modules replay the exchanges recorded in `receipts/notify.json`, checked against the contract's types.
+Used as `with fakes(notify, from: "receipts/")`: calls to the contract modules replay the
+exchanges recorded in `receipts/notify.json`, checked against the contract's types.
+It takes any number of contract modules, written as separate arguments.
 
 ## Time
 
@@ -117,7 +130,9 @@ Used as `with fakes(notify, from: "receipts/")`: calls to the contract modules r
 fn sleep(for: Duration)
 ```
 
-In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes when the time comes, even after a restart. Outside jobs, `sleep` blocks; in tests it advances the clock.
+In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes
+when the time comes, even after a restart. Outside jobs, `sleep` blocks; in tests it advances
+the clock.
 
 ### sleepUntil {#sleepUntil}
 
@@ -125,7 +140,8 @@ In a job, `sleep!(20 min)` is a durable step: the run waits without holding memo
 fn sleepUntil(at: Instant)
 ```
 
-In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until that time comes. Outside jobs it blocks; in tests it advances the clock.
+In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until that time comes.
+Outside jobs it blocks; in tests it advances the clock.
 
 ## Configuration
 
@@ -135,7 +151,9 @@ In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until th
 fn secret(name: String) -> Secret(String)
 ```
 
-The secret of that name: the environment variable of the name in upper case, with `-` and `.` as `_` (`notify-token` is NOTIFY_TOKEN), or the file of that name in the directory $EYE_SECRETS. It can't be shown or saved.
+The secret of that name: the environment variable of the name in upper case, with `-` and `.` as
+`_` (`notify-token` is NOTIFY_TOKEN), or the file of that name in the directory $EYE_SECRETS. It
+can't be shown or saved.
 
 ### env.get {#env-get}
 
@@ -143,7 +161,8 @@ The secret of that name: the environment variable of the name in upper case, wit
 fn env.get(name: String) -> Option(String)
 ```
 
-The environment variable of that name, if it is set: for configuration that isn't secret, such as a proxy's address.
+The environment variable of that name, if it is set: for configuration that isn't secret, such
+as a proxy's address.
 
 ## Time
 
@@ -153,7 +172,9 @@ The environment variable of that name, if it is set: for configuration that isn'
 fn daily(at: Time, in: Zone) -> Schedule
 ```
 
-Every day at that time on the zone's clock: `@on(daily(07:40, in: dublin))`. A time a daylight-saving change skips fires as far after the change as it was meant to be; a time it repeats fires the first time. A job that takes a Date gets the firing's date in the zone.
+Every day at that time on the zone's clock: `@on(daily(07:40, in: dublin))`. A time a
+daylight-saving change skips fires as far after the change as it was meant to be; a time it
+repeats fires the first time. A job that takes a Date gets the firing's date in the zone.
 
 ### weekdays {#weekdays}
 
@@ -169,7 +190,8 @@ Like daily, Monday to Friday.
 fn every(interval: Duration) -> Schedule
 ```
 
-At every multiple of the interval since midnight UTC: `@on(every(15 min))` fires at :00, :15, :30 and :45.
+At every multiple of the interval since midnight UTC: `@on(every(15 min))` fires at :00, :15,
+:30 and :45.
 
 ### now {#now}
 
@@ -177,7 +199,8 @@ At every multiple of the interval since midnight UTC: `@on(every(15 min))` fires
 fn now() -> Instant
 ```
 
-The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run sees the same time.
+The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run
+sees the same time.
 
 ## Concurrency
 
@@ -187,7 +210,9 @@ The current time: the test's clock in tests. In a job, `now!()` records it, so a
 fn parallelMap(c: Collection(a), f: fn(a) -> b, limit: Int = all) -> List(b)
 ```
 
-Applies f to each element in tasks that run at once, at most limit of them, and returns the results in the elements' order. Tasks that wait, for the network or a timer, overlap. In a job, f may only compute.
+Applies f to each element in tasks that run at once, at most limit of them, and returns the
+results in the elements' order. Tasks that wait, for the network or a timer, overlap. In a job,
+f may only compute.
 
 ### both {#both}
 
@@ -203,7 +228,8 @@ Runs a and b at once and returns both results when both have finished.
 fn race(fs: List(fn() -> a)) -> a
 ```
 
-Runs the functions at once and returns the result of the first to finish; the others are cancelled at their next wait.
+Runs the functions at once and returns the result of the first to finish; the others are
+cancelled at their next wait.
 
 ### timeout {#timeout}
 
@@ -211,7 +237,8 @@ Runs the functions at once and returns the result of the first to finish; the ot
 fn timeout(after: Duration, f: fn() -> a) -> Option(a)
 ```
 
-Runs f, and returns `Some(result)` if it finishes in time, or `None`, cancelling it at its next wait, if it doesn't.
+Runs f, and returns `Some(result)` if it finishes in time, or `None`, cancelling it at its next
+wait, if it doesn't.
 
 ## Waiting
 
@@ -221,7 +248,10 @@ Runs f, and returns `Some(result)` if it finishes in time, or `None`, cancelling
 fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool
 ```
 
-In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls check every interval until it returns true, and returns false if `within` runs out first. For a service that can't send an event when it is ready. Only the outcome is kept, so a long poll doesn't grow the run's history.
+In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls check every
+interval until it returns true, and returns false if `within` runs out first. For a service that
+can't send an event when it is ready. Only the outcome is kept, so a long poll doesn't grow the
+run's history.
 
 ### next {#next}
 
@@ -229,7 +259,8 @@ In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls che
 fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a)
 ```
 
-In a job, waits for the first event that matches, counting every one published since the run's previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.
+In a job, waits for the first event that matches, counting every one published since the run's
+previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.
 
 ### approval {#approval}
 
@@ -237,7 +268,8 @@ In a job, waits for the first event that matches, counting every one published s
 fn approval(what: String, from: who, within: Duration) -> Decision
 ```
 
-In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined` or `Expired`. Only this can make an `Approval`.
+In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined`
+or `Expired`. Only this can make an `Approval`.
 
 ## Collections
 
@@ -319,7 +351,8 @@ The last element, or `None`.
 fn map(c: Collection(a), f: fn(a) -> b) -> List(b)
 ```
 
-Applies f to each element. On an Option or a Result, applies f to the value inside `Some` or `Ok`.
+Applies f to each element. On an Option or a Result, applies f to the value inside `Some` or
+`Ok`.
 
 ### filter {#filter}
 
@@ -327,7 +360,8 @@ Applies f to each element. On an Option or a Result, applies f to the value insi
 fn filter(c: Collection(a), keep: fn(a) -> Bool) -> List(a)
 ```
 
-The elements for which keep is true; a set stays a set. Over `Entity.all` in a view, the runtime keeps the result up to date.
+The elements for which keep is true; a set stays a set. Over `Entity.all` in a view, the runtime
+keeps the result up to date.
 
 ### find {#find}
 
@@ -561,7 +595,8 @@ Whether r is `Err`.
 fn mapErr(r: Result(a, e), f: fn(e) -> f) -> Result(a, f)
 ```
 
-r with f applied to its error: `parse(s).mapErr(BadNumber)?` wraps the error in the caller's variant.
+r with f applied to its error: `parse(s).mapErr(BadNumber)?` wraps the error in the caller's
+variant.
 
 ### parseInt {#parseInt}
 
@@ -608,7 +643,7 @@ n without its sign.
 ### enters {#enters}
 
 ```eye
-enters(view)
+fn enters(view: View) -> Trigger
 ```
 
 In `@on(enters(view))`: starts one run of the job for each entity that begins to match the view.
@@ -616,7 +651,7 @@ In `@on(enters(view))`: starts one run of the job for each entity that begins to
 ### leaves {#leaves}
 
 ```eye
-leaves(view)
+fn leaves(view: View) -> Trigger
 ```
 
 In `@on(leaves(view))`: starts one run of the job for each entity that stops matching the view.

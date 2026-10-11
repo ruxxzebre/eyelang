@@ -74,6 +74,9 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 				c.use(l.selfAt, Local{At: l.selfAt})
 				continue // self, in an impl's or a trait's method
 			}
+			if (name == "in" || name == "for") && d.ChildByField(syntax.FieldBody) != nil {
+				c.errorf(pos(f, nameNode), "%s is a keyword, so the body couldn't read a parameter of that name; only an extern fn's parameters may be named in or for", name)
+			}
 			param := &ir.Param{Name: name, Mut: hasToken(f, p, "mut"), Type: c.typeExpr(m, f, p.ChildByField(syntax.FieldType), nil)}
 			if nameNode.Kind == syntax.Wildcard {
 				param.Name = "_"

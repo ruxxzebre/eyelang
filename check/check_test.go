@@ -26,6 +26,8 @@ func TestDiagnostics(t *testing.T) {
 		src  string
 		want []string
 	}{
+		{"in and for name only an extern fn's parameters", `fn f(in: Int) = 1`,
+			[]string{"1:6: in is a keyword, so the body couldn't read a parameter of that name; only an extern fn's parameters may be named in or for"}},
 		{"an extern type is a type of its own", `extern type Db
 @host("lab.rows")
 extern fn rows(db: Db) -> Int uses {ffi}

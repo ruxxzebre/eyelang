@@ -160,3 +160,37 @@ func preludeLine(t *testing.T, text string) string {
 	}
 	return "?"
 }
+
+// TestBuiltinDeclarations goes from a built-in to its documented
+// declaration in ir/builtin.eye, and from there to its Go.
+func TestBuiltinDeclarations(t *testing.T) {
+	s := repoServer(t)
+	dir := t.TempDir()
+	src := "fn f(s: String) {\n  print(s)\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "a.eye"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := newDocument(pathURI(filepath.Join(dir, "a.eye")), 1, []byte(src))
+	s.docs[d.uri] = d
+	for _, c := range []struct {
+		line, char int
+		want       string
+	}{{1, 3, "fn print("}, {0, 9, "type String"}} {
+		got, _ := s.declaration(d, Position{Line: c.line, Character: c.char})
+		locs := asLocations(got)
+		if len(locs) != 1 || !strings.HasSuffix(locs[0].URI, "/ir/builtin.eye") {
+			t.Errorf("%d:%d: declaration %v, want ir/builtin.eye", c.line, c.char, locs)
+			continue
+		}
+		b, _ := uriPath(locs[0].URI)
+		bsrc, _ := os.ReadFile(b)
+		bd := newDocument(locs[0].URI, 1, bsrc)
+		line := strings.Split(string(bsrc), "\n")[locs[0].Range.Start.Line]
+		if !strings.Contains(line, c.want) {
+			t.Errorf("%d:%d: declaration at %q, want %q", c.line, c.char, line, c.want)
+		}
+		if impl, ok := s.builtinImplementation(bd, bd.offset(locs[0].Range.Start)); !ok || !strings.HasSuffix(impl.URI, ".go") {
+			t.Errorf("%s in builtin.eye leads to %v, want Go", c.want, impl)
+		}
+	}
+}

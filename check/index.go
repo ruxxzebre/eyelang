@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"eyelang/ir"
 	"eyelang/syntax"
@@ -491,6 +492,8 @@ func Embedded(path string) (repoPath string, src []byte, ok bool) {
 		return filepath.Join(dir, "prelude.eye"), preludeSrc, true
 	case "<runtime store>":
 		return filepath.Join(dir, "runtime", "store.eye"), storeSrc, true
+	case "<builtin>":
+		return GoFile("ir/builtin.eye"), ir.BuiltinSource, true
 	}
 	if name, found := strings.CutPrefix(path, "<std "); found {
 		name = strings.TrimSuffix(name, ">")
@@ -501,6 +504,33 @@ func Embedded(path string) (repoPath string, src []byte, ok bool) {
 		return filepath.Join(dir, "std", name+".eye"), src, true
 	}
 	return "", nil, false
+}
+
+// builtinFile is ir/builtin.eye, parsed once.
+var builtinFile = sync.OnceValue(func() *ir.File {
+	return parseFile("<builtin>", ir.BuiltinSource)
+})
+
+// BuiltinDeclaration returns where ir/builtin.eye declares the built-in
+// function name (print, log.info), or the built-in type when isType is set:
+// the name in its documented declaration.
+func BuiltinDeclaration(name string, isType bool) (ir.Pos, bool) {
+	f := builtinFile()
+	for _, d := range f.Tree.Root.Children {
+		n := d.ChildByField(syntax.FieldName)
+		if n == nil || isType != (d.Kind == syntax.ExternTypeDeclaration) {
+			continue
+		}
+		if d.Kind == syntax.ExternDeclaration {
+			if args := attributeArgs(f, d, "host"); len(args) == 1 && strings.Trim(text(f, args[0]), `"`) == name {
+				return pos(f, n), true
+			}
+		}
+		if text(f, n) == name {
+			return pos(f, n), true
+		}
+	}
+	return ir.Pos{}, false
 }
 
 // GoText is a place in eye's Go source, found by its text: where a built-in
