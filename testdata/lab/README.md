@@ -274,11 +274,15 @@ ends with the model, what it spent, and the bytes of prompt sent and of
 reply received: `[gpt-5.6-terra: 30000 tokens in, 3000 out, $0.1650; sent
 41.2 KiB, received 3.0 KiB]`, and the run's line with what the run spent
 in all; `eye runs --json` gives it as `spent`. To see what the model
-replied, give the step's number too: `eye runs /program 2 9` shows the
-reply as the program read it, up to 16 KiB. A reply that didn't match the
-briefing's schema, even after being sent back once, says so, with the
-problems, and shows the reply as the model wrote it. What a bad morning
-shows, and what to do:
+replied, give the step's number too: `eye runs /program 2 9` shows how
+the call was sent (`chat completions at AI_URL: response_format
+json_schema, strict; no reasoning_effort or other reasoning settings`) and
+the reply as the program read it, up to 16 KiB. A reply that didn't match
+the briefing's schema, even after being sent back once, says so, with the
+problems, and shows the reply as the model wrote it.
+`eye runs --show-replies /program 2` shows every model call's reply below
+its step, and `eye runs --json` gives every value whole; the plain listing
+cuts values to a line. What a bad morning shows, and what to do:
 
 | `eye runs` shows | Meaning | Do |
 |---|---|---|

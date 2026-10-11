@@ -69,7 +69,7 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 		for _, m := range req.messages {
 			sent += len(m.Content)
 		}
-		in.noteCall(req.model, sent, len(reply.text))
+		in.noteCall(req.model, req.options, sent, len(reply.text))
 		switch {
 		case failure != "":
 			return aiErr("ProviderError", int64(status), failure)
@@ -109,6 +109,9 @@ type aiRequest struct {
 	// maxTokens is how long the reply may be; capped says a budget set it.
 	maxTokens int64
 	capped    bool
+	// options says how the call was sent: the API, how it asked for the
+	// schema, and the settings it gave, for eye runs.
+	options string
 }
 
 type aiMessage struct {
@@ -158,6 +161,7 @@ func (in *Interp) complete(req *aiRequest, at ir.Pos) (aiReply, int, string) {
 		}
 		r := in.rt.aiReplies[0]
 		in.rt.aiReplies = in.rt.aiReplies[1:]
+		req.options = "a recorded reply, from with fakes(ai, …)"
 		return aiReply{text: string(r.Result), spent: r.spent(req.model)}, 0, ""
 	}
 	switch providerFor(req) {
@@ -202,6 +206,15 @@ func (in *Interp) completeChat(req *aiRequest, base, key, maxField string, at ir
 	if req.capped {
 		body[maxField] = req.maxTokens
 	}
+	via := "OpenAI's chat completions"
+	if maxField == "max_tokens" {
+		via = "chat completions at AI_URL"
+	}
+	req.options = via + ": response_format json_schema, strict"
+	if req.capped {
+		req.options += fmt.Sprintf(", %s %d", maxField, req.maxTokens)
+	}
+	req.options += "; no reasoning_effort or other reasoning settings"
 	headers := http.Header{}
 	if key != "" {
 		headers.Set("Authorization", "Bearer "+key)
@@ -266,6 +279,7 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 	if req.system != "" {
 		body["system"] = req.system
 	}
+	req.options = fmt.Sprintf("Anthropic's Messages API: output_config.format json_schema, max_tokens %d; no thinking settings", req.maxTokens)
 	headers := http.Header{}
 	headers.Set("x-api-key", key)
 	headers.Set("anthropic-version", anthropicVersion)

@@ -558,11 +558,12 @@ type step struct {
 	// The models the step asked, and the bytes of prompts sent to them and
 	// of replies, for eye runs.
 	Model          string `json:",omitempty"`
+	Options        string `json:",omitempty"` // how the calls were sent
 	Sent, Received int64  `json:",omitempty"`
 }
 
 func (s step) spent() spend {
-	return spend{Tokens: s.Tokens, In: s.TokensIn, Out: s.TokensOut, USD: s.USD, Model: s.Model, Sent: s.Sent, Received: s.Received}
+	return spend{Tokens: s.Tokens, In: s.TokensIn, Out: s.TokensOut, USD: s.USD, Model: s.Model, Options: s.Options, Sent: s.Sent, Received: s.Received}
 }
 
 func (r *jobRun) encode() []byte {

@@ -235,7 +235,7 @@ func (in *Interp) record(run *jobRun, v Value, at ir.Pos) Value {
 // recordSpend records a step that spent tokens and money on model calls.
 func (in *Interp) recordSpend(run *jobRun, v Value, s spend, at ir.Pos) Value {
 	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: in.rt.seq(), Tokens: s.Tokens, TokensIn: s.In, TokensOut: s.Out, USD: s.USD,
-		Model: s.Model, Sent: s.Sent, Received: s.Received})
+		Model: s.Model, Options: s.Options, Sent: s.Sent, Received: s.Received})
 	run.cursor++
 	in.checkHeld(run, in.rt.save(run), at)
 	return v

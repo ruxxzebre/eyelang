@@ -19,9 +19,10 @@ func runRuns(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	journal := fs.String("journal", "", "the journal to read (default program-directory/.eye/journal)")
 	store := fs.String("store", "", "read the store in this Postgres database, postgres://… (default $EYE_STORE)")
-	asJSON := fs.Bool("json", false, "print the runs as JSON")
+	asJSON := fs.Bool("json", false, "print the runs as JSON, with every value whole")
+	replies := fs.Bool("show-replies", false, "with a run's id, show each model call's whole reply below its step")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye runs [--store url | --journal file] [--json] [program-directory] [run-id [step]]")
+		fmt.Fprintln(stderr, "usage: eye runs [--store url | --journal file] [--json | --show-replies] [program-directory] [run-id [step]]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Lists the job runs in a program's journal, or its Postgres store: each run's")
 		fmt.Fprintln(stderr, "status, what it waits for and until when, and with a run's id, its steps, with")
@@ -124,6 +125,9 @@ func runRuns(args []string, stdout, stderr io.Writer) int {
 		}
 		interp.FormatRuns(stdout, runs, false, time.Now())
 		interp.FormatStep(stdout, stepNo, step, time.Now())
+		if step.Spent != nil && step.Spent.Options != "" {
+			fmt.Fprintln(stdout, "how it was sent: "+step.Spent.Options)
+		}
 		fmt.Fprintln(stdout, value)
 		return 0
 	}
@@ -142,6 +146,6 @@ func runRuns(args []string, stdout, stderr io.Writer) int {
 	if stats, err := interp.StatJournal(path); err == nil && id < 0 && url == "" {
 		interp.FormatJournal(stdout, path, stats, runs)
 	}
-	interp.FormatRuns(stdout, runs, id >= 0, time.Now())
+	interp.FormatRunsWith(stdout, runs, interp.FormatOptions{Steps: id >= 0, Replies: *replies}, time.Now())
 	return 0
 }
