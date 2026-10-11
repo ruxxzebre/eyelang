@@ -1,35 +1,27 @@
 # Approvals reach the operator: each approval! a run waits for becomes a
-# question on Notify with two buttons, and the first press answers it.
+# message on Notify that says what is asked, until when, and how to answer.
+#
+# Answers come only from `eye approve` and `eye decline`, run where the
+# program runs. Answering from Notify's buttons waits for answers that name
+# the request and count only from the person asked (#71): until then, a
+# press could answer any approval with the same text, by anyone.
 
 import approvals
 import home.{operator}
-import notify.{Choice, QuestionId}
+import notify
 
-let yes: Choice = { id: "approve", label: "Approve" }
-let no: Choice = { id: "decline", label: "Decline" }
-
-## Asks the operator about an approval a run waits for, and passes the first
-## press on as the answer. A question nobody presses ends with the request,
-## which the run then takes as Expired.
+## Tells the operator about an approval a run waits for, and how to answer
+## it. A request nobody answers ends at its `until`, which the run then takes
+## as Expired.
 @on(event(approvals.requested))
 job ask(r: approvals.Request) {
-  let left = r.until - now!()
-  let asked = notify.ask!(
+  notify.send!(
     event: "approvals",
-    to: operator,
-    text: r.what,
-    choices: [yes, no],
-    within: left,
+    title: "Approval needed",
+    body: "{r.what}\n\nAnswer before {r.until} with eye approve \"{r.what}\", or eye decline, in the program's directory.",
+    to: Some([operator]),
     key: "approval-{r.id}",
-  ).reconcile!()
-  let question = match asked {
-    Asking(q) => q
-    NotAsked(_) => return
-  }
-  let Some(press) = next!(notify.answered, where: fn a: a.question == question, within: left) else {
-    return
-  }
-  approvals.answered.publish!({ what: r.what, approved: press.choice == yes.id, by: "{press.by}" })
+  )
 }
 
 # ---------------------------------------------------------------- tests
@@ -48,23 +40,19 @@ job restart() {
   }
 }
 
-test "an approval is asked on Notify, and a press on Approve answers it" {
-  let asked = fakes(notify, from: "recordings/")
-  with asked
+test "an approval is sent to the operator on Notify, and eye approve answers it" {
+  let sent = fakes(notify, from: "recordings/")
+  with sent
   restart.start()
   expect(Outcome("router").decided == None)
-  let [q] = asked.calls(notify.ask) else { unreachable("not asked once") }
-  expect(q.to == operator && q.text == "Restart the router?" && q.choices == [yes, no] && q.within == 1 h)
-  notify.answered.publish({
-    question: QuestionId("q-41"),  # what the recording answered the ask with
-    choice: "approve",
-    by: operator,
-    at: now(),
-  })
+  let [m] = sent.calls(notify.send) else { unreachable("not sent once") }
+  expect(m.to == Some([operator]) && m.title == "Approval needed")
+  expect(m.body |> contains("eye approve \"Restart the router?\""))
+  approve("Restart the router?", by: operator)
   expect(Outcome("router").decided == Some(true))
 }
 
-test "a question nobody presses ends as Expired" {
+test "a request nobody answers ends as Expired" {
   with fakes(notify, from: "recordings/")
   restart.start()
   advance(2 h)

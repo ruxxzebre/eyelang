@@ -1,6 +1,6 @@
 {
   "contract": "Notify",
   "exchanges": [
-    { "op": "ask", "key": "approval-1-0", "result": { "kind": "Asking", "value": "q-41" } }
+    { "op": "send", "key": "approval-1-0", "result": { "kind": "Accepted", "id": "m-41", "deliveries": 1, "deduped": false } }
   ]
 }

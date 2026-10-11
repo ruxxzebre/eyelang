@@ -120,21 +120,29 @@ what they are given:
 <<< ./code/jobs-and-waiting/main.eye#test-prune
 
 Outside tests, a request reaches a person through the program. When a run starts waiting, the
-runtime publishes `approvals.requested`; a job of the program sends it on, say as a question with
-two buttons, and publishes `approvals.answered` with the answer:
+runtime publishes `approvals.requested`, and a job of the program tells the person what is asked
+and until when:
 
 ```eye
 import approvals
 
 @on(event(approvals.requested))
 job ask(r: approvals.Request) {
-  # send r.what to whoever r.from names, wait for their answer, then:
-  approvals.answered.publish!({ what: r.what, approved: true, by: "ann" })
+  # tell whoever r.from names what r.what asks, and to answer before r.until
+  # with eye approve or eye decline
 }
 ```
 
-From a shell, `eye approve` and `eye decline` answer a run of `eye run` in the same directory:
-`eye approve . "delete 3 backups"`. `eye runs` shows what each run waits for.
+The person answers from a shell where the program runs: `eye approve` and `eye decline` answer a
+run of `eye run` in that directory, as in `eye approve . "delete 3 backups"`. `eye runs` shows what
+each run waits for, and until when. A run waiting for an approval survives a restart of `eye run`,
+with the same deadline.
+
+For now, answer only with `eye approve` and `eye decline`. A program can publish
+`approvals.answered` itself, from a button press say, but such an answer goes to every waiting
+approval whose text contains it, whoever pressed. Answers that name their request and count only
+from the person asked are planned
+([#71](https://github.com/ruxxzebre/eyelang/issues/71)).
 
 `poll!` is for services that can only be asked:
 

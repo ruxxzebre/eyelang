@@ -40,7 +40,8 @@ have no issue yet.
   examples through the checker).
 - The decisions of 2026-10-11 ([docs/internals/proposals.md](docs/internals/proposals.md), all
   accepted) change code that v0.2 shipped: approvals answered by id and only by the person asked
-  (C.8, #71, the lab's main security gap, so before the homelab relies on approvals), a job
+  (C.8, #71, deferred: until then the lab answers approvals only with `eye approve` and
+  `eye decline`, and its `approving` module tells the operator how), a job
   changed under a paused run faulting
   instead of replaying wrong values (C.10, #73), and module roots in `eye.toml` (C.11, #74),
   which lets the digest's deploy drop its symbolic links.
@@ -380,7 +381,9 @@ What each task is, until its issue holds it:
   approval whose text contains `TEXT`, refuse when several do and list them with their ids, and
   `eye approve --id ID` answers one. `approve(…)` and `decline(…)` in tests fail when their text
   matches more than one. `Approval` gets `what` and `by` fields. The lab's `approving` module
-  publishes the id. SPECS §15 has the rules.
+  publishes the id. SPECS §15 has the rules. Deferred by the user on 2026-10-11: for now the lab
+  answers only with `eye approve` and `eye decline`, and `approving` sends the operator a message
+  saying how instead of buttons; tests show waiting, `within:`, decline and a restart around it.
   **Done when:** tests show two runs asking the same thing answered one by one, an answer by
   someone other than `from` refused while the run keeps waiting, an ambiguous `eye approve` and
   test `approve(…)` refused, and `ok.by` read in a job; the lab's tests pass.

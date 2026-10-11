@@ -152,8 +152,11 @@ This follows ROADMAP's "What's next", with what today changed:
 1. Done: #69 (C.5). `eye fmt DIR` writes each public function's `uses` clause by default, as
    the user chose; `--syntax-only` turns it off, and a file formatted alone stays syntax-only.
    SPECS §12 and the decision log ("Writing effects") have the rule. It didn't touch `syntax/`.
-2. C.8 (#71): approvals answered by id, and only by the person asked. This is the lab's main
-   security gap, and it comes before the homelab relies on approvals.
+2. C.8 (#71), deferred by the user. Approvals are stubbed instead: the lab answers only with
+   `eye approve` and `eye decline`, and `approving` sends the operator a message saying how,
+   with no buttons. `testdata/programs/jobs/approvals.eye` and
+   `TestApprovalWaitsAcrossRestartsAndExpires` show waiting, `within:`, Expired, decline and a
+   restart of `eye run` around it. Buttons come back with #71's answers by id.
 3. C.11 (#74), module roots, and 6.2 (#54), `@port` and `@allow`. `pub` and `opaque` are now
    enforced, so 6.2 is unblocked.
 4. Phase 6's exit test: 6.6 (#58), Notify generated from its contract, and 6.8 (#60), the
