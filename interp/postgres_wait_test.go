@@ -154,3 +154,57 @@ func TestTransientPostgresErrors(t *testing.T) {
 		}
 	}
 }
+
+// A store another runner holds, as the runner of a pod being replaced does
+// until it stops, is waited for, and the log says so in its own words.
+func TestWaitForPostgresWaitsForTheOtherRunner(t *testing.T) {
+	quickRetries(t)
+	tries := 0
+	prev := pgOpen
+	pgOpen = func(ctx context.Context, url string) (*Postgres, error) {
+		tries++
+		if tries < 3 {
+			return nil, &storeHeld{"postgres db:5432/app schema lab"}
+		}
+		return &Postgres{name: "postgres db:5432/app schema lab"}, nil
+	}
+	t.Cleanup(func() { pgOpen = prev })
+	var log lockedBuffer
+	p, err := WaitForPostgres(context.Background(), "postgres://app:secret@db/app", &log)
+	if p == nil || err != nil {
+		t.Fatalf("opened %v, %v", p, err)
+	}
+	want := strings.Repeat("eye run: another runner holds this store (postgres db:5432/app schema lab); waiting, trying again in 10ms\n", 2)
+	if log.String() != want {
+		t.Errorf("log:\n%s\nwant:\n%s", log.String(), want)
+	}
+}
+
+// On a real database, a second runner waits until the first one closes the
+// store, then opens it.
+func TestSecondRunnerWaitsForTheFirst(t *testing.T) {
+	url := testPostgres(t)
+	quickRetries(t)
+	first := openPostgres(t, url)
+	var log lockedBuffer
+	done := make(chan error, 1)
+	go func() {
+		p, err := WaitForPostgres(context.Background(), url, &log)
+		if p != nil {
+			p.Close()
+		}
+		done <- err
+	}()
+	waitFor(t, 5*time.Second, "the second runner to wait", func() bool {
+		return strings.Contains(log.String(), "another runner holds this store")
+	})
+	first.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the second runner didn't open the store after the first closed it")
+	}
+}

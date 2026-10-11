@@ -137,8 +137,12 @@ eye run: started /program; store: postgres postgres-rw.lab.svc.cluster.local:543
 ```
 
 Run one replica, with `strategy: Recreate`: the store allows one `eye run` per
-database and schema, through an advisory lock, and a second one exits with
-"… is in use by another eye run".
+database and schema, through an advisory lock. A second one waits for the
+lock, logging "eye run: another runner holds this store (postgres …);
+waiting, trying again in 10s" every 10 seconds, and starts once the first
+has stopped. That carries a restart over the moment before Postgres notices
+the old pod's session is gone; a log that keeps saying it means two
+replicas are running, and one of them is a standby that never starts.
 
 ### The store
 
@@ -176,8 +180,8 @@ For example, in a database `digest` with the schema `eyelang`:
   connections (SQLSTATE `57P01`–`57P03`, `53300`, class `08`). It exits 1 at
   once on what waiting won't fix: an address it can't read, a wrong user or
   password, refused TLS, a database or schema that doesn't exist, a user
-  that may not make the tables, a schema another `eye run` holds, or tables
-  a newer `eye` wrote.
+  that may not make the tables, or tables a newer `eye` wrote. A schema
+  another `eye run` holds is waited for (see "The command").
 
 ### The filesystem
 

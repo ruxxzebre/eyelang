@@ -112,18 +112,28 @@ func openPostgresCtx(parent context.Context, url string) (*Postgres, error) {
 // starts before its database can be reached: while the database refuses
 // connections, doesn't answer, has a name that doesn't resolve yet, or is
 // still starting up, it says so on log and tries again every retryAfter, as
-// a runner does with a commit, until ctx is done. A failure that waiting
-// won't fix returns at once: an address that can't be read, a login or TLS
-// the database refuses, a database or schema that doesn't exist, a user
-// that may not make the tables, a store another eye run holds, or tables a
-// newer eye wrote.
+// a runner does with a commit, until ctx is done. It waits the same way
+// while another eye run holds the store, as the runner of a pod being
+// replaced does until it stops, or the database notices it has gone; two
+// runners started by mistake show in the log as one that keeps waiting. A
+// failure that waiting won't fix returns at once: an address that can't be
+// read, a login or TLS the database refuses, a database or schema that
+// doesn't exist, a user that may not make the tables, or tables a newer eye
+// wrote.
 func WaitForPostgres(ctx context.Context, url string, log io.Writer) (*Postgres, error) {
 	for {
-		p, err := openPostgresCtx(ctx, url)
-		if err == nil || !pgTransient(err) || ctx.Err() != nil {
+		p, err := pgOpen(ctx, url)
+		var held *storeHeld
+		switch {
+		case err == nil || ctx.Err() != nil:
 			return p, err
+		case errors.As(err, &held):
+			fmt.Fprintf(log, "eye run: another runner holds this store (%s); waiting, trying again in %v\n", held.name, retryAfter)
+		case pgTransient(err):
+			fmt.Fprintf(log, "eye run: %v; trying again in %v\n", err, retryAfter)
+		default:
+			return nil, err
 		}
-		fmt.Fprintf(log, "eye run: %v; trying again in %v\n", err, retryAfter)
 		timer := time.NewTimer(retryAfter)
 		select {
 		case <-ctx.Done():
@@ -221,10 +231,18 @@ func (p *Postgres) lock(ctx context.Context, conn *pgx.Conn) error {
 		return fmt.Errorf("%s: %w", p.name, pgReason(err))
 	}
 	if !got {
-		return fmt.Errorf("%s is in use by another eye run", p.name)
+		return &storeHeld{p.name}
 	}
 	return nil
 }
+
+// storeHeld is the failure to take a store's lock: another eye run holds it.
+type storeHeld struct{ name string }
+
+func (e *storeHeld) Error() string { return e.name + " is in use by another eye run" }
+
+// pgOpen opens a store for WaitForPostgres; tests replace it.
+var pgOpen = openPostgresCtx
 
 // pgMigrate makes the tables, or brings them up to this runtime's version.
 // The caller holds the lock, so no other runner does this at the same time.
