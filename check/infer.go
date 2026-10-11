@@ -989,6 +989,9 @@ func calleeName(e ir.Expr) string {
 func (x *fnCheck) apply(callee typ, args []ir.Arg, want typ, name string, at ir.Pos) typ {
 	switch f := prune(callee).(type) {
 	case *tfun:
+		for _, u := range f.uses {
+			x.top.effect(u) // what the function's type says it may do
+		}
 		x.args(f, args, name, at)
 		return f.ret
 	case *tvar:

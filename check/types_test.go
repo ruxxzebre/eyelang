@@ -269,6 +269,16 @@ fn index(x: a) = x[0]`, []string{
 			"5:17: x's type is a, which may be any type, so it can't be called",
 			"6:18: a can't be indexed",
 		}},
+		{"calling a function value has the effects its type states", `type Handler = { name: String, run: fn(Int) -> Instant uses {clock} }
+pub fn fire(h: Handler) -> Instant {
+  let f = h.run
+  f(1)
+}
+pub fn each(f: fn(Int) uses {clock}) = f(1)
+pub fn pure(f: fn(Int)) = f(1)`, []string{
+			"2:1: fire uses clock, which its signature doesn't list",
+			"6:1: each uses clock, which its signature doesn't list",
+		}},
 		{"effects don't escape through traits or private uses clauses", `trait Clock {
   fn read(self) -> Instant
 }

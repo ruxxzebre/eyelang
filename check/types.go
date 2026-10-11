@@ -35,6 +35,9 @@ type (
 		params []fparam
 		ret    typ
 		bounds []boundUse // traits a call must give the function's type variables
+		// uses are the effects a function type states, which a call of a
+		// value of that type has (SPECS.md §12).
+		uses []string
 	}
 	ttuple struct{ elems []typ }
 	tvar   struct {
@@ -563,6 +566,7 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 		if t.Result != nil {
 			f.ret = c.fromExpr(t.Result, env, rigid)
 		}
+		f.uses = t.Uses
 		return f
 	case "record":
 		return c.unknownf(at, "a record type is written in a type declaration, as `type Name = { … }`, and used by its name")
