@@ -263,7 +263,7 @@ At 07:40 Irish time, the run starts. From the pod:
 ```sh
 eye runs /program            # every run: job, status, result or fault
 eye runs /program 2          # one run's steps, by its number
-eye runs /program 2 14       # one step's whole result, such as the model's reply
+eye runs /program 2 N        # step N's whole result, such as the model's reply
 ```
 
 `eye runs` reads `EYE_STORE` too, without changing anything, while `eye run`
