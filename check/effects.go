@@ -432,7 +432,8 @@ func walk(e ir.Expr, waiting bool, visit func(e ir.Expr, waiting bool) bool) {
 // ---------------------------------------------------------------- Save across `!`
 
 // unsaveable names what in t can't be saved at a checkpoint: a Secret, a
-// Handle or a function. It returns "" if t can be saved.
+// value of an extern type, which foreign code owns, or a function. It
+// returns "" if t can be saved.
 func (c *checker) unsaveable(t typ) string {
 	return c.unsaveableIn(t, map[*ir.Type]bool{})
 }
@@ -444,7 +445,7 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 	case *tcon:
 		if x.decl == nil && x.entity == nil {
 			switch x.name {
-			case "Secret", "Handle", "TaskGroup", "Sender", "Receiver":
+			case "Secret", "TaskGroup", "Sender", "Receiver":
 				return x.name
 			}
 		}
@@ -452,6 +453,9 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 			if s := unsaveable(a); s != "" {
 				return s
 			}
+		}
+		if x.decl != nil && x.decl.Extern {
+			return x.decl.Name // foreign code owns it (SPECS.md §18)
 		}
 		// A declared type is saved field by field.
 		if d := x.decl; d != nil && !seen[d] {

@@ -111,9 +111,6 @@ pub extern type Approval
 ## current.
 pub extern type Version
 
-## An object foreign code owns, which can't be saved (SPECS.md section 18).
-pub extern type Handle(name)
-
 ## Something a contract's service publishes: jobs wait for one with `next!(…)` or start on one
 ## with `@on(event(…))`.
 pub extern type Event(a)

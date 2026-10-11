@@ -489,6 +489,9 @@ func (c *checker) has(t typ, b cbound, seen map[*ir.Type]bool) (bool, string) {
 			if !isDerived {
 				return false, ""
 			}
+			if x.decl.Extern {
+				return false, fmt.Sprintf("%s is an extern type, whose values foreign code owns, so it has none of Eq, Ord, Show, Hash, Save and Schema", x.decl.Name)
+			}
 			if seen[x.decl] {
 				return true, "" // a recursive type: its parts are being checked
 			}
@@ -622,11 +625,6 @@ func (c *checker) builtinHas(x *tcon, b cbound, seen map[*ir.Type]bool) (bool, s
 		return true, ""
 	case "Secret":
 		return false, "a Secret can't be shown, saved or compared, so it never leaks"
-	case "Handle":
-		if name == "Eq" || name == "Hash" {
-			return true, ""
-		}
-		return false, "a Handle is owned by foreign code"
 	case "List", "Option", "Result":
 		return parts("an element")
 	case "Set", "Map", "Range":

@@ -542,7 +542,7 @@ var builtinTypes = map[string]bool{
 	"Int32": true, "Int64": true, "UInt32": true, "UInt64": true, "NonZero": true, "Instant": true,
 	"Date": true, "Time": true, "Duration": true, "Zone": true, "Schedule": true, "Size": true,
 	"List": true, "Map": true, "Set": true, "Iter": true, "Ref": true, "Run": true, "Key": true,
-	"Secret": true, "Approval": true, "Version": true, "Handle": true, "Range": true,
+	"Secret": true, "Approval": true, "Version": true, "Range": true,
 	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true, "Handler": true,
 }
 

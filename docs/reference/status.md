@@ -72,7 +72,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | `Secret(a)`: no printing, no saving | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L180) |
 | `Approval`, made only by `approval!` | ✓ | partial: nothing requires one yet | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L186) |
 | `Key`, `Run(a)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
-| `Handle(name)` | ✓ | partial: it can't be held across a `!` | — (no foreign code yet) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L182) |
+| A program's `extern type`, whose values foreign code owns: not saved, shown or compared (`Handle` is gone, open question 21) | ✓ | ✓ | — (no foreign code yet) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 | `opaque` types | ✓ | ✓ (other modules can't read, write, build or match its fields or variants) | ✓ as an ordinary type | [visibility_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/visibility_test.go#L35), [spec-08 example](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/spec-08-methods-and-generics-1.eye) |
 | String literals as `Key` or `Zone` where one is expected | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L145) |
 | Map literals, `(key):` keys, `{ name, age }` shorthand, `{}` | ✓ | ✓ | ✓ | [core: collections](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L156) |

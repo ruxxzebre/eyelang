@@ -282,6 +282,22 @@ job j(xs: List(Int)) {
   sleep!(1 min)
   log.info("{f(1)}")
 }`, []string{"4:14: f is a function, which can't be saved, and it is still needed after a waiting call"}},
+		{"foreign code owns an extern type's values", `extern type Db
+extern fn open(path: String) -> Db
+extern fn close(d: Db)
+job j() {
+  let d = open("x")
+  sleep!(1 min)
+  close(d)
+}
+job k(d: Db) {}
+fn show(d: Db) = print(d)
+fn same(a: Db, b: Db) -> Bool = a == b`, []string{
+			"7:9: d is a Db, which can't be saved, and it is still needed after a waiting call",
+			"9:1: k's argument d is a Db, which can't be saved",
+			"10:24: print needs Show, and Db has no Show: Db is an extern type, whose values foreign code owns, so it has none of Eq, Ord, Show, Hash, Save and Schema",
+			"11:33: comparing with == needs Eq, and Db has no Eq",
+		}},
 		{"a channel isn't held across a !", `job j() {
   let (send, receive) = channel(capacity: 1)
   sleep!(1 min)

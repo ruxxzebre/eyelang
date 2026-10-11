@@ -256,14 +256,6 @@ type Version
 The version of something another service keeps, which a `@fresh` command checks is still
 current.
 
-## Handle {#Handle}
-
-```eye
-type Handle(name)
-```
-
-An object foreign code owns, which can't be saved (SPECS.md section 18).
-
 ## Event {#Event}
 
 ```eye
