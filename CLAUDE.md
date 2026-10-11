@@ -129,9 +129,8 @@ scope test above and the steps below.
   tests. On macOS it skips the extension's end-to-end test, which opens a VS Code window; run
   `task vscode:e2e`, or set `VSCODE_E2E=1`, when a change touches the extension or `eye lsp`.
 - **One task, one change.** Commits and pull requests say `Closes #N` for the ROADMAP task they
-  finish. `dev` isn't the default branch, so that doesn't close the issue: when the work is on
-  `dev` and its CI passes, close the issue by hand with a comment naming the commit and what it
-  did.
+  finish. The `Close issues` workflow closes it when the commit reaches `dev`, which isn't the
+  default branch; check that it did, and close by hand, naming the commit, an issue it missed.
 
 ## Writing
 
