@@ -163,6 +163,7 @@ agents and model tools, function types in signatures, the checks that come from 
 | `wait`, `net C.op`, `entity E`, `clock`, `stdio`, `env` | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
 | `secret S`, `publish T`, `consume T`, `ffi` | ✓ | — (not inferred; open question 19) | n/a | |
 | `fs`, `process`, `random` | ✓ | — | — (no `fs` or `process` module, no `random()`) | |
+| Function types in signatures: `f: fn(Int) -> Int` | ✓ | — (a function type is unknown: a lambda passed for one, and what calling one returns, aren't checked) | ✓ | |
 | Function types kept in data state their effects | ✓ | partial: a function kept in a field can be called, but its effects aren't checked | ✓ | |
 | In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | ✓ (and `!` on a call that only computes is an error; printing and logging aren't steps, open question 22) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L158), [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L106) |
 
@@ -179,7 +180,7 @@ agents and model tools, function types in signatures, the checks that come from 
 | `eye.toml` marks a program's root | n/a | ✓ | ✓ | [index_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/index_test.go#L151) |
 | `parallelMap`, `both`, `race`, `timeout`, with waits that overlap | ✓ | partial: what a task captures isn't checked | ✓ | [programs/tasks](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tasks/tasks.eye#L18), [tasks_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tasks_test.go#L16) |
 | A task fails, and the call fails with it | ✓ | n/a | ✓ | [tasks_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tasks_test.go#L70) |
-| `parallelMap` in a job only with a pure function | ✓ | — | ✓ (the run fails) | [interp_test.go: faults](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L162) |
+| A task a job starts (`parallelMap`, `both`, `race`, `timeout`, `taskGroup`) only computes | ✓ | ✓ | ✓ (the run fails, should one get past the checker) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L232) |
 | Cheap tasks with small, growing stacks | n/a | n/a | partial: Go goroutines for now | |
 | Task groups, `spawn` and channels (v0.2) | ✓ | ✓ | ✓ | [programs/tasks](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tasks/tasks.eye#L77), [channels_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/channels_test.go#L116) |
 | A failing task cancels its group | ✓ | n/a | ✓ | [channels_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/channels_test.go#L31) |
