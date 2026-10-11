@@ -139,6 +139,35 @@ func TestProgramsAreFullyTyped(t *testing.T) {
 	}
 }
 
+// TestTypedIR checks that every expression of every program that checks
+// has its type in the IR (7.1): the interpreter and the compiler read it
+// there.
+func TestTypedIR(t *testing.T) {
+	for _, dir := range programs(t) {
+		res := Check(dir, Options{All: true})
+		if len(res.Diagnostics) > 0 {
+			continue // TestProgramsAreFullyTyped reports it
+		}
+		missing := 0
+		for _, m := range res.Program.Modules {
+			for _, f := range Bodies(m) {
+				walk(f.Body, false, func(e ir.Expr, _ bool) bool {
+					if e.Ty() == nil {
+						if missing < 5 {
+							t.Errorf("%s: %s has no type in the IR", e.Position(), e.Position().Text())
+						}
+						missing++
+					}
+					return true
+				})
+			}
+		}
+		if missing >= 5 {
+			t.Errorf("%s: %d expressions have no type in the IR", dir, missing)
+		}
+	}
+}
+
 // undecided names what in t isn't known: an unknown part, or a type
 // variable nothing bound. It returns "" for a type known to the end.
 func undecided(t typ) string {

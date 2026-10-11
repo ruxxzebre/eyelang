@@ -393,13 +393,26 @@ type Test struct {
 // ---------------------------------------------------------------- expressions
 
 // Expr is an expression or statement. Statements evaluate to `()`.
-type Expr interface{ Position() Pos }
+type Expr interface {
+	Position() Pos
+	Ty() Ty
+}
 
-// At carries an expression's position.
-type At struct{ Pos Pos }
+// At carries an expression's position, and its type once the checker has
+// computed it.
+type At struct {
+	Pos Pos
+	T   Ty
+}
 
 // Position returns where the expression is.
 func (a At) Position() Pos { return a.Pos }
+
+// Ty returns the expression's type: nil until the program checks.
+func (a At) Ty() Ty { return a.T }
+
+// SetTy records the expression's type.
+func (a *At) SetTy(t Ty) { a.T = t }
 
 type (
 	// Lit is a constant: *big.Int, float64, string, bool, rune, Unit,

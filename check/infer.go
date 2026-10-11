@@ -37,7 +37,10 @@ type typeState struct {
 	fxLimits      []fxLimit
 	// giving is the function whose call's arguments are being checked,
 	// where what a function value given as a callback states counts.
-	giving   *fnCheck
+	giving *fnCheck
+	// exprs are the expressions checked and the type each has, written
+	// into the IR once every type is known (typedir.go).
+	exprs    []typedExpr
 	jobSlots map[*ir.Func][]typ // slot types of job bodies, for the Save check
 	steps    []stepResult       // a job's `!` calls and what they return, for the Save check
 	// inferred says how far a function whose types are inferred has got,
@@ -261,6 +264,7 @@ func (c *checker) checkTypes() {
 	c.settleDeferred()
 	c.checkRowReads()
 	c.checkEffects()
+	c.writeTypes()
 }
 
 // body is a function body to check, with what it is checked in.
@@ -521,6 +525,7 @@ func (x *fnCheck) finish() {
 func (x *fnCheck) check(e ir.Expr, want typ) typ {
 	got := x.infer(e, want)
 	x.c.typed(e.Position(), got)
+	x.c.ts.exprs = append(x.c.ts.exprs, typedExpr{e, got})
 	if want == nil || want == discard {
 		return got
 	}
@@ -1481,6 +1486,7 @@ func (x *fnCheck) fakeCalls(e *ir.MethodCall) typ {
 		x.inferArgs(e.Args)
 		return c.unknownf(e.Pos, "calls takes an operation of a contract the fakes answer for, as calls(notify.send)")
 	}
+	c.ts.exprs = append(c.ts.exprs, typedExpr{e.Args[0].Value, c.opType(op)}) // names the operation
 	if c.ts.calls == nil {
 		c.ts.calls = map[*ir.Op]*ir.Type{}
 	}
