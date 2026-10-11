@@ -102,7 +102,7 @@ construct that also works outside that domain.
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
-| Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn open(config) -> dyn Store`, `List(dyn Handler)`) | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
+| Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn notifier(config) -> dyn Notifier`, `List(dyn Handler)`): a value converts to it where one is expected, and has only the trait's methods | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
 | AI | **Typed model calls and agents, as library code**, with no syntax that serves only them: a call names the Eyelang type it wants, the compiler derives a JSON Schema from it, and the reply is checked and decoded into that type. Tools are functions whose effects become the caller's; in jobs every model call is a recorded `!` step; coding agents are sessions that durable jobs own | No new syntax: permissions, cost and nondeterminism are handled by effects, budgets and recordings, which already exist |
 | Syntax | **Add syntax when it is generally useful and clearly better than a library function**; syntax that also makes one area (jobs, agents) much better is welcome if it pays off elsewhere too | Keeps the language small without making common code clumsy |
 | Interop | **`extern fn`** for C functions and for functions provided by a Go program that embeds Eyelang | Reuse existing libraries; the standard library's primitives use the same mechanism |
@@ -513,14 +513,24 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   time. Calls on it look up the implementation, and `dyn` in the type says so:
 
   ```eye
-  fn open(config: Config) -> dyn Store =
-    if config.postgres then PgStore.connect(config.url) else MemoryStore.new()
+  fn notifier(config: Config) -> dyn Notifier =
+    if config.telegram then Telegram.new(config.token) else Console.new()
 
   let handlers: List(dyn Handler) = [Logger.new(), Metrics.new(port: 9100)]
   ```
 
-  Only traits whose methods don't mention their own type in arguments or results, and aren't
-  generic, can be used this way. Until v0.2, a variant that wraps each implementation does the job.
+  - A value converts to `dyn Trait` where one is expected, if its type implements the trait:
+    `expected dyn Notifier, found Email: Email doesn't implement Notifier` otherwise. Since values
+    never alias, a `List(Logger)` is also a `List(dyn Handler)`. Nothing converts back.
+  - A `dyn Trait` has its trait's methods and nothing else: no `Show`, `Eq` or `Save`, so it can't
+    be printed, compared, or live across a `!` (its type, which saving needs, is known only at run
+    time).
+  - A trait takes its type arguments as in a bound, `dyn Add(Money, Money)`, and a trait with a
+    method that has type variables of its own can't be used this way, since a call through `dyn`
+    couldn't choose them.
+
+  A function that takes a trait as a parameter type (`fn label(x: Named)`) is still generic and
+  specialised; `dyn` is for values whose types differ at run time.
 
 ## 9. Pattern matching
 
@@ -1617,3 +1627,15 @@ operator. All binary operators associate to the left except `??`, which associat
     then its steps are recorded one by one. The same mark means "record this call" in one case and
     "this call contains steps" in the other. Is one mark for both right, since either way the
     caller sees a point where the run may stop and resume, or should the difference show?
+24. **`dyn Store`, and traits that name their own type.** The decision log's own example of
+    `dyn` is choosing a store at run time, but the `Store` trait is `Store(s)`, whose `commit`
+    returns `s`, the store's own type, so a `dyn Store` would need to say which store it is. A
+    trait has no name for "the type that implements me" (`Self`), and threads it through a
+    parameter instead, as `Add(rhs, out)` does. Should traits get `Self`, with traits whose
+    methods return `Self` kept out of `dyn` (as Rust does), or should a store's `commit` change
+    the store in place (`mut self`) so the trait needs no type of its own?
+25. **Naming a record's type at its literal.** Records are nominal and a literal takes the type
+    its context expects. Where the context is a `dyn Trait`, or a list of them, nothing says
+    which type a literal is, so each implementation needs a constructor (`Square.new(2)`) or a
+    `let s: Square = { side: 2 }` first. Should a literal be able to name its type, as
+    `Square { side: 2 }` does elsewhere, or is a constructor the one obvious way?

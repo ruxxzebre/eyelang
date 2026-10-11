@@ -117,7 +117,7 @@ run time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@de
 | Generic functions and types with type variables | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L33) |
 | `where` requirements, and a trait as a parameter's type | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L27), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L225) |
 | Generic code specialised at compile time | n/a | n/a | — (v0.4) | |
-| `dyn Trait` (v0.2) | ✓ | partial: accepted, not checked as a type of its own | partial: works only because the interpreter looks up every call | [dyn.eye](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/dyn.eye) |
+| `dyn Trait` (v0.2) | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L99), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L188) |
 
 ## [Pattern matching](/reference/language/pattern-matching)
 

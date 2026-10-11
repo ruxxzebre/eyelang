@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"eyelang/ir"
@@ -269,11 +270,11 @@ func (c *checker) lowerBounds(m *module, f *ir.File, d *syntax.Node, fn *ir.Func
 			continue
 		}
 		if tr := nestedTrait(p.Type); tr != nil {
-			c.errorf(fn.Pos, "%s's parameter %s has %s inside its type, and %s is a trait: name a type variable and require it, as `List(t) where t: %s`", fn.Name, p.Name, tr.Name, tr.Name, tr.Name)
+			c.errorf(fn.Pos, "%s's parameter %s has %s inside its type, and %s is a trait: name a type variable and require it, as `List(t) where t: %s`, or write dyn %s for values of different types", fn.Name, p.Name, tr.Name, tr.Name, tr.Name, tr.Name)
 		}
 	}
 	if tr := nestedTrait(fn.Return); tr != nil {
-		c.errorf(fn.Pos, "%s returns a %s, and %s is a trait: a function returns a type (dyn %s comes in v0.2)", fn.Name, tr.Name, tr.Name, tr.Name)
+		c.errorf(fn.Pos, "%s returns a %s, and %s is a trait: a function returns a type, so write dyn %s for a value whose type is chosen at run time", fn.Name, tr.Name, tr.Name, tr.Name)
 	}
 	w := d.ChildByField(syntax.FieldRequirements)
 	if w == nil {
@@ -441,6 +442,13 @@ func (c *checker) has(t typ, b cbound, seen map[*ir.Type]bool) (bool, string) {
 		return false, ""
 	case *tjob, *tentity, tmodule:
 		return false, ""
+	case *tdyn:
+		// A dyn value has its trait and nothing else: what its type is
+		// otherwise is known only at run time.
+		if x.trait == tr && c.unifyArgs(x.args, b.args) {
+			return true, ""
+		}
+		return false, fmt.Sprintf("a dyn %s has only the methods of %s", x.trait.Name, x.trait.Name)
 	case *tcon:
 		if c.explicitImpl(x, b) {
 			return true, ""
@@ -763,4 +771,54 @@ func (x *fnCheck) opImpl(k *tcon, op string, r typ) (rhs, out typ, found bool) {
 		}
 	}
 	return c.fromExpr(pick.Args[0], env, false), c.fromExpr(pick.Args[1], env, false), true
+}
+
+// ---------------------------------------------------------------- dyn Trait
+
+// checkDyns reports each `dyn Trait` whose trait can't be used that way: one
+// with a method that has type variables of its own, which a call through
+// dyn couldn't choose (SPECS.md §8).
+func (c *checker) checkDyns() {
+	seen := map[ir.Pos]bool{}
+	for _, d := range c.dyns {
+		if seen[d.at] {
+			continue // a declaration lowered twice, as the REPL does
+		}
+		seen[d.at] = true
+		if d.args != len(d.trait.Params) {
+			c.errorf(d.at, "%s takes %d type arguments, and this dyn gives %d: dyn %s", d.trait.Name, len(d.trait.Params), d.args, traitText(d.trait))
+			continue
+		}
+		if name, vars := genericMethod(d.trait); name != "" {
+			c.errorf(d.at, "dyn %s can't be used: its method %s has type variables of its own (%s), which a call through dyn can't choose", d.trait.Name, name, strings.Join(vars, ", "))
+		}
+	}
+}
+
+// genericMethod returns the first method of a trait, in source order, whose
+// signature has type variables besides the trait's parameters, and them.
+func genericMethod(tr *ir.Trait) (string, []string) {
+	own := map[string]bool{}
+	for _, p := range tr.Params {
+		own[p] = true
+	}
+	for _, name := range tr.Order {
+		m := tr.Methods[name]
+		vars := map[string]bool{}
+		for _, p := range m.Params {
+			collectVars(p.Type, vars)
+		}
+		collectVars(m.Return, vars)
+		var extra []string
+		for v := range vars {
+			if !own[v] {
+				extra = append(extra, v)
+			}
+		}
+		if len(extra) > 0 {
+			sort.Strings(extra)
+			return name, extra
+		}
+	}
+	return "", nil
 }

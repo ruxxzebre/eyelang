@@ -93,3 +93,25 @@ test "Ord is derived: variants as declared, records part by part" {
   expect(largest([a, b]) == Some(b))
   expect(largest([3, 9, 2]) == Some(9))
 }
+
+## A value of any Named type, chosen at run time: the player, or a robot
+## standing in when nobody is there.
+fn host(nick: Option(String)) -> dyn Named =
+  match nick {
+    Some(n) => {
+      let p: Player = { nick: n, level: 1 }
+      p
+    }
+    None => Robot(serial: 9)
+  }
+
+## Names of things of different types, kept in one list.
+fn roll(xs: List(dyn Named)) -> String = xs |> map(fn x: x.label()) |> join(" ")
+
+test "dyn Named holds values of different types, and calls their own methods" {
+  let p: Player = { nick: "ann", level: 3 }
+  let crowd: List(dyn Named) = [p, Robot(serial: 7), host(None)]
+  expect(roll(crowd) == "<ann> [robot-7] [robot-9]")
+  expect(host(Some("bo")).name() == "bo")
+  expect(roll([p]) == "<ann>")  # a List(Player) is a List(dyn Named)
+}

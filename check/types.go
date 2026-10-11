@@ -50,7 +50,16 @@ type (
 	tentity struct{ e *ir.Entity }
 	// tmodule is a module as a value, as in `fakes(notify, from: "…")`.
 	tmodule struct{}
+	// tdyn is `dyn Trait`: a value of some type that implements the trait,
+	// chosen at run time (SPECS.md §8). A value of such a type converts to
+	// it where it is expected; calls on it see only the trait's methods.
+	tdyn struct {
+		trait *ir.Trait
+		args  []typ
+	}
 )
+
+func (*tdyn) isType() {}
 
 func (*tcon) isType()    {}
 func (*tfun) isType()    {}
@@ -137,8 +146,13 @@ func (k litKind) allows(c *tcon) bool {
 	return true
 }
 
-// mismatch is why two types don't unify.
-type mismatch struct{ want, got typ }
+// mismatch is why two types don't unify. dyn is set when a value can't be
+// converted to a dyn Trait because its type doesn't implement the trait.
+type mismatch struct {
+	want, got typ
+	dyn       *tdyn
+	lacks     typ // the type that doesn't implement dyn's trait
+}
 
 // unify makes a and b the same type, binding type variables as needed. It
 // reports the first pair of types that differ.
@@ -159,43 +173,55 @@ func (c *checker) unify(want, got typ) *mismatch {
 	if v, ok := b.(*tvar); ok && !v.rigid {
 		return c.bind(v, a, want, got)
 	}
+	// differ is the mismatch of want and got, keeping why a part of them
+	// couldn't be a dyn Trait.
+	differ := func(inner *mismatch) *mismatch {
+		m := &mismatch{want: want, got: got}
+		if inner != nil {
+			m.dyn, m.lacks = inner.dyn, inner.lacks
+		}
+		return m
+	}
 	switch x := a.(type) {
 	case *tvar:
-		return &mismatch{want, got} // a rigid variable only matches itself
+		return differ(nil) // a rigid variable only matches itself
 	case *tcon:
 		y, ok := b.(*tcon)
 		if !ok || !sameCon(x, y) || len(x.args) != len(y.args) {
-			return &mismatch{want, got}
+			return differ(nil)
 		}
 		for i := range x.args {
 			if m := c.unify(x.args[i], y.args[i]); m != nil {
-				return &mismatch{want, got}
+				return differ(m)
 			}
 		}
 		return nil
 	case *ttuple:
 		y, ok := b.(*ttuple)
 		if !ok || len(x.elems) != len(y.elems) {
-			return &mismatch{want, got}
+			return differ(nil)
 		}
 		for i := range x.elems {
 			if m := c.unify(x.elems[i], y.elems[i]); m != nil {
-				return &mismatch{want, got}
+				return differ(m)
 			}
 		}
 		return nil
 	case *tfun:
 		y, ok := b.(*tfun)
 		if !ok || len(x.params) != len(y.params) {
-			return &mismatch{want, got}
+			return differ(nil)
 		}
 		for i := range x.params {
-			if m := c.unify(x.params[i].t, y.params[i].t); m != nil {
-				return &mismatch{want, got}
+			// A function that is expected takes what the caller gives it,
+			// so its parameters go the other way: a fn(dyn Shape) will do
+			// where a fn(Square) is wanted, not the reverse.
+			if m := c.unify(y.params[i].t, x.params[i].t); m != nil {
+				return differ(m)
 			}
 		}
 		if m := c.unify(x.ret, y.ret); m != nil {
-			return &mismatch{want, got}
+			return differ(m)
 		}
 		return nil
 	case *tjob:
@@ -210,8 +236,27 @@ func (c *checker) unify(want, got typ) *mismatch {
 		if _, ok := b.(tmodule); ok {
 			return nil
 		}
+	case *tdyn:
+		if y, ok := b.(*tdyn); ok {
+			if y.trait != x.trait || len(x.args) != len(y.args) {
+				return differ(nil)
+			}
+			for i := range x.args {
+				if m := c.unify(x.args[i], y.args[i]); m != nil {
+					return differ(m)
+				}
+			}
+			return nil
+		}
+		// A value converts to dyn Trait where one is expected, if its type
+		// implements the trait. Values never alias, so a List(Square) is a
+		// List(dyn Shape) too.
+		if ok, _ := c.has(b, cbound{trait: x.trait, args: x.args}, map[*ir.Type]bool{}); ok {
+			return nil
+		}
+		return &mismatch{want: want, got: got, dyn: x, lacks: b}
 	}
-	return &mismatch{want, got}
+	return differ(nil)
 }
 
 // sameCon reports whether two named types are the same type. A command's
@@ -231,7 +276,7 @@ func (c *checker) bind(v *tvar, t typ, want, got typ) *mismatch {
 	if w, ok := t.(*tvar); ok {
 		if w.rigid {
 			if v.lit != litNone {
-				return &mismatch{want, got}
+				return &mismatch{want: want, got: got}
 			}
 			v.ref = w
 			return nil
@@ -247,16 +292,16 @@ func (c *checker) bind(v *tvar, t typ, want, got typ) *mismatch {
 			w.ref = v
 			return nil
 		}
-		return &mismatch{want, got}
+		return &mismatch{want: want, got: got}
 	}
 	if v.lit != litNone {
 		ct, ok := t.(*tcon)
 		if !ok || !v.lit.allows(ct) {
-			return &mismatch{want, got}
+			return &mismatch{want: want, got: got}
 		}
 	}
 	if occurs(v, t) {
-		return &mismatch{want, got}
+		return &mismatch{want: want, got: got}
 	}
 	v.ref = t
 	return nil
@@ -285,6 +330,12 @@ func occurs(v *tvar, t typ) bool {
 			}
 		}
 		return occurs(v, x.ret)
+	case *tdyn:
+		for _, a := range x.args {
+			if occurs(v, a) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -389,6 +440,19 @@ func writeType(b *strings.Builder, t typ, names map[*tvar]string) {
 		fmt.Fprintf(b, "entity %s", x.e.Name)
 	case tmodule:
 		b.WriteString("module")
+	case *tdyn:
+		b.WriteString("dyn ")
+		b.WriteString(x.trait.Name)
+		if len(x.args) > 0 {
+			b.WriteString("(")
+			for i, a := range x.args {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				writeType(b, a, names)
+			}
+			b.WriteString(")")
+		}
 	}
 }
 
@@ -439,8 +503,17 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 		return tUnit
 	case "tuple":
 		return &ttuple{elems: args()}
-	case "record", "fn", "dyn", "?":
-		return unknown // not typed yet: inline record types, function types, dyn
+	case "dyn":
+		if len(t.Args) == 1 && t.Args[0].Trait != nil {
+			d := &tdyn{trait: t.Args[0].Trait}
+			for _, a := range t.Args[0].Args {
+				d.args = append(d.args, c.fromExpr(a, env, rigid))
+			}
+			return d
+		}
+		return unknown // reported where it is written
+	case "record", "fn", "?":
+		return unknown // not typed yet: inline record types, function types
 	case "NonZero":
 		// A NonZero divisor is approximated by its number type.
 		if len(t.Args) == 1 {

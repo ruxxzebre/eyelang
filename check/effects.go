@@ -460,6 +460,8 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 		}
 	case *tfun:
 		return "function"
+	case *tdyn:
+		return "dyn " + x.trait.Name // its type, which saving needs, is known only at run time
 	}
 	return ""
 }

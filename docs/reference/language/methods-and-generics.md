@@ -49,11 +49,21 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   time. Calls on it look up the implementation, and `dyn` in the type says so:
 
   ```eye
-  fn open(config: Config) -> dyn Store =
-    if config.postgres then PgStore.connect(config.url) else MemoryStore.new()
+  fn notifier(config: Config) -> dyn Notifier =
+    if config.telegram then Telegram.new(config.token) else Console.new()
 
   let handlers: List(dyn Handler) = [Logger.new(), Metrics.new(port: 9100)]
   ```
 
-  Only traits whose methods don't mention their own type in arguments or results, and aren't
-  generic, can be used this way. Until v0.2, a variant that wraps each implementation does the job.
+  - A value converts to `dyn Trait` where one is expected, if its type implements the trait:
+    `expected dyn Notifier, found Email: Email doesn't implement Notifier` otherwise. Since values
+    never alias, a `List(Logger)` is also a `List(dyn Handler)`. Nothing converts back.
+  - A `dyn Trait` has its trait's methods and nothing else: no `Show`, `Eq` or `Save`, so it can't
+    be printed, compared, or live across a `!` (its type, which saving needs, is known only at run
+    time).
+  - A trait takes its type arguments as in a bound, `dyn Add(Money, Money)`, and a trait with a
+    method that has type variables of its own can't be used this way, since a call through `dyn`
+    couldn't choose them.
+
+  A function that takes a trait as a parameter type (`fn label(x: Named)`) is still generic and
+  specialised; `dyn` is for values whose types differ at run time.

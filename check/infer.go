@@ -133,6 +133,7 @@ func (c *checker) checkTypes() {
 		bounds: map[*tvar][]cbound{},
 	}
 	c.fillImplMethods()
+	c.checkDyns()
 	type body struct {
 		fn     *ir.Func
 		kind   fnKind
@@ -455,7 +456,11 @@ func (x *fnCheck) expect(at ir.Pos, want, got typ) bool {
 		}
 	}
 	if m := x.c.unify(want, got); m != nil {
-		x.c.typeErrorf(at, "expected %s, found %s", show(defaultLiteral(want)), show(defaultLiteral(got)))
+		msg := fmt.Sprintf("expected %s, found %s", show(defaultLiteral(want)), show(defaultLiteral(got)))
+		if m.dyn != nil {
+			msg += fmt.Sprintf(": %s doesn't implement %s", show(m.lacks), m.dyn.trait.Name)
+		}
+		x.c.typeErrorf(at, "%s", msg)
 		return false
 	}
 	return true
@@ -1175,6 +1180,23 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			c.useName(e, method("start"))
 			c.useArgs(e, r.job)
 			return x.start(r.job, e)
+		}
+	case *tdyn:
+		// A dyn value has its trait's methods, looked up at run time.
+		if m, ok := r.trait.Methods[e.Name]; ok && m.HasSelf {
+			c.useMethod(e, m)
+			env := typeEnv{}
+			for i, p := range r.trait.Params {
+				if i < len(r.args) {
+					env[p] = r.args[i]
+				}
+			}
+			return x.applyFunc(m, env, e.Args, r.trait.Name+"."+e.Name, e.Pos)
+		}
+		if !isBuiltin(e.Name) {
+			c.typeErrorf(e.Pos, "%s has no method %s: a dyn value has only the methods of its trait", show(recv), e.Name)
+			x.inferArgs(e.Args)
+			return unknown
 		}
 	case *tvar:
 		if r.rigid {

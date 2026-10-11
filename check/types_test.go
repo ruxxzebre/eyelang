@@ -185,7 +185,46 @@ job j() {
 			"7:11: double neither waits nor reaches outside the program, so it isn't a durable step: write double(…) without !",
 			"8:18: size neither waits nor reaches outside the program, so it isn't a durable step: write size(…) without !",
 		}},
-		{"a task in a job only computes", `fn stamp() -> Instant = now()
+		{"a value is a dyn Trait only if its type implements the trait", `trait Shape {
+  fn area(self) -> Int
+}
+type Square = { side: Int }
+type Circle = { r: Int }
+impl Shape for Square {
+  fn area(self) = self.side * self.side
+}
+fn area(s: dyn Shape) -> Int = s.area()
+fn circle() -> Circle = { r: 1 }
+fn one() -> Int = area(circle())
+fn many() -> List(dyn Shape) = [circle()]
+fn back(s: dyn Shape) -> Square = s
+fn more(s: dyn Shape) -> Int = s.perimeter()
+fn shown(s: dyn Shape) -> String = "{s}"
+job j(s: Square) {
+  let d: dyn Shape = s
+  sleep!(1 min)
+  log.info("{d.area()}")
+}`, []string{
+			"11:24: expected dyn Shape, found Circle: Circle doesn't implement Shape",
+			"12:33: expected dyn Shape, found Circle: Circle doesn't implement Shape",
+			"13:35: expected Square, found dyn Shape",
+			"14:32: dyn Shape has no method perimeter: a dyn value has only the methods of its trait",
+			"15:38: showing a value in a string needs Show, and dyn Shape has no Show: a dyn Shape has only the methods of Shape",
+			"19:14: d is a dyn Shape, which can't be saved, and it is still needed after a waiting call: get it again after the `!`",
+		}},
+		{"dyn takes a trait whose methods aren't generic", `trait Mapper {
+  fn apply(self, f: fn(Int) -> b) -> b
+}
+fn a(m: dyn Mapper) -> Int = 0
+fn b(x: dyn Add) -> Int = 0`, []string{
+			"4:9: dyn Mapper can't be used: its method apply has type variables of its own (b), which a call through dyn can't choose",
+			"5:9: Add takes 2 type arguments, and this dyn gives 0: dyn Add(rhs, out)",
+		}},
+		{"dyn takes a trait", `type Square = { side: Int }
+fn b(s: dyn Square) -> Int = 0`, []string{
+			"2:13: dyn takes a trait, and Square is a type: write Square, or dyn and a trait it implements",
+		}},
+		{"a task in a job only computes",`fn stamp() -> Instant = now()
 job j() -> List(Int) {
   let a = [1, 2] |> parallelMap(fn n {
     sleep!(1 min)

@@ -97,6 +97,14 @@ type checker struct {
 	index   *Index            // nil unless a tool asked for it
 	all     bool              // load every module below root, for tools
 	names   names             // where names are written, until types resolve them
+	dyns    []dynUse          // each dyn Trait written, checked once traits are known
+}
+
+// dynUse is a `dyn Trait` as written.
+type dynUse struct {
+	trait *ir.Trait
+	args  int // the type arguments given to the trait
+	at    ir.Pos
 }
 
 // module is a module being checked, with its namespaces.
@@ -585,7 +593,16 @@ func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string)
 	case syntax.FunctionType:
 		return &ir.TypeExpr{Name: "fn"}
 	case syntax.DynType:
-		return &ir.TypeExpr{Name: "dyn"}
+		traitNode := n.ChildByField(syntax.FieldTrait)
+		inner := c.typeExpr(m, f, traitNode, vars)
+		if inner.Trait == nil {
+			if inner.Decl != nil || inner.Entity != nil || builtinTypes[inner.Name] {
+				c.errorf(pos(f, traitNode), "dyn takes a trait, and %s is a type: write %s, or dyn and a trait it implements", inner.Name, inner.Name)
+			}
+			return &ir.TypeExpr{Name: "dyn"}
+		}
+		c.dyns = append(c.dyns, dynUse{inner.Trait, len(inner.Args), pos(f, n)})
+		return &ir.TypeExpr{Name: "dyn", Args: []*ir.TypeExpr{inner}}
 	}
 	return &ir.TypeExpr{Name: "?"}
 }

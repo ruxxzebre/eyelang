@@ -95,3 +95,15 @@ title: "Open questions"
     then its steps are recorded one by one. The same mark means "record this call" in one case and
     "this call contains steps" in the other. Is one mark for both right, since either way the
     caller sees a point where the run may stop and resume, or should the difference show?
+24. **`dyn Store`, and traits that name their own type.** The decision log's own example of
+    `dyn` is choosing a store at run time, but the `Store` trait is `Store(s)`, whose `commit`
+    returns `s`, the store's own type, so a `dyn Store` would need to say which store it is. A
+    trait has no name for "the type that implements me" (`Self`), and threads it through a
+    parameter instead, as `Add(rhs, out)` does. Should traits get `Self`, with traits whose
+    methods return `Self` kept out of `dyn` (as Rust does), or should a store's `commit` change
+    the store in place (`mut self`) so the trait needs no type of its own?
+25. **Naming a record's type at its literal.** Records are nominal and a literal takes the type
+    its context expects. Where the context is a `dyn Trait`, or a list of them, nothing says
+    which type a literal is, so each implementation needs a constructor (`Square.new(2)`) or a
+    `let s: Square = { side: 2 }` first. Should a literal be able to name its type, as
+    `Square { side: 2 }` does elsewhere, or is a constructor the one obvious way?
