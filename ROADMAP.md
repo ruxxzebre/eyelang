@@ -346,8 +346,10 @@ Paths owned now (2026-10-11):
 
 | Who | Worktree or branch | Paths |
 |---|---|---|
-| Main session (release, merges) | `dev` | merges; `.github/workflows`; ROADMAP.md, CHANGELOG.md |
+| Main session (release) | — | `.github/workflows`; ROADMAP.md, CHANGELOG.md |
+| eyelang-20 (phase 5, merges) | `dev` in the main checkout | merges into `dev`; phase 5's paths in `check/`, `interp/`, `cmd/eye` and SPECS.md |
 | eyelang-42 (docs site) | `docs-site` | `docs/`, `tools/specpages`, `internal/apidoc`, `cmd/eye/doc.go` |
-| eyelang-55 (language server) | `lsp-*` | `internal/lsp`, `check/index.go`, `check/resolve_test.go` |
+| eyelang-55 (language server) | `lsp-*` | `internal/lsp` except completion, `check/index.go`, `check/resolve_test.go` |
+| eyelang-17 (completion) | `dev` | `internal/lsp/completion.go`, the completion case in `internal/lsp/server.go` |
 | eyelang-3b (editor and tasks) | — | `Taskfile.yml`, `editors/vscode` |
 | eyelang-de (process) | — | `CLAUDE.md` |
