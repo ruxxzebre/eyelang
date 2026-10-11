@@ -318,6 +318,18 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 			m.mod.Main = fn
 		}
 		m.decls = append(m.decls, func() { c.lowerFunc(m, f, d, fn, ctxPlain, nil, nil) })
+	case syntax.ExternTypeDeclaration:
+		// A type foreign code owns: no variants, fields or alias, so only
+		// extern functions make or take its values (SPECS.md §18).
+		t := &ir.Type{Name: text(f, nameNode), Module: m.mod, Methods: map[string]*ir.Func{}, Pos: pos(f, d),
+			Doc: docComment(f, d), Extern: true}
+		if tp := d.ChildByField(syntax.FieldTypeParameters); tp != nil {
+			for _, p := range tp.NamedChildren() {
+				t.Params = append(t.Params, text(f, p))
+			}
+		}
+		m.mod.Types[t.Name] = t
+		c.define(m, f, nameNode, t.Name, t)
 	case syntax.ExternDeclaration:
 		fn := &ir.Func{Name: text(f, nameNode), Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d), Extern: true}
 		if args, _, ok := attribute(f, d, "host"); ok && len(args) == 1 {

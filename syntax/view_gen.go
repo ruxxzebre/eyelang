@@ -336,11 +336,36 @@ func (v ExternDeclarationView) Name() *Node { return v.Node.ChildByField(FieldNa
 // Parameters returns the parameters child (parameters).
 func (v ExternDeclarationView) Parameters() *Node { return v.Node.ChildByField(FieldParameters) }
 
+// Requirements returns the requirements child (where_clause), or nil.
+func (v ExternDeclarationView) Requirements() *Node { return v.Node.ChildByField(FieldRequirements) }
+
 // ReturnType returns the return_type child (_type), or nil.
 func (v ExternDeclarationView) ReturnType() *Node { return v.Node.ChildByField(FieldReturnType) }
 
 // Items returns the named children that have no field (attribute).
 func (v ExternDeclarationView) Items() []*Node { return v.Node.unfielded() }
+
+// ExternTypeDeclarationView is a typed view of an extern_type_declaration node.
+type ExternTypeDeclarationView struct{ Node *Node }
+
+// AsExternTypeDeclaration returns a view of n if it is an extern_type_declaration.
+func AsExternTypeDeclaration(n *Node) (ExternTypeDeclarationView, bool) {
+	if n == nil || n.Kind != ExternTypeDeclaration {
+		return ExternTypeDeclarationView{}, false
+	}
+	return ExternTypeDeclarationView{n}, true
+}
+
+// Name returns the name child (type_identifier).
+func (v ExternTypeDeclarationView) Name() *Node { return v.Node.ChildByField(FieldName) }
+
+// TypeParameters returns the type_parameters child (type_parameters), or nil.
+func (v ExternTypeDeclarationView) TypeParameters() *Node {
+	return v.Node.ChildByField(FieldTypeParameters)
+}
+
+// Items returns the named children that have no field (attribute).
+func (v ExternTypeDeclarationView) Items() []*Node { return v.Node.unfielded() }
 
 // FieldDeclarationView is a typed view of a field_declaration node.
 type FieldDeclarationView struct{ Node *Node }
@@ -1275,7 +1300,7 @@ func AsSourceFile(n *Node) (SourceFileView, bool) {
 	return SourceFileView{n}, true
 }
 
-// Items returns the named children that have no field (contract_declaration, entity_declaration, extern_declaration, function_declaration, impl_declaration, import_declaration, job_declaration, let_statement, test_declaration, trait_declaration, type_declaration, view_declaration).
+// Items returns the named children that have no field (contract_declaration, entity_declaration, extern_declaration, extern_type_declaration, function_declaration, impl_declaration, import_declaration, job_declaration, let_statement, test_declaration, trait_declaration, type_declaration, view_declaration).
 func (v SourceFileView) Items() []*Node { return v.Node.unfielded() }
 
 // StateDeclarationView is a typed view of a state_declaration node.

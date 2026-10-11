@@ -82,3 +82,5 @@ title: "Open questions"
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,
     `toSet` `Hash`, `sum` `Add`). A `Collection` trait would need traits over type constructors,
     which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.
+21. **`Handle(name)` and `extern type`:** both name what foreign code owns, and `extern type` is
+    checked as a type of its own. Should `Handle` go?

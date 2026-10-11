@@ -110,7 +110,7 @@ func placeOf(d *syntax.Node) string {
 		return "query"
 	case syntax.EventDeclaration:
 		return "event"
-	case syntax.TypeDeclaration:
+	case syntax.TypeDeclaration, syntax.ExternTypeDeclaration:
 		return "type"
 	case syntax.TestDeclaration:
 		return "test"

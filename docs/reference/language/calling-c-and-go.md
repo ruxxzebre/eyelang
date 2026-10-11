@@ -12,6 +12,10 @@ extern fn crc32(crc: UInt64, data: Bytes, length: UInt32) -> UInt64
 
 @host("lab.desk")                  # provided by the Go program that embeds Eyelang
 extern fn showOnDesk(text: String) -> Result((), String)
+
+extern type Db                     # owned by foreign code: only extern functions make one
+@library("sqlite3")
+extern fn open(path: String) -> Result(Db, String)
 ```
 
 - An `extern fn` has a signature and no body. Calling one has the `ffi` effect, which public
@@ -24,3 +28,12 @@ extern fn showOnDesk(text: String) -> Result((), String)
   be live across a `!`.
 - The compiler trusts an extern's signature. It can't check that the foreign side is total or that
   it has no other effects, which is why `ffi` shows up in every signature that depends on one.
+- **`extern type Db`** names a type whose values foreign code owns. Only extern functions make or
+  take one, so Eyelang code can't build one or look inside it, and like a `Handle` it can't be
+  saved. It is a type of its own, so a `Db` can't be passed where a `Socket` is expected. It may
+  take type parameters, `extern type Cursor(row)`, and an `extern fn` may have a `where` clause,
+  as a function does.
+- **eye's own built-ins are declared the same way**, in `ir/builtin.eye`: an `extern type` for each
+  built-in type, such as `Int` and `List(a)`, and an `extern fn` for each built-in function, each
+  with its `##` documentation. Programs never import it; tools read it, so hover, Go to
+  Declaration and `eye doc` show the built-ins as they show any declaration.

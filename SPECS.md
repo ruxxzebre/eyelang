@@ -117,6 +117,7 @@ construct that also works outside that domain.
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
 | Metaprogramming | **No user-defined macros before v1.0.** `entity`, `job`, `contract` and `view` are built in, each lowered by its own compiler pass. Deriving is limited to the built-in traits; rare code generation goes through a build step (`eye generate`) | Fixed constructs give clearer errors and are easier for agents to work with; a macro system would delay v0.1; separate passes keep the option open |
 | Program root | **`eye.toml` marks the directory a program starts from**; a file belongs to the nearest one above it, else to its own directory | Tools given one file, such as an editor jumping to a definition, must find the modules it imports: `lab/digest/digest.eye` imports `lab/home`. A marker file says so once, and it is the file that packages (open question 5) need anyway |
+| Built-in docs | **The built-ins are declared in Eyelang**, in `ir/builtin.eye`, with `extern type`, `extern fn` and `##` comments; the interpreter implements them | Like Go's `builtin` package: an editor goes to a built-in's documented declaration as to any other, and the reference is written in one place, next to the signatures it describes |
 | Doc comments | **`##` comments are Markdown, with a first-sentence summary, `[Name]` links that are checked, and a module doc at the top of a file**. One extractor feeds `eye doc`, the editor's hover and completion, and AI schemas | One source of documentation for people, editors and models. Checked links keep docs from pointing at renamed code, and the summary rule gives every list a short line without a second comment |
 
 ## 3. A tour
@@ -1116,6 +1117,10 @@ extern fn crc32(crc: UInt64, data: Bytes, length: UInt32) -> UInt64
 
 @host("lab.desk")                  # provided by the Go program that embeds Eyelang
 extern fn showOnDesk(text: String) -> Result((), String)
+
+extern type Db                     # owned by foreign code: only extern functions make one
+@library("sqlite3")
+extern fn open(path: String) -> Result(Db, String)
 ```
 
 - An `extern fn` has a signature and no body. Calling one has the `ffi` effect, which public
@@ -1128,6 +1133,15 @@ extern fn showOnDesk(text: String) -> Result((), String)
   be live across a `!`.
 - The compiler trusts an extern's signature. It can't check that the foreign side is total or that
   it has no other effects, which is why `ffi` shows up in every signature that depends on one.
+- **`extern type Db`** names a type whose values foreign code owns. Only extern functions make or
+  take one, so Eyelang code can't build one or look inside it, and like a `Handle` it can't be
+  saved. It is a type of its own, so a `Db` can't be passed where a `Socket` is expected. It may
+  take type parameters, `extern type Cursor(row)`, and an `extern fn` may have a `where` clause,
+  as a function does.
+- **eye's own built-ins are declared the same way**, in `ir/builtin.eye`: an `extern type` for each
+  built-in type, such as `Int` and `List(a)`, and an `extern fn` for each built-in function, each
+  with its `##` documentation. Programs never import it; tools read it, so hover, Go to
+  Declaration and `eye doc` show the built-ins as they show any declaration.
 
 ## 19. AI models and agents
 
@@ -1583,3 +1597,5 @@ operator. All binary operators associate to the left except `??`, which associat
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,
     `toSet` `Hash`, `sum` `Add`). A `Collection` trait would need traits over type constructors,
     which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.
+21. **`Handle(name)` and `extern type`:** both name what foreign code owns, and `extern type` is
+    checked as a type of its own. Should `Handle` go?

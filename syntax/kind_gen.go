@@ -24,6 +24,7 @@ const (
 	EntityDeclaration                                   // entity_declaration
 	EventDeclaration                                    // event_declaration
 	ExternDeclaration                                   // extern_declaration
+	ExternTypeDeclaration                               // extern_type_declaration
 	FieldDeclaration                                    // field_declaration
 	FieldExpression                                     // field_expression
 	FieldInitializer                                    // field_initializer
@@ -131,6 +132,7 @@ var nodeNames = map[Kind]string{
 	EntityDeclaration:       "entity_declaration",
 	EventDeclaration:        "event_declaration",
 	ExternDeclaration:       "extern_declaration",
+	ExternTypeDeclaration:   "extern_type_declaration",
 	FieldDeclaration:        "field_declaration",
 	FieldExpression:         "field_expression",
 	FieldInitializer:        "field_initializer",

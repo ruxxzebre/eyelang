@@ -202,9 +202,20 @@ func (p *parser) function(attrs []*Node, pub *Node, inTrait bool) *Node {
 	return b.done(p)
 }
 
-// extern parses `extern fn name(params) -> T uses {…}`, a function implemented
-// by C or by the Go program that embeds Eyelang.
+// extern parses `extern fn name(params) -> T uses {…} where …`, a function
+// implemented by C or by the Go program that embeds Eyelang, and `extern type
+// Name(params)`, a type whose values foreign code owns.
 func (p *parser) extern(attrs []*Node, pub *Node) *Node {
+	if t := p.peek(1); (t.Kind == Ident || t.Kind == TypeIdent) && p.text(t) == "type" {
+		b := p.declaration(ExternTypeDeclaration, attrs, pub)
+		b.add(p.bumpAs(Keyword))
+		b.add(p.bumpAs(Keyword))
+		b.field(FieldName, p.expect(TypeIdent))
+		if p.at(LParen) {
+			b.field(FieldTypeParameters, p.typeParameters())
+		}
+		return b.done(p)
+	}
 	b := p.declaration(ExternDeclaration, attrs, pub)
 	b.add(p.bumpAs(Keyword))
 	b.add(p.expect(KwFn))
@@ -216,6 +227,9 @@ func (p *parser) extern(attrs []*Node, pub *Node) *Node {
 	}
 	if p.atWord("uses") && !p.atBreak() {
 		b.field(FieldEffects, p.usesClause())
+	}
+	if p.atWord("where") && !p.atBreak() {
+		b.field(FieldRequirements, p.whereClause())
 	}
 	return b.done(p)
 }

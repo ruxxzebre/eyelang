@@ -129,6 +129,7 @@ type Type struct {
 	Variants []*Variant // for a variant type
 	Fields   []string   // for a record type
 	Alias    *TypeExpr  // for an alias
+	Extern   bool       // `extern type`: foreign code owns its values
 	Methods  map[string]*Func
 	Impls    []*Impl // the traits it implements
 	Pos      Pos

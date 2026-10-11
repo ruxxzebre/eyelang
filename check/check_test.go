@@ -26,6 +26,10 @@ func TestDiagnostics(t *testing.T) {
 		src  string
 		want []string
 	}{
+		{"an extern type is a type of its own", `extern type Db
+@host("lab.rows")
+extern fn rows(db: Db) -> Int uses {ffi}
+fn f() -> Int uses {ffi} = rows("not a db")`, []string{"4:33: expected Db, found String"}},
 		{"undefined names", `fn f() = g(x)
 fn h() = Missing(1)`, []string{"1:10: undefined name g", "1:12: undefined name x", "2:10: undefined name Missing"}},
 		{"duplicate declarations", `fn f() = 1

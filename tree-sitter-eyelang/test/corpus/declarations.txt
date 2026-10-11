@@ -711,3 +711,41 @@ pub let dublin: Zone = "Europe/Dublin"
     (type_identifier)
     (string
       (string_content))))
+
+================================================================================
+Extern types
+================================================================================
+
+extern type Db
+pub extern type Cursor(row)
+
+extern fn sorted(rows: List(row)) -> List(row) where row: Ord
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (extern_type_declaration
+    (type_identifier))
+  (extern_type_declaration
+    (type_identifier)
+    (type_parameters
+      (identifier)))
+  (extern_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_variable
+              (identifier))))))
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (type_variable
+          (identifier))))
+    (where_clause
+      (requirement
+        (identifier)
+        (type_identifier)))))

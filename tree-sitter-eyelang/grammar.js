@@ -77,6 +77,7 @@ module.exports = grammar({
       $.import_declaration,
       $.function_declaration,
       $.extern_declaration,
+      $.extern_type_declaration,
       $.job_declaration,
       $.entity_declaration,
       $.view_declaration,
@@ -146,6 +147,17 @@ module.exports = grammar({
       field('parameters', $.parameters),
       optional(seq('->', field('return_type', $._type))),
       optional(field('effects', $.uses_clause)),
+      optional(field('requirements', $.where_clause)),
+    ),
+
+    // A type whose values foreign code owns: only extern functions make or take one.
+    extern_type_declaration: $ => seq(
+      repeat($.attribute),
+      optional('pub'),
+      'extern',
+      'type',
+      field('name', $.type_identifier),
+      optional(field('type_parameters', $.type_parameters)),
     ),
 
     parameters: $ => seq('(', commaSep($.parameter), ')'),
