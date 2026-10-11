@@ -113,7 +113,7 @@ func runRuns(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "eye runs: %v\n", err)
 			return exitErrors
 		}
-		step := runs[0].Steps[stepNo-1]
+		step := runs[0].Steps[stepNo-runs[0].FirstStep]
 		if *asJSON {
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")

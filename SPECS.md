@@ -127,8 +127,8 @@ construct that also works outside that domain.
 | Answering approvals | **An answer names its request's `id`, and only the person in `from:` may give it.** The runtime refuses any other answer and logs it. Text matches only from the command line and in tests, and is refused when it matches more than one waiting approval. An `Approval` has `what` and `by` fields (section 15) | An `Approval` is the one value that stands for a person's consent, so the obvious routing job must be the safe one: one that forgets to check who pressed the button can't grant it, and an answer can't reach a request it wasn't meant for. From the lab: two runs asking "Restart the router?" were answered by one press (open question 17) |
 | Recorded steps | **`!` marks every recorded step in a job**: every outside effect, every entity call, publishing an event (`bus.pinged.publish!(…)`) and starting a child run (`digest.start!(day)`). The effects of section 12's table are inferred, `publish C.event`, `consume C.event`, `secret "name"` and `ffi` included. A step's result is recorded, so it must be something that can be saved. Output is not a step: `print` keeps `stdio` for signatures, and logging is not an effect (section 12) | Every point where a run can pause or commit is visible, with no exception to remember; output is a side channel for people, and marking it would put `!` on every log line (open questions 19 and 22) |
 | Foreign values | **`extern type` is the one way to name a value foreign code owns**; `Handle(name)` is gone. A program's `extern type` has no `Save`, `Show`, `Eq`, `Hash` or `Schema`, so it can't be saved, live across a `!`, printed, compared or asked of a model (section 18) | One obvious way, a name the checker tells apart from every other, and the saving rule applied to it: an `extern type` could be held across a `!` while a `Handle` couldn't (open question 21) |
-| Long runs | **A run's saved state is its live variables, not its history.** Jobs resume from saved frames, in the interpreter from v0.3 and in compiled code from v0.4; until then the interpreter replays a run's recorded steps. The language gets no `continue`-as-new | A run that never ends, such as the lab's train watcher, costs the same on its tenth day as on its first, with no new syntax (open question 9) |
-| Job code changes | **A paused run resumes only at a resume point that still exists with the same live variables**: the same function, the same `!`, and the same names and types live there. `eye run` refuses to start otherwise, as it does for entity rows it can't migrate, and names the job and its runs. Until runs have frames, replaying compares each recorded step's call with the call it replays and faults the run on a difference | A code change under a paused run is an error with a message, not a wrong value found later; the old job keeps its name until its runs finish, and the new code takes a new one. Finishing old runs on old code is rejected, since entities migrate forward and old code would read new state (open question 4) |
+| Long runs | **A run's saved state is its live variables, not its history.** The interpreter keeps a checkpoint at each statement of a job's body and replays only the steps since (from 2026-10-11); compiled code saves frames at each `!` from v0.4. The language gets no `continue`-as-new | A run that never ends, such as the lab's train watcher, costs the same on its tenth day as on its first, with no new syntax (open question 9) |
+| Job code changes | **A paused run resumes only at a resume point that still exists with the same live variables**: in the interpreter, the same statement of the job with the same typed code and as many variables. `eye run` refuses to start otherwise, as it does for entity rows it can't migrate, and names the job and its runs. Replaying the steps since a checkpoint compares each recorded step's call with the call it replays and faults the run on a difference | A code change under a paused run is an error with a message, not a wrong value found later; the old job keeps its name until its runs finish, and the new code takes a new one. Finishing old runs on old code is rejected, since entities migrate forward and old code would read new state (open question 4) |
 | Typed choices | **A type whose variants have no fields gets `T.variants()` and `T.parse(s)`, derived**: every variant in order, and `Some` of the variant named `s`, else `None` (section 11) | A person's choice, such as a button, is matched as a variant, so a misspelt or forgotten choice fails to compile, and the buttons come from the type the match uses. No syntax: they are calls on a type, as `Lexer.new` is (open question 15) |
 | Module roots | **`eye.toml` may list `modules`, more directories to find imports in**, searched after the program's own directory, in order (section 13) | A program deployed alone, such as the lab's digest, names the lab's modules in its `eye.toml` instead of reaching them through symbolic links that break and must list every module imported. From the lab: `deploy/digest` |
 | Native code | **Compiled programs are C, built by the `zig cc` that `eye` ships**, with Perceus reference counting, whole-program specialisation and jobs resuming from saved frames ([docs/internals/compilation.md](docs/internals/compilation.md)). `eye` itself stays free of cgo: the interpreter loads C libraries at run time without it | The workload needs memory and resume time more than the best code, and C at `-O2` gives both; the bootstrap seed is C anyway; Koka and Lean 4 compile reference-counted functional code to C. Shipping `zig cc` cross-compiles to all five release targets from any host, with the same compiler everywhere |
@@ -1056,33 +1056,29 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
 - **`!` marks a checkpoint.** Every recorded step in a job is a `!` call (section 12). A resumed
   or restarted run continues from its last checkpoint: no recorded call runs again, and it sees
-  the values it saw. The interpreter does this by replaying the run's steps, each returning its
-  recorded result; from v0.3 it saves the job's live variables at each `!` instead, as compiled
-  jobs do (section 22).
-- **A paused run resumes only where its code still is.** Each `!` is a resume point, named by its
-  function, its place and the names and types of the variables live there. When the code changes
-  under a paused run so that its resume point is gone or holds different variables, `eye run`
-  refuses to start, as it does for entity rows no migration can bring forward, and says which job
-  and how many runs: `2 runs of watch are paused at a step that changed; finish them on the old
-  code, or end them with eye runs`. To change a job whose runs are paused, keep the old job under
-  its name until its runs finish and give the new code a new name, or end the old runs. Until
-  runs have frames, a replayed step whose call differs from the one recorded faults the run
-  instead: `the code of watch changed under this run at step 12`.
-- **Long runs.** A run's saved state is its live variables, so a job that loops for weeks costs no
-  more on its last day than on its first. While the interpreter still replays (until v0.3), each
-  wake replays every step so far, so a loop that never ends should end its run and start a new
-  one now and then; the start is a recorded step, so a crash doesn't start the new run twice:
-
-  ```eye
-  job watch(t: Ref(Traveller)) {
-    for _ in 0..80 {                         # about an hour of 45-second loops
-      let me = t.read!()
-      if me.pins == [] && me.aboard == None { return }
-      sleep!(45 s)
-    }
-    watch.start!(t)                          # carry on in a fresh run
-  }
-  ```
+  the values it saw. The interpreter keeps a checkpoint at the start of each statement of the
+  job's body, the statements inside its loops, ifs and matches included, once the run has taken
+  steps since the last: the job's variables, the statement, and where each loop around it is.
+  A run that wakes restores them and replays only the steps since, each returning its recorded
+  result. A statement that calls a function with `!` steps of its own replays that function's
+  steps, so a loop that never ends belongs in the job's body, not in a function it calls once.
+  While a variable holds what can't be saved, the run keeps its earlier checkpoint. Compiled jobs
+  save their live variables at each `!` (section 22).
+- **A paused run resumes only where its code still is.** A checkpoint names the statement it
+  resumes at by its place in the job and its code, with types; the job must keep as many
+  variables. When the code changes under a paused run so that the statement is gone or reads
+  differently, `eye run` refuses to start, as it does for entity rows no migration can bring
+  forward, and says which job and how many runs: `the code of a job changed where its runs are
+  paused, so they can't resume: watch (2 paused runs)`. A change elsewhere in the job is fine. To
+  change a job where its runs are paused, keep the old job under its name until its runs finish
+  and give the new code a new name, or end the old runs. A step replayed after the checkpoint
+  whose call differs from the one recorded, as when a function the statement calls changed,
+  faults the run: `the code of watch changed while this run was paused: its step 12 called
+  notify.send, and the code now calls sleep there`.
+- **Long runs.** A run's saved state is its variables and the steps of the statement it is in,
+  so a job that loops for weeks, such as the lab's train watcher, costs no more on its last day
+  than on its first. `eye runs` keeps the last 20 steps a checkpoint dropped, and counts the
+  rest.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a checkpoint is a compile error.
 - **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the
@@ -1696,8 +1692,9 @@ diagnostics layer, and a conversion from its editor-oriented tree.
 6. The runtime pieces: the `Store` trait, the runner, the in-memory store written in Eyelang, and the
    Postgres store.
 7. The typed IR: the IR with a resolved type on every expression and every call resolved to its
-   target (ROADMAP task 7.1). The interpreter runs it too, and from v0.3 resumes jobs from saved
-   frames, produced by a pass that splits each waiting function into states, instead of replaying.
+   target (ROADMAP task 7.1). The interpreter runs it too, and resumes jobs from checkpoints at
+   the statements of their bodies (task 7.3); compiled jobs resume from saved frames, produced by
+   a pass that splits each waiting function into states.
    Then, on the way to code generation, generic code is specialised and `entity`, `job`,
    `contract` and `view` are each lowered into core IR by their own pass, kept separate from the
    type checker. Nothing else in the compiler needs to know about them, and the passes are already
@@ -1873,14 +1870,11 @@ operator. All binary operators associate to the left except `??`, which associat
    - The retention times are fixed; should a program set them, and should `eye runs` show what
      was summarised?
    - A run that never ends, such as the lab's reminders watcher (`while true { …; sleep!(45 s) }`),
-     keeps every step: four or more per loop, so 7,700 or more a day per person, each wake
-     replaying all of them, so its cost grows with the square of its age. `eye run` warns past
-     1,000 steps and `eye runs` flags such runs. Decided on 2026-10-11: runs save their live
-     variables at each `!` instead of their history, in the interpreter from v0.3 (ROADMAP task
-     7.3), and the language gets no `continue`-as-new. Until then, a loop ends its run and starts
-     a new one now and then (`watch.start!(t)`, section 15). If that pattern spreads before
-     frames land, a job method such as `watch.again!(t)`, which ends the run and starts the next
-     with the same key in one step and has `eye runs` link the two, could make it one call.
+     kept every step, four or more per loop, each wake replaying all of them. Decided and done on
+     2026-10-11: runs save their variables instead of their history, at the statements of the
+     job's body in the interpreter (ROADMAP task 7.3) and at each `!` in compiled code, and the
+     language gets no `continue`-as-new. `eye run` warns about a run that has taken 1,000 steps
+     since its checkpoint, as one whose loop is inside a function the job calls once.
    - One process per journal (a file lock), and one per Postgres database and schema (an
      advisory lock). Several runners on one database is question 28.
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
@@ -1933,7 +1927,7 @@ operator. All binary operators associate to the left except `??`, which associat
     `Show`, `Eq`, `Hash` or `Schema` (section 18).
 22. **Printing in jobs:** decided on 2026-10-11: output stays outside the `!` rule. `print` keeps
     `stdio` for signatures but is not a step, logging is not an effect, and the interpreter keeps
-    a replayed run quiet until runs resume from frames, when nothing is replayed (section 12).
+    a run quiet while it replays the steps since its checkpoint (section 12).
 23. **Where `!` goes on a helper.** Writing `fn stamp() = now()` and calling `stamp!()` makes the
     whole helper one recorded step; a helper that itself has `!` steps is called with `!` too, but
     then its steps are recorded one by one. The same mark means "record this call" in one case and

@@ -74,6 +74,10 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		fmt.Fprintf(stderr, "eye run: %v\n", err)
 		return 1
 	}
+	if err := in.rt.checkResumePoints(); err != nil {
+		fmt.Fprintf(stderr, "eye run: %v\n", err)
+		return 1
+	}
 	in.rt.restore()
 	runsBefore := in.rt.nextRun
 	if hasJobs(prog) {
@@ -338,7 +342,12 @@ type RunInfo struct {
 	Fault  string     `json:"fault,omitempty"`
 	// StepCount is how many steps the run took, also once only a summary
 	// is kept; Size is how many bytes the store keeps for it.
-	StepCount  int        `json:"stepCount"`
+	StepCount int `json:"stepCount"`
+	// FirstStep is the number of the first step in Steps: the steps before
+	// it were dropped at a checkpoint. Replays is how many steps the run
+	// took since its checkpoint, which it replays each time it wakes.
+	FirstStep  int        `json:"firstStep"`
+	Replays    int        `json:"replays"`
 	Size       int        `json:"size"`
 	Summarized bool       `json:"summarized,omitempty"`
 	Started    *time.Time `json:"started,omitempty"`
@@ -441,10 +450,9 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 		t := time.Unix(0, ns)
 		return &t
 	}
-	info.StepCount, info.Summarized = len(r.Log), r.Summarized
-	if r.Summarized {
-		info.StepCount = r.Steps
-	}
+	history := r.history()
+	info.StepCount, info.Summarized, info.Replays = r.taken(), r.Summarized, len(r.Log)
+	info.FirstStep = info.StepCount - len(history) + 1
 	if r.Started != 0 {
 		info.Started = when(r.Started)
 	}
@@ -455,9 +463,14 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 	if r.Spent != nil {
 		total = *r.Spent
 	}
-	for _, s := range r.Log {
+	if r.Checkpoint != nil {
+		total.add(r.Checkpoint.Spent) // the trail's steps are among these
+	}
+	for i, s := range history {
 		st := StepInfo{Call: s.Call, Status: "done", Spent: spentInfo(s.spent())}
-		total.add(s.spent())
+		if i >= len(r.Trail) {
+			total.add(s.spent()) // the trail's is in the checkpoint's total
+		}
 		switch {
 		case s.Timer:
 			st.Status, st.Until = "sleeping", when(s.WakeAt)
@@ -566,15 +579,22 @@ func FormatRunsWith(w io.Writer, runs []RunInfo, opts FormatOptions, now time.Ti
 		if r.Summarized {
 			line += " (steps dropped; summary kept)"
 		}
-		if r.StepCount >= longRun && !r.Summarized {
-			line += "\n    warning: a run this long keeps every step it took; a job that never ends grows without bound (SPECS.md, open question 9)"
+		if r.Replays >= longRun && !r.Summarized {
+			line += fmt.Sprintf("\n    warning: it has taken %d steps since its last checkpoint and replays them each time it wakes; a run keeps checkpoints between the statements of its job, not inside a function it calls", r.Replays)
 		}
 		fmt.Fprintln(w, line)
 		if !opts.Steps {
 			continue
 		}
+		if r.FirstStep > 1 && !r.Summarized {
+			earlier := fmt.Sprintf("%d earlier steps", r.FirstStep-1)
+			if r.FirstStep == 2 {
+				earlier = "1 earlier step"
+			}
+			fmt.Fprintf(w, "    (%s, dropped at checkpoints)\n", earlier)
+		}
 		for i, s := range r.Steps {
-			FormatStep(w, i+1, s, now)
+			FormatStep(w, r.FirstStep+i, s, now)
 			if opts.Replies && s.Spent != nil && s.Spent.Model != "" {
 				fmt.Fprintln(w, indent(clip(s.Value, replyLimit), "        "))
 			}
@@ -622,18 +642,23 @@ func StepValue(prog *ir.Program, store Store, id int64, n int) (string, error) {
 		return "", fmt.Errorf("there is no run %d", id)
 	}
 	r := decodeRun(data)
+	history := r.history()
+	first := r.taken() - len(history) + 1
 	switch {
 	case r.Summarized:
 		return "", fmt.Errorf("run %d keeps only a summary: its steps were dropped", id)
-	case n < 1 || n > len(r.Log):
-		steps := fmt.Sprintf("%d steps", len(r.Log))
-		if len(r.Log) == 1 {
+	case n < 1 || n > r.taken():
+		steps := fmt.Sprintf("%d steps", r.taken())
+		if r.taken() == 1 {
 			steps = "1 step"
 		}
 		return "", fmt.Errorf("run %d has %s, so it has no step %d", id, steps, n)
-	case r.Log[n-1].Timer || r.Log[n-1].Event != "":
+	case n < first:
+		return "", fmt.Errorf("step %d of run %d was dropped at a checkpoint; it keeps steps %d to %d", n, id, first, r.taken())
+	case history[n-first].Timer || history[n-first].Event != "":
 		return "", fmt.Errorf("step %d of run %d waits, and returns no value", n, id)
 	}
+	s := history[n-first]
 	in := New(prog, io.Discard, io.Discard)
 	in.rt.useStore(store)
 	var v Value
@@ -643,7 +668,7 @@ func StepValue(prog *ir.Program, store Store, id int64, n int) (string, error) {
 				v = nil
 			}
 		}()
-		v = in.decode(r.Log[n-1].Value, ir.Pos{})
+		v = in.decode(s.Value, ir.Pos{})
 	}()
 	if v == nil {
 		return "", fmt.Errorf("step %d of run %d can't be read by this version of the program", n, id)

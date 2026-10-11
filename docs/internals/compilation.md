@@ -407,6 +407,22 @@ used for waiting functions only.
 in v0.3 (task 7.3, with 7.1 before it), so open question 9 is fixed for the lab a release before
 compiled jobs.
 
+**Built 2026-10-11, without the second evaluator** (`interp/checkpoint.go`). The interpreter
+saves one frame, the job's own, at statement boundaries instead of at each `!`. At the start of
+each statement of the job's body, nested statements of `while` and `for` loops, `if`s and
+`match`es included, a run that has taken steps since its last checkpoint saves its variables,
+the path from the body to the statement, and each enclosing `for` loop's elements and index.
+The steps before it are dropped, apart from a trail of 20 for `eye runs`. A run that wakes
+restores the variables, walks the path in the ordinary tree-walking evaluator, which enters
+each loop, branch and arm without evaluating what it already did, and replays only the steps
+since the checkpoint. What this gives up against frames at each `!`: a function the statement
+calls with `!` steps of its own replays them, since its frame isn't saved, so a loop that never
+ends must be in the job's body; and a checkpoint is skipped while a variable holds what can't be
+saved. Neither matters to the lab. The C back end still splits waiting functions into states,
+as section 4 describes; this was the cheaper way to fix open question 9 in the interpreter. A
+checkpoint names its statement by a hash of its typed IR (7.1), which is how a code change under
+a paused run is caught (open question 4).
+
 ### Runs saved by older versions
 
 Runs saved under v0.2 and v0.3 are step logs. **Recommendation:** when a new runtime finds one,

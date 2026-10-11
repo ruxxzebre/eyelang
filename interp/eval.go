@@ -70,6 +70,7 @@ type frame struct {
 	fn    *ir.Func
 	slots []Value
 	self  Value
+	ck    *checkpointing // a job run's own frame keeps its checkpoints
 }
 
 // Control flow that leaves an expression early.
@@ -293,6 +294,14 @@ func (in *Interp) construct(v *ir.Variant, args []argVal, at ir.Pos) Value {
 // ---------------------------------------------------------------- expressions
 
 func (in *Interp) eval(f *frame, e ir.Expr) Value {
+	if f.ck != nil && f.ck.stmt == e {
+		// A statement of a job's body that holds statements keeps its
+		// place for checkpoints (checkpoint.go).
+		f.ck.stmt = nil
+		if v, ok := in.stmt(f, e); ok {
+			return v
+		}
+	}
 	switch x := e.(type) {
 	case *ir.Lit:
 		return in.lit(x)
@@ -301,7 +310,11 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 	case *ir.EmptyBraces:
 		return Empty{}
 	case *ir.Local:
-		return f.slots[x.Slot]
+		v := f.slots[x.Slot]
+		if _, lost := v.(unsaved); lost {
+			in.faultf(x.Pos, "%s held a value that can't be saved, which a checkpoint didn't keep, and is read after it: the checker should have refused this", x.Name)
+		}
+		return v
 	case *ir.Self:
 		return f.self
 	case *ir.SelfField:
@@ -1134,7 +1147,11 @@ func (in *Interp) setPath(base Value, path []string, v Value, at ir.Pos) Value {
 // ---------------------------------------------------------------- loops
 
 func (in *Interp) forLoop(f *frame, x *ir.For) {
-	iter := in.eval(f, x.Iter)
+	in.forOver(f, x, in.eval(f, x.Iter))
+}
+
+// forOver runs a for loop over iter, already evaluated.
+func (in *Interp) forOver(f *frame, x *ir.For, iter Value) {
 	each := func(v Value) bool {
 		if !in.match(f, x.Pattern, v) {
 			in.faultf(x.Pos, "%s doesn't match the loop's pattern", show(v))
@@ -1194,7 +1211,12 @@ func (in *Interp) forLoop(f *frame, x *ir.For) {
 }
 
 // loopBody runs one iteration and reports whether the loop should stop.
-func (in *Interp) loopBody(f *frame, body ir.Expr) (stop bool) {
+func (in *Interp) loopBody(f *frame, body ir.Expr) bool {
+	return in.loopTurn(func() { in.eval(f, body) })
+}
+
+// loopTurn runs one turn of a loop, and reports whether break stopped it.
+func (in *Interp) loopTurn(turn func()) (stop bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			switch r.(type) {
@@ -1207,7 +1229,7 @@ func (in *Interp) loopBody(f *frame, body ir.Expr) (stop bool) {
 			}
 		}
 	}()
-	in.eval(f, body)
+	turn()
 	return false
 }
 

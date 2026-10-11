@@ -44,6 +44,11 @@ func Fprint(w io.Writer, f *Func) {
 	p.expr(1, f.Body)
 }
 
+// FprintExpr writes one expression as Fprint writes a body.
+func FprintExpr(w io.Writer, e Expr) {
+	(&printer{w: w}).expr(0, e)
+}
+
 type printer struct{ w io.Writer }
 
 func (p *printer) line(depth int, s string) {

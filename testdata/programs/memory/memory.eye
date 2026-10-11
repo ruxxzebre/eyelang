@@ -59,11 +59,14 @@ test "reserve! waits until the memory is given back" {
   expect(Log("pair").lines == ["a in", "a out", "a gave back 1", "b in", "b out", "b gave back 1"])
 }
 
-## Keeps a step for every minute it waits: more than 1 KiB of saved state.
+## Keeps a line for every minute it waits: more than 1 KiB of saved state.
 @memory(1 KiB)
 job greedy() {
+  var lines: List(String) = []
   for i in 0..100 {
-    Log("greedy").add!("{now!()}")
+    let at = now!()
+    lines += ["{at}"]
+    Log("greedy").add!("{at}")
   }
 }
 

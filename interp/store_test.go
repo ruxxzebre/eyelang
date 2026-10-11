@@ -249,11 +249,15 @@ contract Bus {
 	}
 }
 
+// TestALongRunIsReported runs a job whose steps are all inside a function it
+// calls once, so no checkpoint drops them, and checks that it is reported.
 func TestALongRunIsReported(t *testing.T) {
 	prog := load(t, `
-job watch() {
+fn spin() {
   while true { sleep!(45 s) }
 }
+
+job watch() { spin!() }
 `)
 	defer func(n int) { longRun = n }(longRun)
 	longRun = 50
@@ -261,8 +265,90 @@ job watch() {
 	in := New(prog, &log, &log)
 	in.rt.startNow(prog.Root.Jobs["watch"], nil, nil, ir.Pos{})
 	in.rt.advance(ir.Duration(time.Hour)) // 80 sleeps
-	if n := strings.Count(log.String(), "warning: run #1 of .watch has taken 50 steps"); n != 1 {
+	if n := strings.Count(log.String(), "warning: run #1 of .watch has taken 50 steps since its last checkpoint"); n != 1 {
 		t.Errorf("warned %d times, want once:\n%s", n, log.String())
+	}
+}
+
+// TestAWatcherKeepsItsRecordSmall runs a job shaped like the lab's train
+// watcher (testdata/lab/trains, job watch) for a simulated week: a loop that
+// never ends, with loops, a let … else that continues, a match and an early
+// return inside. Its checkpoints keep its record the size of its variables
+// and one turn of its loop, while the count of its steps grows, and it
+// computes what it would without them (7.3).
+func TestAWatcherKeepsItsRecordSmall(t *testing.T) {
+	prog := load(t, `
+type Pin = { train: String, hour: Int }
+
+entity Traveller(id: String) {
+  state pins: List(Pin) = [{ train: "E216", hour: 8 }, { train: "E999", hour: 9 }, { train: "D100", hour: 7 }]
+  state sent: Int = 0
+  state turns: Int = 0
+  state aboard: Option(Pin) = None
+
+  pub fn remind(p: Pin) { sent += 1 }
+  pub fn turn() -> Int {
+    turns += 1
+    turns
+  }
+}
+
+fn delay(train: String, turn: Int) -> Option(Int) =
+  if train == "E999" then None else Some(turn % 7)
+
+job watch(id: String) {
+  let t = Traveller(id)
+  while true {
+    let me = t.read!()
+    if me.pins == [] && me.aboard == None { return }
+    let turn = t.turn!()
+    for pin in me.pins {
+      let Some(late) = delay(pin.train, turn) else { continue }
+      for r in 0..late {
+        if r == 5 { t.remind!(pin) }
+      }
+      match late {
+        6 => t.remind!(pin)
+        _ => ()
+      }
+      sleep!(1 s) # a wake resumes inside the loop, at its element
+    }
+    sleep!(5 min)
+  }
+}
+`)
+	var log strings.Builder
+	in := New(prog, &log, &log)
+	in.rt.startNow(prog.Root.Jobs["watch"], []Value{"ann"}, nil, ir.Pos{})
+	in.rt.advance(ir.Duration(time.Hour))
+	data, _ := in.rt.store.Run(1)
+	day1 := len(data)
+	in.rt.advance(ir.Duration(7 * 24 * time.Hour))
+	data, _ = in.rt.store.Run(1)
+	run := decodeRun(data)
+	if len(data) > day1+64 {
+		t.Errorf("the run's record grew from %d bytes after an hour to %d after a week", day1, len(data))
+	}
+	if run.Status != "sleeping" || run.taken() < 10000 {
+		t.Errorf("the run is %s after %d steps in a week, want it sleeping after at least 10000", run.Status, run.taken())
+	}
+	if strings.Contains(log.String(), "warning") {
+		t.Errorf("a run with checkpoints was reported as long:\n%s", log.String())
+	}
+	// Each turn sends a reminder for each of two trains whose delay is 6:
+	// one from the inner loop, one from the match.
+	state, _, _ := in.rt.load(&EntityRef{Entity: prog.Root.Entities["Traveller"], ID: "ann"}, ir.Pos{})
+	turns, _ := state.get("turns")
+	sent, _ := state.get("sent")
+	n := turns.(int64)
+	want := int64(0)
+	for turn := int64(1); turn <= n; turn++ {
+		if turn%7 == 6 {
+			want += 2 * 2
+		}
+	}
+	if sent != want {
+		t.Errorf("after %d turns the watcher sent %v reminders, want %d", n, sent, want)
 	}
 }
 

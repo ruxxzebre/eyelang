@@ -44,14 +44,11 @@ title: "Open questions"
    - The retention times are fixed; should a program set them, and should `eye runs` show what
      was summarised?
    - A run that never ends, such as the lab's reminders watcher (`while true { …; sleep!(45 s) }`),
-     keeps every step: four or more per loop, so 7,700 or more a day per person, each wake
-     replaying all of them, so its cost grows with the square of its age. `eye run` warns past
-     1,000 steps and `eye runs` flags such runs. Decided on 2026-10-11: runs save their live
-     variables at each `!` instead of their history, in the interpreter from v0.3 (ROADMAP task
-     7.3), and the language gets no `continue`-as-new. Until then, a loop ends its run and starts
-     a new one now and then (`watch.start!(t)`, [section 15](/reference/language/jobs-and-waiting)). If that pattern spreads before
-     frames land, a job method such as `watch.again!(t)`, which ends the run and starts the next
-     with the same key in one step and has `eye runs` link the two, could make it one call.
+     kept every step, four or more per loop, each wake replaying all of them. Decided and done on
+     2026-10-11: runs save their variables instead of their history, at the statements of the
+     job's body in the interpreter (ROADMAP task 7.3) and at each `!` in compiled code, and the
+     language gets no `continue`-as-new. `eye run` warns about a run that has taken 1,000 steps
+     since its checkpoint, as one whose loop is inside a function the job calls once.
    - One process per journal (a file lock), and one per Postgres database and schema (an
      advisory lock). Several runners on one database is question 28.
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
@@ -104,7 +101,7 @@ title: "Open questions"
     `Show`, `Eq`, `Hash` or `Schema` ([section 18](/reference/language/calling-c-and-go)).
 22. **Printing in jobs:** decided on 2026-10-11: output stays outside the `!` rule. `print` keeps
     `stdio` for signatures but is not a step, logging is not an effect, and the interpreter keeps
-    a replayed run quiet until runs resume from frames, when nothing is replayed ([section 12](/reference/language/effects-and-signatures)).
+    a run quiet while it replays the steps since its checkpoint ([section 12](/reference/language/effects-and-signatures)).
 23. **Where `!` goes on a helper.** Writing `fn stamp() = now()` and calling `stamp!()` makes the
     whole helper one recorded step; a helper that itself has `!` steps is called with `!` too, but
     then its steps are recorded one by one. The same mark means "record this call" in one case and

@@ -273,3 +273,50 @@ pub fn main() {
 		t.Errorf("the held journal was moved: %v", err)
 	}
 }
+
+// TestRunRefusesAChangedJob pauses a run at its sleep, changes the
+// statement it is paused at, and starts eye run again: it refuses to start,
+// naming the job and how many runs wait in it (7.3, SPECS.md §15).
+func TestRunRefusesAChangedJob(t *testing.T) {
+	src := `
+job wait(name: String) -> String {
+  let start = now!()
+  sleep!(1 h)
+  "{name} waited from {start}"
+}
+
+pub fn main() {
+  wait.start("a", key: "a")
+}
+`
+	dir := program(t, map[string]string{"main.eye": src})
+	prog, diags := check.Program(dir)
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	first, out := eyeProcess(t, "run", dir)
+	paused := false
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline) && !paused; time.Sleep(20 * time.Millisecond) {
+		if store, err := interp.ReadJournal(filepath.Join(dir, ".eye", "journal")); err == nil {
+			rs := interp.Runs(prog, store)
+			paused = len(rs) == 1 && rs[0].Status == "sleeping"
+		}
+	}
+	_ = first.Process.Signal(syscall.SIGKILL)
+	_ = first.Wait()
+	if !paused {
+		t.Fatalf("the run never paused; eye run said:\n%s", out)
+	}
+
+	changed := strings.Replace(src, "sleep!(1 h)", "sleep!(2 h)", 1)
+	if err := os.WriteFile(filepath.Join(dir, "main.eye"), []byte(changed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"run", dir}, &stdout, &stderr); code == 0 {
+		t.Fatalf("eye run started on a job changed where its run is paused:\n%s%s", stdout.String(), stderr.String())
+	}
+	if want := "wait (1 paused run)"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("eye run said %q, want it to name %q", stderr.String(), want)
+	}
+}

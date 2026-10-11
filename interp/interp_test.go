@@ -147,7 +147,7 @@ test "starts once" {
 	in.rt.advance(ir.Duration(5 * 60e9))
 	data, _ := in.rt.store.Run(1)
 	starts := 0
-	for _, s := range decodeRun(data).Log {
+	for _, s := range decodeRun(data).history() {
 		if s.Call == "start child" {
 			starts++
 		}

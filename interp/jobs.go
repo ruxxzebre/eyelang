@@ -39,17 +39,18 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 				// that reaches outside without waiting, is a step: its
 				// result is recorded, so a resumed run doesn't call it again,
 				// and what its model calls spent counts against @budget again.
+				call := fn.Fn.Host
+				if call == "" {
+					call = fn.Fn.Name
+				}
 				if run.cursor < len(run.Log) {
 					s := run.Log[run.cursor]
-					if v, ok := in.replay(run, w.Pos); ok {
+					if v, ok := in.replay(run, call, w.Pos); ok {
 						in.charge(s.spent())
 						return v
 					}
 				}
-				in.call = fn.Fn.Host
-				if in.call == "" {
-					in.call = fn.Fn.Name
-				}
+				in.call = call
 				prev, prevSpend := in.want, in.stepSpend
 				in.want, in.stepSpend = wanted(c), &spend{}
 				v, _ := in.apply(fn, args, c.Pos)
@@ -73,7 +74,7 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 				return in.reserve(run, args, c.Pos)
 			}
 		}
-		if v, ok := in.replay(run, w.Pos); ok {
+		if v, ok := in.replay(run, callName(callee), w.Pos); ok {
 			return v
 		}
 		in.call = callName(callee)
@@ -105,7 +106,7 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 			pos, named := split(args)
 			return in.startChild(run, j.Job, pos, named, c.Pos)
 		}
-		if v, ok := in.replay(run, w.Pos); ok {
+		if v, ok := in.replay(run, methodName(recv, c.Name), w.Pos); ok {
 			return v
 		}
 		in.call = methodName(recv, c.Name)
@@ -128,7 +129,7 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 // than starting another, and the child is saved in the same commit as the
 // step, so a crash can't leave one without the other.
 func (in *Interp) startChild(run *jobRun, job *ir.Job, args []Value, named map[string]Value, at ir.Pos) Value {
-	if v, ok := in.replay(run, at); ok {
+	if v, ok := in.replay(run, "start "+job.Name, at); ok {
 		return v
 	}
 	rt := in.rt
@@ -192,12 +193,22 @@ func (in *Interp) outcome(r *jobRun, at ir.Pos) Value {
 }
 
 // replay returns the result of the next recorded step, if the run has
-// recorded it. A timer that hasn't run out parks the run again.
-func (in *Interp) replay(run *jobRun, at ir.Pos) (Value, bool) {
+// recorded it. A timer that hasn't run out parks the run again. call is
+// what the step about to happen calls, named as it is recorded: a step
+// recorded for another call means the job's code changed under the run,
+// which faults rather than hand the call another's result (SPECS.md §15).
+func (in *Interp) replay(run *jobRun, call string, at ir.Pos) (Value, bool) {
 	if run.cursor >= len(run.Log) {
 		return nil, false
 	}
 	s := &run.Log[run.cursor]
+	if call != "" && s.Call != "" && s.Call != call {
+		n := run.cursor + 1
+		if run.Checkpoint != nil {
+			n += run.Checkpoint.Steps
+		}
+		in.faultf(at, "the code of %s changed while this run was paused: its step %d called %s, and the code now calls %s there", strings.TrimPrefix(run.Job, "."), n, s.Call, call)
+	}
 	if s.Timer {
 		if in.rt.now.UnixNano() < s.WakeAt {
 			run.WakeAt = s.WakeAt
@@ -265,7 +276,7 @@ func (in *Interp) poll(run *jobRun, args []argVal, at ir.Pos) Value {
 		if i >= int64(within/every) {
 			return false
 		}
-		if _, ok := in.replay(run, at); !ok {
+		if _, ok := in.replay(run, "poll", at); !ok {
 			in.call = "poll"
 			in.sleep(run, in.rt.now.Add(time.Duration(every)))
 		}
@@ -391,7 +402,7 @@ func (in *Interp) approval(run *jobRun, args []argVal, at ir.Pos) Value {
 		// seen.
 		in.rt.publish(e, &Record{
 			Names: []string{"id", "what", "from", "until"},
-			Vals:  []Value{fmt.Sprintf("%d-%d", run.ID, len(run.Log)-1), what, show(named["from"]), time.Unix(0, s.WakeAt).UTC()},
+			Vals:  []Value{fmt.Sprintf("%d-%d", run.ID, run.taken()-1), what, show(named["from"]), time.Unix(0, s.WakeAt).UTC()},
 		})
 	}
 	return in.resolveWait(run, s, match, expired, at)

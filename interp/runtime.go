@@ -509,13 +509,17 @@ func (rt *runtime) inView(v *ir.View, snapshot *Record) bool {
 // ---------------------------------------------------------------- jobs
 
 // jobRun is a run of a job, saved as JSON with its values encoded. A run
-// resumes by running the job again from the start: each durable step it
-// already took returns its recorded result instead of happening again.
+// resumes from its checkpoint, or from the start if it has none: each
+// durable step it took since then returns its recorded result instead of
+// happening again (checkpoint.go).
 type jobRun struct {
-	ID     int64
-	Job    string
-	Args   [][]byte
-	Log    []step
+	ID         int64
+	Job        string
+	Args       [][]byte
+	Checkpoint *checkpoint `json:",omitempty"`
+	Log        []step      // the steps since the checkpoint
+	// Trail is the last few steps a checkpoint dropped, kept for eye runs.
+	Trail  []step `json:",omitempty"`
 	Status string // ready, sleeping, done, failed
 	WakeAt int64  `json:",omitempty"` // Unix nanoseconds, while sleeping
 	// WaitEvent is the event a sleeping run waits for in next!; one wakes it.
@@ -581,6 +585,24 @@ type step struct {
 
 func (s step) spent() spend {
 	return spend{Tokens: s.Tokens, In: s.TokensIn, Out: s.TokensOut, USD: s.USD, Model: s.Model, Options: s.Options, Sent: s.Sent, Received: s.Received}
+}
+
+// taken is how many steps the run has taken.
+func (r *jobRun) taken() int {
+	if r.Summarized {
+		return r.Steps
+	}
+	n := len(r.Log)
+	if r.Checkpoint != nil {
+		n += r.Checkpoint.Steps
+	}
+	return n
+}
+
+// history is the steps eye runs shows: the trail a checkpoint kept, then
+// the steps since. The first is step taken() - len(history()) + 1.
+func (r *jobRun) history() []step {
+	return append(append([]step(nil), r.Trail...), r.Log...)
 }
 
 func (r *jobRun) encode() []byte {
@@ -763,7 +785,7 @@ func (rt *runtime) step(id int64) {
 			runFault(job.Pos, "DeadlinePassed", "%s passed its @deadline", job.Name)
 		}
 		rt.in.admitMemory(run, job)
-		result, _, _ := rt.in.callFunc(job.Func, nil, nil, args, job.Pos)
+		result := rt.in.runJob(run, job, args)
 		run.Status = "done"
 		run.Result = rt.in.encode(result, job.Pos)
 		run.Ended = rt.now.UnixNano()

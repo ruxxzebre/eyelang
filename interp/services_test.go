@@ -165,7 +165,7 @@ func TestDigestOverHTTP(t *testing.T) {
 	calls := 0
 	for _, id := range in.rt.store.Runs() {
 		data, _ := in.rt.store.Run(id)
-		for _, s := range decodeRun(data).Log {
+		for _, s := range decodeRun(data).history() {
 			if s.Call != "ai.generate" {
 				continue
 			}

@@ -141,10 +141,10 @@ Syntax, open since the parser freeze ended (from the 2026-10-11 lane list, none 
   and possibly syntax, and the self-hosted lexer (ROADMAP "What's next", item 4) needs it.
 
 Lab:
-- `trains.watch` (`testdata/lab/trains/trains.eye`) is still a `while true` loop that sleeps 45 s,
-  about 7,700 steps a day. Each wake replays every step so far, so its cost grows with the run's
-  age. Until saved frames (7.3, #76) land, give it the restart pattern SPECS §15 describes: end
-  the run and start the job again with `watch.start!(t)`, about every hour.
+- `trains.watch` (`testdata/lab/trains/trains.eye`) is a `while true` loop that sleeps 45 s. Since
+  checkpoints (7.3), each wake replays only the steps since the statement it is in, so its record
+  stays small; no restart pattern is needed. The homelab picks this up when its pin moves past
+  the checkpoint commit. Runs it saved before replay once, then keep checkpoints.
 
 ## Next work, in order
 

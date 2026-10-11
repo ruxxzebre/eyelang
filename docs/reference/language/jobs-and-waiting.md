@@ -24,33 +24,29 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
 - **`!` marks a checkpoint.** Every recorded step in a job is a `!` call ([section 12](/reference/language/effects-and-signatures)). A resumed
   or restarted run continues from its last checkpoint: no recorded call runs again, and it sees
-  the values it saw. The interpreter does this by replaying the run's steps, each returning its
-  recorded result; from v0.3 it saves the job's live variables at each `!` instead, as compiled
-  jobs do (section 22).
-- **A paused run resumes only where its code still is.** Each `!` is a resume point, named by its
-  function, its place and the names and types of the variables live there. When the code changes
-  under a paused run so that its resume point is gone or holds different variables, `eye run`
-  refuses to start, as it does for entity rows no migration can bring forward, and says which job
-  and how many runs: `2 runs of watch are paused at a step that changed; finish them on the old
-  code, or end them with eye runs`. To change a job whose runs are paused, keep the old job under
-  its name until its runs finish and give the new code a new name, or end the old runs. Until
-  runs have frames, a replayed step whose call differs from the one recorded faults the run
-  instead: `the code of watch changed under this run at step 12`.
-- **Long runs.** A run's saved state is its live variables, so a job that loops for weeks costs no
-  more on its last day than on its first. While the interpreter still replays (until v0.3), each
-  wake replays every step so far, so a loop that never ends should end its run and start a new
-  one now and then; the start is a recorded step, so a crash doesn't start the new run twice:
-
-  ```eye
-  job watch(t: Ref(Traveller)) {
-    for _ in 0..80 {                         # about an hour of 45-second loops
-      let me = t.read!()
-      if me.pins == [] && me.aboard == None { return }
-      sleep!(45 s)
-    }
-    watch.start!(t)                          # carry on in a fresh run
-  }
-  ```
+  the values it saw. The interpreter keeps a checkpoint at the start of each statement of the
+  job's body, the statements inside its loops, ifs and matches included, once the run has taken
+  steps since the last: the job's variables, the statement, and where each loop around it is.
+  A run that wakes restores them and replays only the steps since, each returning its recorded
+  result. A statement that calls a function with `!` steps of its own replays that function's
+  steps, so a loop that never ends belongs in the job's body, not in a function it calls once.
+  While a variable holds what can't be saved, the run keeps its earlier checkpoint. Compiled jobs
+  save their live variables at each `!` (section 22).
+- **A paused run resumes only where its code still is.** A checkpoint names the statement it
+  resumes at by its place in the job and its code, with types; the job must keep as many
+  variables. When the code changes under a paused run so that the statement is gone or reads
+  differently, `eye run` refuses to start, as it does for entity rows no migration can bring
+  forward, and says which job and how many runs: `the code of a job changed where its runs are
+  paused, so they can't resume: watch (2 paused runs)`. A change elsewhere in the job is fine. To
+  change a job where its runs are paused, keep the old job under its name until its runs finish
+  and give the new code a new name, or end the old runs. A step replayed after the checkpoint
+  whose call differs from the one recorded, as when a function the statement calls changed,
+  faults the run: `the code of watch changed while this run was paused: its step 12 called
+  notify.send, and the code now calls sleep there`.
+- **Long runs.** A run's saved state is its variables and the steps of the statement it is in,
+  so a job that loops for weeks, such as the lab's train watcher, costs no more on its last day
+  than on its first. `eye runs` keeps the last 20 steps a checkpoint dropped, and counts the
+  rest.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a checkpoint is a compile error.
 - **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the

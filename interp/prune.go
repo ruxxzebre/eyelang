@@ -75,8 +75,9 @@ var (
 	keepSeen = 30 * 24 * time.Hour
 )
 
-// longRun is the number of steps past which a run is reported: a job that
-// loops forever keeps its whole history while it lives.
+// longRun is the number of steps since its checkpoint past which a run is
+// reported: it replays them all each time it wakes, as a function the job
+// calls once that loops forever does.
 var longRun = 1000
 
 // prune drops what nothing can use any more, in one commit:
@@ -146,13 +147,17 @@ func (r *jobRun) sees() int64 {
 // spent.
 func (r *jobRun) summarize() {
 	var total spend
+	if r.Checkpoint != nil {
+		total = r.Checkpoint.Spent
+	}
 	for _, s := range r.Log {
 		total.add(s.spent())
 	}
 	if total != (spend{}) {
 		r.Spent = &total
 	}
-	r.Steps, r.Log, r.Summarized = len(r.Log), nil, true
+	r.Steps = r.taken()
+	r.Log, r.Trail, r.Checkpoint, r.Summarized = nil, nil, nil, true
 }
 
 // warnLong tells once about a run that has taken many steps.
@@ -161,6 +166,6 @@ func (rt *runtime) warnLong(run *jobRun) {
 		return
 	}
 	rt.warned[run.ID] = true
-	fmt.Fprintf(rt.in.log, "warning: run #%d of %s has taken %d steps; a job that never ends keeps every step it took (SPECS.md, open question 9)\n",
+	fmt.Fprintf(rt.in.log, "warning: run #%d of %s has taken %d steps since its last checkpoint, and replays them each time it wakes: a run keeps a checkpoint between the statements of its job, not inside a function it calls\n",
 		run.ID, run.Job, len(run.Log))
 }
