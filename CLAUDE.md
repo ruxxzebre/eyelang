@@ -112,7 +112,8 @@ scope test above and the steps below.
   bare `cat`: it blocks the shell until the timeout.
 - **Run `task check` before pushing.** It runs everything CI runs: generated files, build, vet,
   lint, tests, formatting, the conformance suite, the grammar's corpus and the VS Code extension's
-  tests.
+  tests. On macOS it skips the extension's end-to-end test, which opens a VS Code window; run
+  `task vscode:e2e`, or set `VSCODE_E2E=1`, when a change touches the extension or `eye lsp`.
 - **One task, one change.** Commits and pull requests say `Closes #N` for the ROADMAP task they
   finish.
 

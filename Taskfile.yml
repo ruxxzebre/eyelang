@@ -62,7 +62,14 @@ tasks:
     desc: Test the VS Code extension and package it into bin/eyelang.vsix - vscode:unit, vscode:e2e and vscode:package (needs Node)
     cmds:
       - task: vscode:unit
-      - task: vscode:e2e
+      # On macOS the end-to-end test opens a VS Code window, and there is no xvfb to hide it in,
+      # so it runs only when asked: task vscode:e2e, or VSCODE_E2E=1. CI runs it on Linux.
+      - cmd: |
+          if [ "$(uname)" = Darwin ] && [ -z "$VSCODE_E2E" ]; then
+            echo "vscode:e2e skipped on macOS, where it opens a window: run task vscode:e2e, or set VSCODE_E2E=1"
+          else
+            {{.TASK_EXE}} vscode:e2e
+          fi
       - task: vscode:package
 
   vscode:npm:
