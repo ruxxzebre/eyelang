@@ -13,9 +13,7 @@ import (
 // and the standard modules leads somewhere, so go-to-definition and find
 // references work on it.
 var unresolvable = map[string]string{
-	"unix":     "an Instant method only the interpreter knows; the checker doesn't",
 	"end":      "a Range's field, built into the checker",
-	"name":     "self.name() in a trait's default method: self is any Named",
 	"solution": "a field in a record pattern, which takes its type from the value matched",
 	"nick":     "a field of an entity's older version, in a migration",
 	"nickname": "a field of an entity's older version, in a migration",
