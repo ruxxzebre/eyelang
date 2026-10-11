@@ -36,13 +36,21 @@ func digestDefaultModel(t *testing.T) string {
 	return string(m[1])
 }
 
-// digestStandIns starts stand-ins for the services the digest's write job
-// calls, points the environment at them, and leaves the model and its price
-// to the test. It returns how many times the model was asked.
-func digestStandIns(t *testing.T) func() int {
+// digestServices are stand-ins for the services the digest calls.
+type digestServices struct {
+	mu    sync.Mutex
+	asks  int              // how many times the model was asked
+	sends []map[string]any // the bodies Notify was sent
+	keys  []string         // and their idempotency keys
+}
+
+func (s *digestServices) asked() int { s.mu.Lock(); defer s.mu.Unlock(); return s.asks }
+
+// digestStandIns starts stand-ins for the services the digest calls, points
+// the environment at them, and leaves the model and its price to the test.
+func digestStandIns(t *testing.T) *digestServices {
 	t.Helper()
-	var mu sync.Mutex
-	asked := 0
+	lab := &digestServices{}
 	serve := func(h http.HandlerFunc) string {
 		s := httptest.NewServer(h)
 		t.Cleanup(s.Close)
@@ -66,9 +74,9 @@ func digestStandIns(t *testing.T) func() int {
 			"status": 200, "response": "<html>Culture Night</html>"}}`)
 	})
 	gateway := serve(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		asked++
-		mu.Unlock()
+		lab.mu.Lock()
+		lab.asks++
+		lab.mu.Unlock()
 		briefing := `{"highlights": [], "sections": [
 			{"heading": "Temporary protection", "stories": []},
 			{"heading": "Dublin", "stories": []},
@@ -78,23 +86,41 @@ func digestStandIns(t *testing.T) func() int {
 			"usage": map[string]any{"prompt_tokens": 30000, "completion_tokens": 3000}})
 		_, _ = w.Write(reply)
 	})
+	notify := serve(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		lab.mu.Lock()
+		lab.sends = append(lab.sends, body)
+		lab.keys = append(lab.keys, r.Header.Get("X-Actions-Idempotency-Key"))
+		lab.mu.Unlock()
+		_, _ = io.WriteString(w, `{"id": "msg-1", "deliveries": 1, "deduped": false}`)
+	})
 	for k, v := range map[string]string{
 		"MINIFLUX_URL": miniflux, "MINIFLUX_KEY": "mf-key", "VPN_PROXY_URL": proxy,
 		"FLARESOLVERR_URL": flare, "AI_URL": gateway + "/v1", "AI_KEY": "ai-secret",
-		"NOTIFY_URL": "http://127.0.0.1:1", // the write job sends nothing
+		"NOTIFY_URL": notify, "NOTIFY_TOKEN": "notify-secret",
 	} {
 		t.Setenv(k, v)
 	}
-	t.Setenv("DIGEST_MODEL", "")
-	_ = os.Unsetenv("DIGEST_MODEL")
-	return func() int { mu.Lock(); defer mu.Unlock(); return asked }
+	for _, k := range []string{"DIGEST_MODEL", "DIGEST_EVENT"} {
+		t.Setenv(k, "") // restored after the test
+		_ = os.Unsetenv(k)
+	}
+	return lab
 }
 
 // runDigestWrite runs the digest's write job for 12 October, as the morning
 // does, and returns its run once it has ended.
 func runDigestWrite(t *testing.T) (*Interp, *jobRun) {
 	t.Helper()
-	prog, diags := check.Program("../testdata/lab")
+	return runDigestJob(t, "../testdata/lab", "write")
+}
+
+// runDigestJob runs one of the digest's jobs for 12 October at 07:40 in the
+// program in dir, and returns its run once it has ended.
+func runDigestJob(t *testing.T, dir, job string) (*Interp, *jobRun) {
+	t.Helper()
+	prog, diags := check.Program(dir)
 	for _, d := range diags {
 		t.Fatal(d)
 	}
@@ -102,7 +128,7 @@ func runDigestWrite(t *testing.T) (*Interp, *jobRun) {
 	dublin, _ := time.LoadLocation("Europe/Dublin")
 	in.rt.now = time.Date(2026, 10, 12, 7, 40, 0, 0, dublin)
 	digest := moduleByPath(t, prog, "digest")
-	run := in.rt.startNow(digest.Jobs["write"], []Value{ir.Date{Year: 2026, Month: 10, Day: 12}}, nil, ir.Pos{})
+	run := in.rt.startNow(digest.Jobs[job], []Value{ir.Date{Year: 2026, Month: 10, Day: 12}}, nil, ir.Pos{})
 	data, _ := in.rt.store.Run(run.(*RunVal).ID)
 	return in, decodeRun(data)
 }
@@ -130,19 +156,19 @@ func TestDigestBudgetOnItsDefaultModel(t *testing.T) {
 		if _, known := prices[model]; known {
 			t.Skipf("%s has a built-in price", model)
 		}
-		asked := digestStandIns(t)
+		lab := digestStandIns(t)
 		t.Setenv("AI_PRICES", "")
 		_, run := runDigestWrite(t)
 		if run.Status != "failed" || !strings.Contains(run.Fault, "AI_PRICES") || !strings.Contains(run.Fault, model) {
 			t.Fatalf("write is %s (%s), want failed with a fault that names %s and AI_PRICES", run.Status, run.Fault, model)
 		}
-		if asked() != 0 {
-			t.Errorf("the model was asked %d times without a price to keep the budget by", asked())
+		if lab.asked() != 0 {
+			t.Errorf("the model was asked %d times without a price to keep the budget by", lab.asked())
 		}
 	})
 
 	t.Run("with its price in AI_PRICES", func(t *testing.T) {
-		asked := digestStandIns(t)
+		lab := digestStandIns(t)
 		// Dear on purpose: 30,000 tokens in and 3,000 out cost $0.165, a
 		// third of the budget, so the reply's allowance is cut by the budget
 		// but the call is still sent.
@@ -154,8 +180,8 @@ func TestDigestBudgetOnItsDefaultModel(t *testing.T) {
 		if got := show(in.decode(run.Result, ir.Pos{})); !strings.HasPrefix(got, "Ok(") {
 			t.Errorf("write returned %s", got)
 		}
-		if asked() != 1 {
-			t.Errorf("the model was asked %d times, want 1", asked())
+		if lab.asked() != 1 {
+			t.Errorf("the model was asked %d times, want 1", lab.asked())
 		}
 		for _, s := range run.Log {
 			if s.Call == "ai.generate" && (s.Tokens != 33000 || math.Abs(s.USD-0.165) > 1e-9) {
@@ -285,4 +311,38 @@ func opCallers(prog *ir.Program) map[*ir.Contract]map[string]bool {
 		}
 	}
 	return found
+}
+
+// DIGEST_EVENT sends the digest on an event of its own, with keys of its
+// own, so a shadow run beside the TypeScript digest reaches only those who
+// receive that event, and Notify doesn't drop it as a repeat of the other
+// digest's send. Unset, empty or digest.ireland, it changes nothing.
+func TestDigestShadowChannel(t *testing.T) {
+	cases := []struct{ setting, event, key string }{
+		{"", "digest.ireland", "ireland-2026-10-12"},
+		{"digest.ireland", "digest.ireland", "ireland-2026-10-12"},
+		{"digest.ireland.eye", "digest.ireland.eye", "digest.ireland.eye:ireland-2026-10-12"},
+	}
+	for _, c := range cases {
+		t.Run("DIGEST_EVENT="+c.setting, func(t *testing.T) {
+			lab := digestStandIns(t)
+			t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+			if c.setting != "" {
+				t.Setenv("DIGEST_EVENT", c.setting)
+			}
+			in, run := runDigestJob(t, "../testdata/lab", "morning")
+			if run.Status != "done" {
+				t.Fatalf("morning is %s (%s)", run.Status, run.Fault)
+			}
+			if got := show(in.decode(run.Result, ir.Pos{})); !strings.HasPrefix(got, "Ok(Accepted(") {
+				t.Errorf("morning returned %s", got)
+			}
+			if len(lab.sends) != 1 {
+				t.Fatalf("Notify got %d sends, want 1", len(lab.sends))
+			}
+			if b := lab.sends[0]; b["event"] != c.event || b["dedupe_key"] != c.key || lab.keys[0] != c.key {
+				t.Errorf("Notify got event %v with key %v (header %s), want %s with %s", b["event"], b["dedupe_key"], lab.keys[0], c.event, c.key)
+			}
+		})
+	}
 }

@@ -43,15 +43,16 @@ type DigestError =
 @on(daily(07:40, in: dublin))
 @deadline(8 h)
 job morning(day: Date) -> Result(notify.Delivery, DigestError) {
+  let to = channel!()
   match written!(day, refresh: false) {
-    Ok(article) => deliver!(article, priority: Normal, key: "ireland-{day}")
+    Ok(article) => deliver!(article, to, priority: Normal, key: "{to.keys}ireland-{day}")
     Err(e) => {
       # Say so where the briefing would have arrived.
       notify.send!(
-        event: "digest.ireland",
+        event: to.event,
         title: "Ireland digest not sent",
         body: "This morning's digest failed: {e}. Send /digest refresh to try again.",
-        key: "ireland-{day}-failed",
+        key: "{to.keys}ireland-{day}-failed",
       )
       Err(e)
     }
@@ -68,14 +69,15 @@ job command(update: telegram.Update) {
   let Command(name: "digest", args) = update.body else { return }
   if !update.private || update.from != Some(update.chat) { return }
   if now!() - update.sentAt > 10 min { return }  # answered late is worse than not at all
-  let Some(person) = notify.identity!(update.chat, event: "digest.ireland") else { return }
+  let to = channel!()
+  let Some(person) = notify.identity!(update.chat, event: to.event) else { return }
   let refresh = args |> trim |> lower == "refresh"
   let day = update.sentAt.date(in: dublin)
-  let key = "digest-{update.id}"
+  let key = "{to.keys}digest-{update.id}"
   match written!(day, refresh:) {
-    Ok(article) => deliver!(article, priority: High, to: Some([person]), key:)
+    Ok(article) => deliver!(article, to, priority: High, only: Some([person]), key:)
     Err(e) => notify.send!(
-      event: "digest.ireland",
+      event: to.event,
       title: "Ireland digest",
       body: "The digest couldn't be written: {e}. Try again in a few minutes.",
       priority: High,
@@ -127,19 +129,34 @@ job write(day: Date) -> Result(Article, DigestError) {
   Ok(article)
 }
 
+## Where the digest goes: the Notify event, and what its keys start with.
+type Channel = { event: String, keys: String }
+
+## The digest's channel: the event digest.ireland, or the one DIGEST_EVENT
+## names. A shadow run beside another digest sends on an event of its own,
+## such as digest.ireland.eye, that only the operator receives. Its keys then
+## start with the event, since Notify drops a key it has already seen from
+## the same caller.
+fn channel() -> Channel =
+  match env.get!("DIGEST_EVENT") {
+    Some(event) if event != "" && event != "digest.ireland" => { event, keys: "{event}:" }
+    _ => { event: "digest.ireland", keys: "" }
+  }
+
 fn deliver(
   article: Article,
+  to: Channel,
   priority: notify.Priority,
-  to: Option(List(UserId)) = None,
+  only: Option(List(UserId)) = None,
   key: Key,
 ) -> Result(notify.Delivery, DigestError) {
   let delivery = notify.send!(
-    event: "digest.ireland",
+    event: to.event,
     title: article.title,
     body: article.document,
     priority:,
     format: Markdown,
-    to:,
+    to: only,
     key:,
   ).reconcile!()
   match delivery {
