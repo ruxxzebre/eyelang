@@ -453,11 +453,13 @@ func TestRunOnAStoreWritesNoFiles(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("TMPDIR", t.TempDir())
-	dir := t.TempDir() + "/digest"
-	if out, err := exec.Command("cp", "-RL", "../testdata/lab/deploy/digest", dir).CombinedOutput(); err != nil {
+	// The image holds the lab, whose deploy/digest names the lab's modules.
+	lab := t.TempDir() + "/lab"
+	if out, err := exec.Command("cp", "-R", "../testdata/lab", lab).CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	before := listFiles(t, dir) + listFiles(t, home) + listFiles(t, os.Getenv("TMPDIR"))
+	dir := lab + "/deploy/digest"
+	before := listFiles(t, lab) + listFiles(t, home) + listFiles(t, os.Getenv("TMPDIR"))
 	prog, diags := check.Program(dir)
 	for _, d := range diags {
 		t.Fatal(d)
@@ -466,7 +468,7 @@ func TestRunOnAStoreWritesNoFiles(t *testing.T) {
 	defer cancel()
 	var out strings.Builder
 	Run(ctx, prog, RunOptions{Stdout: &out, Stderr: &out, Inbox: dir + "/.eye/inbox"})
-	if after := listFiles(t, dir) + listFiles(t, home) + listFiles(t, os.Getenv("TMPDIR")); after != before {
+	if after := listFiles(t, lab) + listFiles(t, home) + listFiles(t, os.Getenv("TMPDIR")); after != before {
 		t.Errorf("eye run wrote files:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }

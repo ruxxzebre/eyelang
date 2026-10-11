@@ -60,8 +60,9 @@ HTTP, as the TypeScript digest does.
 `testdata/lab` itself: that would start the notifier, the train reminders and
 the NetBird sync, which act on the real Telegram, trains and NetBird.
 `deploy/digest/` is the digest alone: a program whose own module only imports
-`digest`, and whose module directories (`digest`, `home`, `notify`,
-`telegram`, `miniflux`, `web`, `flaresolverr`) are links to the lab's.
+`digest`, and whose `eye.toml` finds its imports (`digest`, `home`, `notify`,
+`telegram`, `miniflux`, `web`, `flaresolverr`) in the lab, with
+`modules = ["../.."]`.
 `go test ./interp -run TestDigestDeployProgram` checks that it has the
 digest's jobs and no others, and runs its tests.
 
@@ -95,21 +96,23 @@ first digest is the next morning's.
 
    This needs Go 1.25. The binary is static and carries its time zones, so a
    `distroless/static` or `scratch` base is enough.
-2. Copy the program, following its links:
+2. Copy the lab, which holds the program and the modules it imports:
 
    ```sh
-   cp -RL testdata/lab/deploy/digest /program
+   cp -R testdata/lab /lab
    ```
 
-   A Dockerfile's `COPY` keeps links as links, so copy with `cp -RL` into the
-   build context first. The image holds `/eye` (or `/usr/local/bin/eye`) and
-   `/program`, the `.eye` sources and the recordings; nothing else.
-3. Check it in the build: `eye check /program && eye test /program`.
+   The program is `/lab/deploy/digest`; its `eye.toml` says
+   `modules = ["../.."]`, so its imports are found in `/lab`. The image holds
+   `/eye` (or `/usr/local/bin/eye`) and `/lab`, the `.eye` sources and the
+   recordings; nothing else. Only the modules the digest imports are loaded,
+   so the lab's other workloads don't run.
+3. Check it in the build: `eye check /lab/deploy/digest && eye test /lab/deploy/digest`.
 
 ### The command
 
 ```sh
-eye run /program
+eye run /lab/deploy/digest
 ```
 
 with `EYE_STORE` set to the database (below), or `--store postgres://…`
@@ -123,7 +126,7 @@ v1) and takes it when it is lower than the node's memory. It must be at
 least the write job's `@memory(256 MiB)`, or the write run fails as
 `OutOfMemory`; give the pod a limit above it, such as 512Mi. To give runs
 less than the pod has, leaving room for the runner itself, say so:
-`eye run --memory-limit 384MiB /program`. The line it starts with (below)
+`eye run --memory-limit 384MiB /lab/deploy/digest`. The line it starts with (below)
 shows which it took
 (`memory: 512 MiB, the cgroup's limit`).
 
@@ -133,7 +136,7 @@ and schema, never the user or password), the memory runs may hold, and the
 jobs, with when each scheduled one fires next:
 
 ```
-eye run: started /program; store: postgres postgres-rw.lab.svc.cluster.local:5432/app schema lab; memory: 512 MiB, the cgroup's limit; jobs: digest.command, digest.morning (next 2026-10-12 07:40 Europe/Dublin), digest.write
+eye run: started /lab/deploy/digest; store: postgres postgres-rw.lab.svc.cluster.local:5432/app schema lab; memory: 512 MiB, the cgroup's limit; jobs: digest.command, digest.morning (next 2026-10-12 07:40 Europe/Dublin), digest.write
 ```
 
 Run one replica, with `strategy: Recreate`: the store allows one `eye run` per
@@ -187,8 +190,8 @@ For example, in a database `digest` with the schema `eyelang`:
 
 On the Postgres store `eye run` writes nothing to disk: no journal, cache,
 lock file or temporary file, and nothing in `$HOME` (`go test ./interp -run
-TestRunOnAStoreWritesNoFiles`). It reads `/program`, the secrets, and
-`/program/.eye/inbox` if it exists, for `eye approve`'s answers, which the
+TestRunOnAStoreWritesNoFiles`). It reads `/lab`, the secrets, and
+`/lab/deploy/digest/.eye/inbox` if it exists, for `eye approve`'s answers, which the
 digest doesn't use. A read-only root filesystem without a writable `/tmp` is
 fine.
 
@@ -261,9 +264,9 @@ morning's second send by its key, if both send that day.
 At 07:40 Irish time, the run starts. From the pod:
 
 ```sh
-eye runs /program            # every run: job, status, result or fault
-eye runs /program 2          # one run's steps, by its number
-eye runs /program 2 N        # step N's whole result, such as the model's reply
+eye runs /lab/deploy/digest       # every run: job, status, result or fault
+eye runs /lab/deploy/digest 2     # one run's steps, by its number
+eye runs /lab/deploy/digest 2 N   # step N's whole result, such as the model's reply
 ```
 
 `eye runs` reads `EYE_STORE` too, without changing anything, while `eye run`
@@ -274,7 +277,7 @@ runs. A good morning shows:
 #2 digest.write(2026-10-12)  done: Ok({ day: 2026-10-12, title: "Ireland & Dublin — Monday 12 October", document: …  [10 steps, 1.8 KiB, 30000 tokens in, 3000 out, $0.1650]
 ```
 
-`eye runs /program 2` lists the write run's steps: `miniflux.me`,
+`eye runs /lab/deploy/digest 2` lists the write run's steps: `miniflux.me`,
 `miniflux.categories`, `miniflux.feeds`, a `miniflux.createCategory` or
 `miniflux.subscribe` for each category or feed it added, then for each section
 `miniflux.entries` and its pages (`http.get`, `flaresolverr.request`; a page
@@ -284,13 +287,13 @@ step ends with the model, what it spent, and the bytes of prompt sent and of
 reply received: `[gpt-5.6-terra: 30000 tokens in, 3000 out, $0.1650; sent
 41.2 KiB, received 3.0 KiB]`, and the run's line with what the run spent
 in all; `eye runs --json` gives it as `spent`. To see what the model
-replied, give the step's number too: `eye runs /program 2 N`, where N is
+replied, give the step's number too: `eye runs /lab/deploy/digest 2 N`, where N is
 the `ai.generate` step's number, shows how the call was sent (`chat
 completions at AI_URL: response_format json_schema, strict; no
 reasoning_effort or other reasoning settings`) and the reply as the program
 read it, up to 16 KiB. A reply that didn't match the briefing's schema,
 even after being sent back once, says so, with the problems, and shows the
-reply as the model wrote it. `eye runs --show-replies /program 2` shows
+reply as the model wrote it. `eye runs --show-replies /lab/deploy/digest 2` shows
 every model call's reply below its step, and `eye runs --json` gives every
 value whole; the plain listing cuts values to a line. What a bad morning
 shows, and what to do:

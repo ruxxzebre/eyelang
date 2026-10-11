@@ -1,1 +1,3 @@
-# Marks the root of an Eyelang program: imports name directories below this one.
+# Marks the root of an Eyelang program. The digest's modules are the lab's:
+# imports are looked for here first, then in testdata/lab.
+modules = ["../.."]

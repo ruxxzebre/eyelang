@@ -56,6 +56,7 @@ func Program(dir string) (*ir.Program, []Diagnostic) {
 // imports.
 func (c *checker) program(path string) (*ir.Program, []Diagnostic) {
 	c.prog = &ir.Program{}
+	c.readConfig()
 	prelude := c.parse("prelude", "", []*ir.File{parseFile("<prelude>", preludeSrc)})
 	c.prog.Prelude = prelude.mod
 	c.prelude = prelude
@@ -103,6 +104,10 @@ type checker struct {
 	typePos map[*ir.TypeExpr]ir.Pos // where each type as written is
 	public  map[any]bool            // declarations marked pub that have no Pub field of their own
 	opaque  map[*ir.Type]bool       // types declared `pub opaque`
+
+	// importRoots are the directories imports are looked for below: the
+	// program's own, then those its eye.toml lists in modules.
+	importRoots []string
 
 	// signatures are the public functions whose uses clause eye fmt rewrites.
 	signatures []Signature
@@ -262,9 +267,19 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 		imp = c.parse(path, "", []*ir.File{parseFile("<std "+path+">", src)})
 	}
 	if imp == nil {
-		dir := filepath.Join(append([]string{c.root}, parts...)...)
-		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-			c.errorf(pos(f, pathNode), "no module %s: there is no directory %s", path, dir)
+		// The first root that has the module's directory wins.
+		dir := ""
+		var searched []string
+		for _, root := range c.importRoots {
+			d := filepath.Join(append([]string{root}, parts...)...)
+			if info, err := os.Stat(d); err == nil && info.IsDir() {
+				dir = d
+				break
+			}
+			searched = append(searched, d)
+		}
+		if dir == "" {
+			c.errorf(pos(f, pathNode), "no module %s: there is no directory %s", path, orList(searched))
 			return
 		}
 		imp = c.load(path, dir)

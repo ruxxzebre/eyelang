@@ -41,10 +41,9 @@ have no issue yet.
 - The decisions of 2026-10-11 ([docs/internals/proposals.md](docs/internals/proposals.md), all
   accepted) change code that v0.2 shipped: approvals answered by id and only by the person asked
   (C.8, #71, deferred: until then the lab answers approvals only with `eye approve` and
-  `eye decline`, and its `approving` module tells the operator how), a job
-  changed under a paused run faulting
-  instead of replaying wrong values (C.10, #73), and module roots in `eye.toml` (C.11, #74),
-  which lets the digest's deploy drop its symbolic links.
+  `eye decline`, and its `approving` module tells the operator how), and a job changed under a
+  paused run faulting instead of replaying wrong values (C.10, #73). Module roots in `eye.toml`
+  (C.11) are done.
 - Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
   not built: `World.all |> filter(…)` loads every entity. **Recommendation:** not phase 6. SQL
   saves nothing while the runner holds every entity in memory, which both stores do today (the
@@ -329,7 +328,7 @@ each names the closed issue it continues.
 | C.8 Approvals answered by id, and only by the person asked | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
 | C.9 `!` on publishing and starting child runs; every effect inferred (done) | [#72](https://github.com/ruxxzebre/eyelang/issues/72) |
 | C.10 A job changed under a paused run faults instead of replaying | [#73](https://github.com/ruxxzebre/eyelang/issues/73) |
-| C.11 Module roots in `eye.toml` | [#74](https://github.com/ruxxzebre/eyelang/issues/74) |
+| C.11 Module roots in `eye.toml` (done) | [#74](https://github.com/ruxxzebre/eyelang/issues/74) |
 
 What each task is, until its issue holds it:
 
@@ -403,10 +402,10 @@ What each task is, until its issue holds it:
   point, comes with 7.3. SPECS §15 has the rules.
   **Done when:** a test pauses a run, changes the job's order of steps, and the resumed run ends
   with that fault rather than a wrong value; `eye runs` shows the fault.
-- **C.11 Module roots in `eye.toml`.** `modules = ["../.."]` in a program's `eye.toml` names more
-  directories to find imports in, after the program's own, in order (SPECS §13). The checker's
-  module lookup (`check/index.go`) reads it, as do `eye check FILE` and the editor.
-  `testdata/lab/deploy/digest` loses its symbolic links, and the lab's README copies the lab
+- **C.11 Module roots in `eye.toml` (done).** `modules = ["../.."]` in a program's `eye.toml`
+  names more directories to find imports in, after the program's own, in order (SPECS §13). The
+  checker reads it (`check/eyetoml.go`), so `eye check FILE`, `eye run` and the editor do too.
+  `testdata/lab/deploy/digest` has lost its symbolic links, and the lab's README copies the lab
   instead of following them.
   **Done when:** a test finds an import through `modules`, another shows the error listing every
   directory searched, and `eye check` and `eye test` pass on `testdata/lab/deploy/digest` without

@@ -100,8 +100,6 @@ Runtime and tools:
 - `http.get` and `ai.generate` should retry an unreachable service the way contract calls do
   (see the risk above).
 - `ai.generate` has no `reasoning_effort` parameter; the TypeScript digest sends "medium".
-- `eye.toml` can't name extra module roots, so `testdata/lab/deploy/digest` uses symbolic links.
-  This is decided as C.11 (#74).
 - Building a set or map one element at a time is quadratic: `add` on a set and inserting into a
   map copy the value. The shared-array idea behind constant-time list appends works if lookups
   also check that the index found is below the value's own length. String building is most of
@@ -157,8 +155,12 @@ This follows ROADMAP's "What's next", with what today changed:
    with no buttons. `testdata/programs/jobs/approvals.eye` and
    `TestApprovalWaitsAcrossRestartsAndExpires` show waiting, `within:`, Expired, decline and a
    restart of `eye run` around it. Buttons come back with #71's answers by id.
-3. C.11 (#74), module roots, and 6.2 (#54), `@port` and `@allow`. `pub` and `opaque` are now
-   enforced, so 6.2 is unblocked.
+3. Done: C.11 (#74), module roots. `testdata/lab/deploy/digest` has no symbolic links; its
+   `eye.toml` says `modules = ["../.."]`. **For eyelang-af:** from this commit on, the image
+   copies the whole lab (`cp -R testdata/lab /lab`) and the program is `/lab/deploy/digest`, not
+   `/program`, so the pod's command, `eye runs` and the inbox path change when the pin moves past
+   it (testdata/lab/README.md, "The image"). Next: 6.2 (#54), `@port` and `@allow`, now
+   unblocked.
 4. Phase 6's exit test: 6.6 (#58), Notify generated from its contract, and 6.8 (#60), the
    `agents` module, which needs 6.7 (#59), model `tools:`.
 5. 7.1 (#28), the typed IR, and 7.3 (#76), saved frames, both pulled into v0.3.
