@@ -97,9 +97,12 @@ scope test above and the steps below.
 - **Syntax changes touch three places together:** `grammar.js` (and `src/scanner.c` if newlines,
   braces or strings are involved), the Go parser in `syntax/`, and tests in
   `tree-sitter-eyelang/test/corpus` and `testdata/syntax`. Then run `task generate`.
-- **The conformance suite is the referee.** Both parsers must agree, token for token, on every file
+- **The conformance suite is the referee.** Both parsers must agree, node for node, on every file
   in `testdata/syntax` and the corpus. Add a valid file for each new construct and an invalid file
-  for each new error.
+  for each new error; `testdata/syntax/invalid/diagnostics.txt` holds each invalid file's exact
+  messages (`go test ./syntax -run TestSyntaxErrors -update` rewrites it, and the diff shows what
+  changed). After changing either parser, run `task fuzz`, which feeds both mutated inputs and
+  saves any disagreement under `syntax/testdata/fuzz` as a test.
 - **Don't edit generated files.** `testdata/syntax/spec-*.eye` and `testdata/programs/tour/tour.eye`
   come from the examples in SPECS.md (`tools/specexamples`, using `internal/specdoc`);
   `syntax/kind_gen.go` and `syntax/view_gen.go` from the grammar's `node-types.json`

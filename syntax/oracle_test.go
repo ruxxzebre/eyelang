@@ -1,16 +1,49 @@
 package syntax
 
+// The tree-sitter grammar as an oracle for the hand-written parser. Its tree
+// is converted to the lossless tree this package builds, so the conformance
+// suite and the fuzzer compare every node: kind, field, span, flags and
+// trivia. Only tests link the grammar, so eye builds without cgo.
+
 import (
 	"sync"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
+
+	eyelang "eyelang/tree-sitter-eyelang/bindings/go"
 )
 
+var language = sync.OnceValue(func() *ts.Language { return ts.NewLanguage(eyelang.Language()) })
+
+// parsers are reused: making a tree-sitter parser allocates.
+var parsers = sync.Pool{New: func() any {
+	p := ts.NewParser()
+	if err := p.SetLanguage(language()); err != nil {
+		panic(err)
+	}
+	return p
+}}
+
+// tsParse parses src with the tree-sitter grammar. The caller closes the
+// tree.
+func tsParse(src []byte) *ts.Tree {
+	p := parsers.Get().(*ts.Parser)
+	defer parsers.Put(p)
+	return p.Parse(src, nil)
+}
+
+// tsAccepts reports whether tree-sitter parses src without an error.
+func tsAccepts(src []byte) bool {
+	tree := tsParse(src)
+	defer tree.Close()
+	return !tree.RootNode().HasError()
+}
+
 // parseTS parses src with the tree-sitter grammar and converts the result to
-// the lossless tree the rest of eye reads. The grammar decides the structure;
-// the lexer supplies each token's kind, flags and leading trivia, which
-// tree-sitter doesn't keep. Comments, which tree-sitter puts in the tree as
-// extras, are trivia here.
+// the lossless tree the hand-written parser builds. The grammar decides the
+// structure; the lexer supplies each token's kind, flags and leading trivia,
+// which tree-sitter doesn't keep. Comments, which tree-sitter puts in the
+// tree as extras, are trivia here.
 func parseTS(src []byte) (*File, *ts.Tree) {
 	tokens, lexDiags := Lex(src)
 	c := &converter{src: src}

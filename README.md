@@ -72,11 +72,11 @@ Without direnv, `go run ./cmd/eye help` does the same, or build a binary with
 `go build -o bin/eye ./cmd/eye`.
 
 With [Task](https://taskfile.dev): `task build` writes `bin/eye`, and `task test` runs the tests.
-`task check` runs everything CI runs; besides Go and golangci-lint it needs
-[tree-sitter-cli](https://www.npmjs.com/package/tree-sitter-cli) 0.27 and a C compiler, for the
-grammar's tests and for the conformance suite, which parses every file in `testdata/syntax` with
-both the tree-sitter grammar and the Go parser and fails if their trees differ, and Node for the
-VS Code extension's tests. After changing `grammar.js` or an example in SPECS.md, run
+`task check` runs everything CI runs; besides Go and golangci-lint it needs a C compiler, for the
+conformance suite, which compiles the tree-sitter grammar into the test, parses every file in
+`testdata/syntax` with both it and the Go parser, and fails if their trees differ;
+[tree-sitter-cli](https://www.npmjs.com/package/tree-sitter-cli) 0.27, for the grammar's own tests;
+and Node for the VS Code extension's tests. The `eye` binary itself needs no C compiler. After changing `grammar.js` or an example in SPECS.md, run
 `task generate`.
 
 Prebuilt binaries for Linux, macOS and Windows are attached to each

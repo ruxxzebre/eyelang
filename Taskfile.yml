@@ -127,10 +127,13 @@ tasks:
 
   conformance:
     desc: Compare the hand-written parser with tree-sitter on every file in testdata/syntax and the corpus
-    env:
-      EYE_CONFORMANCE: "1"
     cmds:
       - go test ./syntax -run 'TestConformance' -count=1
+
+  fuzz:
+    desc: Fuzz the parser against the tree-sitter grammar for a while (FUZZTIME, default 2m); failures land in syntax/testdata/fuzz
+    cmds:
+      - go test ./syntax -run '^$' -fuzz FuzzParse -fuzztime {{.FUZZTIME | default "2m"}}
 
   fmt:
     desc: Format the repository's Eyelang sources

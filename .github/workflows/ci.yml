@@ -32,7 +32,7 @@ jobs:
 
       # `task grammar` generates the parser from tree-sitter-eyelang/grammar.js and runs its corpus.
       - name: Set up tree-sitter
-        run: npm install -g tree-sitter-cli@0.27.0
+        run: npm install -g tree-sitter-cli@0.27.1
 
       # `task vscode` runs the extension in a real VS Code, downloaded once into .vscode-test.
       - name: Cache VS Code for the extension's tests
