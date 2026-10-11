@@ -13,7 +13,7 @@ import (
 	"eyelang/interp"
 )
 
-// runRuns implements `eye runs [--store url | --journal file] [--json] [program-directory] [run-id]`.
+// runRuns implements `eye runs [--store url | --journal file] [--json] [program-directory] [run-id [step]]`.
 func runRuns(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("runs", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -21,23 +21,34 @@ func runRuns(args []string, stdout, stderr io.Writer) int {
 	store := fs.String("store", "", "read the store in this Postgres database, postgres://… (default $EYE_STORE)")
 	asJSON := fs.Bool("json", false, "print the runs as JSON")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye runs [--store url | --journal file] [--json] [program-directory] [run-id]")
+		fmt.Fprintln(stderr, "usage: eye runs [--store url | --journal file] [--json] [program-directory] [run-id [step]]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Lists the job runs in a program's journal, or its Postgres store: each run's")
-		fmt.Fprintln(stderr, "status, what it waits for and until when, and with a run's id, its steps. It")
-		fmt.Fprintln(stderr, "reads without changing anything, so it works while eye run is running.")
+		fmt.Fprintln(stderr, "status, what it waits for and until when, and with a run's id, its steps, with")
+		fmt.Fprintln(stderr, "what each model call spent. With a step's number too, it shows that step's")
+		fmt.Fprintln(stderr, "whole result, such as a model's reply. It reads without changing anything, so")
+		fmt.Fprintln(stderr, "it works while eye run is running.")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
-	dir, id := ".", int64(-1)
+	dir, id, stepNo := ".", int64(-1), 0
 	rest := fs.Args()
-	if len(rest) > 0 {
-		if n, err := strconv.ParseInt(rest[len(rest)-1], 10, 64); err == nil {
-			id = n
-			rest = rest[:len(rest)-1]
+	var nums []int64 // the run's id, and the step's number, at the end
+	for len(rest) > 0 && len(nums) < 2 {
+		n, err := strconv.ParseInt(rest[len(rest)-1], 10, 64)
+		if err != nil {
+			break
 		}
+		nums = append([]int64{n}, nums...)
+		rest = rest[:len(rest)-1]
+	}
+	if len(nums) > 0 {
+		id = nums[0]
+	}
+	if len(nums) == 2 {
+		stepNo = int(nums[1])
 	}
 	switch len(rest) {
 	case 0:
@@ -94,6 +105,27 @@ func runRuns(args []string, stdout, stderr io.Writer) int {
 			return exitErrors
 		}
 		runs = one
+	}
+	if stepNo != 0 {
+		value, err := interp.StepValue(prog, st, id, stepNo)
+		if err != nil {
+			fmt.Fprintf(stderr, "eye runs: %v\n", err)
+			return exitErrors
+		}
+		step := runs[0].Steps[stepNo-1]
+		if *asJSON {
+			enc := json.NewEncoder(stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(struct {
+				interp.StepInfo
+				Whole string `json:"whole"`
+			}{step, value})
+			return 0
+		}
+		interp.FormatRuns(stdout, runs, false, time.Now())
+		interp.FormatStep(stdout, stepNo, step, time.Now())
+		fmt.Fprintln(stdout, value)
+		return 0
 	}
 	if *asJSON {
 		enc := json.NewEncoder(stdout)

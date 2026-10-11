@@ -65,6 +65,11 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 		var failure string
 		reply, status, failure = in.complete(req, at)
 		in.charge(reply.spent)
+		sent := len(req.system)
+		for _, m := range req.messages {
+			sent += len(m.Content)
+		}
+		in.noteCall(req.model, sent, len(reply.text))
 		switch {
 		case failure != "":
 			return aiErr("ProviderError", int64(status), failure)

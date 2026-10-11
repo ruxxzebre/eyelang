@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,11 +25,15 @@ func runFault(at ir.Pos, kind, format string, args ...any) {
 // ---------------------------------------------------------------- budgets
 
 // spend is what model calls used: tokens, of them In for the prompts and
-// Out for the replies, and their price in US dollars.
+// Out for the replies, and their price in US dollars. For a step, it also
+// says which models were asked, and how many bytes of prompts went to them
+// and of replies came back, for eye runs.
 type spend struct {
-	Tokens  int64
-	In, Out int64
-	USD     float64
+	Tokens         int64
+	In, Out        int64
+	USD            float64
+	Model          string `json:",omitempty"` // the models, separated by ", "
+	Sent, Received int64  `json:",omitempty"`
 }
 
 func (s *spend) add(t spend) {
@@ -36,6 +41,24 @@ func (s *spend) add(t spend) {
 	s.In += t.In
 	s.Out += t.Out
 	s.USD += t.USD
+	s.Sent += t.Sent
+	s.Received += t.Received
+	for _, m := range strings.Split(t.Model, ", ") {
+		if m != "" && !slices.Contains(strings.Split(s.Model, ", "), m) {
+			if s.Model != "" {
+				s.Model += ", "
+			}
+			s.Model += m
+		}
+	}
+}
+
+// noteCall records, for the step being taken, a model call: the model, and
+// the bytes of the prompt sent and of the reply.
+func (in *Interp) noteCall(model string, sent, received int) {
+	if in.stepSpend != nil {
+		in.stepSpend.add(spend{Model: model, Sent: int64(sent), Received: int64(received)})
+	}
 }
 
 // budget is a @budget being kept: the limits of one job run, or of one call
