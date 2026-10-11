@@ -1353,9 +1353,11 @@ func (x *fnCheck) field(e *ir.Field) typ {
 			c.useField(e, r, e.Name)
 			return t
 		}
-		if r.decl != nil || r.entity != nil {
+		if r.decl != nil || r.entity != nil || builtinTypes[r.name] {
 			c.typeErrorf(e.Pos, "%s has no field %s", show(r), e.Name)
 		}
+	case *tdyn:
+		c.typeErrorf(e.Pos, "%s has no field %s: a dyn value has only the methods of its trait", show(r), e.Name)
 	}
 	return unknown
 }
