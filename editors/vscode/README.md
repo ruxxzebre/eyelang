@@ -18,6 +18,14 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
 - **find references** (Shift-F12, or Ctrl/Cmd-click on a declaration): every use in the program,
   across its modules. A name from the prelude, a standard module or the language itself is looked
   for in every program in the workspace (each directory with an `eye.toml`).
+- **keywords and operators** lead to eye itself: Go to Definition on `contract`, `job`, `pub`, `!`
+  or `|>` opens the checker's code for it; **Go to Implementations** (Cmd/Ctrl-F12) lists every
+  place eye implements it: the checker, the interpreter, the Go parser and the grammar rule; **Go
+  to Declaration** opens the section of SPECS.md that defines it.
+- **names in comments**, as `None` or [Delivery] write them, go to what they name.
+- for what the prelude or a standard module declares, such as a `Fault` variant like
+  `Unavailable`, find references and Go to Implementations also show the lines of the
+  interpreter's Go that make it.
 
 Fields and methods resolve once the program type-checks: while it has errors, go-to-definition
 still finds every other name. Hover and completion are coming.
