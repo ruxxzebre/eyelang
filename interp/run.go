@@ -2,6 +2,7 @@ package interp
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"time"
 	_ "time/tzdata" // zones such as Europe/Dublin, whatever the host has installed
@@ -52,9 +53,13 @@ func runTest(prog *ir.Program, t *ir.Test) (res TestResult) {
 		in.rt.useStore(newTestStore())
 	}
 	in.rt.module = t.Module // only the test's own module's schedules fire
+	in.rt.sandbox = true    // files in a directory of its own, random numbers from a fixed seed
 	start := time.Now()
 	res = TestResult{Name: t.Name, Pos: t.Pos}
 	defer func() {
+		if in.rt.dir != "" {
+			os.RemoveAll(in.rt.dir)
+		}
 		res.Duration = time.Since(start)
 		res.Log = log.String()
 		if r := recover(); r != nil {

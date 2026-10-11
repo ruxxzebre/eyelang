@@ -17,4 +17,7 @@ Every public declaration of the standard library, with its signature and documen
 | [runtime.store](./runtime/store) | The in-memory store: everything a running program keeps, as one immutable value. |
 | [ai](./std/ai) | Typed calls to language models. |
 | [approvals](./std/approvals) | Approvals that reach people. |
+| [fs](./std/fs) | Files and directories on the machine the program runs on. |
 | [http](./std/http) | Requests to any URL, for services that have no contract, such as web pages. |
+| [process](./std/process) | Running other programs. |
+| [random](./std/random) | Random numbers and choices. |

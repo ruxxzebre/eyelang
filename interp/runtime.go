@@ -2,6 +2,7 @@ package interp
 
 import (
 	"encoding/json"
+	"math/rand/v2"
 	"sort"
 	"strconv"
 	"time"
@@ -54,6 +55,12 @@ type runtime struct {
 	// admits everything. reserved is what reserve! granted, by run.
 	memLimit int64
 	reserved map[int64]int64
+	// sandbox, in a test, gives fs and process an empty directory of the
+	// test's own, made in dir when first used; rand draws random numbers
+	// (system.go).
+	sandbox bool
+	dir     string
+	rand    *rand.Rand
 }
 
 // event is a published event, saved as bytes.

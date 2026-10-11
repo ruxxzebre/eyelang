@@ -40,7 +40,9 @@ an `Option(String)`, with the effect `env`.
 **Tests.** A `test` block is a declaration. `eye test` runs the tests of every module of the
 program, the modules it imports from its own directory included. `with` applies a handler to the rest of the block:
 `fakes(…)`, `clock(…)` with `advance(…)`, `memory(…)`. In tests, jobs run against an in-memory
-store, so every run is deterministic and fast. The clock starts at `clock(…)`'s time (2026-01-01
+store, so every run is deterministic and fast. Each test has an empty directory of its own, where
+`fs` and `process` work with relative paths and which is removed when it ends, and `random` draws
+from the same seed in every test. The clock starts at `clock(…)`'s time (2026-01-01
 00:00 UTC without one) and moves only when the test calls `advance(…)`; each run that wakes on the
 way runs before `advance` goes on, and so does each schedule that fires, if its job is in the
 test's own module (a test of the reminders doesn't start the NetBird sync). Jobs started by a call run as soon as the call returns, until

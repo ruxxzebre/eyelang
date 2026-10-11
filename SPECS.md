@@ -101,6 +101,7 @@ construct that also works outside that domain.
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts. Each attribute is declared with where it goes and what it takes, and the checker holds every use to that: `@concurency isn't an attribute; did you mean @concurrency?` | One general mechanism instead of special syntax per feature, and a program can't say "one at a time" and quietly get five. From the lab: a misspelt attribute was ignored, and `@concurrency(1)` wasn't enforced |
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
+| Tests and the machine | **A test works in an empty directory of its own, and draws random numbers from a fixed seed.** `fs` and `process` resolve relative paths there, and it is removed when the test ends | A test that touches files or runs programs gives the same result on every run and every machine, and can't change the repository it runs in |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
 | Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn notifier(config) -> dyn Notifier`, `List(dyn Handler)`): a value converts to it where one is expected, and has only the trait's methods | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
 | AI | **Typed model calls and agents, as library code**, with no syntax that serves only them: a call names the Eyelang type it wants, the compiler derives a JSON Schema from it, and the reply is checked and decoded into that type. Tools are functions whose effects become the caller's; in jobs every model call is a recorded `!` step; coding agents are sessions that durable jobs own | No new syntax: permissions, cost and nondeterminism are handled by effects, budgets and recordings, which already exist |
@@ -733,7 +734,7 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 | `publish T`, `consume T` | sending or receiving events | Derives message-queue permissions |
 | `entity E` | reading or changing entities of type `E` | Database grants; includes the type in backups |
 | `secret S` | using secret `S` | Delivers that secret only to code that uses it |
-| `clock`, `random` | `now()`, `random()` | Lets tests replace them |
+| `clock`, `random` | `now()`, `random.int(1..=6)` | Lets tests replace them |
 | `fs`, `process`, `stdio`, `env` | files, running programs, standard input and output, environment variables | Lets embedders and sandboxes grant them one by one |
 | `ffi` | calling an `extern fn` (section 18) | Marks code the compiler can't check |
 
@@ -814,6 +815,14 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
 
 - `main` returns `()` or `Result((), e)`. An `Err` is printed with `Show`, and the program exits
   with status 1.
+- **Files, programs and random numbers** come from the standard modules `fs`, `process` and
+  `random`, each with the effect of its name. `fs.readText`, `writeText`, `appendText`, `list`,
+  `makeDir` and `remove` return a `Result` whose error is an `FsError` (`NotFound(path)`,
+  `NotAllowed(path)`, …), and `fs.exists` a `Bool`. `process.run("git", args: ["pull"], input:
+  "", dir: None)` runs a program without a shell and gives `Ok` with its exit status and output
+  for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,
+  `None` for an empty range), `random.float()`, `random.pick(xs)` and `random.shuffle(xs)` draw
+  numbers. A relative path is relative to the directory the program was started in.
 - **`eye run` keeps a program's jobs going.** It runs `main`, if the program has one, every time
   it starts; then, if the program declares jobs, it stays up: sleeping runs wake when their time
   comes, schedules fire, and it stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.
@@ -1519,7 +1528,9 @@ an `Option(String)`, with the effect `env`.
 **Tests.** A `test` block is a declaration. `eye test` runs the tests of every module of the
 program, the modules it imports from its own directory included. `with` applies a handler to the rest of the block:
 `fakes(…)`, `clock(…)` with `advance(…)`, `memory(…)`. In tests, jobs run against an in-memory
-store, so every run is deterministic and fast. The clock starts at `clock(…)`'s time (2026-01-01
+store, so every run is deterministic and fast. Each test has an empty directory of its own, where
+`fs` and `process` work with relative paths and which is removed when it ends, and `random` draws
+from the same seed in every test. The clock starts at `clock(…)`'s time (2026-01-01
 00:00 UTC without one) and moves only when the test calls `advance(…)`; each run that wakes on the
 way runs before `advance` goes on, and so does each schedule that fires, if its job is in the
 test's own module (a test of the reminders doesn't start the NetBird sync). Jobs started by a call run as soon as the call returns, until

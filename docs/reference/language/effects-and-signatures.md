@@ -22,7 +22,7 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 | `publish T`, `consume T` | sending or receiving events | Derives message-queue permissions |
 | `entity E` | reading or changing entities of type `E` | Database grants; includes the type in backups |
 | `secret S` | using secret `S` | Delivers that secret only to code that uses it |
-| `clock`, `random` | `now()`, `random()` | Lets tests replace them |
+| `clock`, `random` | `now()`, `random.int(1..=6)` | Lets tests replace them |
 | `fs`, `process`, `stdio`, `env` | files, running programs, standard input and output, environment variables | Lets embedders and sandboxes grant them one by one |
 | `ffi` | calling an `extern fn` ([section 18](/reference/language/calling-c-and-go)) | Marks code the compiler can't check |
 

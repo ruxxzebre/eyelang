@@ -23,6 +23,14 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
 
 - `main` returns `()` or `Result((), e)`. An `Err` is printed with `Show`, and the program exits
   with status 1.
+- **Files, programs and random numbers** come from the standard modules `fs`, `process` and
+  `random`, each with the effect of its name. `fs.readText`, `writeText`, `appendText`, `list`,
+  `makeDir` and `remove` return a `Result` whose error is an `FsError` (`NotFound(path)`,
+  `NotAllowed(path)`, …), and `fs.exists` a `Bool`. `process.run("git", args: ["pull"], input:
+  "", dir: None)` runs a program without a shell and gives `Ok` with its exit status and output
+  for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,
+  `None` for an empty range), `random.float()`, `random.pick(xs)` and `random.shuffle(xs)` draw
+  numbers. A relative path is relative to the directory the program was started in.
 - **`eye run` keeps a program's jobs going.** It runs `main`, if the program has one, every time
   it starts; then, if the program declares jobs, it stays up: sleeping runs wake when their time
   comes, schedules fire, and it stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.
