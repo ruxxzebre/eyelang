@@ -1,9 +1,10 @@
 # SPECS.md section 17, example 4.
-test "the morning's briefing goes at 07:40, for the Irish day" {
-  let sent = fakes(notify, from: "recordings/")
-  with sent
-  with clock(2026-10-12 06:30 in "UTC")
-  advance(10 min)
-  let [briefing] = sent.calls(notify.send) else { unreachable("sent more or less than once") }
-  expect(briefing.key == "ireland-2026-10-12" && briefing.priority == Normal)
+@http(names: snake)                       # dedupeKey is dedupe_key, Normal is "normal"
+@auth(bearer: "notify-token")             # Authorization: Bearer <secret("notify-token")>
+contract Notify {
+  @http("POST /v1/send", status: { 200: Accepted, 202: Pending, 400: Refused, 403: Refused })
+  @key(required, header: "X-Actions-Idempotency-Key", field: "dedupe_key")
+  @reconcile(send)
+  command send(event: String, title: String, priority: Priority = Normal,
+    to: Option(List(UserId)) = None) -> Delivery
 }

@@ -34,6 +34,38 @@ type Delivery =
 
 - **`import notify` is a typed edge.** Port, network policy, credentials and the allowed-caller check
   are derived from it, so a wrong port or an unapproved caller is a compile error.
+- **`@port(n)` is where the service listens.** A program that serves a contract with `impl`
+  serves it on that port, so a contract that a program serves must declare one: an `impl` of a
+  contract without `@port` is an error at the contract's name. Callers never write a port; they
+  get it from the contract, so no call can go to a wrong or undeclared one. A contract without
+  `@port` describes a service outside the program's network, such as Telegram or a hosted feed
+  reader: the program reaches it at the URL its configuration gives (below), and any module may
+  call it.
+- **`@allow(m, …)` lists the modules that may call the contract's commands and queries.** A call
+  of an operation, or a use of one as a value, from any other module is an error at the
+  operation's name. The contract's own module and the modules that serve it may always call it,
+  and so may tests, which reach fakes or the program's own `impl`, never the network. A contract
+  without `@allow` may be called by any module.
+  - Each name is a module the program can import, loaded or not, so the lab's digest deployed
+    alone still names `trains` in Notify's list; a misspelt or removed module is an error at its
+    name.
+  - `@allow(nobody)` lets no module of the program call it: the program only serves it, to
+    callers outside. `nobody` takes no other names beside it.
+  - `@allow` needs `@port`: the callers it lists are let through to that port, and nothing else
+    reaches it (the network policy that `eye gen policy` writes). A service outside the network
+    has no port to guard.
+
+  ```eye
+  # notify/notify.eye
+  @port(3001)
+  @allow(digest, approving)
+  contract Notify {
+    query identity(user: UserId) -> Identity
+  }
+
+  # trains/trains.eye: an error, since trains isn't in Notify's @allow
+  fn whoIs(user: UserId) -> Identity = notify.identity(user)
+  ```
 - **Commands** return a variant type, and every command can also return `Uncertain(key)`: its
   reply was lost, so the other service may or may not have acted. Until it is reconciled, or a
   `match` handles `Uncertain(_)`, the result can't be passed where the declared type is expected. With `@reconcile(query)`,
