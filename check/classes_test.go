@@ -69,6 +69,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§11", "a type variable used with a trait it doesn't require", "a type variable has only the traits it requires"},
 	{"§11", "an operator a type doesn't implement", "operators need types that have them"},
 	{"§11", "showing what has no Show", "a value shown in a string has Show"},
+	{"§5", "{} where neither a map, a set nor a record is expected", "{} is an empty map, set or record"},
 	{"§5", "a field, method or index a type doesn't have, or a type a value can't have", "every type has only its own fields and methods"},
 	{"§11", "a default method using what its trait doesn't have", "a trait's default method sees self as the trait"},
 	{"§12", "a function of the wrong function type", "a function type is checked like any type"},

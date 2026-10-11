@@ -511,10 +511,12 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.check(e.Zone, tZone)
 		return tInstant
 	case *ir.EmptyBraces:
-		if want != nil && want != discard {
-			return want
+		// An empty map, set or record, as the type expected says.
+		if rec, ok := isRecord(orNil(want)); ok && len(rec.decl.Fields) > 0 {
+			x.recordFields(rec, nil, nil, nil, e.Pos)
+			return rec
 		}
-		return c.fresh()
+		return c.freshLit(litBraces)
 	case *ir.Local:
 		if e.Slot < len(x.slots) {
 			return x.slots[e.Slot]
@@ -631,11 +633,11 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		if endless(e) {
 			// `while true` without `break` never ends but by `return`, so
 			// its value can be of any type, as code after it never runs.
-			return c.fresh()
+			return c.never()
 		}
 		return tUnit
 	case *ir.Break, *ir.Continue:
-		return c.fresh()
+		return c.never()
 	case *ir.Return:
 		if e.Value != nil {
 			want := x.ret
@@ -644,7 +646,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 			}
 			x.check(e.Value, want)
 		}
-		return c.fresh()
+		return c.never()
 	case *ir.Lambda:
 		return x.lambda(e, want)
 	case *ir.Record:
@@ -904,6 +906,9 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 		switch d := r.Decl.(type) {
 		case ir.Builtin:
 			t := x.builtin(d.Name, e.Args, want, e.Pos)
+			if v, ok := prune(t).(*tvar); ok && d.Name == "unreachable" {
+				v.never = true // it stops the program, so it gives no value
+			}
 			x.top.calls = append(x.top.calls, pendingCall{e, t})
 			return t
 		case *ir.Entity:

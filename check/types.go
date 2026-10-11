@@ -43,6 +43,10 @@ type (
 		name  string // a declared type variable's name, for messages
 		rigid bool   // a declared type variable inside its own function: it stands for any type
 		lit   litKind
+		// never is set for the type of what gives no value, as `return`,
+		// `break` and an endless loop don't: it may be any type, and stays
+		// undecided when nothing uses it.
+		never bool
 	}
 	tunknown struct{}
 	// tjob is a job as a value: `wake.start(id)`.
@@ -91,13 +95,15 @@ type boundUse struct {
 // litKind says which types a literal may still take: a string literal is a
 // String, a Key or a Zone, and an integer literal an Int or a fixed-width
 // integer, depending on where it goes (SPECS.md §5). A literal nothing
-// decides is a String or an Int.
+// decides is a String or an Int. The empty `{}` is an empty map, set or
+// record, and nothing chooses one for it.
 type litKind int
 
 const (
 	litNone litKind = iota
 	litString
 	litInt
+	litBraces
 )
 
 // unknownf reports why something can't be typed and returns unknown. It is
@@ -148,6 +154,11 @@ func (k litKind) allows(c *tcon) bool {
 			return c.decl == nil
 		}
 		return false
+	case litBraces:
+		if c.decl == nil && c.entity == nil {
+			return c.name == "Set" || c.name == "Map"
+		}
+		return c.decl != nil && c.decl.Alias != nil && c.decl.Alias.Name == "record" && len(c.decl.Fields) == 0
 	}
 	return true
 }
@@ -351,6 +362,13 @@ func (c *checker) fresh() *tvar {
 	return &tvar{id: c.nextVar}
 }
 
+// never is the type of an expression that gives no value.
+func (c *checker) never() *tvar {
+	v := c.fresh()
+	v.never = true
+	return v
+}
+
 func (c *checker) freshLit(k litKind) *tvar {
 	v := c.fresh()
 	v.lit = k
@@ -430,6 +448,8 @@ func writeType(b *strings.Builder, t typ, names map[*tvar]string) {
 			b.WriteString("String")
 		case x.lit == litInt:
 			b.WriteString("Int")
+		case x.lit == litBraces:
+			b.WriteString("{}")
 		default:
 			n, ok := names[x]
 			if !ok {

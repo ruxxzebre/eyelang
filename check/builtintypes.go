@@ -173,6 +173,16 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	if coll == nil {
 		return c.fresh()
 	}
+	if v, ok := prune(coll).(*tvar); ok && v.lit == litBraces {
+		// `{} |> add(x)`: empty braces are a set, or a map to the map
+		// functions.
+		switch name {
+		case "insert", "get", "keys", "values", "entries":
+			c.unify(con("Map", c.fresh(), c.fresh()), coll)
+		default:
+			c.unify(con("Set", c.fresh()), coll)
+		}
+	}
 	kind, elem := x.collection(coll)
 	same := func() typ {
 		if kind == "Set" {

@@ -416,6 +416,18 @@ fn nothing() -> Int = run(fn: 1)`, []string{
 			"4:23: expected Int, found (a, b)",
 			"8:23: expected Int, found ()",
 		}},
+		{"{} is an empty map, set or record", `type User = { name: String, age: Int }
+fn f() {
+  let a: Int = {}
+  let u: User = {}
+  let s: Set(Int) = {} |> add("x")
+  let m: Map(String, Int) = {} |> insert("a", 1)
+  let n: Set(Int) = {}
+}`, []string{
+			"3:16: expected Int, found {}",
+			"4:17: this User has no name, age: every field needs a value",
+			"5:27: expected Set(Int), found Set(String)",
+		}},
 		{"every type has only its own fields and methods", `type U = { n: String }
 fn m(u: U, p: (Int, Int), d: Duration) {
   let a = "abc".nosuchmethod()

@@ -88,3 +88,89 @@ func TestBuiltinMethodArgs(t *testing.T) {
 		t.Error("separator: in s.split(separator: …) leads nowhere")
 	}
 }
+
+// programs are the directories of every program in the repository: the
+// lab, the test programs, the tour and the documentation's examples.
+func programs(t *testing.T) []string {
+	t.Helper()
+	var dirs []string
+	for _, root := range []string{"../testdata", "../docs"} {
+		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() && (d.Name() == "node_modules" || strings.HasPrefix(d.Name(), ".")) {
+				return filepath.SkipDir
+			}
+			if d.Name() == "eye.toml" {
+				dirs = append(dirs, filepath.Dir(path))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(dirs) < 20 {
+		t.Fatalf("found only %d programs", len(dirs))
+	}
+	return dirs
+}
+
+// TestProgramsAreFullyTyped checks that every expression of every program
+// that checks has a type the checker knows to the end: nothing unknown, and
+// no type variable that nothing decided, other than a generic function's
+// own. This is what a compiler needs, and what typed IR (7.1) starts from.
+func TestProgramsAreFullyTyped(t *testing.T) {
+	for _, dir := range programs(t) {
+		res := Check(dir, Options{All: true})
+		if len(res.Diagnostics) > 0 {
+			t.Errorf("%s: %s", dir, res.Diagnostics[0])
+			continue
+		}
+		for _, e := range res.Index.types {
+			if what := undecided(e.t); what != "" {
+				t.Errorf("%s: %s is %s, which has %s", e.at, e.at.Text(), show(e.t), what)
+			}
+		}
+	}
+}
+
+// undecided names what in t isn't known: an unknown part, or a type
+// variable nothing bound. It returns "" for a type known to the end.
+func undecided(t typ) string {
+	switch x := defaultLiteral(t).(type) {
+	case tunknown:
+		return "an unknown type"
+	case *tvar:
+		if !x.rigid && !x.never {
+			return "a type nothing decided"
+		}
+	case *tcon:
+		for _, a := range x.args {
+			if s := undecided(a); s != "" {
+				return s
+			}
+		}
+	case *ttuple:
+		for _, e := range x.elems {
+			if s := undecided(e); s != "" {
+				return s
+			}
+		}
+	case *tfun:
+		for _, p := range x.params {
+			if s := undecided(p.t); s != "" {
+				return s
+			}
+		}
+		return undecided(x.ret)
+	case *tdyn:
+		for _, a := range x.args {
+			if s := undecided(a); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
