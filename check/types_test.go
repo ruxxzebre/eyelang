@@ -252,7 +252,7 @@ job j() -> List(Int) {
 		{"a public function states its effects", `pub fn stamp() -> Instant = now()
 pub fn stated() -> Instant uses {clock} = now()
 pub fn partly() -> Instant uses {stdio} = now()`, []string{
-			"1:1: stamp uses clock, which its signature doesn't list: add uses {clock}",
+			"1:1: stamp uses clock, which its signature doesn't list: run eye fmt, or add uses {clock}",
 			"3:1: partly uses clock, which its uses clause doesn't list",
 		}},
 		{"effects pass through private functions", `import svc
@@ -433,9 +433,9 @@ pub fn some(name: String) uses {secret, publish} {
 			"7:11: in a job, starting a child run is a durable step: write start!(…)",
 			"8:11: in a job, crc uses ffi, so calling it is a durable step: write crc!(…)",
 			"9:11: this durable step's result is recorded, and a Secret can't be saved: use it in a function that returns what can be, and call that with !",
-			"15:1: send uses publish Svc.pings, which its signature doesn't list: add uses {publish Svc.pings}",
-			"16:1: sum uses ffi, which its signature doesn't list: add uses {ffi}",
-			`17:1: key uses secret "token", which its signature doesn't list: add uses {secret "token"}`,
+			"15:1: send uses publish Svc.pings, which its signature doesn't list: run eye fmt, or add uses {publish Svc.pings}",
+			"16:1: sum uses ffi, which its signature doesn't list: run eye fmt, or add uses {ffi}",
+			`17:1: key uses secret "token", which its signature doesn't list: run eye fmt, or add uses {secret "token"}`,
 			"21:1: wait uses consume Svc.pings, which its uses clause doesn't list",
 		}},
 		{"foreign code owns an extern type's values", `extern type Db

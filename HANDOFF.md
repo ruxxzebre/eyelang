@@ -149,14 +149,9 @@ Lab:
 
 This follows ROADMAP's "What's next", with what today changed:
 
-1. #69 (C.5): `eye fmt` writes each public function's
-   `uses` clause, since the user decided effects are written by the formatter, not by hand.
-   Spec first: a decision-log row "Effects written by the formatter". Then:
-   - formatting a program directory runs the checker and fills `uses` from the inferred effects,
-     with names sorted; a single file stays syntax-only;
-   - `eye check`'s "doesn't list" message says to run `eye fmt`;
-   - whether this is the default or behind `--signatures` is still to decide;
-   - run `FUZZTIME=60s FUZZWORKERS=2 task fuzz` at that checkpoint, since it touches `syntax/`.
+1. Done: #69 (C.5). `eye fmt DIR` writes each public function's `uses` clause by default, as
+   the user chose; `--syntax-only` turns it off, and a file formatted alone stays syntax-only.
+   SPECS §12 and the decision log ("Writing effects") have the rule. It didn't touch `syntax/`.
 2. C.8 (#71): approvals answered by id, and only by the person asked. This is the lab's main
    security gap, and it comes before the homelab relies on approvals.
 3. C.11 (#74), module roots, and 6.2 (#54), `@port` and `@allow`. `pub` and `opaque` are now
@@ -218,8 +213,7 @@ What every session that worked today said was left, at the end of the day. Claim
   - effect names (`publish Bus.pinged`, `secret "name"`);
   - a step's result must be saveable;
   - private functions are generic;
-  - `with` binds a fake handler.
-
-  Decided by the user but not yet in SPECS: the formatter writes `uses` clauses (#69).
+  - `with` binds a fake handler;
+  - the formatter writes public functions' `uses` clauses (#69).
 - Closed today: #62 (`extern type` replaces `Handle`) and #68 (`NonZero` divisors). #72 was
   closed by its commit.

@@ -35,9 +35,9 @@ have no issue yet.
   [testdata/lab/README.md](testdata/lab/README.md) says how to deploy `deploy/digest`. What is
   left is the user's choices (the price in `AI_PRICES`, the Postgres schema, whether it first runs
   in shadow mode beside the TypeScript digest) and the cluster work (eyelang-af).
-- Closed tasks whose exit tests weren't met: carry-over tasks C.1 to C.7 under the phases
-  (`end(ok)`, `lock!`, `all!` and `first!`, `cron`, the `NonZero` divisor error, `eye fmt
-  --signatures`, 10,000 waiting tasks, the spec's examples through the checker).
+- Closed tasks whose exit tests weren't met: carry-over tasks C.1 to C.3, C.6 and C.7 under the
+  phases (`end(ok)`, `lock!`, `all!` and `first!`, `cron`, 10,000 waiting tasks, the spec's
+  examples through the checker).
 - The decisions of 2026-10-11 ([docs/internals/proposals.md](docs/internals/proposals.md), all
   accepted) change code that v0.2 shipped: approvals answered by id and only by the person asked
   (C.8, #71, the lab's main security gap, so before the homelab relies on approvals), a job
@@ -322,7 +322,7 @@ each names the closed issue it continues.
 | C.2 Waiting: `lock!`, `all!` and `first!` (from 4.4) | [#66](https://github.com/ruxxzebre/eyelang/issues/66) |
 | C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
 | C.4 `NonZero` divisors checked (from 2.4) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
-| C.5 `eye fmt --signatures` (from 2.6) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
+| C.5 `eye fmt` writes public functions' `uses` clauses (from 2.6) (done) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
 | C.6 10,000 waiting tasks within a memory budget (from 3.5) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
 | C.7 Every SPECS.md example passes the checker (phase 2's exit test) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
 | C.8 Approvals answered by id, and only by the person asked | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
@@ -361,9 +361,10 @@ What each task is, until its issue holds it:
   `NonZero(Int)` is treated as `Int`, so dividing by a plain `Int` variable is not an error.
   **Done when:** dividing by an `Int` that isn't a nonzero literal or a `NonZero(Int)` is an error
   that says to use `nonzero(n)`, with a test in `check/classes_test.go`; the lab still checks.
-- **C.5 `eye fmt --signatures` (#26, 2.6).** It doesn't exist ("flag provided but not defined").
-  **Done when:** `eye fmt --signatures` writes each public function's inferred `uses` into its
-  signature, and a test shows it on a file with a missing and a stale `uses`.
+- **C.5 `eye fmt` writes `uses` clauses (#26, 2.6).** Done: as decided, it is the default when
+  formatting a program's directory, not a `--signatures` flag; `--syntax-only` turns it off.
+  **Done when:** `eye fmt` writes each public function's inferred `uses` into its signature, and a
+  test shows it on a file with a missing and a stale `uses` (`TestFmtWritesUses`).
 - **C.6 Many tasks (#41, 3.5).** No test runs 10,000 waiting tasks within a stated memory budget.
   **Done when:** a test starts 10,000 tasks that wait, and checks the memory they hold against a
   budget stated in the test.

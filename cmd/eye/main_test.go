@@ -138,6 +138,87 @@ func TestFmt(t *testing.T) {
 	}
 }
 
+// TestFmtWritesUses checks that formatting a program's directory writes
+// each public function's uses clause from its body: a missing effect is
+// added, one the body no longer has is dropped, and a clause that says what
+// the body does stays as written. A private function's clause, and a file
+// named alone, are left as they are.
+func TestFmtWritesUses(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.eye")
+	src := `import base
+
+pub fn stamp() -> Instant = base.at()
+pub fn next(n: Int) -> Int uses {clock} = n + 1
+pub fn both() -> Instant uses {fs, stdio} {
+  print("now")
+  now()
+}
+pub fn hello() uses {stdio} = print("hi")
+pub fn pure() uses {} = 1
+fn quiet() -> Instant uses {clock, stdio} = now()
+pub fn main() uses {stdio} = print("{stamp()} {quiet()}")
+`
+	want := `import base
+
+pub fn stamp() -> Instant uses {clock} = base.at()
+pub fn next(n: Int) -> Int = n + 1
+pub fn both() -> Instant uses {clock, stdio} {
+  print("now")
+  now()
+}
+pub fn hello() uses {stdio} = print("hi")
+pub fn pure() = 1
+fn quiet() -> Instant uses {clock, stdio} = now()
+pub fn main() uses {clock, stdio} = print("{stamp()} {quiet()}")
+`
+	// base is walked before main.eye, and checked again as main's import.
+	base := filepath.Join(dir, "base", "base.eye")
+	if err := os.MkdirAll(filepath.Dir(base), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{"eye.toml": "", "main.eye": src, "base/base.eye": "pub fn at() -> Instant = now()\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"fmt", main}, &stdout, &stderr); code != 0 {
+		t.Fatalf("fmt of a file: exit %d, stderr %q", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(main); string(data) != src {
+		t.Errorf("fmt of a file alone changed it:\n%s", data)
+	}
+	if code := run([]string{"fmt", "--check", dir}, &stdout, &stderr); code != exitErrors || !strings.Contains(stdout.String(), "main.eye") {
+		t.Errorf("fmt --check of the directory: exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+	if code := run([]string{"fmt", dir}, &stdout, &stderr); code != 0 {
+		t.Fatalf("fmt of the directory: exit %d, stderr %q", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(main); string(data) != want {
+		t.Errorf("fmt wrote:\n%s\nwant:\n%s", data, want)
+	}
+	if data, _ := os.ReadFile(base); string(data) != "pub fn at() -> Instant uses {clock} = now()\n" {
+		t.Errorf("fmt wrote base.eye:\n%s", data)
+	}
+	if code := run([]string{"check", dir}, &stdout, &stderr); code != 0 {
+		t.Errorf("check after fmt: exit %d, stdout %q", code, stdout.String())
+	}
+
+	// A program with another error keeps its clauses as written.
+	broken := src + "pub fn wrong() -> Int = \"seven\"\n"
+	if err := os.WriteFile(main, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stderr.Reset()
+	if code := run([]string{"fmt", dir}, &stdout, &stderr); code != exitErrors || !strings.Contains(stderr.String(), "has errors, so its uses clauses weren't written") {
+		t.Errorf("fmt of a program with errors: exit %d, stderr %q", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(main); string(data) != broken {
+		t.Errorf("fmt changed a program with errors:\n%s", data)
+	}
+}
+
 func TestCheckSyntax(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {

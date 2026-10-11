@@ -145,7 +145,8 @@ func (c *checker) checkImplEffects(m *ir.Module, all map[*ir.Func]map[string]boo
 	}
 }
 
-// checkUses reports effects a public function has but doesn't state.
+// checkUses reports effects a public function has but doesn't state, and
+// records what `eye fmt` writes in a public function's clause.
 func (c *checker) checkUses(f *ir.Func, effects map[string]bool) {
 	var extra []string
 	for e := range effects {
@@ -153,16 +154,74 @@ func (c *checker) checkUses(f *ir.Func, effects map[string]bool) {
 			extra = append(extra, e)
 		}
 	}
-	if len(extra) == 0 {
-		return
-	}
 	sort.Strings(extra)
 	list := strings.Join(extra, ", ")
-	if !f.HasUses {
-		c.typeErrorf(f.Pos, "%s uses %s, which its signature doesn't list: add uses {%s}", f.Name, list, list)
-		return
+	var reported []Diagnostic
+	switch {
+	case len(extra) == 0:
+	case !f.HasUses:
+		reported = c.reportUses(f.Pos, "%s uses %s, which its signature doesn't list: run eye fmt, or add uses {%s}", f.Name, list, list)
+	case f.Pub:
+		reported = c.reportUses(f.Pos, "%s uses %s, which its uses clause doesn't list: run eye fmt, or add it", f.Name, list)
+	default:
+		c.typeErrorf(f.Pos, "%s uses %s, which its uses clause doesn't list", f.Name, list)
 	}
-	c.typeErrorf(f.Pos, "%s uses %s, which its uses clause doesn't list", f.Name, list)
+	if !f.Pub {
+		return // a private function's clause is a limit its author sets
+	}
+	// The clause keeps what it lists that covers an effect, as `net` covers
+	// `net Notify.send`, and gains what nothing covers.
+	var keep []string
+	for _, u := range f.Uses {
+		for e := range effects {
+			if covered([]string{u}, e) {
+				keep = append(keep, u)
+				break
+			}
+		}
+	}
+	if len(extra) == 0 && len(keep) == len(f.Uses) && (len(keep) > 0 || !f.HasUses) {
+		return // it says what the body does
+	}
+	want := append(keep, extra...)
+	sort.Strings(want)
+	c.signatures = append(c.signatures, Signature{Func: f, Effects: want, reported: reported})
+}
+
+// reportUses reports a uses clause that misses an effect, and returns the
+// diagnostic, which `eye fmt` fixes.
+func (c *checker) reportUses(at ir.Pos, format string, args ...any) []Diagnostic {
+	c.typeErrorf(at, format, args...)
+	return []Diagnostic{{Pos: at, Message: fmt.Sprintf(format, args...)}}
+}
+
+// Signature is a public function whose uses clause doesn't say what its
+// body does, and the effects the clause should list, sorted: what it lists
+// that still covers an effect, and every effect nothing covers. An empty
+// list means the function is pure and needs no clause.
+type Signature struct {
+	Func     *ir.Func
+	Effects  []string
+	reported []Diagnostic
+}
+
+// Signatures lists the public functions of the program's own modules whose
+// uses clause `eye fmt` rewrites. ok is false when the program has errors
+// other than the effects those clauses miss, since its effects may then be
+// wrong.
+func (r *Result) Signatures() (sigs []Signature, ok bool) {
+	fixed := map[Diagnostic]bool{}
+	for _, s := range r.c.signatures {
+		for _, d := range s.reported {
+			fixed[d] = true
+		}
+	}
+	for _, d := range r.Diagnostics {
+		if !fixed[d] {
+			return nil, false
+		}
+	}
+	return r.c.signatures, true
 }
 
 // covered reports whether a uses clause covers an effect: `net` covers every

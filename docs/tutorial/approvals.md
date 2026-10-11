@@ -115,7 +115,7 @@ read the clock, a file or the network. If someone later adds a rule like "no pro
 six in the evening", the signature has to change, and the change shows in review:
 
 ```text
-main.eye:40:1: admissible uses clock, which its signature doesn't list: add uses {clock}
+main.eye:40:1: admissible uses clock, which its signature doesn't list: run eye fmt, or add uses {clock}
 ```
 
 ## The review: a job that waits

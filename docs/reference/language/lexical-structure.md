@@ -83,7 +83,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 - **One style.** `eye fmt` keeps the line breaks you chose and fixes everything else: two spaces
   of indentation, spacing around operators and after commas and colons, `;` turned into line
   breaks, trailing commas in lists that end on their own line, and aligned trailing comments. It
-  has no options.
+  has no options. Formatting a program's directory also writes public functions' `uses` clauses
+  ([section 12](/reference/language/effects-and-signatures)).
 - **Newlines end statements.** A line break ends a statement, declaration, member or match arm
   wherever one could end. It doesn't when the next line (ignoring blank and comment lines) starts
   with a binary operator, `.`, `?`, `,`, `:`, `=`, `->` or `else`; `-` and `!` continue only as

@@ -104,6 +104,9 @@ type checker struct {
 	public  map[any]bool            // declarations marked pub that have no Pub field of their own
 	opaque  map[*ir.Type]bool       // types declared `pub opaque`
 
+	// signatures are the public functions whose uses clause eye fmt rewrites.
+	signatures []Signature
+
 	// builtins are the signatures and effects ir/builtin.eye declares.
 	builtins builtinDecls
 }

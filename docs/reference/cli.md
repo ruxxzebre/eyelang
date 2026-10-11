@@ -37,12 +37,18 @@ Prints the syntax tree of each file and reports syntax errors.
 ## eye fmt {#fmt}
 
 ```text
-usage: eye fmt [--check] [file.eye | directory]...
+usage: eye fmt [--check] [--syntax-only] [file.eye | directory]...
 
 Formats files in place; directories are searched for .eye files. With no
 paths, formats standard input to standard output.
+
+A directory's files are also checked as programs, and each public function's
+uses clause is written from the effects its body has. A file named alone is
+formatted for syntax only.
   -check
     	list files that aren't formatted and exit 1 if there are any, without changing them
+  -syntax-only
+    	format a directory's files without checking its program, leaving uses clauses as written
 ```
 
 ## eye doc {#doc}

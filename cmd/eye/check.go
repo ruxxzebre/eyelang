@@ -63,7 +63,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 
 // checkSyntax reports the syntax errors of files, parsing them in parallel.
 func checkSyntax(paths []string, stdout, stderr io.Writer) int {
-	files, err := eyeFiles(paths)
+	files, _, err := eyeFiles(paths)
 	if err != nil {
 		fmt.Fprintf(stderr, "eye check: %v\n", err)
 		return exitErrors

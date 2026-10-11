@@ -52,7 +52,7 @@ If `isLate` read the clock itself, by calling `now()` instead of taking `at`, th
 stop it:
 
 ```text
-main.eye:27:1: isLate uses clock, which its signature doesn't list: add uses {clock}
+main.eye:27:1: isLate uses clock, which its signature doesn't list: run eye fmt, or add uses {clock}
 ```
 
 Taking the time as an argument is the better design anyway: a test can pass any time it likes, and
@@ -66,8 +66,14 @@ A function that does read the clock and the orders says so:
 Leave one out and the checker names it:
 
 ```text
-main.eye:33:1: lateOrders uses entity Order, which its uses clause doesn't list
+main.eye:33:1: lateOrders uses entity Order, which its uses clause doesn't list: run eye fmt, or add it
 ```
+
+You rarely write these clauses yourself. `eye fmt` on the program's directory checks the program
+and writes each public function's `uses` from what its body does: it adds what is missing and drops
+what the body no longer does. A file formatted on its own, as an editor does on save, is formatted
+for syntax only, so run `eye fmt .` before you commit. A program with other errors keeps its
+clauses as they are until those errors are fixed.
 
 ## Private functions are inferred
 
@@ -82,14 +88,14 @@ so it has the same effects, and states them. If someone later makes `tellLate` r
 history first, through `post` or directly, the signature has to change:
 
 ```text
-main.eye:59:1: tellLate uses net Chat.history, which its uses clause doesn't list
+main.eye:59:1: tellLate uses net Chat.history, which its uses clause doesn't list: run eye fmt, or add it
 ```
 
-So the change shows in the diff, where a reviewer sees it:
+`eye fmt` writes the new clause, and the change shows in the diff, where a reviewer sees it:
 
 ```diff
 -pub fn tellLate(late: List(OrderId), key: Key) uses {wait, net Chat.post} {
-+pub fn tellLate(late: List(OrderId), key: Key) uses {wait, net Chat.post, net Chat.history} {
++pub fn tellLate(late: List(OrderId), key: Key) uses {net Chat.history, net Chat.post, wait} {
 ```
 
 This is the split to aim for: inference inside a module, where the code is read together, and
@@ -107,7 +113,7 @@ the lambda that `printLate` passes, so `stdio` is `printLate`'s effect. Leave it
 checker puts it where it belongs:
 
 ```text
-main.eye:74:1: printLate uses stdio, which its uses clause doesn't list
+main.eye:74:1: printLate uses stdio, which its uses clause doesn't list: run eye fmt, or add it
 ```
 
 That is how `map`, `filter`, `parallelMap` and `timeout` stay pure while working with any function,

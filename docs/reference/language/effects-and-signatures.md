@@ -37,7 +37,15 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
 
 - **Pure means no `uses`.** A public function without a `uses` clause is pure, and the compiler
   holds it to that: if `area` read a file, the error would say `area uses fs, which its signature
-  doesn't list: add uses {fs}`. Editors show the inferred effects of private functions.
+  doesn't list: run eye fmt, or add uses {fs}`. Editors show the inferred effects of private
+  functions.
+- **`eye fmt` writes the clauses.** Formatting a program's directory, `eye fmt DIR`, checks the
+  program and writes each public function's `uses` from what its body does: it adds a missing
+  effect and drops one the body no longer has. An entry that still covers an effect stays, as
+  `net` stays while the body calls any service; a clause that changes is written in sorted order.
+  A file formatted alone (`eye fmt FILE`, or an editor formatting on save) is formatted for syntax
+  only, and so is a program with other errors, which `eye fmt` reports. A private function's
+  clause is a limit its author sets, so `eye fmt` leaves it as written.
 - **Callbacks pass their effects to the call.** A function that takes a function lists only its own
   effects; calling it adds the effects of the function passed in, where the call is written. `map`
   is pure, and `paths |> map(fs.readText)` uses `fs`:

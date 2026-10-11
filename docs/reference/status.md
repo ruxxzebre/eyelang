@@ -333,7 +333,7 @@ Runs column says whether the runtime does what the attribute says.
 
 | Tool | Status | Shown by |
 |---|---|---|
-| `eye fmt` | ✓ One style with no options; `--check`; reads standard input; refuses files with syntax errors | [format_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/syntax/format_test.go#L72), [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L96) |
+| `eye fmt` | ✓ One style with no options; `--check`; reads standard input; refuses files with syntax errors; a program's directory gets each public function's `uses` clause written from its body (`--syntax-only` skips it) | [format_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/syntax/format_test.go#L72), [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L96) |
 | `eye parse` | ✓ The syntax tree, or an S-expression with `--sexp` | [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L58) |
 | `eye check` | ✓ Syntax, names, types, matches, effects and attributes; `--syntax` for syntax alone | [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L193), [classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go) |
 | `eye test` | ✓ `--run` to filter, `-v` to show logs. No `--live` yet | [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L212) |

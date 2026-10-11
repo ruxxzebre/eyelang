@@ -102,6 +102,7 @@ construct that also works outside that domain.
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
+| Writing effects | **`eye fmt` writes public functions' `uses` clauses.** Formatting a program's directory checks the program and writes each public function's inferred effects into its signature: it adds what is missing and drops what the body no longer does. A file formatted alone, and a program with other errors, keep their clauses as written (section 12) | Effects in a signature are there for the reviewer, who reads them in the diff; working them out and keeping them current is the compiler's job, not the author's, and a permission the code stopped using doesn't linger |
 | Tests and the machine | **A test works in an empty directory of its own, and draws random numbers from a fixed seed.** `fs` and `process` resolve relative paths there, and it is removed when the test ends | A test that touches files or runs programs gives the same result on every run and every machine, and can't change the repository it runs in |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
 | Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn notifier(config) -> dyn Notifier`, `List(dyn Handler)`): a value converts to it where one is expected, and has only the trait's methods | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
@@ -286,7 +287,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 - **One style.** `eye fmt` keeps the line breaks you chose and fixes everything else: two spaces
   of indentation, spacing around operators and after commas and colons, `;` turned into line
   breaks, trailing commas in lists that end on their own line, and aligned trailing comments. It
-  has no options.
+  has no options. Formatting a program's directory also writes public functions' `uses` clauses
+  (section 12).
 - **Newlines end statements.** A line break ends a statement, declaration, member or match arm
   wherever one could end. It doesn't when the next line (ignoring blank and comment lines) starts
   with a binary operator, `.`, `?`, `,`, `:`, `=`, `->` or `else`; `-` and `!` continue only as
@@ -765,7 +767,15 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
 
 - **Pure means no `uses`.** A public function without a `uses` clause is pure, and the compiler
   holds it to that: if `area` read a file, the error would say `area uses fs, which its signature
-  doesn't list: add uses {fs}`. Editors show the inferred effects of private functions.
+  doesn't list: run eye fmt, or add uses {fs}`. Editors show the inferred effects of private
+  functions.
+- **`eye fmt` writes the clauses.** Formatting a program's directory, `eye fmt DIR`, checks the
+  program and writes each public function's `uses` from what its body does: it adds a missing
+  effect and drops one the body no longer has. An entry that still covers an effect stays, as
+  `net` stays while the body calls any service; a clause that changes is written in sorted order.
+  A file formatted alone (`eye fmt FILE`, or an editor formatting on save) is formatted for syntax
+  only, and so is a program with other errors, which `eye fmt` reports. A private function's
+  clause is a limit its author sets, so `eye fmt` leaves it as written.
 - **Callbacks pass their effects to the call.** A function that takes a function lists only its own
   effects; calling it adds the effects of the function passed in, where the call is written. `map`
   is pure, and `paths |> map(fs.readText)` uses `fs`:
