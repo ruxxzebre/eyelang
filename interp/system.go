@@ -204,6 +204,7 @@ func hostRun(in *Interp, p map[string]Value, at ir.Pos) Value {
 		return in.errV(&Variant{V: t.Variants[0], Vals: []Value{program, err.Error()}})
 	}
 	return in.ok(&Record{
+		Type:  in.stdModule("process", at).Types["Output"],
 		Names: []string{"status", "stdout", "stderr"},
 		Vals:  []Value{int64(status), strings.ToValidUTF8(stdout.String(), "�"), strings.ToValidUTF8(stderr.String(), "�")},
 	})

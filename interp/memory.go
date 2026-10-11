@@ -139,19 +139,22 @@ func (s *eyeStore) MetaKeys(prefix string) []string {
 // Commit replaces the store with the one the commit function returns: every
 // write of the commit, or, if it faults, none.
 func (s *eyeStore) Commit(c *Commit) {
-	rec := func(names []string, vals ...Value) *Record { return &Record{Names: names, Vals: vals} }
+	types := s.typ.Module.Types
+	rec := func(t string, names []string, vals ...Value) *Record {
+		return &Record{Names: names, Vals: vals, Type: types[t]}
+	}
 	writes := &List{}
 	for _, w := range c.Writes {
-		writes.Elems = append(writes.Elems, rec([]string{"key", "entity", "state", "version", "schema"},
+		writes.Elems = append(writes.Elems, rec("Write", []string{"key", "entity", "state", "version", "schema"},
 			w.Key, w.Entity, string(w.State), w.Version, int64(w.Schema)))
 	}
 	runs := &List{}
 	for _, r := range c.Runs {
-		runs.Elems = append(runs.Elems, rec([]string{"id", "data"}, r.ID, string(r.Data)))
+		runs.Elems = append(runs.Elems, rec("RunWrite", []string{"id", "data"}, r.ID, string(r.Data)))
 	}
 	events := &List{}
 	for _, e := range c.Events {
-		events.Elems = append(events.Elems, rec([]string{"name", "data"}, e.Name, string(e.Data)))
+		events.Elems = append(events.Elems, rec("EventRecord", []string{"name", "data"}, e.Name, string(e.Data)))
 	}
 	meta := &List{}
 	for _, m := range c.Meta {
@@ -159,9 +162,9 @@ func (s *eyeStore) Commit(c *Commit) {
 		if m.Data != nil {
 			data = s.in.some(string(m.Data))
 		}
-		meta.Elems = append(meta.Elems, rec([]string{"key", "data"}, m.Key, data))
+		meta.Elems = append(meta.Elems, rec("MetaWrite", []string{"key", "data"}, m.Key, data))
 	}
-	commit := rec([]string{"writes", "runs", "events", "meta", "dropEvents"},
+	commit := rec("Commit", []string{"writes", "runs", "events", "meta", "dropEvents"},
 		writes, runs, events, meta, int64(c.DropEvents))
 	s.value = s.call("commit", s.current(), commit)
 }

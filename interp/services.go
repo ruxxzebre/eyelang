@@ -466,6 +466,7 @@ func hostHTTPGet(in *Interp, params map[string]Value, at ir.Pos) Value {
 		keys, vals = append(keys, strings.ToLower(k)), append(vals, resp.Header.Get(k))
 	}
 	return in.ok(&Record{
+		Type:  httpMod.Types["Response"],
 		Names: []string{"status", "headers", "body"},
 		Vals:  []Value{int64(resp.StatusCode), newMap(keys, vals), string(data)},
 	})

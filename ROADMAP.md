@@ -578,7 +578,8 @@ whole-program specialisation, and jobs resuming from saved frames.
   Done on 2026-10-11: every expression has its `ir.Ty` (`TestTypedIR`, beside
   `TestProgramsAreFullyTyped`); a method call has its `Target` and an operator on a declared type
   its `Impl`; each function, lambdas too, has its `Effects`; a record value knows its type, and
-  `typeOf` looks at fields only for records saved before that. `eye check --ir` prints it, with
+  nothing guesses it from fields (records saved before that come back without one). `eye check
+  --ir` prints it, with
   golden tests in `testdata/ir`. Not kept separately: the impls a generic call's `where` bounds
   use. The callee's type at the call (its `Ref`'s `Ty`) says what each type variable is, and
   7.2's specialisation looks the impl up from the trait and that type.

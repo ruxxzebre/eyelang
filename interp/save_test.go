@@ -10,8 +10,8 @@ import (
 
 // TestSavedRecordsKeepTheirType saves records of two types with the same
 // fields and reads them back: each keeps its type, and so its Show. A record
-// saved before records kept their type is still read, and its type found by
-// its fields.
+// saved without a type comes back without one: nothing guesses it from its
+// fields.
 func TestSavedRecordsKeepTheirType(t *testing.T) {
 	prog, diags := check.Program("../testdata/programs/traits")
 	for _, d := range diags {
@@ -32,7 +32,7 @@ func TestSavedRecordsKeepTheirType(t *testing.T) {
 		t.Errorf("a saved Pence shows as %q, want 40p", got)
 	}
 	untyped := in.decode(in.encode(&Record{Names: []string{"cents"}, Vals: []Value{int64(40)}}, ir.Pos{}), ir.Pos{})
-	if in.typeOf(untyped) == nil {
-		t.Errorf("a record saved without its type isn't found by its fields")
+	if in.typeOf(untyped) != nil {
+		t.Errorf("a record saved without a type came back as a %s", in.typeOf(untyped).Name)
 	}
 }
