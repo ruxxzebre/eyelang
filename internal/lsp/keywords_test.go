@@ -55,6 +55,7 @@ func TestEveryKeywordLeadsSomewhere(t *testing.T) {
 		})
 	}
 	missing := map[string]bool{}
+	checked := map[string]bool{}
 	undocumented := map[string]bool{}
 	for _, p := range files {
 		src, err := os.ReadFile(p)
@@ -72,8 +73,12 @@ func TestEveryKeywordLeadsSomewhere(t *testing.T) {
 				missing[n.Text(src)+" (not found at its own start)"] = true
 				return true
 			}
-			if len(s.keywordImplementations(d, n.Span.Start)) == 0 {
-				missing[tok.Text(src)+" in "+parent.Kind.String()] = true
+			key := tok.Text(src) + " in " + parent.Kind.String()
+			if !checked[key] {
+				checked[key] = true // each pair once: the answer is the same
+				if len(s.keywordImplementations(d, n.Span.Start)) == 0 {
+					missing[key] = true
+				}
 			}
 			if tok.Kind == syntax.Keyword || tok.Kind.IsKeyword() {
 				if _, ok := keywords[tok.Text(src)]; !ok {

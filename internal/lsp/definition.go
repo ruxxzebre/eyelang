@@ -143,11 +143,11 @@ func (s *server) goTextLocation(g check.GoText) (location, bool) {
 	if !ok {
 		return location{}, false
 	}
-	src, err := os.ReadFile(path)
-	if err != nil {
+	lines, ok := s.lines(path)
+	if !ok {
 		return location{}, false
 	}
-	for i, line := range strings.Split(string(src), "\n") {
+	for i, line := range lines {
 		if c := strings.Index(line, g.Text); c >= 0 {
 			start := Position{Line: i, Character: utf16Len([]byte(line[:c]))}
 			end := Position{Line: i, Character: start.Character + utf16Len([]byte(g.Text))}

@@ -20,7 +20,8 @@ func Serve(in io.Reader, out io.Writer) error {
 type server struct {
 	conn     *conn
 	docs     map[string]*document
-	folders  []string // the workspace's folders, where trimmed Go paths are looked up
+	folders  []string              // the workspace's folders, where trimmed Go paths are looked up
+	sources  map[string]sourceText // eye's own source files, as read for keywords
 	shutdown bool
 }
 
