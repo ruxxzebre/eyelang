@@ -98,7 +98,18 @@ scope test above and the steps below.
   `go test ./syntax -run 'TestConformance/valid/if-match.eye'` (one conformance file),
   `go test ./syntax -run TestFormat`, `go test ./internal/lsp`,
   `go run ./cmd/eye test testdata/programs/core` (the language's own tests),
-  `cd tree-sitter-eyelang && tree-sitter test -i 'Waiting'` (corpus tests by name).
+  `cd tree-sitter-eyelang && tree-sitter test -i 'Waiting'` (corpus tests by name),
+  `go run ./cmd/eye lsp --definition|--references FILE:LINE:COL` (ask the language server).
+  Between steps, `task quick` checks the core in seconds; `task check` is for before pushing.
+- **Edit code with the editor's edit tool, not with replace scripts.** A Python `s.replace` or a
+  `sed` changes the first match, even when it is not the one you meant, and says nothing; the edit
+  tool refuses a match that is not unique. One wrong match here caused an infinite recursion.
+- **Check the environment before a long run, not after it fails:** `gh auth status` for the
+  token's scopes (pushing `.github/workflows` needs `workflow`), and which `eye` is on PATH: direnv
+  adds the main checkout's `scripts/`, so in a worktree call `./bin/eye` or `go run ./cmd/eye`
+  instead. Run commands from the repository root or with absolute paths; a probe run from the
+  wrong directory looks like a bug in your code. Never leave a command waiting on stdin, such as a
+  bare `cat`: it blocks the shell until the timeout.
 - **Run `task check` before pushing.** It runs everything CI runs: generated files, build, vet,
   lint, tests, formatting, the conformance suite, the grammar's corpus and the VS Code extension's
   tests.
@@ -138,6 +149,8 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `repl/` | Line editor with history, for `eye repl` |
 
 Commands: `task check` (everything), `task generate` (after editing the grammar or a spec
-example), `task conformance`, `task grammar`, `task vscode`,
+example), `task quick` (build, test check, interp and syntax, then check and test
+`testdata/lab`), `task conformance`, `task grammar`, `task vscode` (or one step of it:
+`task vscode:unit|e2e|package`),
 `go run ./cmd/eye parse|check|fmt FILE`, `go run ./cmd/eye test|run|runs DIR` (`eye run` keeps
 its state in `DIR/.eye/journal`; `--memory` keeps nothing).
