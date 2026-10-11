@@ -49,7 +49,9 @@ title: "Values and types"
 - **Slices:** `xs[2..5]`, `xs[..n]` and `bytes[i..]` are views that share storage with what they
   come from. A slice is clamped to the elements that exist, so it never fails, while `xs[i]`
   returns an `Option`. Strings are sliced by byte offsets with `s.slice(2..5)`, an `Option(String)`
-  that is `None` when the range would split a character.
+  that is `None` when the range would split a character. `s.indexOf("<", from: i)` finds an offset
+  and `s.byteSize()` is the end one; `size`, `take` and `drop` count characters, as `for` over
+  `s.chars()` does.
 - **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
   characters (`s.chars()`) and any `Iter(a)`. `xs.iter()` gives a lazy `Iter(a)` whose pipelines
   (`map`, `filter`, `take`, `enumerate`, `zip`) don't build intermediate lists; `toList` collects

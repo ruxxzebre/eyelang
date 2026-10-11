@@ -412,6 +412,37 @@ pub extern fn startsWith(s: String, prefix: String) -> Bool
 ## s with its letters in upper case.
 pub extern fn upper(s: String) -> String
 
+## Whether s ends with suffix.
+pub extern fn endsWith(s: String, suffix: String) -> Bool
+
+## s with every occurrence of old replaced by new, from left to right: `"a-b-c".replace("-", "+")`
+## is `"a+b+c"`.
+pub extern fn replace(s: String, old: String, new: String) -> String
+
+## The words of s: the parts between runs of whitespace, with none empty. `"  a  b\n"` has the
+## words `["a", "b"]`.
+pub extern fn words(s: String) -> List(String)
+
+## The characters of s, in order: `for c in s.chars() { … }`.
+pub extern fn chars(s: String) -> List(Char)
+
+## The byte offset of the first part at or after from, or `None` if there is none. Offsets count
+## bytes of UTF-8, as [slice] takes them; [size] counts characters.
+pub extern fn indexOf(s: String, part: String, from: Int = 0) -> Option(Int)
+
+## The part of s between two byte offsets: `s.slice(2..5)`. A range past either end is cut to fit;
+## it is `None` when an end would split a character.
+pub extern fn slice(s: String, range: Range(Int)) -> Option(String)
+
+## The length of s in bytes of UTF-8: where `s.slice(…)` ends. [size] counts characters.
+pub extern fn byteSize(s: String) -> Int
+
+## The character's Unicode code point: `'A'.code()` is 65.
+pub extern fn code(c: Char) -> Int
+
+## The character with that Unicode code point, or `None` if there is none.
+pub extern fn fromCode(n: Int) -> Option(Char)
+
 ## v as JSON, in the shape its type's schema describes (SPECS.md §19).
 pub extern fn toJson(v: a) -> String where a: Schema
 
@@ -425,8 +456,30 @@ pub extern fn isErr(r: Result(a, e)) -> Bool
 ## variant.
 pub extern fn mapErr(r: Result(a, e), f: fn(e) -> f) -> Result(a, f)
 
-## Reads a whole number written in decimal.
-pub extern fn parseInt(s: String) -> Result(Int, String)
+## Reads a whole number written in decimal, or in another base from 2 to 36: `parseInt("ff",
+## base: 16)` is 255. Spaces around it are ignored; the error says what was wrong.
+pub extern fn parseInt(s: String, base: Int = 10) -> Result(Int, String)
+
+## Reads a number written in decimal, with an optional fraction and exponent: `"1.5"`, `"-2"`,
+## `"6.02e23"`. Spaces around it are ignored; the error says what was wrong.
+pub extern fn parseFloat(s: String) -> Result(Float, String)
+
+## The whole number nearest to x, as a Float, with halves away from zero: `round(2.5)` is `3.0`.
+## [toInt] makes it an Int.
+pub extern fn round(x: Float) -> Float
+
+## The largest whole number that isn't more than x, as a Float.
+pub extern fn floor(x: Float) -> Float
+
+## The smallest whole number that isn't less than x, as a Float.
+pub extern fn ceil(x: Float) -> Float
+
+## The whole part of x, without its fraction, as an Int: `x.round().toInt()`. An infinity or NaN
+## is `None`.
+pub extern fn toInt(x: Float) -> Option(Int)
+
+## The number n as a Float: the nearest one when n is too large to hold exactly.
+pub extern fn toFloat(n: Int) -> Float
 
 ## `Some(n)` unless n is 0: what `/` and `%` take as a divisor.
 pub extern fn nonzero(n: Int) -> Option(NonZero(Int))

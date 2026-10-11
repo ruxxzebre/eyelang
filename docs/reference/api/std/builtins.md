@@ -595,6 +595,82 @@ fn upper(s: String) -> String
 
 s with its letters in upper case.
 
+### endsWith {#endsWith}
+
+```eye
+fn endsWith(s: String, suffix: String) -> Bool
+```
+
+Whether s ends with suffix.
+
+### replace {#replace}
+
+```eye
+fn replace(s: String, old: String, new: String) -> String
+```
+
+s with every occurrence of old replaced by new, from left to right: `"a-b-c".replace("-", "+")`
+is `"a+b+c"`.
+
+### words {#words}
+
+```eye
+fn words(s: String) -> List(String)
+```
+
+The words of s: the parts between runs of whitespace, with none empty. `"  a  b\n"` has the
+words `["a", "b"]`.
+
+### chars {#chars}
+
+```eye
+fn chars(s: String) -> List(Char)
+```
+
+The characters of s, in order: `for c in s.chars() { … }`.
+
+### indexOf {#indexOf}
+
+```eye
+fn indexOf(s: String, part: String, from: Int = 0) -> Option(Int)
+```
+
+The byte offset of the first part at or after from, or `None` if there is none. Offsets count
+bytes of UTF-8, as [`slice`](./builtins#slice) takes them; [`size`](./builtins#size) counts characters.
+
+### slice {#slice}
+
+```eye
+fn slice(s: String, range: Range(Int)) -> Option(String)
+```
+
+The part of s between two byte offsets: `s.slice(2..5)`. A range past either end is cut to fit;
+it is `None` when an end would split a character.
+
+### byteSize {#byteSize}
+
+```eye
+fn byteSize(s: String) -> Int
+```
+
+The length of s in bytes of UTF-8: where `s.slice(…)` ends. [`size`](./builtins#size) counts characters.
+
+### code {#code}
+
+```eye
+fn code(c: Char) -> Int
+```
+
+The character's Unicode code point: `'A'.code()` is 65.
+
+### fromCode {#fromCode}
+
+```eye
+fn fromCode(n: Int) -> Option(Char)
+```
+
+The character with that Unicode code point, or `None` if there is none.
+
 ### toJson {#toJson}
 
 ```eye
@@ -631,10 +707,62 @@ variant.
 ### parseInt {#parseInt}
 
 ```eye
-fn parseInt(s: String) -> Result(Int, String)
+fn parseInt(s: String, base: Int = 10) -> Result(Int, String)
 ```
 
-Reads a whole number written in decimal.
+Reads a whole number written in decimal, or in another base from 2 to 36: `parseInt("ff",
+base: 16)` is 255. Spaces around it are ignored; the error says what was wrong.
+
+### parseFloat {#parseFloat}
+
+```eye
+fn parseFloat(s: String) -> Result(Float, String)
+```
+
+Reads a number written in decimal, with an optional fraction and exponent: `"1.5"`, `"-2"`,
+`"6.02e23"`. Spaces around it are ignored; the error says what was wrong.
+
+### round {#round}
+
+```eye
+fn round(x: Float) -> Float
+```
+
+The whole number nearest to x, as a Float, with halves away from zero: `round(2.5)` is `3.0`.
+[`toInt`](./builtins#toInt) makes it an Int.
+
+### floor {#floor}
+
+```eye
+fn floor(x: Float) -> Float
+```
+
+The largest whole number that isn't more than x, as a Float.
+
+### ceil {#ceil}
+
+```eye
+fn ceil(x: Float) -> Float
+```
+
+The smallest whole number that isn't less than x, as a Float.
+
+### toInt {#toInt}
+
+```eye
+fn toInt(x: Float) -> Option(Int)
+```
+
+The whole part of x, without its fraction, as an Int: `x.round().toInt()`. An infinity or NaN
+is `None`.
+
+### toFloat {#toFloat}
+
+```eye
+fn toFloat(n: Int) -> Float
+```
+
+The number n as a Float: the nearest one when n is too large to hold exactly.
 
 ### nonzero {#nonzero}
 

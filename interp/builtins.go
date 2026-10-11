@@ -3,10 +3,8 @@ package interp
 import (
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +20,7 @@ func builtinTable() map[string]*BuiltinFn {
 	scheduleBuiltins(add)
 	taskBuiltins(add)
 	channelBuiltins(add)
+	stringBuiltins(add)
 
 	add("print", func(in *Interp, args []Value, _ map[string]Value, _ ir.Pos) Value {
 		if in.replaying() {
@@ -321,8 +320,11 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("drop", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "drop", at)
-		es := in.elems(args[0], at)
 		n := in.count(args[1], at)
+		if s, ok := args[0].(string); ok { // characters, not bytes
+			return s[charOffset(s, n):]
+		}
+		es := in.elems(args[0], at)
 		if n > len(es) {
 			n = len(es)
 		}
@@ -330,8 +332,11 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("take", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "take", at)
-		es := in.elems(args[0], at)
 		n := in.count(args[1], at)
+		if s, ok := args[0].(string); ok {
+			return s[:charOffset(s, n)]
+		}
+		es := in.elems(args[0], at)
 		if n > len(es) {
 			n = len(es)
 		}
@@ -540,14 +545,6 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	isVariant("isOk", func(in *Interp) *ir.Variant { return in.pre.ok })
 	isVariant("isErr", func(in *Interp) *ir.Variant { return in.pre.err })
-	add("parseInt", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
-		s := in.str(args, "parseInt", at)
-		n, ok := new(big.Int).SetString(strings.TrimSpace(s), 10)
-		if !ok {
-			return in.errV("not a whole number: " + strconv.Quote(s))
-		}
-		return in.ok(normInt(n))
-	})
 	add("nonzero", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "nonzero", at)
 		if equal(args[0], int64(0)) {
