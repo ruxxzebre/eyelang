@@ -101,9 +101,19 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return exitErrors
 	}
 	opts := interp.RunOptions{Args: append([]string{dir}, progArgs...), Stdout: stdout, Stderr: stderr, Inbox: inboxPath(dir), MemoryLimit: limit}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	switch {
 	case url != "":
-		pg, err := interp.OpenPostgres(url)
+		// A database that can't be reached yet is waited for, as one that
+		// goes away later is.
+		pg, err := interp.WaitForPostgres(ctx, url, stderr)
+		if ctx.Err() != nil {
+			if pg != nil {
+				pg.Close()
+			}
+			return 0 // stopped while waiting, as asked
+		}
 		if err != nil {
 			fmt.Fprintf(stderr, "eye run: %v\n", err)
 			return exitErrors
@@ -123,8 +133,6 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		defer j.Close()
 		opts.Store = j
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	return interp.Run(ctx, prog, opts)
 }
 

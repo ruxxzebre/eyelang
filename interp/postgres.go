@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Postgres is the store for a program whose state must outlive its machine:
@@ -76,8 +80,12 @@ func IsPostgres(url string) bool {
 // making its tables if need be. Only one process may hold a store open for
 // writing.
 func OpenPostgres(url string) (*Postgres, error) {
+	return openPostgresCtx(context.Background(), url)
+}
+
+func openPostgresCtx(parent context.Context, url string) (*Postgres, error) {
 	p := &Postgres{url: url}
-	ctx, cancel := context.WithTimeout(context.Background(), pgTimeout)
+	ctx, cancel := context.WithTimeout(parent, pgTimeout)
 	defer cancel()
 	conn, err := p.connect(ctx)
 	if err != nil {
@@ -94,10 +102,55 @@ func OpenPostgres(url string) (*Postgres, error) {
 	mem, commits, err := pgRead(ctx, conn)
 	if err != nil {
 		conn.Close(context.Background())
-		return nil, fmt.Errorf("%s: %v", p.name, err)
+		return nil, fmt.Errorf("%s: %w", p.name, err)
 	}
 	p.memory, p.conn, p.commits = mem, conn, commits
 	return p, nil
+}
+
+// WaitForPostgres opens the store as OpenPostgres does, for a runner that
+// starts before its database can be reached: while the database refuses
+// connections, doesn't answer, has a name that doesn't resolve yet, or is
+// still starting up, it says so on log and tries again every retryAfter, as
+// a runner does with a commit, until ctx is done. A failure that waiting
+// won't fix returns at once: an address that can't be read, a login or TLS
+// the database refuses, a database or schema that doesn't exist, a user
+// that may not make the tables, a store another eye run holds, or tables a
+// newer eye wrote.
+func WaitForPostgres(ctx context.Context, url string, log io.Writer) (*Postgres, error) {
+	for {
+		p, err := openPostgresCtx(ctx, url)
+		if err == nil || !pgTransient(err) || ctx.Err() != nil {
+			return p, err
+		}
+		fmt.Fprintf(log, "eye run: %v; trying again in %v\n", err, retryAfter)
+		timer := time.NewTimer(retryAfter)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, err
+		case <-timer.C:
+		}
+	}
+}
+
+// pgTransient reports whether a failure to open the store may go away by
+// itself: the network, a database that is starting, restarting or full of
+// connections. Anything the database answered otherwise is a mistake to
+// fix, not to wait out.
+func pgTransient(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "57P01", "57P02", "57P03", // admin_shutdown, crash_shutdown, cannot_connect_now
+			"53300": // too_many_connections
+			return true
+		}
+		return strings.HasPrefix(pgErr.Code, "08") // connection_exception
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
 // ReadPostgres reads the store in the database at url without changing it,
@@ -137,12 +190,12 @@ func (p *Postgres) connect(ctx context.Context) (*pgx.Conn, error) {
 	}
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %v", p.name, pgReason(err))
+		return nil, fmt.Errorf("%s: %w", p.name, pgReason(err))
 	}
 	var schema *string
 	if err := conn.QueryRow(ctx, `SELECT current_schema()`).Scan(&schema); err != nil {
 		conn.Close(context.Background())
-		return nil, fmt.Errorf("%s: %v", p.name, pgReason(err))
+		return nil, fmt.Errorf("%s: %w", p.name, pgReason(err))
 	}
 	if schema == nil {
 		conn.Close(context.Background())
@@ -165,7 +218,7 @@ func pgName(cfg *pgx.ConnConfig) string {
 func (p *Postgres) lock(ctx context.Context, conn *pgx.Conn) error {
 	var got bool
 	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtext('eyelang store ' || current_schema()))`).Scan(&got); err != nil {
-		return fmt.Errorf("%s: %v", p.name, pgReason(err))
+		return fmt.Errorf("%s: %w", p.name, pgReason(err))
 	}
 	if !got {
 		return fmt.Errorf("%s is in use by another eye run", p.name)
@@ -181,14 +234,14 @@ func pgMigrate(ctx context.Context, conn *pgx.Conn, name string) error {
 		schema integer NOT NULL,
 		commits bigint NOT NULL
 	)`); err != nil {
-		return fmt.Errorf("%s: %v", name, pgReason(err))
+		return fmt.Errorf("%s: %w", name, pgReason(err))
 	}
 	if _, err := conn.Exec(ctx, `INSERT INTO eye_store VALUES (1, 0, 0) ON CONFLICT DO NOTHING`); err != nil {
-		return fmt.Errorf("%s: %v", name, pgReason(err))
+		return fmt.Errorf("%s: %w", name, pgReason(err))
 	}
 	var version int
 	if err := conn.QueryRow(ctx, `SELECT schema FROM eye_store`).Scan(&version); err != nil {
-		return fmt.Errorf("%s: %v", name, pgReason(err))
+		return fmt.Errorf("%s: %w", name, pgReason(err))
 	}
 	if version > pgSchema {
 		return fmt.Errorf("%s was written by a newer eye (its tables are at version %d, this eye knows %d)", name, version, pgSchema)
@@ -412,7 +465,16 @@ func (p *Postgres) Close() error {
 // pgReason shortens what pgx reports to what a person needs.
 func pgReason(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("the database didn't answer within %v", pgTimeout)
+		return noAnswer{err}
 	}
 	return err
 }
+
+// noAnswer is a database that didn't answer in time; it still unwraps to
+// what pgx reported, so pgTransient can tell.
+type noAnswer struct{ err error }
+
+func (e noAnswer) Error() string {
+	return fmt.Sprintf("the database didn't answer within %v", pgTimeout)
+}
+func (e noAnswer) Unwrap() error { return e.err }

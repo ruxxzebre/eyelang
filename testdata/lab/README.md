@@ -155,6 +155,16 @@ For example, in a database `digest` with the schema `eyelang`:
   all of this; nothing needs a superuser.
 - A database that restarts or goes away doesn't stop the runner: a commit
   that can't be written is tried again, and `eye run` says "trying again".
+- Nor does a database that can't be reached yet when `eye run` starts, as
+  while a network policy is still landing: it says "trying again" every 10
+  seconds until it connects, or until SIGTERM. It waits when the connection
+  is refused, reset or times out, when the host's name doesn't resolve,
+  and when Postgres says it is starting, shutting down or out of
+  connections (SQLSTATE `57P01`–`57P03`, `53300`, class `08`). It exits 1 at
+  once on what waiting won't fix: an address it can't read, a wrong user or
+  password, refused TLS, a database or schema that doesn't exist, a user
+  that may not make the tables, a schema another `eye run` holds, or tables
+  a newer `eye` wrote.
 
 ### The filesystem
 
