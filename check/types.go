@@ -13,7 +13,7 @@ import (
 // A type is a constructor applied to arguments (Int, List(a), a declared
 // type, an entity's snapshot), a function, a tuple, a type variable, or
 // unknown. Unknown is what the checker uses where the spec doesn't yet say
-// enough to type something (a function type kept in a record field, `dyn`):
+// enough to type something (an inline record type):
 // it agrees with every type, so it never causes an error.
 type typ interface{ isType() }
 
@@ -512,8 +512,17 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 			return d
 		}
 		return unknown // reported where it is written
-	case "record", "fn", "?":
-		return unknown // not typed yet: inline record types, function types
+	case "fn":
+		f := &tfun{ret: tUnit}
+		for _, a := range t.Args {
+			f.params = append(f.params, fparam{t: c.fromExpr(a, env, rigid)})
+		}
+		if t.Result != nil {
+			f.ret = c.fromExpr(t.Result, env, rigid)
+		}
+		return f
+	case "record", "?":
+		return unknown // not typed yet: inline record types
 	case "NonZero":
 		// A NonZero divisor is approximated by its number type.
 		if len(t.Args) == 1 {

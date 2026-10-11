@@ -224,6 +224,20 @@ func typeExprText(t *ir.TypeExpr) string {
 	if t == nil {
 		return "_"
 	}
+	if t.Name == "fn" && t.Decl == nil {
+		var parts []string
+		for _, a := range t.Args {
+			parts = append(parts, typeExprText(a))
+		}
+		s := "fn(" + strings.Join(parts, ", ") + ")"
+		if t.Result != nil {
+			s += " -> " + typeExprText(t.Result)
+		}
+		if t.HasUses {
+			s += " uses {" + strings.Join(t.Uses, ", ") + "}"
+		}
+		return s
+	}
 	if len(t.Args) == 0 {
 		return t.Name
 	}
@@ -311,6 +325,7 @@ func collectVars(t *ir.TypeExpr, into map[string]bool) {
 	for _, a := range t.Args {
 		collectVars(a, into)
 	}
+	collectVars(t.Result, into)
 }
 
 // nestedTrait finds a trait written where a type goes inside t.
@@ -321,7 +336,11 @@ func nestedTrait(t *ir.TypeExpr) *ir.Trait {
 	if t.Name == "dyn" {
 		return nil // dyn Trait is a type (v0.2)
 	}
-	for _, a := range t.Args {
+	parts := t.Args
+	if t.Result != nil {
+		parts = append(parts[:len(parts):len(parts)], t.Result)
+	}
+	for _, a := range parts {
 		if a.Trait != nil {
 			return a.Trait
 		}
@@ -742,6 +761,7 @@ func substType(t *ir.TypeExpr, sub map[string]*ir.TypeExpr) *ir.TypeExpr {
 	for _, a := range t.Args {
 		cp.Args = append(cp.Args, substType(a, sub))
 	}
+	cp.Result = substType(t.Result, sub)
 	return &cp
 }
 

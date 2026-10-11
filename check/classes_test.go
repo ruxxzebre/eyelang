@@ -69,6 +69,8 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§11", "a type variable used with a trait it doesn't require", "a type variable has only the traits it requires"},
 	{"§11", "an operator a type doesn't implement", "operators need types that have them"},
 	{"§11", "showing what has no Show", "a value shown in a string has Show"},
+	{"§12", "a function of the wrong function type", "a function type is checked like any type"},
+	{"§11", "a function shown, compared or saved", "a function has none of the derived traits"},
 	{"§12", "a public function's unstated effects", "a public function states its effects"},
 	{"§12", "effects through private functions", "effects pass through private functions"},
 	{"§12", "a waiting call where nothing waits", "waiting calls only in jobs"},

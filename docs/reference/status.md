@@ -23,7 +23,7 @@ listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/
 along with the test that reports it.
 
 **The biggest gaps today.** Some waits (`lock!`, `all!`, `first!`, ending an entity), coding
-agents and model tools, function types in signatures, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destructive`,
+agents and model tools, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destructive`,
 `@unwitnessed`), `fs` and `process`, fixed-width integers, and native compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
@@ -164,7 +164,7 @@ agents and model tools, function types in signatures, the checks that come from 
 | `wait`, `net C.op`, `entity E`, `clock`, `stdio`, `env` | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
 | `secret S`, `publish T`, `consume T`, `ffi` | ✓ | — (not inferred; open question 19) | n/a | |
 | `fs`, `process`, `random` | ✓ | — | — (no `fs` or `process` module, no `random()`) | |
-| Function types in signatures: `f: fn(Int) -> Int` | ✓ | — (a function type is unknown: a lambda passed for one, and what calling one returns, aren't checked) | ✓ | |
+| Function types in signatures: `f: fn(Int) -> Int` | ✓ | ✓ (a function has none of the derived traits, so it can't be shown, compared or saved) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L406) |
 | Function types kept in data state their effects | ✓ | partial: a function kept in a field can be called, but its effects aren't checked | ✓ | |
 | In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | ✓ (and `!` on a call that only computes is an error; printing and logging aren't steps, open question 22) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L158), [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L106) |
 

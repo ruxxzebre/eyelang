@@ -596,7 +596,13 @@ func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string)
 		}
 		return t
 	case syntax.FunctionType:
-		return &ir.TypeExpr{Name: "fn"}
+		t := &ir.TypeExpr{Name: "fn"}
+		for _, p := range n.ChildByField(syntax.FieldParameters).NamedChildren() {
+			t.Args = append(t.Args, c.typeExpr(m, f, p, vars))
+		}
+		t.Result = c.typeExpr(m, f, n.ChildByField(syntax.FieldReturnType), vars)
+		t.Uses, t.HasUses = usesOf(f, n)
+		return t
 	case syntax.DynType:
 		traitNode := n.ChildByField(syntax.FieldTrait)
 		inner := c.typeExpr(m, f, traitNode, vars)

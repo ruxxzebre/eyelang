@@ -170,6 +170,12 @@ type TypeExpr struct {
 	Trait  *Trait  // a trait where a type is written: short for a bound
 	Args   []*TypeExpr
 	Fields []string // record type field names, matching Args
+	// A function type's result, nil when it returns (); its parameters are
+	// Args. Uses lists the effects its uses clause states, and HasUses is
+	// set when it has one.
+	Result  *TypeExpr
+	Uses    []string
+	HasUses bool
 }
 
 // Func is a function, method, lambda, job body, test body or initializer.

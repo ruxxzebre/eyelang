@@ -403,6 +403,32 @@ impl svc.Svc {
 		{"a trigger names a contract's event", `import svc
 @on(event(svc.missing))
 job j(p: svc.Ping) {}`, []string{"2:11: event(…) takes a contract's event, such as telegram.updates"}},
+		{"a function type is checked like any type", `fn apply(f: fn(Int) -> Int, x: Int) -> Int = f(x)
+fn g() -> String = apply(fn n: n + 1, 2)
+fn h() -> Int = apply(fn n: "x", 2)
+fn k() -> Int = apply(fn (a, b): a, 2)
+fn run(f: fn()) = f()
+fn twice(f: fn(a) -> a, x: a) -> a = f(f(x))
+fn ok() -> Int = twice(fn n: n * 2, 3) + apply(fn n: n, 1)
+fn nothing() -> Int = run(fn: 1)`, []string{
+			"2:20: expected String, found Int",
+			"3:29: expected Int, found String",
+			"4:23: expected Int, found (a, b)",
+			"8:23: expected Int, found ()",
+		}},
+		{"a function has none of the derived traits", `fn show(f: fn() -> Int) = print(f)
+fn same(f: fn() -> Int, g: fn() -> Int) -> Bool = f == g
+job j(f: fn() -> Int) {}
+job k() {
+  let f = fn: 1
+  sleep!(1 min)
+  log.info("{f()}")
+}`, []string{
+			"1:33: print needs Show, and fn() -> Int has no Show: a function has none of Eq, Ord, Show, Hash, Save and Schema",
+			"2:51: comparing with == needs Eq, and fn() -> Int has no Eq",
+			"3:1: j's argument f is a function, which can't be saved",
+			"7:14: f is a function, which can't be saved, and it is still needed after a waiting call",
+		}},
 		{"well-typed code has no diagnostics", `type Shape = | Circle(Float) | Dot
 type User = { name: String, age: Int }
 fn area(s: Shape) -> Float = match s {
