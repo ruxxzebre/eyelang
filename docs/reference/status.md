@@ -116,7 +116,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | An `impl Type` only in the module that declares the type | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L117) |
 | Generic functions and types with type variables | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L33) |
 | `where` requirements, and a trait as a parameter's type | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L27), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L225) |
-| Generic code specialised at compile time | n/a | n/a | — (v0.4) | |
+| Generic code specialised at compile time | n/a | ✓ (`eye check --lir`: one instance per set of types; polymorphic recursion is an error) | — (the C back end, 7.4) | [lir_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/lir/lir_test.go) |
 | `dyn Trait` (v0.2) | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L109), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L188) |
 
 ## [Pattern matching](/reference/language/pattern-matching)

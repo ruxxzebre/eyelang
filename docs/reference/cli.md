@@ -76,6 +76,8 @@ With no paths, checks the program in the current directory. Names, imports,
 types, exhaustive matches, effects and where waiting calls may appear are checked.
   -ir
     	print the typed IR of a program that checks: each function, and each expression with its type
+  -lir
+    	print the low IR of a program that checks: each function at each set of types it is used at, in blocks
   -syntax
     	check only syntax, of files and of directories searched for .eye files
 ```

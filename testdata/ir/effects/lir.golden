@@ -1,0 +1,48 @@
+fn stamp() -> Instant
+b0:
+  %1: Instant = builtin now()
+  return %1
+
+fn timers() -> List(Timer)
+b0:
+  %1: String = "named"
+  %2: fn() -> Instant = closure stamp[]
+  %3: Timer = Timer {name: %1, read: %2}
+  %4: String = "lambda"
+  %5: fn() -> Instant = closure timers.lambda[]
+  %6: Timer = Timer {name: %4, read: %5}
+  %7: List(Timer) = [%3, %6]
+  return %7
+
+fn readAll(%1.ts: List(Timer)) -> List(Instant)
+b0:
+  %2: fn(Timer) -> Instant = closure readAll.lambda[]
+  %3: List(Instant) = builtin map(%1.ts, %2)
+  return %3
+
+fn shout(%1.xs: List(String)) -> ()
+b0:
+  %7: () = ()
+  %2: Iter(String) = builtin iter(%1.xs)
+  jump b1
+b1:
+  %3: Bool = builtin iter.more(%2)
+  branch %3 b2 b3
+b2:
+  %4: String = builtin iter.next(%2)
+  %5.x: String = %4
+  %6: () = builtin print(%5.x)
+  jump b1
+b3:
+  return %7
+
+lambda timers.lambda() -> Instant
+b0:
+  %1: Instant = builtin now()
+  return %1
+
+lambda readAll.lambda(%1.t: Timer) -> Instant
+b0:
+  %2: fn() -> Instant uses {clock} = %1.t.read
+  %3: Instant = callvalue %2()
+  return %3

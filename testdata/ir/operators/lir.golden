@@ -1,0 +1,73 @@
+fn Money.add(%1.self: Money, %2.other: Money) -> Money
+b0:
+  %3: Int = %1.self.cents
+  %4: Int = %2.other.cents
+  %5: Int = op + %3, %4
+  %6: Money = Money {cents: %5}
+  return %6
+
+fn Money.neg(%1.self: Money) -> Money
+b0:
+  %2: Int = %1.self.cents
+  %3: Int = op neg %2
+  %4: Money = Money {cents: %3}
+  return %4
+
+fn Money.show(%1.self: Money) -> String
+b0:
+  %2: String = "€"
+  %3: Int = %1.self.cents
+  %4: String = derived show(%3)
+  %5: String = builtin concat(%2, %4)
+  return %5
+
+fn both(%1.a: Money, %2.b: Money) -> Money
+b0:
+  %3: Money = call Money.add(%1.a, %2.b)
+  return %3
+
+fn refund(%1.a: Money) -> Money
+b0:
+  %2: Money = call Money.neg(%1.a)
+  return %2
+
+fn uses() -> (Int, Money, String)
+b0:
+  %4: () = ()
+  %1: Int = 250
+  %2: Money = Money {cents: %1}
+  %3.price: Money = %2
+  %5: Int = 2
+  %6: Int = call twice<Int>(%5)
+  %7: List(Money) = [%3.price, %3.price]
+  %8: Int = 0
+  %9: Money = Money {cents: %8}
+  %10: Money = call total<Money>(%7, %9)
+  %11: Money = call refund(%3.price)
+  %12: String = call Money.show(%11)
+  %13: String = builtin concat(%12)
+  %14: (Int, Money, String) = (%6, %10, %13)
+  return %14
+
+fn twice<Int>(%1.n: Int) -> Int
+b0:
+  %2: Int = op + %1.n, %1.n
+  return %2
+
+fn total<Money>(%1.xs: List(Money), %2.zero: Money) -> Money
+b0:
+  %4: () = ()
+  %3.sum: Money = %2.zero
+  %5: Iter(Money) = builtin iter(%1.xs)
+  jump b1
+b1:
+  %6: Bool = builtin iter.more(%5)
+  branch %6 b2 b3
+b2:
+  %7: Money = builtin iter.next(%5)
+  %8.x: Money = %7
+  %9: Money = call Money.add(%3.sum, %8.x)
+  set %3.sum = %9
+  jump b1
+b3:
+  return %3.sum

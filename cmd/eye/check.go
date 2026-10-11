@@ -10,6 +10,7 @@ import (
 
 	"eyelang/check"
 	"eyelang/ir"
+	"eyelang/lir"
 	"eyelang/syntax"
 )
 
@@ -19,6 +20,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	syntaxOnly := flags.Bool("syntax", false, "check only syntax, of files and of directories searched for .eye files")
 	printIR := flags.Bool("ir", false, "print the typed IR of a program that checks: each function, and each expression with its type")
+	printLIR := flags.Bool("lir", false, "print the low IR of a program that checks: each function at each set of types it is used at, in blocks")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "usage: eye check [--syntax | --ir] [program-directory | file.eye]...")
 		fmt.Fprintln(stderr)
@@ -61,6 +63,16 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		}
 		if *printIR && len(diags) == 0 {
 			writeIR(stdout, prog)
+		}
+		if *printLIR && len(diags) == 0 {
+			low, errs := lir.Lower(prog)
+			for _, err := range errs {
+				fmt.Fprintln(stdout, err)
+				code = exitErrors
+			}
+			if len(errs) == 0 {
+				lir.Fprint(stdout, lir.Own(low, prog))
+			}
 		}
 	}
 	return code

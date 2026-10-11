@@ -105,6 +105,9 @@ func (c *checker) writeTypes() {
 			at.SetTy(toTy(te.t))
 		}
 	}
+	for fn, sig := range c.ts.sigs {
+		fn.Sig, _ = toTy(sig).(*ir.TFun)
+	}
 	for _, m := range c.prog.Modules {
 		for _, f := range Bodies(m) {
 			walk(f.Body, false, func(e ir.Expr, _ bool) bool {

@@ -201,6 +201,11 @@ type Func struct {
 	// Waits is set by the checker when calling it may pause: its body has a
 	// `!` step, or calls a function that waits.
 	Waits bool
+	// Sig is its type as the checker found it, nil for one without a body:
+	// a generic function's type variables are TVars, the same its body's
+	// expressions have, so a call's types say what each stands for. A
+	// method that takes self has self's type first.
+	Sig *TFun
 	// Effects are what calling it does, sorted, as the checker found them:
 	// what its uses clause states, if it has one, and otherwise what its
 	// body does. A lambda's are its body's.

@@ -38,8 +38,10 @@ type typeState struct {
 	// giving is the function whose call's arguments are being checked,
 	// where what a function value given as a callback states counts.
 	giving *fnCheck
-	// exprs are the expressions checked and the type each has, written
-	// into the IR once every type is known (typedir.go).
+	// sigs are each checked body's parameter and result types, and exprs
+	// the expressions checked and the type each has, written into the IR
+	// once every type is known (typedir.go).
+	sigs     map[*ir.Func]*tfun
 	exprs    []typedExpr
 	jobSlots map[*ir.Func][]typ // slot types of job bodies, for the Save check
 	steps    []stepResult       // a job's `!` calls and what they return, for the Save check
@@ -156,6 +158,7 @@ func (c *checker) checkTypes() {
 		checking: map[*ir.Global]bool{}, effects: map[*ir.Func]map[string]bool{},
 		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{},
 		lambdaEffects: map[*ir.Func]map[string]bool{}, lambdaCallees: map[*ir.Func][]*ir.Func{},
+		sigs:     map[*ir.Func]*tfun{},
 		inferred: map[*ir.Func]inferState{}, schemes: map[*ir.Func]*scheme{},
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
@@ -314,6 +317,14 @@ func (c *checker) checkBody(b body) {
 		ret = b.want
 	}
 	x.ret = ret
+	sig := &tfun{ret: ret}
+	if b.fn.HasSelf && x.self != nil {
+		sig.params = append(sig.params, fparam{name: "self", t: x.self})
+	}
+	for _, p := range b.fn.Params {
+		sig.params = append(sig.params, fparam{name: p.Name, t: x.slots[p.Slot]})
+	}
+	c.ts.sigs[b.fn] = sig
 	x.body(ret)
 	if b.kind == kindJob {
 		c.ts.jobSlots[b.fn] = x.slots

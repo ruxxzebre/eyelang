@@ -565,7 +565,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 | Task | Issue |
 |---|---|
 | 7.1 Typed IR and lowering (from phase 3) (done) | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
-| 7.2 Low IR and specialisation | [#75](https://github.com/ruxxzebre/eyelang/issues/75) |
+| 7.2 Low IR and specialisation (done) | [#75](https://github.com/ruxxzebre/eyelang/issues/75) |
 | 7.3 Jobs as state machines, resuming from saved frames (done in the interpreter) | [#76](https://github.com/ruxxzebre/eyelang/issues/76) |
 | 7.4 The C back end and the core runtime | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
 | 7.5 Reference counting and reuse | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
@@ -591,6 +591,22 @@ whole-program specialisation, and jobs resuming from saved frames.
   here, each by its own pass (compilation.md, sections 3 and 5).
   **Done when:** every repository program lowers to monomorphic low IR; the lab's generic code is
   specialised; polymorphic recursion is reported as an error at the call.
+  Done on 2026-10-11 (package `lir`; `eye check --lir` prints it). From the roots (every body
+  whose signature has no type variable), each generic function is lowered once per set of types
+  its calls use: a call's types are matched against the callee's `ir.Func.Sig`, a trait's method
+  on a known type goes to that type's impl (or the trait's default), an operator on a declared
+  type to its impl, and a value converted to `dyn Trait` gets a table of instances. Instances
+  are blocks of named values ending in jumps, branches, returns or stops; patterns are tests
+  and field reads; loops are blocks; `?` and `??` are branches. Entities, jobs, views and
+  contracts are lowered by their own rules (`lir/domain.go`): an entity method takes the state
+  first, a job's `!` calls are marked durable, and entity calls, operations, starts and events
+  are runtime calls. `lir.Verify` checks every repository program (`TestEveryProgramLowers`):
+  no type variable, every block ends, every call names an instance with the right arity, every
+  value read is made. Polymorphic recursion is an error at the inner call
+  (`TestPolymorphicRecursion`). Golden files in `testdata/ir` (`lir.golden`). The lab declares
+  no generic function and calls none from the prelude: the collection functions are built-ins,
+  which the back end specialises by their arguments' types, as derived `show`, `eq` and `cmp`
+  are. `dup`, `drop` and reuse are inserted by 7.5.
 - **7.3 Jobs as state machines (open questions 9 and 4).** A pass splits each waiting function
   into states, and a checkpoint saves the stack of frames (code, state, live variables) instead
   of a log of steps. The interpreter runs it in v0.3, ahead of the rest of the phase. Runs saved

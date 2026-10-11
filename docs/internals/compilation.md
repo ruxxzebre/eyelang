@@ -31,8 +31,10 @@ call has its `Target`, an operator on a declared type its `Impl`, and each funct
 `Effects`; `eye check --ir` prints it. Function types state their effects, and a function kept in
 data does no more than its type says. A record value knows its declared type (`Record.Type` in
 `interp`), which it keeps when it is saved; nothing finds a type from a record's fields any more,
-so a record saved before records kept their type comes back without one. What follows describes
-`dev` at 1cc429d.
+so a record saved before records kept their type comes back without one. 7.2 is done too: the
+low IR (package `lir`, `eye check --lir`) is monomorphic, in blocks of named values, with the
+domain constructs lowered to kinds of function and runtime calls; reference counts come with
+7.5. What follows describes `dev` at 1cc429d.
 
 The pipeline has three stages, all in Go:
 
