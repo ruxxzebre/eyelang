@@ -67,13 +67,15 @@ names nothing.
 ## eye check {#check}
 
 ```text
-usage: eye check [--syntax] [program-directory | file.eye]...
+usage: eye check [--syntax | --ir] [program-directory | file.eye]...
 
 Checks programs: a directory and the modules it imports, or the program a file
 belongs to: the nearest directory above it with an eye.toml, else its own.
 Reports errors as file:line:column: message and exits 1 if there are any.
 With no paths, checks the program in the current directory. Names, imports,
 types, exhaustive matches, effects and where waiting calls may appear are checked.
+  -ir
+    	print the typed IR of a program that checks: each function, and each expression with its type
   -syntax
     	check only syntax, of files and of directories searched for .eye files
 ```

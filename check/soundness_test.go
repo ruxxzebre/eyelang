@@ -158,6 +158,12 @@ func TestTypedIR(t *testing.T) {
 						}
 						missing++
 					}
+					if call, ok := e.(*ir.MethodCall); ok && call.Target == nil {
+						if missing < 5 {
+							t.Errorf("%s: %s has no target in the IR", e.Position(), e.Position().Text())
+						}
+						missing++
+					}
 					return true
 				})
 			}

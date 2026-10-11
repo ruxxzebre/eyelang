@@ -670,6 +670,15 @@ func (c *checker) useName(e ir.Expr, target any) {
 	if at, ok := c.names.name[e]; ok {
 		c.use(at, target)
 	}
+	if call, ok := e.(*ir.MethodCall); ok {
+		// The typed IR keeps what the call reaches (7.1).
+		switch t := target.(type) {
+		case *ir.Func, ir.Builtin:
+			call.Target = t
+		case GoText:
+			call.Target = ir.RuntimeMethod{Name: call.Name}
+		}
+	}
 }
 
 // useMethod records the method a MethodCall calls, and what its named

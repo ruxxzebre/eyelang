@@ -1,0 +1,39 @@
+module (the program)
+
+fn stamp() uses {clock}
+  call : Instant
+    ref builtin now : fn() -> Instant
+
+fn timers() uses {clock}
+  list : List(Timer)
+    record Timer : Timer
+      name:
+        lit "named" : String
+      read:
+        ref fn stamp : fn() -> Instant
+    record Timer : Timer
+      name:
+        lit "lambda" : String
+      read:
+        lambda() uses {clock} : fn() -> Instant
+          call : Instant
+            ref builtin now : fn() -> Instant
+
+fn readAll(ts) uses {clock}
+  call : List(Instant)
+    ref builtin map : fn(List(Timer), fn(Timer) -> Instant) -> List(Instant)
+    local ts#0 : List(Timer)
+    lambda(t#0) uses {clock} : fn(Timer) -> Instant
+      call : Instant
+        field .read : fn() -> Instant uses {clock}
+          local t#0 : Timer
+
+fn shout(xs) uses {stdio}
+  block : ()
+    for x#1 : ()
+      local xs#0 : List(String)
+      block : ()
+        call : ()
+          ref builtin print : fn(String)
+          local x#1 : String
+

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"eyelang/check"
+	"eyelang/ir"
 	"eyelang/syntax"
 )
 
@@ -17,8 +18,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("eye check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	syntaxOnly := flags.Bool("syntax", false, "check only syntax, of files and of directories searched for .eye files")
+	printIR := flags.Bool("ir", false, "print the typed IR of a program that checks: each function, and each expression with its type")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye check [--syntax] [program-directory | file.eye]...")
+		fmt.Fprintln(stderr, "usage: eye check [--syntax | --ir] [program-directory | file.eye]...")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Checks programs: a directory and the modules it imports, or the program a file")
 		fmt.Fprintln(stderr, "belongs to: the nearest directory above it with an eye.toml, else its own.")
@@ -52,13 +54,36 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 			continue
 		}
 		seen[dir] = true
-		_, diags := check.Program(dir)
+		prog, diags := check.Program(dir)
 		for _, d := range diags {
 			fmt.Fprintln(stdout, d)
 			code = exitErrors
 		}
+		if *printIR && len(diags) == 0 {
+			writeIR(stdout, prog)
+		}
 	}
 	return code
+}
+
+// writeIR prints the typed IR of a program's own modules, not of the
+// prelude and the standard library: each module's functions in source order.
+func writeIR(w io.Writer, prog *ir.Program) {
+	for _, m := range prog.Modules {
+		if m.Dir == "" && m != prog.Root {
+			continue
+		}
+		name := m.Path
+		if m == prog.Root {
+			name = "(the program)"
+		}
+		fmt.Fprintf(w, "module %s\n", name)
+		for _, f := range check.Bodies(m) {
+			fmt.Fprintln(w)
+			ir.Fprint(w, f)
+		}
+		fmt.Fprintln(w)
+	}
 }
 
 // checkSyntax reports the syntax errors of files, parsing them in parallel.

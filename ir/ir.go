@@ -201,6 +201,10 @@ type Func struct {
 	// Waits is set by the checker when calling it may pause: its body has a
 	// `!` step, or calls a function that waits.
 	Waits bool
+	// Effects are what calling it does, sorted, as the checker found them:
+	// what its uses clause states, if it has one, and otherwise what its
+	// body does. A lambda's are its body's.
+	Effects []string
 	// Bounds are the requirements on its type variables, from `where` and
 	// from traits used as parameter types.
 	Bounds []Bound
@@ -462,6 +466,12 @@ type (
 		Name      string
 		Args      []Arg
 		RecvPlace *Place
+		// Target is what the checker found the call reaches: a *Func (a
+		// method of a type or an entity, an impl's method, or a trait's
+		// method on a dyn value or a type variable, which the value's own
+		// impl answers), a Builtin called as a method (`xs.size()`), or a
+		// RuntimeMethod.
+		Target any
 	}
 	// Waiting is a waiting call, `f!(x)`: a durable step in a job.
 	Waiting struct {
@@ -478,15 +488,21 @@ type (
 		At
 		Value, Index Expr
 	}
+	// Unary, Binary and Assign with an operator: Impl is the impl method
+	// that answers an operator on a declared type (Add's add for `+`, Neg's
+	// neg for `-x`). It is nil for the built-in types' operators, and for
+	// one on a type variable, which the value's own impl answers.
 	Unary struct {
 		At
-		Op string
-		X  Expr
+		Op   string
+		X    Expr
+		Impl *Func
 	}
 	Binary struct {
 		At
 		Op   string
 		L, R Expr
+		Impl *Func
 	}
 	If struct {
 		At
@@ -516,6 +532,7 @@ type (
 		Target Place
 		Op     string // "=", "+=", …
 		Value  Expr
+		Impl   *Func // see Binary
 	}
 	For struct {
 		At
@@ -624,6 +641,12 @@ type Place struct {
 
 // Builtin is a function provided by the runtime.
 type Builtin struct{ Name string }
+
+// RuntimeMethod is a method the runtime has for a kind of value: read on a
+// Ref, join on a Run, publish on an Event, start on a job, reconcile on a
+// command's result, calls on fakes, the methods of a task group, a channel's
+// ends and times.
+type RuntimeMethod struct{ Name string }
 
 // Unit is the value ().
 type Unit struct{}

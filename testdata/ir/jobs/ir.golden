@@ -1,0 +1,49 @@
+module (the program)
+
+fn Kettle.phase()
+  ref variant Idle : Phase
+
+fn Kettle.brew()
+  block : ()
+    if : ()
+      binary == : Bool
+        self.phase : Phase
+        ref variant Idle : Phase
+      block : ()
+        assign self.phase = : ()
+          ref variant Brewing : Phase
+
+fn Kettle.finish()
+  block : ()
+    assign self.phase = : ()
+      ref variant Done : Phase
+
+fn boil(id) uses {entity Kettle, wait} waits
+  block : ()
+    ! : ()
+      method .brew -> fn Kettle.brew : ()
+        call : Ref(Kettle)
+          ref entity Kettle : entity Kettle
+          local id#0 : String
+    ! : ()
+      call : ()
+        ref builtin sleep : fn(Duration)
+        lit 180000000000 : Duration
+    let k#1 : ()
+      ! : Kettle
+        method .read -> runtime read : Kettle
+          call : Ref(Kettle)
+            ref entity Kettle : entity Kettle
+            local id#0 : String
+    match : ()
+      field .phase : Phase
+        local k#1 : Kettle
+      arm Brewing
+        ! : ()
+          method .finish -> fn Kettle.finish : ()
+            call : Ref(Kettle)
+              ref entity Kettle : entity Kettle
+              local id#0 : String
+      arm Idle | Done
+        lit () : ()
+

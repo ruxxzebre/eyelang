@@ -25,12 +25,13 @@ measured and recorded in ROADMAP.md.
 
 ## What exists today
 
-**Since this was written:** 7.1 has begun. Every expression of a program that checks has its
-resolved type in the IR (`ir.Ty`, read with `Expr.Ty()`, checked by `TestTypedIR`); function
-types state their effects, and a function kept in data does no more than its type says. A record
-value knows its declared type (`Record.Type` in `interp`), which it keeps when it is saved, so
-`typeOf` looks at fields only for records saved before that. What follows describes `dev` at
-1cc429d.
+**Since this was written:** 7.1 is done. Every expression of a program that checks has its
+resolved type in the IR (`ir.Ty`, read with `Expr.Ty()`, checked by `TestTypedIR`); a method
+call has its `Target`, an operator on a declared type its `Impl`, and each function its
+`Effects`; `eye check --ir` prints it. Function types state their effects, and a function kept in
+data does no more than its type says. A record value knows its declared type (`Record.Type` in
+`interp`), which it keeps when it is saved, so `typeOf` looks at fields only for records saved
+before that. What follows describes `dev` at 1cc429d.
 
 The pipeline has three stages, all in Go:
 

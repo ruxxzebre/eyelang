@@ -1,0 +1,74 @@
+module (the program)
+
+fn Money.add(other)
+  record Money : Money
+    cents:
+      binary + : Int
+        field .cents : Int
+          self : Money
+        field .cents : Int
+          local other#0 : Money
+
+fn Money.neg()
+  record Money : Money
+    cents:
+      unary - : Int
+        field .cents : Int
+          self : Money
+
+fn Money.show()
+  interpolate : String
+    lit "€" : String
+    field .cents : Int
+      self : Money
+
+fn both(a, b)
+  binary + -> Money.add : Money
+    local a#0 : Money
+    local b#1 : Money
+
+fn refund(a)
+  unary - -> Money.neg : Money
+    local a#0 : Money
+
+fn total(xs, zero)
+  block : a
+    let sum#2 : ()
+      local zero#1 : a
+    for x#3 : ()
+      local xs#0 : List(a)
+      block : ()
+        assign #2 = : ()
+          binary + : a
+            local sum#2 : a
+            local x#3 : a
+    local sum#2 : a
+
+fn twice(n)
+  binary + : a
+    local n#0 : a
+    local n#0 : a
+
+fn uses()
+  block : (Int, Money, String)
+    let price#0 : ()
+      record Money : Money
+        cents:
+          lit 250 : Int
+    tuple : (Int, Money, String)
+      call : Int
+        ref fn twice : fn(Int) -> Int
+        lit 2 : Int
+      call : Money
+        ref fn total : fn(List(Money), Money) -> Money
+        list : List(Money)
+          local price#0 : Money
+          local price#0 : Money
+        record Money : Money
+          cents:
+            lit 0 : Int
+      interpolate : String
+        call : Money
+          ref fn refund : fn(Money) -> Money
+          local price#0 : Money
+

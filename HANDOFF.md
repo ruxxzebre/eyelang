@@ -107,6 +107,14 @@ Runtime and tools:
   what is left of `plain()`'s 0.47 s.
 
 Checker:
+- A lambda or a named function counts its effects where it is written even when it goes where
+  a function type limits it, as into a record field typed `fn() -> Instant uses {clock}`. So a
+  function that only builds such records needs `uses {clock}` though it runs nothing
+  (`testdata/ir/effects`). Since 2026-10-11 the type's limit is checked, so a value that only
+  ever meets limits could stop counting where it is written. Proposal, not decided.
+- A function kept in a record field is called as `(t.read)()`; `t.read()` is refused as "Timer
+  has no method read". Letting a call on a field of function type call it, where the type has
+  no method of that name, would be a small syntax-free rule for SPECS §5. Proposal, not decided.
 - A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`
   wraps its result in a one-variant type to work around it.
 - `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.

@@ -59,9 +59,10 @@ have no issue yet.
    does no more than its type says, and callbacks can't be kept there.)
 2. The digest in the homelab, closing phase 5's exit criterion.
 3. Phase 6 (v0.3): its tasks are below the phase, each with its issue (6.1 to 6.12). `@port` and
-   `@allow` (6.2) need `pub` and `opaque` enforced first, from item 1. v0.3 also brings the
-   typed IR (7.1, #28) and jobs resuming from saved frames in the interpreter (7.3, #76), pulled
-   forward from phase 7 so that the lab's never-ending runs stop growing (open question 9).
+   `@allow` (6.2) need `pub` and `opaque` enforced first, from item 1. v0.3 also brings jobs
+   resuming from saved frames in the interpreter (7.3, #76), pulled forward from phase 7 so that
+   the lab's never-ending runs stop growing (open question 9). The typed IR it builds on (7.1,
+   #28) is done.
 4. Self-hosting's early start: an Eyelang lexer as a test program, checked by the conformance
    suite. Not begun.
 5. Phase 7 (v0.4), after 1: code generation to C built by the `zig cc` that `eye` ships,
@@ -560,7 +561,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 
 | Task | Issue |
 |---|---|
-| 7.1 Typed IR and lowering (from phase 3) | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
+| 7.1 Typed IR and lowering (from phase 3) (done) | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
 | 7.2 Low IR and specialisation | [#75](https://github.com/ruxxzebre/eyelang/issues/75) |
 | 7.3 Jobs as state machines, resuming from saved frames | [#76](https://github.com/ruxxzebre/eyelang/issues/76) |
 | 7.4 The C back end and the core runtime | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
@@ -573,6 +574,13 @@ whole-program specialisation, and jobs resuming from saved frames.
   **Done when:** no expression of any program in the repository (the lab, `testdata/programs`,
   the docs' programs, the tour) has `unknown` or an unresolved type variable, and
   `eye check --ir` prints the typed IR, covered by golden tests.
+  Done on 2026-10-11: every expression has its `ir.Ty` (`TestTypedIR`, beside
+  `TestProgramsAreFullyTyped`); a method call has its `Target` and an operator on a declared type
+  its `Impl`; each function, lambdas too, has its `Effects`; a record value knows its type, and
+  `typeOf` looks at fields only for records saved before that. `eye check --ir` prints it, with
+  golden tests in `testdata/ir`. Not kept separately: the impls a generic call's `where` bounds
+  use. The callee's type at the call (its `Ref`'s `Ty`) says what each type variable is, and
+  7.2's specialisation looks the impl up from the trait and that type.
 - **7.2 Low IR and specialisation.** A second IR built from the typed IR, which C is printed
   from: monomorphic, in blocks with named values, with `dup`, `drop` and reuse explicit. Generic
   code is specialised from the program's roots; entities, jobs, views and contracts are lowered

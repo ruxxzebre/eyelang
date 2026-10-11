@@ -625,7 +625,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 			x.expect(e.X.Position(), tBool, t)
 			return tBool
 		}
-		return x.negate(t, e.Pos)
+		return x.negate(t, e)
 	case *ir.Binary:
 		return x.binary(e)
 	case *ir.Range:
@@ -687,7 +687,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 			return tUnit
 		}
 		value := x.check(e.Value, nil)
-		result := x.arith(strings.TrimSuffix(e.Op, "="), target, value, e.Value, e.Pos)
+		result := x.arith(strings.TrimSuffix(e.Op, "="), target, value, e.Value, e.Pos, e)
 		x.expect(e.Pos, target, result)
 		return tUnit
 	case *ir.For:
@@ -1729,7 +1729,7 @@ func (x *fnCheck) binary(e *ir.Binary) typ {
 	}
 	l := x.check(e.L, nil)
 	r := x.check(e.R, nil)
-	return x.arith(e.Op, l, r, e.R, e.Pos)
+	return x.arith(e.Op, l, r, e.R, e.Pos, e)
 }
 
 // arith is the type of `l op r` for + - * / %: the combinations the
@@ -1737,16 +1737,29 @@ func (x *fnCheck) binary(e *ir.Binary) typ {
 // methods. When the left side's type isn't decided yet, as an untyped
 // parameter's isn't, whether it has the operator waits for what decides it
 // (settleOps).
-func (x *fnCheck) arith(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
+// e is the Binary or Assign the operator is in, which records the impl
+// method that answers it; nil in a generic function's body checked for one
+// call, where each call's types may choose another.
+func (x *fnCheck) arith(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Expr) typ {
 	v, undecided := prune(l).(*tvar)
-	out := x.arithNow(op, l, r, rhs, at)
+	out := x.arithNow(op, l, r, rhs, at, e)
 	if undecided && !v.rigid && !v.never {
-		x.c.ts.ops = append(x.c.ts.ops, pendingOp{x: x, op: op, l: l, r: r, out: out, rhs: rhs, at: at})
+		x.c.ts.ops = append(x.c.ts.ops, pendingOp{x: x, op: op, l: l, r: r, out: out, rhs: rhs, at: at, e: e})
 	}
 	return out
 }
 
-func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
+// setOpImpl records the impl method an operator calls (7.1).
+func setOpImpl(e ir.Expr, method *ir.Func) {
+	switch e := e.(type) {
+	case *ir.Binary:
+		e.Impl = method
+	case *ir.Assign:
+		e.Impl = method
+	}
+}
+
+func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Expr) typ {
 	c := x.c
 	lt, rt := prune(l), prune(r)
 	name := func(t typ) string {
@@ -1770,8 +1783,11 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
 	}
 	if k, ok := lt.(*tcon); ok && (k.decl != nil || k.entity != nil) {
 		// A declared type's operators are its impls of Add, Sub, … (§11).
-		if rhs, out, found := x.opImpl(k, op, r); found {
+		if rhs, out, method, found := x.opImpl(k, op, r); found {
 			x.expect(at, rhs, r)
+			if e != nil && method != nil {
+				setOpImpl(e, method)
+			}
 			return out
 		}
 		if k.decl != nil && k.decl.Module != x.top.fn.Module {
@@ -1860,8 +1876,8 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
 
 // negate is the type of `-x`: a number's or a duration's own type, or what
 // the type's impl of Neg gives (SPECS.md §11).
-func (x *fnCheck) negate(t typ, at ir.Pos) typ {
-	c := x.c
+func (x *fnCheck) negate(t typ, e *ir.Unary) typ {
+	c, at := x.c, e.Pos
 	neg := c.preludeTrait("Neg")
 	switch k := prune(t).(type) {
 	case tunknown:
@@ -1884,6 +1900,7 @@ func (x *fnCheck) negate(t typ, at ir.Pos) typ {
 		if k.decl != nil {
 			for _, impl := range k.decl.Impls {
 				if impl.Trait == neg && len(impl.Args) == 1 {
+					e.Impl = impl.Methods["neg"]
 					return c.fromExpr(impl.Args[0], envOf(k), false)
 				}
 			}
@@ -1907,6 +1924,7 @@ type pendingOp struct {
 	out  typ
 	rhs  ir.Expr
 	at   ir.Pos
+	e    ir.Expr // the Binary or Assign, which records the impl it calls
 	// in names the generic functions it is inside, for one a call
 	// instantiated: its errors are reported at the call, and say where.
 	in     string
@@ -1925,14 +1943,14 @@ func (c *checker) settleOps() {
 			continue
 		}
 		if o.in == "" {
-			o.x.expect(o.at, o.out, o.x.arith(o.op, o.l, o.r, o.rhs, o.at))
+			o.x.expect(o.at, o.out, o.x.arith(o.op, o.l, o.r, o.rhs, o.at, o.e))
 			continue
 		}
 		// From a generic function's body: report at the call that gave
 		// these types, saying where in the function.
 		before := len(c.diags)
 		o.x.callAt = &o.callAt
-		o.x.expect(o.callAt, o.out, o.x.arith(o.op, o.l, o.r, o.rhs, o.callAt))
+		o.x.expect(o.callAt, o.out, o.x.arith(o.op, o.l, o.r, o.rhs, o.callAt, nil))
 		o.x.callAt = nil
 		for i := before; i < len(c.diags); i++ {
 			c.diags[i].Message = fmt.Sprintf("in %s, %s", o.in, c.diags[i].Message)

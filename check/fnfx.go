@@ -181,6 +181,15 @@ func (c *checker) checkFnLimits(all map[*ir.Func]map[string]bool) {
 	}
 }
 
+func sortedEffects(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for e := range set {
+		out = append(out, e)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // srcEffects is what calling a function value does.
 func (c *checker) srcEffects(s fxSrc, all map[*ir.Func]map[string]bool) map[string]bool {
 	set := map[string]bool{}

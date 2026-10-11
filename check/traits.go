@@ -795,8 +795,9 @@ func substType(t *ir.TypeExpr, sub map[string]*ir.TypeExpr) *ir.TypeExpr {
 }
 
 // opImpl finds a declared type's impl of an operator's trait whose right-hand
-// type fits r, and returns its right-hand and result types.
-func (x *fnCheck) opImpl(k *tcon, op string, r typ) (rhs, out typ, found bool) {
+// type fits r, and returns its right-hand and result types and the method
+// that answers the operator.
+func (x *fnCheck) opImpl(k *tcon, op string, r typ) (rhs, out typ, method *ir.Func, found bool) {
 	c := x.c
 	name := opTraits[op]
 	var candidates []*ir.Impl
@@ -808,7 +809,7 @@ func (x *fnCheck) opImpl(k *tcon, op string, r typ) (rhs, out typ, found bool) {
 		}
 	}
 	if len(candidates) == 0 {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	env := envOf(k)
 	pick := candidates[0]
@@ -819,7 +820,7 @@ func (x *fnCheck) opImpl(k *tcon, op string, r typ) (rhs, out typ, found bool) {
 			}
 		}
 	}
-	return c.fromExpr(pick.Args[0], env, false), c.fromExpr(pick.Args[1], env, false), true
+	return c.fromExpr(pick.Args[0], env, false), c.fromExpr(pick.Args[1], env, false), pick.Methods[strings.ToLower(name)], true
 }
 
 // ---------------------------------------------------------------- dyn Trait

@@ -52,6 +52,20 @@ func (c *checker) checkEffects() {
 		f.Waits = set["wait"]
 	}
 	for _, m := range c.prog.Modules {
+		for _, f := range Bodies(m) {
+			f.Effects = sortedEffects(effectsOf(f, all))
+		}
+		for _, f := range m.Funcs {
+			f.Effects = sortedEffects(effectsOf(f, all)) // externs too
+		}
+	}
+	for f := range c.ts.lambdaEffects {
+		f.Effects = sortedEffects(c.srcEffects(fxSrc{fn: f, lambda: true}, all))
+	}
+	for f := range c.ts.lambdaCallees {
+		f.Effects = sortedEffects(c.srcEffects(fxSrc{fn: f, lambda: true}, all))
+	}
+	for _, m := range c.prog.Modules {
 		for _, f := range c.bodiesOf(m) {
 			c.checkWaitingCalls(f, all)
 		}
