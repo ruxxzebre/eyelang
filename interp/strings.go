@@ -51,6 +51,32 @@ func stringBuiltins(add func(string, builtinFunc)) {
 		}
 		return &List{Elems: out}
 	})
+	// Bytes are, for now, a list of Ints from 0 to 255: indexing, slicing,
+	// size and patterns work on them as on any list.
+	add("bytes", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		s := in.str(args, "bytes", at)
+		out := make([]Value, len(s))
+		for i := 0; i < len(s); i++ {
+			out[i] = int64(s[i])
+		}
+		return &List{Elems: out}
+	})
+	add("toText", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 1, "toText", at)
+		es := in.elems(args[0], at)
+		b := make([]byte, len(es))
+		for i, e := range es {
+			n, ok := e.(int64)
+			if !ok || n < 0 || n > 255 {
+				in.faultf(at, "toText takes Bytes, and element %d is %s", i, show(e))
+			}
+			b[i] = byte(n)
+		}
+		if !utf8.Valid(b) {
+			return in.none()
+		}
+		return in.some(string(b))
+	})
 	add("code", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "code", at)
 		c, ok := args[0].(rune)

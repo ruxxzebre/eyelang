@@ -78,3 +78,19 @@ test "Floats round to whole numbers" {
   expect(toFloat(3) == 3.0)
   expect(toFloat(9007199254740993) == 9007199254740992.0)
 }
+
+test "a string's bytes" {
+  let src = "a→\"".bytes()
+  expect(src |> size == 5)  # → takes three
+  expect(src[0] == Some(97))
+  expect(src[4] == Some(34))
+  expect(src[5] == None)
+  var quotes = 0
+  for b in src {
+    if b == 34 { quotes += 1 }
+  }
+  expect(quotes == 1)
+  expect(src.toText() == Some("a→\""))
+  expect(src[1..] |> toText == Some("→\""))
+  expect(src[2..] |> toText == None)  # the middle of →
+}

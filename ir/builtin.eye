@@ -419,6 +419,12 @@ pub extern fn words(s: String) -> List(String)
 ## The characters of s, in order: `for c in s.chars() { … }`.
 pub extern fn chars(s: String) -> List(Char)
 
+## The bytes of s in UTF-8, for scanning text byte by byte: `src[i] == Some(34)`.
+pub extern fn bytes(s: String) -> Bytes
+
+## The text the bytes spell in UTF-8, or `None` if they aren't UTF-8.
+pub extern fn toText(b: Bytes) -> Option(String)
+
 ## Where the first part at or after from starts, or `None` if there is none. Without from, it
 ## looks from the start.
 pub extern fn indexOf(s: String, part: String, from: Offset = start) -> Option(Offset)
