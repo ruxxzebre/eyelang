@@ -1,8 +1,6 @@
-# Written by `tree-sitter generate` from grammar.js; `task grammar` and CI regenerate them.
-/src/parser.c
-/src/grammar.json
-/src/node-types.json
-/src/tree_sitter/
+# src/ is committed, as tree-sitter grammars usually do: eye compiles src/parser.c in through cgo
+# (syntax/treesitter.go), so building eye needs no tree-sitter CLI. `tree-sitter generate` writes
+# everything in src/ but scanner.c from grammar.js, and `task generated` checks it is current.
 
 # Built parsers and debug output
 *.so

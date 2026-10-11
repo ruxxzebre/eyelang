@@ -122,7 +122,7 @@ tasks:
     desc: Fail if generated files in git don't match grammar.js and SPECS.md
     cmds:
       - task: generate
-      - git diff --exit-code -- syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid testdata/programs/tour/tour.eye docs/reference docs/design docs/.vitepress/spec-sidebar.json
+      - git diff --exit-code -- tree-sitter-eyelang/src syntax/kind_gen.go syntax/view_gen.go testdata/syntax/valid testdata/programs/tour/tour.eye docs/reference docs/design docs/.vitepress/spec-sidebar.json
       - test -z "$(git ls-files --others --exclude-standard -- testdata/syntax/valid docs/reference docs/design)"
 
   conformance:
