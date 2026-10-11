@@ -270,7 +270,7 @@ runs. A good morning shows:
 
 ```
 #1 digest.morning(2026-10-12)  done: Ok(Accepted(id: "m-…", deliveries: 1, deduped: false))  [7 steps, 1.4 KiB]
-#2 digest.write(2026-10-12)  done: Ok({ day: 2026-10-12, title: "Ireland & Dublin — Monday 12 October", document: …  [10 steps, 1.8 KiB]
+#2 digest.write(2026-10-12)  done: Ok({ day: 2026-10-12, title: "Ireland & Dublin — Monday 12 October", document: …  [10 steps, 1.8 KiB, 30000 tokens in, 3000 out, $0.1650]
 ```
 
 `eye runs /program 2` lists the write run's steps: `miniflux.me`,
@@ -278,8 +278,10 @@ runs. A good morning shows:
 `miniflux.subscribe` for each category or feed it added, then for each section
 `miniflux.entries` and its pages (`http.get`, `flaresolverr.request`; a page
 that couldn't be read shows `Err(…)` and is listed under "Sources not read" in
-the briefing), and last `ai.generate` and `Day(…).keep`. It doesn't show what
-the model call spent yet. What a bad morning shows, and what to do:
+the briefing), and last `ai.generate` and `Day(…).keep`. The `ai.generate`
+step, and the run's line, end with what the model call spent:
+`[30000 tokens in, 3000 out, $0.1650]`; `eye runs --json` gives it as
+`spent`. What a bad morning shows, and what to do:
 
 | `eye runs` shows | Meaning | Do |
 |---|---|---|

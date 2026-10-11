@@ -36,7 +36,7 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 				if run.cursor < len(run.Log) {
 					s := run.Log[run.cursor]
 					if v, ok := in.replay(run, w.Pos); ok {
-						in.charge(spend{s.Tokens, s.USD})
+						in.charge(s.spent())
 						return v
 					}
 				}
@@ -234,7 +234,7 @@ func (in *Interp) record(run *jobRun, v Value, at ir.Pos) Value {
 
 // recordSpend records a step that spent tokens and money on model calls.
 func (in *Interp) recordSpend(run *jobRun, v Value, s spend, at ir.Pos) Value {
-	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: in.rt.seq(), Tokens: s.Tokens, USD: s.USD})
+	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: in.rt.seq(), Tokens: s.Tokens, TokensIn: s.In, TokensOut: s.Out, USD: s.USD})
 	run.cursor++
 	in.checkHeld(run, in.rt.save(run), at)
 	return v

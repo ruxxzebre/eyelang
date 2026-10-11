@@ -338,6 +338,8 @@ type RunInfo struct {
 	Summarized bool       `json:"summarized,omitempty"`
 	Started    *time.Time `json:"started,omitempty"`
 	Ended      *time.Time `json:"ended,omitempty"`
+	// Spent is what the run's model calls spent, in all its steps.
+	Spent *Spent `json:"spent,omitempty"`
 }
 
 // StepInfo is one durable step of a run.
@@ -346,6 +348,33 @@ type StepInfo struct {
 	Value  string     `json:"value,omitempty"` // what the step returned
 	Until  *time.Time `json:"until,omitempty"` // for a timer or a wait: when it ends
 	Status string     `json:"status"`          // done, sleeping or waiting
+	Spent  *Spent     `json:"spent,omitempty"` // what the step's model calls spent
+}
+
+// Spent is what model calls spent: their tokens, those of the prompts and
+// of the replies, and their price in US dollars. Steps recorded before
+// 2026-10-11 have only the tokens in all.
+type Spent struct {
+	Tokens    int64   `json:"tokens"`
+	TokensIn  int64   `json:"tokensIn,omitempty"`
+	TokensOut int64   `json:"tokensOut,omitempty"`
+	USD       float64 `json:"usd"`
+}
+
+func spentInfo(s spend) *Spent {
+	if s == (spend{}) {
+		return nil
+	}
+	return &Spent{Tokens: s.Tokens, TokensIn: s.In, TokensOut: s.Out, USD: s.USD}
+}
+
+// String shows what was spent: 12000 tokens in, 900 out, $0.0525.
+func (s *Spent) String() string {
+	text := fmt.Sprintf("%d tokens", s.Tokens)
+	if s.TokensIn+s.TokensOut == s.Tokens {
+		text = fmt.Sprintf("%d tokens in, %d out", s.TokensIn, s.TokensOut)
+	}
+	return text + fmt.Sprintf(", $%.4f", s.USD)
 }
 
 // Runs describes every run the store holds, oldest first.
@@ -397,8 +426,13 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 	if r.Ended != 0 {
 		info.Ended = when(r.Ended)
 	}
+	var total spend
+	if r.Spent != nil {
+		total = *r.Spent
+	}
 	for _, s := range r.Log {
-		st := StepInfo{Call: s.Call, Status: "done"}
+		st := StepInfo{Call: s.Call, Status: "done", Spent: spentInfo(s.spent())}
+		total.add(s.spent())
 		switch {
 		case s.Timer:
 			st.Status, st.Until = "sleeping", when(s.WakeAt)
@@ -415,6 +449,7 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 		}
 		info.Steps = append(info.Steps, st)
 	}
+	info.Spent = spentInfo(total)
 	if r.Status == "sleeping" {
 		info.WakeAt = when(r.WakeAt)
 		switch {
@@ -480,7 +515,11 @@ func FormatRuns(w io.Writer, runs []RunInfo, steps bool, now time.Time) {
 		if r.StepCount == 1 {
 			count = "1 step"
 		}
-		line += fmt.Sprintf("  [%s, %s]", count, bytesText(int64(r.Size)))
+		line += fmt.Sprintf("  [%s, %s", count, bytesText(int64(r.Size)))
+		if r.Spent != nil {
+			line += ", " + r.Spent.String()
+		}
+		line += "]"
 		if r.Summarized {
 			line += " (steps dropped; summary kept)"
 		}
@@ -504,6 +543,9 @@ func FormatRuns(w io.Writer, runs []RunInfo, steps bool, now time.Time) {
 				} else if s.Value != "()" {
 					step += " → " + s.Value
 				}
+			}
+			if s.Spent != nil {
+				step += "  [" + s.Spent.String() + "]"
 			}
 			fmt.Fprintln(w, step)
 		}
