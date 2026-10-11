@@ -123,6 +123,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§17", "an event's value of the wrong type", "events carry their type"},
 	{"§17", "a served contract missing an operation or changing its parameters", "a served contract serves every operation, as declared"},
 	{"§17", "a trigger that isn't an event", "a trigger names a contract's event"},
+	{"§17", "a fake's calls given what isn't an operation of a contract", "TestFakeCalls"},
 	{"§19", "a model asked for a type without a Schema", "a model is asked for a type with a Schema"},
 }
 

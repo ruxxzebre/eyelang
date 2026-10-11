@@ -5,26 +5,20 @@ ROADMAP.md's "What's next" stay the source of truth for the plan; this file hold
 can't: branches in flight, findings that have no issue yet, and the state of the homelab deploy.
 Delete it once its items are done or moved to issues.
 
-dev is at `bbf2505`, and CI passes there (see "CI and checks"). Every lane that ran today is
-merged except `track/runtime-wip`.
+Every lane that ran on 2026-10-11 is merged into dev, `track/runtime-wip` last (see "CI and
+checks" for how to confirm CI).
 
 ## Pick up first
 
-1. **Merge `track/runtime-wip` (fa6a105, pushed).** It holds two finished, tested changes that
-   were based on an older dev:
-   - Q16, #64: `fakes(…)` returns a handler whose `calls(op)` lists what the fake answered. It
-     includes the SPECS §17 rule and decision-log row. The digest's `Day.sent` workaround is
-     gone, and the approvals test no longer guesses the question id. The commit says
-     `Closes #64`.
-   - `eye run --fresh`: moves the journal to `JOURNAL.old` and starts empty. It is refused with
-     `--store`, `$EYE_STORE` and `--memory`. A run with nothing to do now says so and names
-     `--fresh`. This is session eyelang-f1's spec, approved by the user.
-
-   To do: rebase onto dev (expect conflicts in the lab README, status.md and `cli.md`), check
-   the change to `check/infer.go` (`calls` in `typeState`, `Handler.calls` in `methodCall`,
-   `fakeCalls`) against generic private functions (e3abeea), add a `check/` unit test for its
-   error message, then `task check`. Known gap: `fakes(…)` still returns the plain `Handler`
-   type, so `clock(…).calls(op)` fails only at run time; a separate `Fakes` type would catch it.
+1. **Done: `track/runtime-wip` is merged.** Its first four commits were already on dev, rebased
+   (c563080 to 9ec971b). The other three were cherry-picked: Q16 and #64, `fakes(…).calls(op)`,
+   and `eye run --fresh`. `check/infer.go`'s `calls` map holds one record type per operation,
+   built from the contract's declared parameter types, so generic private functions don't touch
+   it. `TestFakeCalls` checks its error message. The digest tests that dev added since then ask
+   the fake what was sent, not `Day.sent`. Those tests now also show that a failed morning sends
+   the operator the `…-failed` notice. #64 stays open until someone closes it by hand, since
+   dev isn't the default branch. Known gap: `fakes(…)` still returns the plain `Handler` type,
+   so `clock(…).calls(op)` fails only at run time; a separate `Fakes` type would catch it.
 2. **Watch the digest's first real run in the homelab** (below), and fix what it shows.
 3. **Run the parser fuzz once**, after lane B's grammar change (eea8493, string effect targets)
    and before or with #69: `FUZZTIME=60s FUZZWORKERS=2 task fuzz`. It was held back while the
@@ -156,7 +150,7 @@ Lab:
 
 This follows ROADMAP's "What's next", with what today changed:
 
-1. Item 1 above (`track/runtime-wip`), then #69 (C.5): `eye fmt` writes each public function's
+1. #69 (C.5): `eye fmt` writes each public function's
    `uses` clause, since the user decided effects are written by the formatter, not by hand.
    Spec first: a decision-log row "Effects written by the formatter". Then:
    - formatting a program directory runs the checker and fills `uses` from the inferred effects,
@@ -180,8 +174,8 @@ What every session that worked today said was left, at the end of the day. Claim
 - **eyelang-20 (phase 5, v0.2.0, merges into dev).** Nothing unmerged. Claim: `dev` (merges in
   the main checkout) and `tools/next`; the next session that merges takes the `dev` claim.
   Open: maps and sets built one element at a time are quadratic (above).
-- **eyelang-77 (lanes B to F, this handoff).** All lanes stopped; only `track/runtime-wip`
-  (above). Its worktrees `handoff` and `runtime` are merged and can be removed.
+- **eyelang-77 (lanes B to F, this handoff).** All lanes stopped and merged, `track/runtime-wip`
+  last. Its worktrees `handoff` and `runtime` are merged and can be removed.
 - **eyelang-55 (language server, parser).** Nothing unmerged; `ts-parser`, `list-append`,
   `list-comment`, `lsp-*` and `builtin-decls` are merged and removed. Claim: `internal/lsp`
   except completion, `check/index.go`, `check/resolve_test.go`. Not started, nobody owns them:
@@ -225,7 +219,7 @@ What every session that worked today said was left, at the end of the day. Claim
   - effect names (`publish Bus.pinged`, `secret "name"`);
   - a step's result must be saveable;
   - private functions are generic;
-  - `with` binds a fake handler (on `track/runtime-wip`).
+  - `with` binds a fake handler.
 
   Decided by the user but not yet in SPECS: the formatter writes `uses` clauses (#69).
 - Closed today: #62 (`extern type` replaces `Handle`) and #68 (`NonZero` divisors). #72 was

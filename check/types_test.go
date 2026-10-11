@@ -281,7 +281,7 @@ fn f() -> Float = double(2.5)`, []string{
 			"15:19: expected Float, found Int",
 			"15:26: expected Int, found Float",
 		}},
-		{"a type variable or an untyped parameter has only what its uses need",`fn show(x) -> String = "{x}"
+		{"a type variable or an untyped parameter has only what its uses need", `fn show(x) -> String = "{x}"
 fn leak() -> String = show(secret("a"))
 fn bigger(a, b) -> Bool = a > b
 fn f(g: fn() -> Int) -> Bool = bigger(g, g)

@@ -906,39 +906,45 @@ test "the morning reads its sources, has the briefing written, and sends it" {
 }
 
 test "a section's category is made when Miniflux doesn't have it" {
-  with fakes(notify, flaresolverr, http, ai, from: "recordings/")
+  let services = fakes(notify, flaresolverr, http, ai, from: "recordings/")
+  with services
   with fakes(miniflux, from: "recordings/created/")
   with clock(2026-10-12 06:30 in "UTC")
   advance(10 min)
-  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+  expect(keys(services) == ["ireland-2026-10-12"])
 }
 
 test "a feed Miniflux won't subscribe to is reported, and the digest goes on" {
-  with fakes(notify, flaresolverr, http, ai, from: "recordings/")
+  let services = fakes(notify, flaresolverr, http, ai, from: "recordings/")
+  with services
   with fakes(miniflux, from: "recordings/refused/")
   with clock(2026-10-12 06:30 in "UTC")
   advance(10 min)
-  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+  expect(keys(services) == ["ireland-2026-10-12"])
   let Some(article) = Day(2026-10-12).article else { unreachable("the morning wrote no briefing") }
   expect(article.document |> contains("- Immigration Service Delivery: Miniflux could not subscribe (Unable to find a feed at this URL)"))
 }
 
 test "a reply that doesn't match the briefing's schema is an error, never an empty briefing" {
-  with fakes(notify, miniflux, flaresolverr, http, from: "recordings/")
+  let services = fakes(notify, miniflux, flaresolverr, http, from: "recordings/")
+  with services
   with fakes(ai, from: "recordings/malformed/")
   with clock(2026-10-12 06:30 in "UTC")
   advance(10 min)
   expect(Day(2026-10-12).article == None)
-  expect(Day(2026-10-12).sent == {})
+  # Only the notice that this morning's digest failed goes out.
+  expect(keys(services) == ["ireland-2026-10-12-failed"])
 }
 
 test "a briefing with nothing in it, from news with items, isn't sent" {
-  with fakes(notify, miniflux, flaresolverr, http, from: "recordings/")
+  let services = fakes(notify, miniflux, flaresolverr, http, from: "recordings/")
+  with services
   with fakes(ai, from: "recordings/empty/")
   with clock(2026-10-12 06:30 in "UTC")
   advance(10 min)
   expect(Day(2026-10-12).article == None)
-  expect(Day(2026-10-12).sent == {})
+  # Only the notice that this morning's digest failed goes out.
+  expect(keys(services) == ["ireland-2026-10-12-failed"])
 }
 
 test "/digest in a group chat gets silence" {

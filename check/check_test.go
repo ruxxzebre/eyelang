@@ -292,3 +292,45 @@ job j() { mail.send("me") }
 		t.Errorf("got %q, want one ending %q", got, want)
 	}
 }
+
+// TestFakeCalls checks fakes.calls(op): it takes an operation of a contract
+// and gives a list of records of that operation's arguments, with key last
+// for a command with @key.
+func TestFakeCalls(t *testing.T) {
+	dir := writeProgram(t, map[string]string{
+		"eye.toml": "",
+		"mail/mail.eye": `contract Mail {
+  @key(required)
+  command send(to: String, urgent: Bool = false) -> Result((), String)
+}
+`,
+		"main.eye": `import mail
+
+test "t" {
+  let sent = fakes(mail, from: "recordings/")
+  with sent
+  let [c] = sent.calls(mail.send) else { unreachable("one call") }
+  expect(c.to == "me" && !c.urgent && c.key == "k")
+  expect(c.subject == "")
+  let _ = sent.calls("send")
+}
+`,
+	})
+	res := Check(dir, Options{})
+	want := []string{
+		"main.eye:8:10: Call(mail.send) has no field subject",
+		"main.eye:9:11: calls takes an operation of a contract the fakes answer for, as calls(notify.send)",
+	}
+	var got []string
+	for _, d := range res.Diagnostics {
+		got = append(got, d.String())
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	for i, w := range want {
+		if !strings.HasSuffix(got[i], w) {
+			t.Errorf("got %q, want one ending %q", got[i], w)
+		}
+	}
+}
