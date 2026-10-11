@@ -7,7 +7,7 @@ pub type Sent = | Sent(Int)
 contract Bus {
   @key(required)
   @reconcile(sent)
-  command send(text: String) -> Sent
+  command send(text: String, urgent: Bool = false) -> Sent
 
   query sent(key: Key) -> Option(Sent)
 

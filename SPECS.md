@@ -101,6 +101,7 @@ construct that also works outside that domain.
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts. Each attribute is declared with where it goes and what it takes, and the checker holds every use to that: `@concurency isn't an attribute; did you mean @concurrency?` | One general mechanism instead of special syntax per feature, and a program can't say "one at a time" and quietly get five. From the lab: a misspelt attribute was ignored, and `@concurrency(1)` wasn't enforced |
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
+| What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
 | Tests and the machine | **A test works in an empty directory of its own, and draws random numbers from a fixed seed.** `fs` and `process` resolve relative paths there, and it is removed when the test ends | A test that touches files or runs programs gives the same result on every run and every machine, and can't change the repository it runs in |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
 | Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn notifier(config) -> dyn Notifier`, `List(dyn Handler)`): a value converts to it where one is expected, and has only the trait's methods | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
@@ -1318,6 +1319,28 @@ type Delivery =
   A command's lost reply is recorded as `{ "kind": "Uncertain", "key": "…" }`. Recordings written
   before this shape was settled, with a variant as its name's only key (`{ "Accepted": {…} }`), are
   still read.
+- **A test sees what a fake received.** `fakes(…)` is a value: a test that wants to look names
+  it, applies it with `with`, and asks it with `calls(op)`. That lists every call of the operation
+  the fakes answered, oldest first, each a record of the call's arguments with their defaults
+  filled in, and `key` last for a command with `@key`. A reconcile that asks a query, or sends a
+  command again, adds a call too. So a test checks what a program sent without the program
+  keeping a record of it:
+
+  ```eye
+  test "the morning's briefing goes at 07:40, for the Irish day" {
+    let sent = fakes(notify, from: "recordings/")
+    with sent
+    with clock(2026-10-12 06:30 in "UTC")
+    advance(10 min)
+    let [briefing] = sent.calls(notify.send) else { unreachable("sent more or less than once") }
+    expect(briefing.key == "ireland-2026-10-12" && briefing.priority == Normal)
+  }
+  ```
+
+  `calls` takes an operation of a contract the fakes answer for; its result is a `List` of the
+  record whose fields are the operation's parameters. `ai` and `http` have no operations, so
+  their fakes show nothing this way. A call the fakes had no answer for stopped its run, so it
+  isn't listed.
 - **Services without a contract,** such as web pages, are read with the standard `http` module:
   `http.get!(url, headers: { "Accept": "text/html" }, via: proxy)` returns
   `Result(Response, HttpError)`, with the status, the headers and the body as text. Any answer is
@@ -1853,9 +1876,11 @@ operator. All binary operators associate to the left except `??`, which associat
     from the variant's name? `##` comments are documentation, and using them as text for people
     mixes two jobs; an impl of `Show` is the existing way to choose how a value is written. Until
     this is decided, a label is the variant's `Show`.
-16. **What a fake received.** A test can't see which calls a fake answered, so the lab's digest
-    records the keys it sent with in an entity to make sending testable. Should a test be able to
-    ask `fakes(notify).sent(…)`, or fail when a recording has exchanges no call used?
+16. **What a fake received:** decided on 2026-10-11: `fakes(…)` is a value that a test names and
+    applies with `with`, and `sent.calls(notify.send)` lists the calls the fakes answered, as
+    records of their arguments with defaults filled in and the key (section 17). The lab's digest
+    no longer keeps the keys it sent with in an entity. Whether a recording's unused exchanges
+    should fail a test is still open: one recording serves several tests.
 17. **Where approvals go:** decided on 2026-10-11: through the program. A run that waits at
     `approval!` publishes `approvals.requested`; the program routes it with a job of its own (the
     lab's `approving` module asks the operator on Notify) and answers with `approvals.answered`,

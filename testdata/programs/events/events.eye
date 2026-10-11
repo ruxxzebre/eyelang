@@ -51,6 +51,15 @@ test "next! wakes on the event it waits for, after a chained call" {
   expect(Inbox("await").got == ["a: 8"])
 }
 
+test "a fake shows each call it answered, with defaults filled in and the key" {
+  let fake = fakes(bus, from: "recordings/")
+  with fake
+  expect(fake.calls(bus.send) == [])
+  await.start("b")  # the send's reply is lost, so reconcile asks sent
+  expect(fake.calls(bus.send) == [{ text: "b", urgent: false, key: "send-b" }])
+  expect(fake.calls(bus.sent) == [{ key: "send-b" }])
+}
+
 test "next! gives None when its time runs out" {
   with fakes(bus, from: "recordings/")
   await.start("b")

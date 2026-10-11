@@ -681,6 +681,11 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 // receiver.
 func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, durable bool) (Value, Value) {
 	switch r := recv.(type) {
+	case *fakesHandler:
+		if name == "calls" {
+			pos, _ := split(args)
+			return r.calls(in, pos, at), nil
+		}
 	case *EventVal:
 		if name == "publish" {
 			pos, _ := split(args)

@@ -1,0 +1,6 @@
+{
+  "contract": "Notify",
+  "exchanges": [
+    { "op": "ask", "key": "approval-1-0", "result": { "kind": "Asking", "value": "q-41" } }
+  ]
+}
