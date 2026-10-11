@@ -470,6 +470,11 @@ func builtinTable() map[string]*BuiltinFn {
 			in.pause(time.Duration(every))
 		}
 	})
+	// reserve! in a job is handled by durable, which records the grant.
+	add("reserve", func(in *Interp, _ []Value, _ map[string]Value, at ir.Pos) Value {
+		in.faultf(at, "reserve waits for memory from the runner, so only a job can call it, as reserve!(…)")
+		return nil
+	})
 	// next! in a job is handled by durable, which records the wait.
 	add("next", func(in *Interp, _ []Value, _ map[string]Value, at ir.Pos) Value {
 		in.faultf(at, "next waits for an event, so only a job can call it, as next!(…)")

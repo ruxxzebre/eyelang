@@ -282,6 +282,16 @@ fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) us
 In a job, waits for the first event that matches, counting every one published since the run's
 previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.
 
+### reserve {#reserve}
+
+```eye
+fn reserve(size: Size, f: fn() -> a) -> a uses {wait}
+```
+
+In a job, `reserve!(256 MiB, fn { summarise!(items) })` waits until the runner can grant the
+memory, holds it while f runs, even across f's own waits, and gives it back when f returns,
+with f's result. Under pressure, runs of a higher `@priority` are granted memory first.
+
 ### approval {#approval}
 
 ```eye

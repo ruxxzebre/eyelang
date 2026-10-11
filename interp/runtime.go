@@ -48,6 +48,10 @@ type runtime struct {
 	commitErr *CommitError
 	// warned holds the runs already reported for their many steps.
 	warned map[int64]bool
+	// memLimit is the memory the runner has, in bytes (admission.go); 0
+	// admits everything. reserved is what reserve! granted, by run.
+	memLimit int64
+	reserved map[int64]int64
 }
 
 // event is a published event, saved as bytes.
@@ -63,6 +67,7 @@ func newRuntime(in *Interp) *runtime {
 		in: in, now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		members: map[*ir.View]map[string]bool{}, fakes: map[*ir.Contract]*fakeSet{}, nextRun: 1,
 		seen: map[string]bool{}, uncertain: map[string]sentCommand{}, rate: map[string][]int64{}, warned: map[int64]bool{},
+		memLimit: testMemory, reserved: map[int64]int64{},
 	}
 	if in.prog.Store != nil {
 		rt.useStore(newEyeStore(in))
@@ -716,6 +721,7 @@ func (rt *runtime) step(id int64) {
 		if run.DeadlineAt > 0 && rt.now.UnixNano() >= run.DeadlineAt {
 			runFault(job.Pos, "DeadlinePassed", "%s passed its @deadline", job.Name)
 		}
+		rt.in.admitMemory(run, job)
 		result, _, _ := rt.in.callFunc(job.Func, nil, nil, args, job.Pos)
 		run.Status = "done"
 		run.Result = rt.in.encode(result, job.Pos)
@@ -727,9 +733,11 @@ func (rt *runtime) step(id int64) {
 		c := &Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}}
 		var name string
 		var outcome []byte
+		freed := false
 		if run.Status == "done" || run.Status == "failed" {
 			name, outcome = runEvent(run.ID), rt.in.encode(rt.in.outcome(run, job.Pos), job.Pos)
 			c.Events = []EventRecord{{Name: name, Data: outcome}}
+			freed = rt.dropReserved(run, c) // a run that ended inside reserve!
 		}
 		if err := guard(func() { rt.store.Commit(c) }); err != nil {
 			failed = err.(*CommitError)
@@ -737,6 +745,10 @@ func (rt *runtime) step(id int64) {
 			rt.events = append(rt.events, event{name: name, data: outcome})
 			rt.wake(name)
 			rt.release(job, run)
+			if freed {
+				delete(rt.reserved, run.ID)
+				rt.wakeMemory()
+			}
 		}
 		rt.warnLong(run)
 	}
@@ -816,9 +828,12 @@ func (rt *runtime) fillPlaces() {
 }
 
 // save writes a run after it recorded a step.
-func (rt *runtime) save(run *jobRun) {
-	rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}})
+// It returns the size of the run as saved.
+func (rt *runtime) save(run *jobRun) int {
+	data := run.encode()
+	rt.store.Commit(&Commit{Runs: []RunWrite{{ID: run.ID, Data: data}}})
 	rt.warnLong(run)
+	return len(data)
 }
 
 // advance moves a test's clock forward, waking each sleeping run when its

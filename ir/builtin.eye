@@ -289,6 +289,11 @@ pub extern fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bo
 ## previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.
 pub extern fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) uses {wait}
 
+## In a job, `reserve!(256 MiB, fn { summarise!(items) })` waits until the runner can grant the
+## memory, holds it while f runs, even across f's own waits, and gives it back when f returns,
+## with f's result. Under pressure, runs of a higher `@priority` are granted memory first.
+pub extern fn reserve(size: Size, f: fn() -> a) -> a uses {wait}
+
 ## In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined`
 ## or `Expired`. Only this can make an `Approval`.
 pub extern fn approval(what: String, from: who, within: Duration) -> Decision uses {wait}

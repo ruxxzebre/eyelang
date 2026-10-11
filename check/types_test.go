@@ -225,7 +225,7 @@ fn b(r: Range(Int)) -> Int = r.start + r.size`, []string{
 			"1:28: Duration has no field minutes",
 			"2:40: Range(Int) has no field size",
 		}},
-		{"dyn takes a trait",`type Square = { side: Int }
+		{"dyn takes a trait", `type Square = { side: Int }
 fn b(s: dyn Square) -> Int = 0`, []string{
 			"2:13: dyn takes a trait, and Square is a type: write Square, or dyn and a trait it implements",
 		}},

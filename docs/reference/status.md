@@ -22,9 +22,8 @@ compile-time errors it links to the checker's test cases. Every error class the 
 listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go),
 along with the test that reports it.
 
-**The biggest gaps today.** Waits that need a person or the host (`reserve!`, `lock!`, `all!`,
-`first!`, ending an entity), coding agents and model tools, `@memory` and `@priority` at run
-time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destructive`,
+**The biggest gaps today.** Some waits (`lock!`, `all!`, `first!`, ending an entity), coding
+agents and model tools, function types in signatures, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destructive`,
 `@unwitnessed`), `fs` and `process`, fixed-width integers, and native compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
@@ -141,7 +140,7 @@ time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destru
 | `Problem` and `.context(…)` | ✓ | — | — | |
 | Total library functions: `xs[i]` and `first` give `Option`, `parseInt` gives `Result` | ✓ | ✓ | ✓ | [core: collections](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L165) |
 | `unreachable("why")` ends the program or run as a fault | ✓ | ✓ | ✓ | [interp_test.go: faults](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L153) |
-| Runtime faults as a run's outcome | ✓ | ✓ | partial: `Unreachable`, `DeadlinePassed`, `Unavailable` and `OverBudget` happen; `OutOfMemory` and `Killed` never do | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
+| Runtime faults as a run's outcome | ✓ | ✓ | partial: `Unreachable`, `DeadlinePassed`, `Unavailable`, `OverBudget` and `OutOfMemory` happen; `Killed` never does | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 
 ## [Traits](/reference/language/traits)
 
@@ -220,7 +219,8 @@ time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destru
 | `poll!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L93) |
 | `approval!`, with requests published as `approvals.requested` and answered by `approvals.answered`, `eye approve` or `eye decline` | ✓ | ✓ | ✓ | [lab approving](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/approving/approving.eye#L14), [approve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/approve_test.go#L16) |
 | `next!`, which misses no event | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L45) |
-| `reserve!`, `lock!` | ✓ | — (undefined) | — | |
+| `reserve!` | ✓ | ✓ | ✓ | [programs/memory](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/memory/memory.eye#L42) |
+| `lock!` | ✓ | — (undefined) | — | |
 | `run.join!()` and `Outcome` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | `start()`, with `after:`, `at:` and `key:` | ✓ | ✓ | partial: `after:` and `key:` are tested; `at:` has no test yet | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L12), [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L118) |
 
@@ -240,7 +240,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@concurrency(n, by: param)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L73) |
 | `@limit(n, per: duration, by: param)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L92) |
 | `@deadline(duration)`, `@deadline(time, in: zone)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
-| `@memory(size)`, `@priority(p)` | ✓ | ✓ | — (v0.2) | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L71) |
+| `@memory(size)`, `@priority(p)` | ✓ | ✓ | ✓ (what a run holds is its saved state; open question 26) | [programs/memory](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/memory/memory.eye#L20) |
 | `@budget(usd:, tokens:)` | ✓ | ✓ | ✓ | [ai_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go) |
 | `@version(N)` | ✓ | ✓ | ✓ | [migrations_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/migrations_test.go#L14) |
 | `@key`, `@reconcile` | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |

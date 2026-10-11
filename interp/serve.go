@@ -24,6 +24,9 @@ type RunOptions struct {
 	// Inbox is a directory of answers to approvals, which `eye approve` and
 	// `eye decline` write and the runner publishes; "" reads none.
 	Inbox string
+	// MemoryLimit is the memory runs may hold, in bytes, which @memory and
+	// reserve! are admitted against; 0 is the host's memory.
+	MemoryLimit int64
 }
 
 // Run runs a program as `eye run` does. main runs first, if the program has
@@ -37,6 +40,10 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in := New(prog, opts.Stdout, opts.Stderr)
 	in.rt.real = true
 	in.rt.now = time.Now()
+	in.rt.memLimit = opts.MemoryLimit
+	if in.rt.memLimit == 0 {
+		in.rt.memLimit = hostMemory()
+	}
 	if opts.Store != nil {
 		in.rt.useStore(opts.Store)
 	}
@@ -179,6 +186,7 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, in
 // the next run's number, which entities are in each view, and the runs that
 // were running when the program stopped, which start again.
 func (rt *runtime) restore() {
+	rt.restoreReserved()
 	if data, ok := rt.store.Meta("events/dropped"); ok {
 		rt.eventBase, _ = strconv.ParseInt(string(data), 10, 64)
 	}
@@ -302,10 +310,12 @@ type RunInfo struct {
 	WakeAt *time.Time `json:"wakeAt,omitempty"` // while sleeping
 	Waits  string     `json:"waits,omitempty"`  // what a sleeping run waits for
 	// Approval is the text of the approval! a sleeping run waits for.
-	Approval string     `json:"approval,omitempty"`
-	Steps    []StepInfo `json:"steps"`
-	Result   string     `json:"result,omitempty"`
-	Fault    string     `json:"fault,omitempty"`
+	Approval string `json:"approval,omitempty"`
+	// Holds is the memory the run has reserved with reserve!.
+	Holds  string     `json:"holds,omitempty"`
+	Steps  []StepInfo `json:"steps"`
+	Result string     `json:"result,omitempty"`
+	Fault  string     `json:"fault,omitempty"`
 	// StepCount is how many steps the run took, also once only a summary
 	// is kept; Size is how many bytes the store keeps for it.
 	StepCount  int        `json:"stepCount"`
@@ -327,11 +337,15 @@ type StepInfo struct {
 func Runs(prog *ir.Program, store Store) []RunInfo {
 	in := New(prog, io.Discard, io.Discard)
 	in.rt.useStore(store)
+	held := reservations(store)
 	var out []RunInfo
 	for _, id := range store.Runs() {
 		data, _ := store.Run(id)
 		info := in.runInfo(decodeRun(data))
 		info.Size = len(data)
+		if n := held[id]; n > 0 {
+			info.Holds = showSize(ir.Size(n))
+		}
 		out = append(out, info)
 	}
 	return out
@@ -395,6 +409,8 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 				info.Approval = strings.TrimPrefix(r.Log[n-1].Call, "approval: ")
 				info.Waits += " to " + info.Approval
 			}
+		case r.WaitEvent == memoryEvent:
+			info.Waits = "memory"
 		case r.WaitEvent != "":
 			info.Waits = "the event " + r.WaitEvent
 		}
@@ -432,7 +448,12 @@ func FormatRuns(w io.Writer, runs []RunInfo, steps bool, now time.Time) {
 			if r.Waits != "" {
 				line = strings.Replace(line, "sleeping", "waiting for "+r.Waits, 1)
 			}
-			line += " until " + clockTime(*r.WakeAt, now)
+			if r.WakeAt.Sub(now) < time.Duration(forever)/2 { // a wait with no deadline has none to show
+				line += " until " + clockTime(*r.WakeAt, now)
+			}
+			if r.Holds != "" {
+				line += ", holding " + r.Holds
+			}
 		case "done":
 			if r.Result != "" && r.Result != "()" {
 				line += ": " + r.Result

@@ -27,7 +27,7 @@ var goRules = map[string]bool{
 	// They take a function, and a function type in a signature isn't typed
 	// yet (fromExpr), so a lambda passed to them would get no parameter types.
 	"poll": true, "both": true, "race": true, "timeout": true, "taskGroup": true, "next": true,
-	"mapErr": true,
+	"mapErr": true, "reserve": true,
 	// The collection functions.
 	"size": true, "isEmpty": true, "add": true, "remove": true, "contains": true, "insert": true,
 	"get": true, "first": true, "last": true, "map": true, "filter": true, "find": true, "any": true,

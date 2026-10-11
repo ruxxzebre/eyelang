@@ -116,5 +116,14 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `@concurrency(n, by: param)` | at most `n` runs at once, or per value of the parameter named. A run over the limit waits in a queue and begins when a run of its group finishes, in the order they were started; a waiting run keeps its place, so `@concurrency(1)` asks one question at a time, in order. A scheduled start that finds the limit reached is skipped, not queued |
   | `@limit(n, per: duration, by: param)` | at most `n` runs begin in any window of that length, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)`. A run over the rate waits until the window lets it begin |
 
-  `@concurrency`, `@limit` and `@deadline` are enforced by the runtime; the others are checked, and
-  enforced as the runtime grows (`@budget` is, [section 19](/reference/language/ai-models-and-agents); `@memory` and `@priority` are not yet).
+  All of them are enforced by the runtime (`@budget` in [section 19](/reference/language/ai-models-and-agents)).
+- **Memory.** A runner has a memory limit (`eye run --memory-limit 512MiB`, the host's memory
+  without one, 1 GiB in tests). A run holds its `@memory` only while it executes, and
+  `reserve!(size, fn { … })` holds `size` until `fn` returns, across `fn`'s own waits. A run executes,
+  and a `reserve!` is granted, only when the memory fits beside what is held and no run of a
+  higher `@priority` waits for memory; otherwise it waits at the checkpoint it reached, so under
+  pressure lower priorities pause and none overtakes a higher one. What is reserved is kept with
+  the runs, so a restart neither forgets nor repeats a grant. A run whose `@memory` is more than
+  the runner has, or that holds more than its `@memory`, ends as `Failed(OutOfMemory)`; the
+  reference interpreter counts what it keeps for the run, its saved state with each step's result
+  (open question 26).

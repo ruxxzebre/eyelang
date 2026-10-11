@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"eyelang/check"
@@ -41,6 +43,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	journal := fs.String("journal", "", "the journal that keeps entities, runs and events (default program-directory/.eye/journal)")
 	memory := fs.Bool("memory", false, "keep everything in memory, so nothing survives the process")
 	store := fs.String("store", "", "keep entities, runs and events in this Postgres database, postgres://… (default $EYE_STORE)")
+	memLimit := fs.String("memory-limit", "", "the memory runs may hold, which @memory and reserve! wait for, such as 512MiB (default the host's memory)")
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]")
 		fmt.Fprintln(stderr)
@@ -55,6 +58,15 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
+	}
+	var limit int64
+	if *memLimit != "" {
+		n, ok := parseSize(*memLimit)
+		if !ok {
+			fmt.Fprintf(stderr, "eye run: --memory-limit takes a size such as 512MiB or 2GiB; got %q\n", *memLimit)
+			return exitUsage
+		}
+		limit = n
 	}
 	url := *store
 	if *journal == "" && !*memory {
@@ -88,7 +100,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		}
 		return exitErrors
 	}
-	opts := interp.RunOptions{Args: append([]string{dir}, progArgs...), Stdout: stdout, Stderr: stderr, Inbox: inboxPath(dir)}
+	opts := interp.RunOptions{Args: append([]string{dir}, progArgs...), Stdout: stdout, Stderr: stderr, Inbox: inboxPath(dir), MemoryLimit: limit}
 	switch {
 	case url != "":
 		pg, err := interp.OpenPostgres(url)
@@ -114,4 +126,21 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return interp.Run(ctx, prog, opts)
+}
+
+// parseSize reads a size as a flag gives it: 512MiB, 2 GiB, 64KiB, or bytes.
+func parseSize(s string) (int64, bool) {
+	s = strings.ReplaceAll(strings.TrimSpace(s), " ", "")
+	units := []struct {
+		suffix string
+		size   int64
+	}{{"GiB", 1 << 30}, {"MiB", 1 << 20}, {"KiB", 1 << 10}, {"B", 1}}
+	for _, u := range units {
+		if num, ok := strings.CutSuffix(s, u.suffix); ok {
+			n, err := strconv.ParseInt(num, 10, 64)
+			return n * u.size, err == nil && n > 0
+		}
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	return n, err == nil && n > 0
 }

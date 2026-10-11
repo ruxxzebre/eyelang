@@ -63,6 +63,8 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 				return in.next(run, args, c.Pos)
 			case "approval":
 				return in.approval(run, args, c.Pos)
+			case "reserve":
+				return in.reserve(run, args, c.Pos)
 			}
 		}
 		if v, ok := in.replay(run, w.Pos); ok {
@@ -229,7 +231,7 @@ func (in *Interp) record(run *jobRun, v Value, at ir.Pos) Value {
 func (in *Interp) recordSpend(run *jobRun, v Value, s spend, at ir.Pos) Value {
 	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: in.rt.seq(), Tokens: s.Tokens, USD: s.USD})
 	run.cursor++
-	in.rt.save(run)
+	in.checkHeld(run, in.rt.save(run), at)
 	return v
 }
 

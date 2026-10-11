@@ -126,6 +126,11 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		b.name("within", tDuration)
 		b.arg(0, fn(tBool))
 		return tBool
+	case "reserve":
+		t := c.fresh()
+		b.arg(0, tSize)
+		b.arg(1, fn(t))
+		return t
 	case "both":
 		l, r := c.fresh(), c.fresh()
 		b.arg(0, fn(l))

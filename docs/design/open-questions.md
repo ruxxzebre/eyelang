@@ -48,7 +48,8 @@ title: "Open questions"
      instead of the history, which compiled jobs will do; until then, a loop can end by starting
      its job again (`watch.start(t)`) so that each run stays short. Should the language say so,
      or offer `continue`-as-new for jobs?
-   - One process per journal (a file lock); several runners need the Postgres store.
+   - One process per journal (a file lock), and one per Postgres database and schema (an
+     advisory lock). Several runners on one database is question 28.
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
     a reply as it arrives want partial results; should `ai.stream` yield an `Iter` of partial
     values, checked as far as they go?
@@ -117,3 +118,34 @@ title: "Open questions"
     which type a literal is, so each implementation needs a constructor (`Square.new(2)`) or a
     `let s: Square = { side: 2 }` first. Should a literal be able to name its type, as
     `Square { side: 2 }` does elsewhere, or is a constructor the one obvious way?
+26. **What `@memory` measures.** A compiled job would count its process's memory. The reference
+    interpreter runs one run at a time and counts what it keeps for a run: its saved state, with
+    every step's result. So "lower priorities pause at their next checkpoint" happens only in that
+    a run waiting for memory isn't overtaken; nothing is paused mid-run. Is saved state the right
+    measure until v0.4, and should `eye runs` show each run's against its `@memory`?
+27. **One flag for the store.** `eye run` takes `--journal file`, `--store postgres://…` and
+    `--memory` (keep nothing), and now `--memory-limit`, which reads like the third. Should the
+    store be one flag, `--store file:… | postgres://… | memory`, and should `eye.toml` name a
+    program's store, including the Postgres schema that today goes in the address as
+    `?search_path=`?
+28. **Several runners on one database.** The Postgres store allows one `eye run` per database
+    and schema, held by an advisory lock. Running more needs runners to claim runs (leases that
+    expire), and the in-memory copy each keeps would no longer be the whole truth. Is that v0.2's,
+    or later? And when a commit whose reply was lost turns out to have arrived, `eye run` stops so
+    a restart reads the database again; should it reload in place instead?
+29. **The shape of task groups.** `taskGroup(fn group { … })` with `group.spawn(fn { … })` needs
+    no syntax, but a `group { … }` block would read better. A group returns its first function's
+    result; should it gather its tasks' results instead? `channel(capacity:)` returns a tuple to
+    destructure; would one `Channel(a)` with `put`, `take` and `close` be simpler, at the cost of
+    handing both ends to everyone? A group whose tasks all wait on channels nobody can reach fails
+    (a forgotten `close()`); should a `Sender` close itself when the task that owns it ends?
+30. **Model prices and routing.** Dollar budgets need prices: Anthropic's are built in, others
+    come from `AI_PRICES`, and a dollar budget on a model with no known price stops the run. Should
+    prices live in `eye.toml`? `AI_URL`, when set, sends every model through the gateway; is an
+    explicit routing table clearer? A function's `@budget` is per call; should it pool across the
+    run? And the prompt is estimated at about 3 bytes a token; should the runtime ask the
+    provider's token counter instead, at the cost of a call?
+31. **`Option` parameters with defaults.** `ai.generate(…, provider: Some(ai.Anthropic))` reads
+    clumsily: the parameter is `Option(Provider) = None` so that leaving it out means "from the
+    model's name". Should a call be able to pass a bare value to such a parameter, or should a
+    default be able to say "chosen later" without `Option`?

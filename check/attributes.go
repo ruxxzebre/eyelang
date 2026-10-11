@@ -445,6 +445,14 @@ func (c *checker) jobLimits(m *module, f *ir.File, d *syntax.Node, job *ir.Job) 
 			By:  param(named["by"], "limit"),
 		}
 	}
+	if args, _, ok := attribute(f, d, "memory"); ok && len(args) == 1 && args[0].Kind == syntax.Size {
+		job.Memory = sizeOf(text(f, args[0].ChildByField(syntax.FieldValue)), text(f, args[0].ChildByField(syntax.FieldUnit)))
+	}
+	if args, _, ok := attribute(f, d, "priority"); ok && len(args) == 1 {
+		if p, ok := ir.PriorityNames[text(f, args[0])]; ok {
+			job.Priority = p
+		}
+	}
 	if args, named, ok := attribute(f, d, "deadline"); ok && len(args) == 1 {
 		l := c.newFunc(m, f, job.Name+" deadline", pos(f, args[0]), ctxGlobal)
 		switch a := args[0]; a.Kind {

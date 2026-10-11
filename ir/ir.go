@@ -267,6 +267,31 @@ type Job struct {
 	Concurrency *Concurrency // @concurrency
 	Limit       *RateLimit   // @limit
 	Deadline    *Func        // @deadline: a Duration from the run's start, or an Instant
+	Memory      Size         // @memory: what a run may hold; 0 without one
+	Priority    Priority     // @priority; Normal without one
+}
+
+// Priority is a job's @priority: which runs go first when memory is short.
+type Priority int
+
+// The priorities, lowest first.
+const (
+	Batch Priority = iota - 2
+	Background
+	Normal
+	Interactive
+)
+
+// PriorityNames are the words @priority takes.
+var PriorityNames = map[string]Priority{"batch": Batch, "background": Background, "normal": Normal, "interactive": Interactive}
+
+func (p Priority) String() string {
+	for name, q := range PriorityNames {
+		if q == p {
+			return name
+		}
+	}
+	return "normal"
 }
 
 // Concurrency is @concurrency(n, by: param): at most N runs at once, for

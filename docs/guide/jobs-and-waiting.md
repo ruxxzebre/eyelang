@@ -258,9 +258,9 @@ public function that waits says `uses {wait}` in its signature, and is called wi
 | Overlapping runs, a flooded API | `@concurrency` and `@limit`, enforced by the runtime |
 
 ::: info Not yet
-`reserve!`, `lock!`, and `all!` and `first!` for joining several runs are designed but not built;
-join child runs one after another, as `nightly` does. `@memory` and `@priority` are checked but
-not enforced; `@budget` is (see [AI calls](/guide/ai-calls#budgets)). See
+`lock!`, and `all!` and `first!` for joining several runs, are designed but not built; join child
+runs one after another, as `nightly` does. `@memory`, `@priority`, `reserve!` and `@budget` (see
+[AI calls](/guide/ai-calls#budgets)) are enforced. See
 [What runs today](/reference/status#jobs-and-waiting).
 :::
 
