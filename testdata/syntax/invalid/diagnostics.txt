@@ -1,0 +1,42 @@
+arm-without-arrow.eye:1:22: expected '=>', found '1'
+attribute-on-import.eye:1:1: import can't have attributes or pub
+attribute-on-let.eye:1:1: let can't have attributes or pub
+bad-escape.eye:1:10: invalid escape sequence "\\q"
+char-two-characters.eye:1:9: a character literal holds one character or escape, such as 'a' or '\n'
+dyn-without-type.eye:1:12: expected a type, found ')'
+else-without-if.eye:1:9: expected a statement before the end of the line
+empty-char.eye:1:9: a character literal holds one character or escape, such as 'a' or '\n'
+extern-type-lower-case.eye:1:13: expected a type name, found 'db'
+extern-type-with-value.eye:1:16: expected a line break or ';', found '='
+illegal-character.eye:1:9: unexpected character '$'
+instant-without-zone.eye:1:25: expected 'in', found end of file
+let-without-value.eye:1:8: expected an expression, found end of file
+lone-question-line.eye:2:4: expected a line break or ';' before the end of the line
+map-key-expression.eye:1:11: a map key must be a string, integer, date, time or parenthesised expression
+missing-comma.eye:1:13: expected ',' or ')', found 'b'
+missing-paren.eye:2:17: expected ')' before the end of the line
+mut-as-name.eye:1:5: expected a pattern, found 'mut'
+named-field-in-alias.eye:1:12: a type argument can't have a name; to declare a variant with named fields, start the list with '|'
+open-range-in-list.eye:1:13: expected an expression, found ']'
+pub-let-in-block.eye:1:9: expected a statement before the end of the line
+pub-test.eye:1:1: test declarations can't be pub
+reserved-name.eye:1:5: expected a pattern, found 'match'
+space-after-wait-marker.eye:1:10: expected a line break or ';', found '!'
+space-before-propagate.eye:1:14: expected a line break or ';', found '?'
+space-before-wait-marker.eye:1:11: expected a line break or ';', found '!'
+start-keyword-removed.eye:1:16: expected a line break or ';', found 'wake'
+statement-at-top-level.eye:1:1: expected a declaration, found 'total'
+then-with-block.eye:2:17: after 'then' comes a single expression, so this '{' starts a record; for several statements, write 'if … { … }'
+then-without-value.eye:1:22: expected an expression, found end of file
+time-needs-two-digits.eye:1:10: expected a line break or ';', found ':'
+trait-brace-next-line.eye:2:13: expected 'fn' before the end of the line
+tuple-one-element.eye:1:12: expected a second element; a tuple has at least two, found ')'
+two-statements-one-line.eye:1:12: expected a line break or ';', found 'b'
+type-inside-block.eye:2:8: expected a line break or ';', found 'T'
+unclosed-block.eye:2:12: expected '}', found end of file
+unclosed-interpolation.eye:1:12: unterminated interpolation: missing }
+unclosed-interpolation.eye:1:14: unterminated string: missing "
+unit-name-without-number.eye:1:14: expected ')', found 's'
+unterminated-multiline-string.eye:1:14: unterminated string: missing """
+unterminated-string.eye:1:9: unterminated string: missing "
+where-without-trait.eye:1:20: expected ':', found '{'

@@ -42,8 +42,8 @@ type stringMode struct {
 	start     int  // offset of the opening quote
 	multiline bool // opened with `"""`, so it may span lines
 	interp    bool // inside `{…}` rather than in the string's text
-	open   int  // offset of the interpolation's `{`
-	depth  int
+	open      int  // offset of the interpolation's `{`
+	depth     int
 }
 
 func (l *lexer) run() {
