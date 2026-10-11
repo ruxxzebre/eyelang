@@ -75,6 +75,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		return 1
 	}
 	in.rt.restore()
+	runsBefore := in.rt.nextRun
 	if hasJobs(prog) {
 		program := ""
 		if len(opts.Args) > 0 {
@@ -109,6 +110,9 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		reported = len(in.rt.failures)
 	}
 	report()
+	if hasJobs(prog) && in.rt.nextRun == runsBefore {
+		in.rt.nothingToDo(stderr, opts.Store)
+	}
 	if hasJobs(prog) {
 		if err := in.serve(ctx, report, stderr, opts.Inbox); err != nil {
 			code = 1

@@ -189,3 +189,87 @@ pub fn main() {
 		t.Errorf("eye runs DIR 1 2: exit %d: %s", code, stderr.String())
 	}
 }
+
+// main starts its jobs with fixed keys, so once they are done a second eye
+// run starts nothing, and says so; eye run --fresh starts over, keeping
+// the old journal as journal.old.
+func TestRunFreshStartsOver(t *testing.T) {
+	dir := program(t, map[string]string{"main.eye": `
+job bake(name: String) -> String {
+  log.info("baking {name}")
+  "{name} is out of the oven"
+}
+
+pub fn main() {
+  bake.start("rye", key: "rye")
+}
+`})
+	journal := filepath.Join(dir, ".eye", "journal")
+	eyeRun := func(args ...string) string {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		if code := run(append(append([]string{"run"}, args...), dir), &stdout, &stderr); code != 0 {
+			t.Fatalf("eye run %v: exit %d: %s", args, code, stderr.String())
+		}
+		return stdout.String() + stderr.String()
+	}
+	if out := eyeRun(); !strings.Contains(out, "baking rye") {
+		t.Fatalf("the first run didn't bake:\n%s", out)
+	}
+	out := eyeRun()
+	if strings.Contains(out, "baking rye") || !strings.Contains(out, "eye run: nothing to do: main started no new run, every run in the store has finished (1), and no job is scheduled; eye run --fresh starts over with an empty journal") {
+		t.Errorf("the second run said:\n%s", out)
+	}
+	if out := eyeRun("--fresh"); !strings.Contains(out, "baking rye") || strings.Contains(out, "nothing to do") {
+		t.Errorf("eye run --fresh said:\n%s", out)
+	}
+	if _, err := os.Stat(journal + ".old"); err != nil {
+		t.Errorf("no old journal: %v", err)
+	}
+	old, err := interp.ReadJournal(journal + ".old")
+	if err != nil || len(old.Runs()) != 1 {
+		t.Errorf("the old journal holds %v, %v; want the first run", old, err)
+	}
+}
+
+// --fresh never empties a database, means nothing with --memory, and moves
+// nothing while another eye run holds the journal.
+func TestRunFreshRefuses(t *testing.T) {
+	dir := program(t, map[string]string{"main.eye": `
+job bake() {}
+
+pub fn main() {
+  bake.start(key: "once")
+}
+`})
+	for _, c := range []struct {
+		args []string
+		env  string
+		want string
+	}{
+		{[]string{"--fresh", "--store", "postgres://app@db/app"}, "", "--fresh starts a journal over, and never empties a database; --store names one"},
+		{[]string{"--fresh"}, "postgres://app@db/app", "--fresh starts a journal over, and never empties a database; $EYE_STORE names one"},
+		{[]string{"--fresh", "--memory"}, "", "--fresh means nothing with --memory"},
+	} {
+		t.Setenv("EYE_STORE", c.env)
+		var stdout, stderr bytes.Buffer
+		if code := run(append(append([]string{"run"}, c.args...), dir), &stdout, &stderr); code != exitUsage || !strings.Contains(stderr.String(), c.want) {
+			t.Errorf("eye run %v with EYE_STORE=%q: exit %d: %s", c.args, c.env, code, stderr.String())
+		}
+	}
+	t.Setenv("EYE_STORE", "")
+
+	journal := filepath.Join(dir, ".eye", "journal")
+	held, err := interp.OpenJournal(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"run", "--fresh", dir}, &stdout, &stderr); code == 0 || !strings.Contains(stderr.String(), "is in use by another eye run") {
+		t.Errorf("eye run --fresh on a held journal: exit %d: %s", code, stderr.String())
+	}
+	if _, err := os.Stat(journal + ".old"); !os.IsNotExist(err) {
+		t.Errorf("the held journal was moved: %v", err)
+	}
+}
