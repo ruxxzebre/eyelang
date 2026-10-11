@@ -1,11 +1,56 @@
 # Eyelang 2 roadmap
 
 **Status, 2026-10-11:** v0.2.0 is released (phase 5; tag `v0.2.0`), after v0.1.0 (phases 0–4,
-2026-10-10). Next is v0.3 (phase 6), whose tasks are broken down next; parts of it were built early
-(contracts over HTTP, contracts served in Eyelang). Development and releases happen on `dev`;
-`main` stays at Eyelang 1 until that changes.
+2026-10-10). Development and releases happen on `dev`; `main` stays at Eyelang 1 until that
+changes.
 
 What runs today, feature by feature: [docs/reference/status.md](docs/reference/status.md).
+
+## What's next
+
+The answer to "what's next?". Keep it current: when a task lands, or a check finds a gap, change
+this list in the same commit. Check it against the code before relying on it.
+
+**Owed by releases already made**
+
+- Phase 5's exit test ran the lab's digest against stand-ins for its services. Nothing written in
+  Eyelang runs in the homelab yet, so the exit criterion "the morning digest runs in the lab" is
+  still open: deploy the digest on Postgres there.
+- Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
+  not built: `World.all |> filter(…)` loads every entity. Not yet a task of any phase.
+
+**Gaps in the core**, which phase 7 and self-hosting need closed, so they come first:
+
+- Function types in signatures aren't typed: a lambda passed for `f: fn(Int) -> Int`, and what
+  calling `f` returns, aren't checked.
+- A private function's inferred type is one type for the whole program, not generic.
+- `NonZero`, `opaque`, and the effects of functions kept in data aren't enforced; the effects
+  `secret`, `publish`, `consume` and `ffi` aren't inferred.
+- `Bytes` and fixed-width integers have no operations, and `s.chars()`, `xs.iter()` and
+  `s.slice()` don't exist (and aren't reported as missing).
+
+**Designed, not built:** `lock!`, `all!` and `first!`, ending an entity with `end(ok)`, `cron(…)`
+schedules, `Problem` and `.context(…)`, `fs`, `process` and `random`, the `Killed` fault,
+`onGap:` and `onOverlap:`, `with memory(…)` in tests, and several runners on one Postgres database.
+
+**Built, not tested:** `start(at:)`, `@on(leaves(view))`, `$EYE_SECRETS`, a rollback after a fault,
+and `Type.f()` through a module (`lex.Lexer.new`), which fails.
+
+**Ahead, in order**
+
+1. The core gaps above, function types and generic private functions first.
+2. The digest in the homelab, closing phase 5's exit criterion.
+3. Phase 6 (v0.3) broken into tasks, beside 6.1 (#42): `@port` and `@allow` enforced (its exit
+   test), `@fresh` and `@destructive`, Notify generated from its contract, Go and TypeScript types
+   and network policy from contracts, model `tools:`, the `agents` module and `eye test --live`.
+   Decide there whether SQL pipelines join it.
+4. Self-hosting's early start: an Eyelang lexer as a test program, checked by the conformance
+   suite. Not begun.
+5. Phase 7 (v0.4), after 1: typed IR (#28), code generation, reference counting with in-place
+   updates, generic specialisation, jobs as short-lived processes.
+
+Open questions 1–31 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
+`Self` (24) and what `@memory` measures (26) bear on phase 7.
 
 What gets built, in what order, and how we know each part is done. The language itself is defined
 in [SPECS.md](SPECS.md).

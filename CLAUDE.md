@@ -4,7 +4,9 @@ Eyelang 2 is a statically typed, compiled language for programs that manage data
 entities and run jobs that mostly wait. This file is the guide for decisions while it is being
 designed and built, for people and coding agents alike. The language is defined in
 [SPECS.md](SPECS.md), the syntax in [tree-sitter-eyelang/grammar.js](tree-sitter-eyelang/grammar.js),
-and the plan in [ROADMAP.md](ROADMAP.md); progress lives in the GitHub issues.
+and the plan in [ROADMAP.md](ROADMAP.md); progress lives in the GitHub issues. Asked "what's
+next?", answer from ROADMAP.md's "What's next" and [docs/reference/status.md](docs/reference/status.md),
+checked against the code, and keep that section current when work lands or a gap turns up.
 
 ## The main idea
 
