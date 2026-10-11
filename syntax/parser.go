@@ -225,22 +225,39 @@ func (p *parser) errorExpected(what string) {
 		return
 	}
 	p.errTok = p.pos
-	found := "'" + p.text(t) + "'"
 	switch {
 	case t.Kind == EOF:
 		// Point just after the last token rather than at the end of the file.
 		end := p.prevEnd()
 		p.errorAt(Span{end, end}, "expected %s, found end of file", what)
 		return
-	case t.Kind == StringStart:
-		found = "a string"
-	case t.Flags&NewlineBefore != 0 && (p.nl || p.atRecoveryPoint()):
+	case t.Kind != StringStart && t.Flags&NewlineBefore != 0 && (p.nl || p.atRecoveryPoint()):
 		// The line ended the construct; the next line is something else.
 		end := p.prevEnd()
 		p.errorAt(Span{end, end}, "expected %s before the end of the line", what)
 		return
 	}
-	p.errorAt(t.Span, "expected %s, found %s", what, found)
+	p.errorAt(t.Span, "expected %s, found %s", what, p.describe(t))
+}
+
+// errorMember reports that a declaration's body expected a member where the
+// current token is. A member starts on a line of its own, so the token itself
+// is the mistake, not the line break before it.
+func (p *parser) errorMember(what string) {
+	t := p.tok()
+	if t.Kind == Illegal || p.pos == p.errTok {
+		return
+	}
+	p.errTok = p.pos
+	p.errorAt(t.Span, "expected %s, found %s", what, p.describe(t))
+}
+
+// describe names a token in a diagnostic: its text, or "a string".
+func (p *parser) describe(t Token) string {
+	if t.Kind == StringStart {
+		return "a string"
+	}
+	return "'" + p.text(t) + "'"
 }
 
 // declarationWords are the contextual keywords that start a declaration.

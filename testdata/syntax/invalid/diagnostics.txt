@@ -3,35 +3,58 @@ attribute-on-import.eye:1:1: import can't have attributes or pub
 attribute-on-let.eye:1:1: let can't have attributes or pub
 bad-escape.eye:1:10: invalid escape sequence "\\q"
 char-two-characters.eye:1:9: a character literal holds one character or escape, such as 'a' or '\n'
+closing-brace-at-top-level.eye:1:1: expected a declaration, found '}'
+contract-member-expression.eye:2:3: expected 'command', 'query' or 'event', found '1'
 dyn-without-type.eye:1:12: expected a type, found ')'
 else-without-if.eye:1:9: expected a statement before the end of the line
 empty-char.eye:1:9: a character literal holds one character or escape, such as 'a' or '\n'
+empty-type-parameters.eye:1:8: expected a type parameter, found ')'
+entity-member-expression.eye:2:3: expected 'state', 'fn' or 'migrate', found '1'
+event-without-on.eye:2:16: expected 'on', found a string
 extern-type-lower-case.eye:1:13: expected a type name, found 'db'
 extern-type-with-value.eye:1:16: expected a line break or ';', found '='
 illegal-character.eye:1:9: unexpected character '$'
+import-empty-names.eye:1:11: expected a name, found '}'
+import-number-name.eye:1:11: expected a name, found '1'
 instant-without-zone.eye:1:25: expected 'in', found end of file
+lambda-without-body.eye:1:14: expected ':' or '{', found '1'
 let-without-value.eye:1:8: expected an expression, found end of file
 lone-question-line.eye:2:4: expected a line break or ';' before the end of the line
 map-key-expression.eye:1:11: a map key must be a string, integer, date, time or parenthesised expression
+map-key-operator.eye:1:19: expected a map key, found '+'
+match-arms-one-line.eye:1:33: expected a line break or ',', found '3'
+migrate-without-from.eye:2:11: expected 'from', found '2'
 missing-comma.eye:1:13: expected ',' or ')', found 'b'
 missing-paren.eye:2:17: expected ')' before the end of the line
 mut-as-name.eye:1:5: expected a pattern, found 'mut'
 named-field-in-alias.eye:1:12: a type argument can't have a name; to declare a variant with named fields, start the list with '|'
+negative-pattern-without-number.eye:2:5: expected a number, found '=>'
 nul-in-comment.eye:1:34: invalid NUL character
+opaque-without-type.eye:1:12: expected 'type', found 'fn'
 open-range-in-list.eye:1:13: expected an expression, found ']'
 pub-let-in-block.eye:1:9: expected a statement before the end of the line
+pub-state.eye:2:7: expected 'fn', found 'state'
 pub-test.eye:1:1: test declarations can't be pub
+pub-trait-signature.eye:2:3: a function without a body can't be pub
+range-pattern-name-end.eye:2:7: expected the end of the range, found 'x'
+range-pattern-negative-end.eye:2:8: expected a number, found '=>'
+record-pattern-number.eye:1:6: expected a field, found '1'
+record-update-without-fields.eye:1:23: expected a field, found '}'
 reserved-name.eye:1:5: expected a pattern, found 'match'
 space-after-wait-marker.eye:1:10: expected a line break or ';', found '!'
 space-before-propagate.eye:1:14: expected a line break or ';', found '?'
 space-before-wait-marker.eye:1:11: expected a line break or ';', found '!'
 start-keyword-removed.eye:1:16: expected a line break or ';', found 'wake'
 statement-at-top-level.eye:1:1: expected a declaration, found 'total'
+statement-second-line.eye:2:1: expected a declaration, found 'total'
 then-with-block.eye:2:17: after 'then' comes a single expression, so this '{' starts a record; for several statements, write 'if … { … }'
 then-without-value.eye:1:22: expected an expression, found end of file
 time-needs-two-digits.eye:1:10: expected a line break or ';', found ':'
-trait-brace-next-line.eye:2:13: expected 'fn' before the end of the line
+trait-brace-next-line.eye:3:3: in a trait, a line break ends a method without a body: put the body's '{' at the end of the signature's line
+trait-member-expression.eye:2:3: expected 'fn', found 'x'
 tuple-one-element.eye:1:12: expected a second element; a tuple has at least two, found ')'
+tuple-pattern-one-element.eye:1:8: expected ',' and a second pattern; a tuple has at least two elements, found ')'
+tuple-type-one-element.eye:1:14: expected ',' and a second type; a tuple type has at least two, found ')'
 two-statements-one-line.eye:1:12: expected a line break or ';', found 'b'
 type-inside-block.eye:2:8: expected a line break or ';', found 'T'
 unclosed-block.eye:2:12: expected '}', found end of file
@@ -40,4 +63,6 @@ unclosed-interpolation.eye:1:14: unterminated string: missing "
 unit-name-without-number.eye:1:14: expected ')', found 's'
 unterminated-multiline-string.eye:1:14: unterminated string: missing """
 unterminated-string.eye:1:9: unterminated string: missing "
+uses-number.eye:1:18: expected an effect, found '1'
 where-without-trait.eye:1:20: expected ':', found '{'
+while-without-block.eye:2:14: expected '{', found '1'

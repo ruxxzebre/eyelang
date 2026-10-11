@@ -3,15 +3,9 @@ package syntax
 // sourceFile parses the whole file: items separated by line breaks or `;`.
 func (p *parser) sourceFile() *Node {
 	b := p.start(SourceFile)
-	for {
-		p.separated(b, EOF, Semicolon, p.item)
-		if p.at(EOF) {
-			break
-		}
-		// A closing delimiter with nothing open.
-		p.errorExpected("a declaration")
-		b.add(errorNode([]*Node{p.bump()}))
-	}
+	// A closing delimiter with nothing open is reported by item and skipped
+	// by separated, which only stops at the end of the file.
+	p.separated(b, EOF, Semicolon, p.item)
 	b.add(p.bump()) // EOF, which holds the trailing trivia
 	return b.done(p)
 }
@@ -74,7 +68,7 @@ func (p *parser) item() *Node {
 		}
 		return p.itemWithoutPrefix()
 	}
-	p.errorExpected("a declaration")
+	p.errorMember("a declaration")
 	skipped := append(nonNil(append(attrs, pub)), p.skipLineNodes()...)
 	return errorNode(skipped)
 }
@@ -383,7 +377,7 @@ func (p *parser) entityMember() *Node {
 		b.field(FieldBody, p.block())
 		return b.done(p)
 	}
-	p.errorExpected("'state', 'fn' or 'migrate'")
+	p.errorMember("'state', 'fn' or 'migrate'")
 	return errorNode(append(attrs, p.skipLineNodes()...))
 }
 
@@ -520,7 +514,13 @@ func (p *parser) member(inTrait bool) *Node {
 	if p.at(KwFn) {
 		return p.function(attrs, pub, inTrait)
 	}
-	p.errorExpected("'fn'")
+	if inTrait && p.at(LBrace) && pub == nil && len(attrs) == 0 {
+		// `fn f(self)` and a `{` on the next line: the line break ended the
+		// method as a signature without a body.
+		p.errorAt(p.tok().Span, "in a trait, a line break ends a method without a body: put the body's '{' at the end of the signature's line")
+		return errorNode(p.skipLineNodes())
+	}
+	p.errorMember("'fn'")
 	return errorNode(append(nonNil(append(attrs, pub)), p.skipLineNodes()...))
 }
 
@@ -583,7 +583,7 @@ func (p *parser) contractMember() *Node {
 		b.field(FieldTopic, p.stringLiteral())
 		return b.done(p)
 	}
-	p.errorExpected("'command', 'query' or 'event'")
+	p.errorMember("'command', 'query' or 'event'")
 	return errorNode(append(attrs, p.skipLineNodes()...))
 }
 
