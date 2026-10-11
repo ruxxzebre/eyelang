@@ -20,9 +20,8 @@ checks" for how to confirm CI).
    dev isn't the default branch. Known gap: `fakes(…)` still returns the plain `Handler` type,
    so `clock(…).calls(op)` fails only at run time; a separate `Fakes` type would catch it.
 2. **Watch the digest's first real run in the homelab** (below), and fix what it shows.
-3. **Run the parser fuzz once**, after lane B's grammar change (eea8493, string effect targets)
-   and before or with #69: `FUZZTIME=60s FUZZWORKERS=2 task fuzz`. It was held back while the
-   disk was full; the last full run (4.7M inputs) was clean, before eea8493.
+3. **Done: the parser fuzz after lane B's grammar change** (eea8493, string effect targets).
+   `FUZZTIME=60s FUZZWORKERS=2 task fuzz` ran clean on dev at 386cc1e.
 
 ## CI and checks
 
