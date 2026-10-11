@@ -213,7 +213,14 @@ fn gather(since: Instant) -> News {
     var pages: List(PageText) = []
     for page in section.pages {
       match web.page!(page.url, via: page.via) {
-        Ok(text) => pages += [{ source: page.name, url: page.url, text: text |> clip(12_000) }]
+        Ok(html) => {
+          let text = plain(html, base: Some(page.url))
+          if text |> size < 200 {
+            problems += ["{page.name}: the page has almost no text; it may need a browser"]
+          } else {
+            pages += [{ source: page.name, url: page.url, text: text |> clip(12_000) }]
+          }
+        }
         Err(e) => problems += ["{page.name}: {e}"]
       }
     }
@@ -233,11 +240,280 @@ fn item(e: miniflux.Entry) -> Item = {
   title: e.title,
   url: e.url,
   published: e.publishedAt,
-  text: e.content |> clip(300),
+  text: e.content |> plain |> clip(300),
 }
 
 fn clip(text: String, limit: Int) -> String =
   if text |> size <= limit then text else "{text |> take(limit)}…"
+
+# ---------------------------------------------------------------- HTML to text
+
+# A port of plain() from the TypeScript digest (html.ts), itself a port of the
+# Python runner's html.parser subclass. Offsets are bytes (SPECS.md §5); the
+# names of tags and attributes are ASCII.
+
+## Elements whose content is left out. Not `form`: ASP.NET sites such as
+## enterprise.gov.ie put the whole page in one.
+let skipped = toSet(["script", "style", "noscript", "svg", "template", "head", "nav", "footer", "iframe"])
+
+## Elements that start a new line.
+let blocks = toSet(
+  "address article aside blockquote br dd div dl dt figcaption h1 h2 h3 h4 h5 h6 header hr li main ol p pre section table td th time tr ul"
+  |> words,
+)
+
+## Elements whose content is raw text: a `<` inside them doesn't open a tag.
+let raw = toSet(["script", "style"])
+
+## Entities by name. Any other is left as it is written.
+let entities: Map(String, String) = {
+  "amp": "&",
+  "lt": "<",
+  "gt": ">",
+  "quot": "\"",
+  "apos": "'",
+  "nbsp": " ",
+  "ndash": "–",
+  "mdash": "—",
+  "hellip": "…",
+  "lsquo": "‘",
+  "rsquo": "’",
+  "ldquo": "“",
+  "rdquo": "”",
+  "euro": "€",
+  "pound": "£",
+  "copy": "©",
+  "reg": "®",
+  "middot": "·",
+  "bull": "•",
+}
+
+## Readable text from HTML, a line for each block, with spaces collapsed. With
+## a base URL, a link becomes `[text](url)`, its target resolved against the
+## base; links within the page, to scripts, mail or phones stay text.
+fn plain(html: String, base: Option(String) = None) -> String {
+  var parts: List(String) = []
+  var link: Option(Link) = None  # the link being read: its text so far, and its target
+  var skip = 0                   # how many skipped elements we are inside
+  var read = 0                   # the text before this has been read
+  var look = 0                   # where the next tag may start
+  while true {
+    let Some(open) = html |> indexOf("<", from: look) else { break }
+    let Some(tag) = tagAt(html, open) else {
+      look = open + 1
+      continue
+    }
+    if skip == 0 { keep(html.slice(read..open) ?? "", mut parts, mut link) }
+    read = tag.end
+    look = tag.end
+    if tag.name == "" { continue }
+    if !tag.closing && raw |> contains(tag.name) {
+      # Go to its end tag without reading what is inside; the end tag leaves it.
+      skip += 1
+      read = closeOf(html, tag.name, from: tag.end) ?? html.byteSize()
+      look = read
+    } else if skipped |> contains(tag.name) {
+      skip = if tag.closing then max(0, skip - 1) else skip + 1
+    } else if blocks |> contains(tag.name) {
+      parts += ["\n"]
+    } else if tag.name == "a" && !tag.closing && skip == 0 && base != None {
+      let target = hrefOf(tag.attributes)
+      let lowered = target |> lower
+      let local = ["#", "javascript:", "mailto:", "tel:"] |> any(fn p: lowered |> startsWith(p))
+      if target != "" && !local {
+        link = match resolve(target, against: base ?? "") {
+          Some(url) => Some({ title: "", url })
+          None => None
+        }
+      }
+    } else if tag.name == "a" && tag.closing && link != None {
+      let Some(l) = link else { continue }
+      let text = l.title |> words |> join(" ")
+      parts += [if text == "" then " " else " [{text}]({l.url}) "]
+      link = None
+    }
+  }
+  if skip == 0 { keep(html.slice(read..html.byteSize()) ?? "", mut parts, mut link) }
+  parts
+    |> join("")
+    |> split("\n")
+    |> map(fn line: line |> words |> join(" "))
+    |> filter(fn line: line != "")
+    |> join("\n")
+}
+
+## Adds text read between tags to the link being read, or else to the parts.
+fn keep(html: String, mut parts: List(String), mut link: Option(Link)) {
+  if html == "" { return }
+  let text = decode(html)
+  match link {
+    Some(l) => link = Some({ l with title: l.title + text })
+    None => parts += [text]
+  }
+}
+
+## A tag, a comment or a declaration (`<!DOCTYPE html>`), which has no name.
+type Tag = { name: String, closing: Bool, attributes: String, end: Int }
+
+## The tag that starts at `<` at offset at, if one does.
+fn tagAt(html: String, at: Int) -> Option(Tag) {
+  if html.slice(at..at + 4) == Some("<!--") {
+    match html |> indexOf("-->", from: at + 4) {
+      Some(close) => return Some({ name: "", closing: false, attributes: "", end: close + 3 })
+      None => {}  # unclosed: read as a declaration, up to the next >
+    }
+  }
+  if byteAt(html, at + 1) == "!" {
+    let close = html |> indexOf(">", from: at + 2)?
+    return Some({ name: "", closing: false, attributes: "", end: close + 1 })
+  }
+  let closing = byteAt(html, at + 1) == "/"
+  let start = if closing then at + 2 else at + 1
+  if !isLetter(byteAt(html, start)) { return None }
+  var i = start + 1
+  while isNameByte(byteAt(html, i)) { i += 1 }
+  let close = html |> indexOf(">", from: i)?
+  Some({
+    name: (html.slice(start..i) ?? "") |> lower,
+    closing,
+    attributes: html.slice(i..close) ?? "",
+    end: close + 1,
+  })
+}
+
+## Where the end tag of a raw element starts, in any case: `</script`.
+fn closeOf(html: String, name: String, from: Int) -> Option(Int) {
+  var look = from
+  while true {
+    let at = html |> indexOf("</", from: look)?
+    let found = html.slice(at + 2..at + 2 + name.byteSize()) ?? ""
+    if found |> lower == name { return Some(at) }
+    look = at + 2
+  }
+}
+
+## The value of a tag's href attribute, decoded and trimmed, or "".
+fn hrefOf(attributes: String) -> String {
+  # Offsets in the lower-case copy are the same as in the original, except
+  # after the few characters whose lower case is longer or shorter.
+  let lowered = attributes |> lower
+  var look = 0
+  while true {
+    let Some(at) = lowered |> indexOf("href", from: look) else { return "" }
+    look = at + 4
+    if at > 0 && isWordByte(byteAt(attributes, at - 1)) { continue }
+    var i = skipSpace(attributes, at + 4)
+    if byteAt(attributes, i) != "=" { continue }
+    i = skipSpace(attributes, i + 1)
+    let quote = byteAt(attributes, i)
+    let value = if quote == "\"" || quote == "'" {
+      let close = attributes |> indexOf(quote, from: i + 1) ?? attributes.byteSize()
+      attributes.slice(i + 1..close) ?? ""
+    } else {
+      var end = i
+      while end < attributes.byteSize() && !isSpace(byteAt(attributes, end)) { end += 1 }
+      attributes.slice(i..end) ?? ""
+    }
+    return value |> decode |> trim
+  }
+}
+
+## Text with its character references replaced: `&amp;`, `&#8364;`, `&#x2014;`.
+## A reference that names nothing stays as it is written.
+fn decode(text: String) -> String {
+  if !(text |> contains("&")) { return text }
+  var parts: List(String) = []
+  var read = 0
+  while true {
+    let Some(amp) = text |> indexOf("&", from: read) else { break }
+    parts += [text.slice(read..amp) ?? ""]
+    let (found, end) = entityAt(text, amp + 1)
+    parts += [found ?? (text.slice(amp..end) ?? "")]
+    read = end
+  }
+  parts += [text.slice(read..text.byteSize()) ?? ""]
+  parts |> join("")
+}
+
+## What the reference after a `&` at offset at stands for, if anything, and
+## where it ends, after its optional `;`.
+fn entityAt(text: String, at: Int) -> (Option(String), Int) {
+  let numeric = byteAt(text, at) == "#"
+  let hex = numeric && (byteAt(text, at + 1) |> lower) == "x"
+  let start = if hex then at + 2 else if numeric then at + 1 else at
+  var i = start
+  while referenceByte(byteAt(text, i), hex:, numeric:) { i += 1 }
+  if i == start { return (None, at) }
+  let name = text.slice(start..i) ?? ""
+  let end = if byteAt(text, i) == ";" then i + 1 else i
+  let value = if numeric {
+    match parseInt(name, base: if hex then 16 else 10) {
+      Ok(code) if code > 0 => fromCode(code) |> map(fn c: "{c}")
+      _ => None
+    }
+  } else {
+    entities |> get(name |> lower)
+  }
+  (value, end)
+}
+
+## The resolved URL of a link's target, given the URL of the page it is on.
+fn resolve(target: String, against: String) -> Option(String) {
+  if hasScheme(target) { return Some(target) }
+  let page = before(before(against, "#"), "?")
+  let schemeEnd = page |> indexOf("://")?
+  let pathStart = page |> indexOf("/", from: schemeEnd + 3) ?? page.byteSize()
+  let origin = page.slice(0..pathStart)?
+  let path = page.slice(pathStart..page.byteSize())?
+  if target |> startsWith("//") { return Some("{page.slice(0..schemeEnd + 1)?}{target}") }
+  if target |> startsWith("/") { return Some(origin + target) }
+  if target |> startsWith("?") { return Some(origin + path + target) }
+  # The directory: the path up to its last slash.
+  var dirs = path |> split("/") |> reverse |> drop(1) |> reverse
+  var rest = target
+  while true {
+    if rest |> startsWith("./") {
+      rest = rest |> drop(2)
+    } else if rest |> startsWith("../") {
+      rest = rest |> drop(3)
+      if dirs |> size > 1 { dirs = dirs |> reverse |> drop(1) |> reverse }
+    } else {
+      break
+    }
+  }
+  Some("{origin}{dirs |> join("/")}/{rest}")
+}
+
+## Whether a link's target starts with a scheme, such as `https:`.
+fn hasScheme(target: String) -> Bool {
+  let Some(colon) = target |> indexOf(":") else { return false }
+  let name = target.slice(0..colon) ?? ""
+  colon > 0 && isLetter(byteAt(target, 0)) && name |> chars |> all(fn c: isSchemeChar("{c}"))
+}
+
+## s up to the first mark in it, or all of s.
+fn before(s: String, mark: String) -> String =
+  s.slice(0..(s |> indexOf(mark) ?? s.byteSize())) ?? s
+
+## The one-byte text at offset i, or "" past the end or inside a character.
+fn byteAt(s: String, i: Int) -> String = if i < 0 then "" else s.slice(i..i + 1) ?? ""
+
+fn referenceByte(c: String, hex: Bool, numeric: Bool) -> Bool =
+  if hex then isHexDigit(c) else if numeric then isDigit(c) else isLetter(c)
+
+fn isLetter(c: String) -> Bool = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z")
+fn isDigit(c: String) -> Bool = c >= "0" && c <= "9"
+fn isHexDigit(c: String) -> Bool = isDigit(c) || (c >= "a" && c <= "f") || (c >= "A" && c <= "F")
+fn isWordByte(c: String) -> Bool = isLetter(c) || isDigit(c) || c == "_"
+fn isNameByte(c: String) -> Bool = isWordByte(c) || c == "-"
+fn isSchemeChar(c: String) -> Bool = isWordByte(c) || c == "+" || c == "-" || c == "."
+fn isSpace(c: String) -> Bool = c == " " || c == "\t" || c == "\n" || c == "\r" || c == "\u{C}"
+
+fn skipSpace(s: String, from: Int) -> Int {
+  var i = from
+  while isSpace(byteAt(s, i)) { i += 1 }
+  i
+}
 
 # ---------------------------------------------------------------- the briefing
 
@@ -360,4 +636,31 @@ test "a page that can't be read is reported, not fatal" {
   let text = render({ highlights: ["Rent cap extended"], sections: [] }, news)
   expect(text |> contains("## Sources not read"))
   expect(text |> contains("- Dublin City Council events: Blocked"))
+}
+
+test "entities decode, and unknown ones stay" {
+  expect(decode("Fish &amp; chips &#8364;5 &#x2014; &euro; &bogus;") == "Fish & chips €5 — € &bogus;")
+  expect(decode("AT&T &#0; &") == "AT&T &#0; &")
+}
+
+test "blocks become lines, and skipped elements vanish" {
+  let html = """
+    <head><title>T</title></head><nav>Menu</nav><h1>Head</h1><p>One <b>two</b></p>
+    <script>if (a < b) \{ x = "</p>"; \}</script><footer>Foot</footer><div>Three</div>
+    """
+  expect(plain(html) == "Head\nOne two\nThree")
+  expect(plain("<nav><SCRIPT>x</SCRIPT>Menu</nav><p>After</p>") == "After")
+  expect(plain("<!-- <p>gone</p> --><!DOCTYPE html>a < b") == "a < b")
+}
+
+test "links keep their target only with a base, and never for in-page or script links" {
+  let html = "<p><a href=\"/a?x=1&amp;y=2\">First  link</a> <a href=\"#top\">Top</a> <a HREF='javascript:x()'>J</a></p>"
+  expect(plain(html, base: Some("https://site.example/news/")) == "[First link](https://site.example/a?x=1&y=2) Top J")
+  expect(plain(html) == "First link Top J")
+  expect(plain("<a href=more>More</a>", base: Some("https://site.example/news/today?page=2")) == "[More](https://site.example/news/more)")
+  expect(plain("<a xhref=x href=../up>Up</a>", base: Some("https://site.example/a/b/")) == "[Up](https://site.example/a/up)")
+}
+
+test "a form still yields its text, since ASP.NET pages live in one" {
+  expect(plain("<form><p>Notice</p></form>") == "Notice")
 }
