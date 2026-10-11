@@ -57,11 +57,12 @@ func (b *builtinArgs) arg(i int, want typ) typ {
 	}
 	if t, ok := b.types[i]; ok {
 		if want != nil {
-			b.x.expect(b.pos[i].Value.Position(), want, t)
+			b.x.giving(func() { b.x.expect(b.pos[i].Value.Position(), want, t) })
 		}
 		return t
 	}
-	t := b.x.check(b.pos[i].Value, want)
+	var t typ
+	b.x.giving(func() { t = b.x.check(b.pos[i].Value, want) })
 	b.types[i] = t
 	return t
 }
@@ -74,7 +75,8 @@ func (b *builtinArgs) name(n string, want typ) typ {
 	if t, ok := b.ntypes[n]; ok {
 		return t
 	}
-	t := b.x.check(a.Value, want)
+	var t typ
+	b.x.giving(func() { t = b.x.check(a.Value, want) })
 	b.ntypes[n] = t
 	return t
 }
@@ -108,7 +110,7 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	option := func(t typ) typ { return &tcon{name: "Option", decl: c.ts.option, args: []typ{t}} }
 	result := func(t, e typ) typ { return &tcon{name: "Result", decl: c.ts.result, args: []typ{t, e}} }
 	fn := func(ret typ, params ...typ) typ {
-		f := &tfun{ret: ret}
+		f := &tfun{ret: ret, callback: "f"} // what the call passes in
 		for _, p := range params {
 			f.params = append(f.params, fparam{t: p})
 		}

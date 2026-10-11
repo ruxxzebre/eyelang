@@ -81,7 +81,7 @@ func (c *checker) loadBuiltins() {
 func (x *fnCheck) builtinEffects(name string, args []ir.Arg) {
 	for _, u := range x.c.builtins.uses[name] {
 		if u != "wait" {
-			x.top.effect(namedEffect(u, args))
+			x.effect(namedEffect(u, args))
 		}
 	}
 }

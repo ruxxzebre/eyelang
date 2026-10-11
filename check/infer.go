@@ -19,8 +19,6 @@ import (
 // type. Parameters and results a private function leaves out are inferred
 // from its body and its calls; they are the same at every call.
 //
-// A few things are approximated and say so where they are: the effects a
-// function type states, and NonZero divisors, which are their number type.
 // What can't be typed is reported, never left quietly unknown (unknownf).
 
 // typeState is what type checking keeps across functions.
@@ -31,8 +29,17 @@ type typeState struct {
 	checking map[*ir.Global]bool
 	effects  map[*ir.Func]map[string]bool // effects each function has itself
 	callees  map[*ir.Func][]*ir.Func      // the functions each calls
-	jobSlots map[*ir.Func][]typ           // slot types of job bodies, for the Save check
-	steps    []stepResult                 // a job's `!` calls and what they return, for the Save check
+	// The same for each lambda, whose effects also count in the function
+	// it is written in, and the function types that limit function values
+	// (fnfx.go).
+	lambdaEffects map[*ir.Func]map[string]bool
+	lambdaCallees map[*ir.Func][]*ir.Func
+	fxLimits      []fxLimit
+	// giving is the function whose call's arguments are being checked,
+	// where what a function value given as a callback states counts.
+	giving   *fnCheck
+	jobSlots map[*ir.Func][]typ // slot types of job bodies, for the Save check
+	steps    []stepResult       // a job's `!` calls and what they return, for the Save check
 	// inferred says how far a function whose types are inferred has got,
 	// and schemes holds the generic type each one has once it is checked.
 	inferred map[*ir.Func]inferState
@@ -145,6 +152,7 @@ func (c *checker) checkTypes() {
 		params: map[*ir.Func][]typ{}, results: map[*ir.Func]typ{}, globals: map[*ir.Global]typ{},
 		checking: map[*ir.Global]bool{}, effects: map[*ir.Func]map[string]bool{},
 		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{},
+		lambdaEffects: map[*ir.Func]map[string]bool{}, lambdaCallees: map[*ir.Func][]*ir.Func{},
 		inferred: map[*ir.Func]inferState{}, schemes: map[*ir.Func]*scheme{},
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
@@ -387,7 +395,11 @@ func (x *fnCheck) operation(op *ir.Op) typ {
 func (c *checker) paramType(fn *ir.Func, i int, env typeEnv, rigid bool) typ {
 	p := fn.Params[i]
 	if p.Type != nil {
-		return c.fromExpr(p.Type, env, rigid)
+		t := c.fromExpr(p.Type, env, rigid)
+		if !p.Mut {
+			markCallbacks(t, p.Name)
+		}
+		return t
 	}
 	ps := c.ts.params[fn]
 	if ps == nil {
@@ -532,6 +544,9 @@ func (x *fnCheck) expect(at ir.Pos, want, got typ) bool {
 		if m.dyn != nil {
 			msg += fmt.Sprintf(": %s doesn't implement %s", show(m.lacks), m.dyn.trait.Name)
 		}
+		if m.why != "" {
+			msg += ": " + m.why
+		}
 		msg += x.c.offsetHint(want, got)
 		x.c.typeErrorf(at, "%s", msg)
 		return false
@@ -586,7 +601,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 	case *ir.MethodCall:
 		return x.methodCall(e, want)
 	case *ir.Waiting:
-		x.top.effect("wait")
+		x.effect("wait")
 		prev := x.waiting
 		x.waiting = e.Call
 		t := x.check(e.Call, want)
@@ -859,10 +874,10 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 		// A function named as a value may be called anywhere it goes, so
 		// its effects count where it is named, as a lambda's do where it is
 		// written (SPECS.md §12): `xs |> map(stamp)` uses what stamp uses.
-		x.top.callee(d)
+		x.callee(d)
 		if d.Extern && d.HasUses {
 			for _, u := range d.Uses {
-				x.top.effect(u)
+				x.effect(u)
 			}
 		}
 		f := c.funcType(d, nil)
@@ -870,6 +885,7 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 			// Named as a value: it is called wherever it goes, with the
 			// types it is used at here.
 			x.useGeneric(f, d.Name, e.Pos)
+			f.fx = newFx(fxSrc{fn: d, name: d.Name, at: e.Pos})
 		}
 		return f
 	case *ir.Global:
@@ -886,8 +902,13 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 		}
 		return c.unknownf(e.Pos, "internal error: view %s has no entity", d.Name)
 	case *ir.Op:
-		x.top.effect("net " + d.Contract.Name + "." + d.Name)
-		return c.opType(d)
+		effect := "net " + d.Contract.Name + "." + d.Name
+		x.effect(effect)
+		t := c.opType(d)
+		if f, ok := t.(*tfun); ok && x.calling != ir.Expr(e) {
+			f.fx = newFx(fxSrc{fixed: []string{effect}, name: d.Name, at: e.Pos})
+		}
+		return t
 	case *ir.Event:
 		return con("Event", c.fromExpr(d.Type, typeEnv{}, false))
 	case *ir.Module:
@@ -895,7 +916,15 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 	case ir.Builtin:
 		if fn := c.builtins.funcs[d.Name]; fn != nil {
 			x.builtinEffects(d.Name, nil) // named as a value: the bare kind
-			return c.funcType(fn, nil)
+			f := c.funcType(fn, nil)
+			if x.calling != ir.Expr(e) {
+				var fixed []string
+				for _, u := range c.builtins.uses[d.Name] {
+					fixed = append(fixed, namedEffect(u, nil))
+				}
+				f.fx = newFx(fxSrc{fixed: fixed, name: d.Name, at: e.Pos})
+			}
+			return f
 		}
 		return c.unknownf(e.Pos, "%s can't be passed by name yet, as it takes more than one kind of argument: pass a lambda that calls it, as fn x: %s(x)", d.Name, d.Name)
 	}
@@ -987,12 +1016,12 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 			x.args(&tfun{params: []fparam{{name: "id", t: id}}, ret: tUnit}, e.Args, d.Name, e.Pos)
 			return con("Ref", &tcon{name: d.Name, entity: d})
 		case *ir.Op:
-			x.top.effect("net " + d.Contract.Name + "." + d.Name)
+			x.effect("net " + d.Contract.Name + "." + d.Name)
 		case *ir.Func:
-			x.top.callee(d)
+			x.callee(d)
 			if d.Extern && d.HasUses {
 				for _, u := range d.Uses {
-					x.top.effect(u)
+					x.effect(u)
 				}
 			}
 		}
@@ -1036,7 +1065,7 @@ func (x *fnCheck) apply(callee typ, args []ir.Arg, want typ, name string, at ir.
 	switch f := prune(callee).(type) {
 	case *tfun:
 		for _, u := range f.uses {
-			x.top.effect(u) // what the function's type says it may do
+			x.effect(u) // what the function's type says it may do
 		}
 		x.args(f, args, name, at)
 		return f.ret
@@ -1045,7 +1074,9 @@ func (x *fnCheck) apply(callee typ, args []ir.Arg, want typ, name string, at ir.
 			x.inferArgs(args)
 			return x.c.unknownf(at, "%s's type is %s, which may be any type, so it can't be called: give it a function type, as fn(…) -> …", name, f.name)
 		}
-		fn := &tfun{ret: x.c.fresh()}
+		// An untyped parameter called as a function: whatever is passed in
+		// is a callback.
+		fn := &tfun{ret: x.c.fresh(), callback: name}
 		for _, a := range args {
 			fn.params = append(fn.params, fparam{t: x.check(a.Value, nil)})
 		}
@@ -1109,7 +1140,7 @@ func (x *fnCheck) args(f *tfun, args []ir.Arg, name string, at ir.Pos) {
 				x.check(a.Value, nil)
 				continue
 			}
-			x.check(a.Value, f.params[target[i]].t)
+			x.giving(func() { x.check(a.Value, f.params[target[i]].t) })
 		}
 	}
 	for j, p := range f.params {
@@ -1119,6 +1150,15 @@ func (x *fnCheck) args(f *tfun, args []ir.Arg, name string, at ir.Pos) {
 	}
 	x.useGeneric(f, name, at)
 	x.mutArgs(f, args, target, name)
+}
+
+// giving runs check, which checks a call's argument: a function value given
+// there as a callback counts what its type states here (fnfx.go).
+func (x *fnCheck) giving(check func()) {
+	outer := x.c.ts.giving
+	x.c.ts.giving = x
+	defer func() { x.c.ts.giving = outer }()
+	check()
 }
 
 // useGeneric records what a use of a generic function asks of the types it
@@ -1244,7 +1284,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	if _, isSelf := e.Recv.(*ir.Self); isSelf && x.entity != nil {
 		if m, ok := x.entity.Methods[e.Name]; ok {
 			c.useMethod(e, m)
-			x.top.callee(m) // its effects count here
+			x.callee(m) // its effects count here
 			return x.applyFunc(m, nil, e.Args, e.Name, e.Pos)
 		}
 	}
@@ -1253,7 +1293,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		switch {
 		case r.name == "Ref" && r.decl == nil && len(r.args) == 1:
 			if s, ok := prune(r.args[0]).(*tcon); ok && s.entity != nil {
-				x.top.effect("entity " + s.entity.Name)
+				x.effect("entity " + s.entity.Name)
 				x.entityCall(e)
 				if e.Name == "read" {
 					c.useName(e, method("read"))
@@ -1262,7 +1302,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				}
 				if m, ok := s.entity.Methods[e.Name]; ok {
 					c.useMethod(e, m)
-					x.top.callee(m) // its effects count here
+					x.callee(m) // its effects count here
 					x.privateMethod(m, e)
 					return x.applyFunc(m, nil, e.Args, s.entity.Name+"."+e.Name, e.Pos)
 				}
@@ -1276,9 +1316,9 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		case r.name == "Event" && r.decl == nil && e.Name == "publish":
 			c.useName(e, method("publish"))
 			if ev := eventOf(e.Recv); ev != nil {
-				x.top.effect("publish " + ev.Contract.Name + "." + ev.Name)
+				x.effect("publish " + ev.Contract.Name + "." + ev.Name)
 			} else {
-				x.top.effect("publish")
+				x.effect("publish")
 			}
 			x.stepCall(e, "publishing")
 			x.args(&tfun{params: []fparam{{name: "value", t: r.args[0]}}, ret: tUnit}, e.Args, "publish", e.Pos)
@@ -1300,7 +1340,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			if m, ok := r.decl.Methods[e.Name]; ok && m.HasSelf {
 				c.useMethod(e, m)
 				x.privateMethod(m, e)
-				x.top.callee(m)
+				x.callee(m)
 				if m.MutSelf && e.RecvPlace == nil {
 					what := placeText(e.Recv)
 					if what == "it" {
@@ -1329,7 +1369,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		// A dyn value has its trait's methods, looked up at run time.
 		if m, ok := r.trait.Methods[e.Name]; ok && m.HasSelf {
 			c.useMethod(e, m)
-			x.top.callee(m) // its effects count here
+			x.callee(m) // its effects count here
 			env := typeEnv{}
 			for i, p := range r.trait.Params {
 				if i < len(r.args) {
@@ -1348,7 +1388,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			for _, b := range c.ts.bounds[r] {
 				if m, ok := b.trait.Methods[e.Name]; ok && m.HasSelf {
 					c.useMethod(e, m)
-					x.top.callee(m) // its effects count here
+					x.callee(m) // its effects count here
 					env := typeEnv{}
 					for i, p := range b.trait.Params {
 						if i < len(b.args) {
@@ -1371,7 +1411,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	if r, ok := prune(recv).(*tcon); ok && r.decl == nil && r.entity == nil {
 		if m := c.implMethod(r, e.Name); m != nil {
 			c.useMethod(e, m)
-			x.top.callee(m) // its effects count here
+			x.callee(m) // its effects count here
 			return x.applyFunc(m, typeEnv{}, e.Args, r.name+"."+e.Name, e.Pos)
 		}
 	}
@@ -1412,7 +1452,7 @@ func (x *fnCheck) channelMethod(r *tcon, e *ir.MethodCall) typ {
 	}
 	switch {
 	case r.name == "TaskGroup" && e.Name == "spawn":
-		return sig(tUnit, fparam{name: "f", t: &tfun{ret: c.fresh()}})
+		return sig(tUnit, fparam{name: "f", t: &tfun{ret: c.fresh(), callback: "f"}})
 	case r.name == "Sender" && e.Name == "put":
 		return sig(tUnit, fparam{name: "value", t: r.args[0]})
 	case r.name == "Sender" && e.Name == "close":
@@ -1543,13 +1583,13 @@ func (x *fnCheck) field(e *ir.Field) typ {
 	case *tentity:
 		if e.Name == "all" {
 			c.useName(e, GoText{File: "check/infer.go", Text: `e.Name == "all"`})
-			x.top.effect("entity " + r.e.Name)
+			x.effect("entity " + r.e.Name)
 			return con("List", &tcon{name: r.e.Name, entity: r.e})
 		}
 	case *tcon:
 		if r.name == "Ref" && r.decl == nil && len(r.args) == 1 {
 			if s, ok := prune(r.args[0]).(*tcon); ok && s.entity != nil && e.Name != "id" {
-				x.top.effect("entity " + s.entity.Name)
+				x.effect("entity " + s.entity.Name)
 			}
 		}
 		if d, ok := c.opaqueTo(x.top.fn.Module, r); ok {
@@ -2041,13 +2081,19 @@ func equalTypes(a, b typ) bool {
 func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 	c := x.c
 	inner := c.newFnCheck(e.Func, kindLambda, x)
+	f := &tfun{ret: c.fresh(), fx: newFx(fxSrc{fn: e.Func, lambda: true, name: "this function", at: e.Pos})}
 	for _, capt := range e.Func.Captures {
 		if capt.Slot < len(inner.slots) {
-			inner.slots[capt.Slot] = x.check(capt.From, nil)
+			t := x.check(capt.From, nil)
+			inner.slots[capt.Slot] = t
+			// A lambda that captures a callback may call it, so what it
+			// does is whatever was passed in.
+			if g, ok := prune(t).(*tfun); ok && g.callback != "" && f.fx.callback == "" {
+				f.fx.callback, f.fx.callbackAt = g.callback, e.Pos
+			}
 		}
 	}
 	params := e.Func.Params
-	f := &tfun{ret: c.fresh()}
 	w, _ := prune(orNil(want)).(*tfun)
 	switch {
 	case w != nil && len(w.params) == len(params):
@@ -2352,15 +2398,28 @@ func (x *fnCheck) bindAnyArgs(p *ir.PVariant, t typ, at ir.Pos) {
 
 // ---------------------------------------------------------------- effects as they are found
 
+// effect records an effect where it is found: in the outermost function, and
+// in each lambda it is written inside, whose type may have to state it.
 func (x *fnCheck) effect(e string) {
-	set := x.c.ts.effects[x.fn]
+	for y := x; y.outer != nil; y = y.outer {
+		addEffect(x.c.ts.lambdaEffects, y.fn, e)
+	}
+	addEffect(x.c.ts.effects, x.top.fn, e)
+}
+
+func addEffect(into map[*ir.Func]map[string]bool, f *ir.Func, e string) {
+	set := into[f]
 	if set == nil {
 		set = map[string]bool{}
-		x.c.ts.effects[x.fn] = set
+		into[f] = set
 	}
 	set[e] = true
 }
 
+// callee records a function whose effects count here, as effect does.
 func (x *fnCheck) callee(f *ir.Func) {
-	x.c.ts.callees[x.fn] = append(x.c.ts.callees[x.fn], f)
+	for y := x; y.outer != nil; y = y.outer {
+		x.c.ts.lambdaCallees[y.fn] = append(x.c.ts.lambdaCallees[y.fn], f)
+	}
+	x.c.ts.callees[x.top.fn] = append(x.c.ts.callees[x.top.fn], f)
 }

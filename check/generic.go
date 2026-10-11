@@ -193,6 +193,9 @@ func (c *checker) instantiate(fn *ir.Func, s *scheme) *tfun {
 		pt := s.params[i]
 		if pt == nil {
 			pt = c.fromExpr(p.Type, typeEnv{}, false)
+			if !p.Mut {
+				markCallbacks(pt, p.Name)
+			}
 		} else {
 			pt = sub(pt)
 		}

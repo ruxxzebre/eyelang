@@ -110,8 +110,6 @@ Checker:
 - A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`
   wraps its result in a one-variant type to work around it.
 - `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.
-- A function stored in data whose effects its type doesn't state is still accepted; calling it
-  counts only what the type states. A fix needs effects tracked per lambda.
 - Generic private functions: `double(2.5)` gives two errors where one would do, and calling
   itself at a bigger type isn't detected.
 - `@allow(nobody)` is unchecked; it belongs to 6.2 (#54).

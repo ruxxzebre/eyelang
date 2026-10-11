@@ -36,11 +36,22 @@ type (
 		ret    typ
 		bounds []boundUse // traits a call must give the function's type variables
 		// uses are the effects a function type states, which a call of a
-		// value of that type has (SPECS.md §12).
-		uses []string
+		// value of that type has (SPECS.md §12). hasUses is set when its
+		// type was written with a uses clause, even an empty one.
+		uses    []string
+		hasUses bool
 		// ops are an inferred generic function's operators on its type
 		// variables, which each call checks for its own types.
 		ops []pendingOp
+		// callback names the parameter whose type this is, when it is
+		// written without uses: the function passed in is a callback, whose
+		// effects count where it is given, so it may do anything.
+		callback string
+		// fx is set on the type of a function value, a lambda or a function
+		// named as a value: what it does is known once every effect is, and
+		// a function type that states its effects is checked against it
+		// then (fxLimit).
+		fx *fxVar
 	}
 	ttuple struct{ elems []typ }
 	tvar   struct {
@@ -194,7 +205,8 @@ func (k litKind) allows(c *tcon) bool {
 type mismatch struct {
 	want, got typ
 	dyn       *tdyn
-	lacks     typ // the type that doesn't implement dyn's trait
+	lacks     typ    // the type that doesn't implement dyn's trait
+	why       string // why two function types differ in what they may do
 }
 
 // unify makes a and b the same type, binding type variables as needed. It
@@ -221,7 +233,7 @@ func (c *checker) unify(want, got typ) *mismatch {
 	differ := func(inner *mismatch) *mismatch {
 		m := &mismatch{want: want, got: got}
 		if inner != nil {
-			m.dyn, m.lacks = inner.dyn, inner.lacks
+			m.dyn, m.lacks, m.why = inner.dyn, inner.lacks, inner.why
 		}
 		return m
 	}
@@ -265,6 +277,11 @@ func (c *checker) unify(want, got typ) *mismatch {
 		}
 		if m := c.unify(x.ret, y.ret); m != nil {
 			return differ(m)
+		}
+		if why := c.unifyEffects(x, y); why != "" {
+			m := differ(nil)
+			m.why = why
+			return m
 		}
 		return nil
 	case *tjob:
@@ -453,6 +470,9 @@ func writeType(b *strings.Builder, t typ, names map[*tvar]string) {
 				writeType(b, x.ret, names)
 			}
 		}
+		if len(x.uses) > 0 || x.hasUses {
+			b.WriteString(" uses {" + strings.Join(x.uses, ", ") + "}")
+		}
 	case *ttuple:
 		b.WriteString("(")
 		for i, e := range x.elems {
@@ -569,7 +589,7 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 		if t.Result != nil {
 			f.ret = c.fromExpr(t.Result, env, rigid)
 		}
-		f.uses = t.Uses
+		f.uses, f.hasUses = t.Uses, t.HasUses
 		return f
 	case "record":
 		return c.unknownf(at, "a record type is written in a type declaration, as `type Name = { … }`, and used by its name")

@@ -54,9 +54,9 @@ have no issue yet.
 
 **Ahead, in order**
 
-1. The gaps in the core that phase 7 and self-hosting need closed: a function type in a signature
-   has its shape checked but not its effects. Then the checker's remaining partial rows in
-   status.md.
+1. The gaps in the core that phase 7 and self-hosting need closed: the checker's remaining
+   partial rows in status.md. (Function types now state their effects: a function kept in data
+   does no more than its type says, and callbacks can't be kept there.)
 2. The digest in the homelab, closing phase 5's exit criterion.
 3. Phase 6 (v0.3): its tasks are below the phase, each with its issue (6.1 to 6.12). `@port` and
    `@allow` (6.2) need `pub` and `opaque` enforced first, from item 1. v0.3 also brings the

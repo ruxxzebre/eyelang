@@ -46,6 +46,7 @@ func (c *checker) checkEffects() {
 		c.checkImplEffects(m, all)
 	}
 	c.checkMigrationEffects(all)
+	c.checkFnLimits(all)
 	c.checkStepResults(all)
 	for f, set := range all {
 		f.Waits = set["wait"]

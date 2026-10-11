@@ -66,6 +66,17 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
 
   In a function's return type, the `uses` after a function type belongs to that function type.
 
+  Whoever calls a stored function later counts only what its type states, so a function kept
+  there may do no more: `{ name: "n", run: fn e: now() }` is an error, `this function uses clock,
+  which its type here, fn(Event) uses {net Notify.send}, doesn't list`. The same holds for a
+  lambda or a named function put in a list, returned, or passed where a parameter's function type
+  has a `uses` clause, which is then a limit. A parameter's function type without `uses`, as in
+  `map`'s `fn(a) -> b` or `race`'s `List(fn() -> a)`, takes a callback, which may do anything;
+  so a callback can't be kept in data, nor can a lambda that calls one. To keep it, state its
+  effects in the parameter's type: `fn register(run: fn(Event) uses {clock}) -> Handler`. A
+  stored function given as a callback, as in `xs |> map(h.run)`, does what its type states, which
+  counts where it is given.
+
 **`!` in jobs.** Inside a job, `!` marks every recorded step: it runs once and its result is
 recorded, so a resumed run never repeats it and sees the same values. The steps are:
 

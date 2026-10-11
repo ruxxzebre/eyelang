@@ -102,6 +102,7 @@ construct that also works outside that domain.
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
+| Callbacks and stored functions | **A parameter's function type without `uses` takes a callback; every other function type states its effects.** A callback may do anything, and its effects count where it is given. A lambda or named function kept in a field, a collection or a result does no more than that type states, and a callback can't be kept in data without its parameter's type stating its effects (section 12) | Higher-order functions stay generic over effects without effect variables, and a stored function can't do behind its caller's back what the caller's signature doesn't show |
 | Writing effects | **`eye fmt` writes public functions' `uses` clauses.** Formatting a program's directory checks the program and writes each public function's inferred effects into its signature: it adds what is missing and drops what the body no longer does. A file formatted alone, and a program with other errors, keep their clauses as written (section 12) | Effects in a signature are there for the reviewer, who reads them in the diff; working them out and keeping them current is the compiler's job, not the author's, and a permission the code stopped using doesn't linger |
 | Tests and the machine | **A test works in an empty directory of its own, and draws random numbers from a fixed seed.** `fs` and `process` resolve relative paths there, and it is removed when the test ends | A test that touches files or runs programs gives the same result on every run and every machine, and can't change the repository it runs in |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
@@ -795,6 +796,17 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
   ```
 
   In a function's return type, the `uses` after a function type belongs to that function type.
+
+  Whoever calls a stored function later counts only what its type states, so a function kept
+  there may do no more: `{ name: "n", run: fn e: now() }` is an error, `this function uses clock,
+  which its type here, fn(Event) uses {net Notify.send}, doesn't list`. The same holds for a
+  lambda or a named function put in a list, returned, or passed where a parameter's function type
+  has a `uses` clause, which is then a limit. A parameter's function type without `uses`, as in
+  `map`'s `fn(a) -> b` or `race`'s `List(fn() -> a)`, takes a callback, which may do anything;
+  so a callback can't be kept in data, nor can a lambda that calls one. To keep it, state its
+  effects in the parameter's type: `fn register(run: fn(Event) uses {clock}) -> Handler`. A
+  stored function given as a callback, as in `xs |> map(h.run)`, does what its type states, which
+  counts where it is given.
 
 **`!` in jobs.** Inside a job, `!` marks every recorded step: it runs once and its result is
 recorded, so a resumed run never repeats it and sees the same values. The steps are:

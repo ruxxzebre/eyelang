@@ -302,6 +302,39 @@ pub fn pure(f: fn(Int)) = f(1)`, []string{
 			"2:1: fire uses clock, which its signature doesn't list",
 			"6:1: each uses clock, which its signature doesn't list",
 		}},
+		{"a function kept in data does only what its type states", `type Handler = { name: String, run: fn(Int) -> Instant }
+type Timed = { run: fn(Int) -> Instant uses {clock} }
+fn stamp(n: Int) -> Instant = now()
+fn keep(f: fn(Int) -> Instant) -> Handler = { name: "k", run: f }
+fn wrap(f: fn(Int) -> Instant) -> Handler = { name: "w", run: fn n: f(n) }
+fn lambda() -> Handler = { name: "l", run: fn n: now() }
+fn named() -> Handler = { name: "n", run: stamp }
+fn fine() -> Timed = { run: fn n: now() }
+fn widen(t: Timed) -> Handler = { name: "t", run: t.run }
+fn list() -> List(fn(Int) -> Instant) = [stamp]
+fn branches(c: Bool) -> Handler = { name: "b", run: if c then stamp else fn n: now() }
+pub fn given(t: Timed) -> List(Instant) = [1] |> map(t.run)
+fn callbacks(f: fn(Int) -> Instant) -> List(Instant) = [1, 2] |> map(fn n: f(n))
+fn limited(f: fn(Int) -> Instant uses {clock}) -> Timed = { run: f }
+pub fn narrow(f: fn(Int) -> Instant uses {}) -> Instant = f(1)
+fn tooMuch() -> Instant = narrow(stamp)
+fn applied(f: fn(Int) -> Instant, n) = f(n + 1)
+fn later() -> Instant = applied(fn n: now(), 1)
+type Run = fn(Int) -> Instant
+fn aliased(r: Run) -> List(Instant) = [1] |> map(r)
+fn stored() -> Run = stamp`, []string{
+			"4:63: expected fn(Int) -> Instant, found fn(Int) -> Instant: f is a function passed in, whose effects count where it is given",
+			"5:63: this function may call f, a function passed in",
+			"6:44: this function uses clock, which its type here, fn(Int) -> Instant, doesn't list: a function kept in data does only what its type says, so add uses {clock} to the type",
+			"7:43: stamp uses clock, which its type here, fn(Int) -> Instant, doesn't list",
+			"9:51: expected fn(Int) -> Instant, found fn(Int) -> Instant uses {clock}: it uses clock, which the function type expected doesn't list",
+			"10:42: stamp uses clock",
+			"11:63: stamp uses clock",
+			"11:74: this function uses clock",
+			"12:1: given uses clock, which its signature doesn't list",
+			"16:34: stamp uses clock, which its type here, fn(Int) -> Instant uses {}, doesn't list",
+			"21:22: stamp uses clock, which its type here, fn(Int) -> Instant, doesn't list",
+		}},
 		{"effects don't escape through traits or private uses clauses", `trait Clock {
   fn read(self) -> Instant
 }
