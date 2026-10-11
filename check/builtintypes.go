@@ -1,7 +1,10 @@
 package check
 
 import (
+	"strings"
+
 	"eyelang/ir"
+	"eyelang/syntax"
 )
 
 // The types of the built-in functions one signature can't describe yet
@@ -130,6 +133,7 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	}
 
 	// Collection functions: the first argument says which kind.
+	x.ruleShape(name, b, at)
 	coll := b.arg(0, nil)
 	if coll == nil {
 		return c.fresh()
@@ -145,6 +149,7 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		}
 	}
 	kind, elem := x.collection(coll)
+	x.collectionKind(name, kind, coll, b.pos[0].Value.Position())
 	same := func() typ {
 		if kind == "Set" {
 			return coll
@@ -287,6 +292,106 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	return c.fresh()
 }
 
+// ruleParams reads the parameters of a built-in declaration that goRules
+// types: their names and whether they have defaults.
+func ruleParams(f *ir.File, d *syntax.Node) []fparam {
+	var out []fparam
+	for _, p := range d.ChildByField(syntax.FieldParameters).NamedChildren() {
+		out = append(out, fparam{name: text(f, p.ChildByField(syntax.FieldName)), hasDefault: p.ChildByField(syntax.FieldDefault) != nil})
+	}
+	return out
+}
+
+// optionalRuleParams are parameters that a goRules built-in may go without,
+// as its documentation says, though a function type can't have a default:
+// `count` without a test is the size.
+var optionalRuleParams = map[string]bool{"count.test": true}
+
+// ruleShape checks a call of a goRules built-in against its declared
+// parameters: not too many arguments, none it doesn't name, and every one
+// it needs.
+func (x *fnCheck) ruleShape(name string, b *builtinArgs, at ir.Pos) {
+	params, ok := x.c.builtins.rules[name]
+	if !ok {
+		return
+	}
+	if len(b.pos) > len(params) {
+		x.c.typeErrorf(b.pos[len(params)].Value.Position(), "too many arguments to %s: it takes %d", name, len(params))
+	}
+	given := map[string]bool{}
+	for i := range b.pos {
+		if i < len(params) {
+			given[params[i].name] = true
+		}
+	}
+	for n, a := range b.named {
+		found := false
+		for _, p := range params {
+			found = found || p.name == n
+		}
+		if !found {
+			x.c.typeErrorf(a.Value.Position(), "%s has no parameter %s", name, n)
+		}
+		given[n] = true
+	}
+	for _, p := range params {
+		if !given[p.name] && !p.hasDefault && !optionalRuleParams[name+"."+p.name] {
+			x.c.typeErrorf(at, "%s needs an argument for %s", name, p.name)
+		}
+	}
+}
+
+// collectionKinds are the kinds of collection each collection function
+// takes; the others take every kind that has elements.
+var collectionKinds = map[string][]string{
+	"add":     {"List", "Set"},
+	"remove":  {"Set", "Map"},
+	"insert":  {"Map"},
+	"keys":    {"Map"},
+	"values":  {"Map"},
+	"entries": {"Map"},
+	"get":     {"Map", "List", "Bytes"},
+	"map":     {"List", "Set", "Map", "Range", "String", "Iter", "Bytes", "Option", "Result"},
+}
+
+var elementKinds = []string{"List", "Set", "Map", "Range", "String", "Iter", "Bytes"}
+
+// collectionKind reports a collection function given what isn't a kind of
+// collection it takes.
+func (x *fnCheck) collectionKind(name, kind string, coll typ, at ir.Pos) {
+	kinds, ok := collectionKinds[name]
+	if !ok {
+		kinds = elementKinds
+	}
+	for _, k := range kinds {
+		if k == kind {
+			return
+		}
+	}
+	switch t := defaultLiteral(coll).(type) {
+	case tunknown:
+		return
+	case *tvar:
+		if !t.rigid {
+			x.c.typeErrorf(at, "the type of %s isn't known here, so %s can't tell what kind of collection it is: write its type where it is declared", at.Text(), name)
+			return
+		}
+	}
+	x.c.typeErrorf(at, "%s takes %s, and this is %s", name, orList(articled(kinds)), show(defaultLiteral(coll)))
+}
+
+// articled puts "a" or "an" before each kind's name.
+func articled(kinds []string) []string {
+	out := make([]string, len(kinds))
+	for i, k := range kinds {
+		out[i] = "a " + k
+		if strings.ContainsRune("AEIOU", rune(k[0])) {
+			out[i] = "an " + k
+		}
+	}
+	return out
+}
+
 // collection says what kind of collection t is, and the type of its
 // elements: a map's are its (key, value) pairs.
 func (x *fnCheck) collection(t typ) (string, typ) {
@@ -310,6 +415,9 @@ func (x *fnCheck) collection(t typ) (string, typ) {
 		}
 		if k.decl == x.c.ts.option && len(k.args) == 1 {
 			return "Option", k.args[0]
+		}
+		if k.decl == x.c.ts.result && len(k.args) == 2 {
+			return "Result", k.args[0]
 		}
 	case *tvar:
 		if k.lit == litString {

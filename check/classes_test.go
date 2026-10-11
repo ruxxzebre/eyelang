@@ -74,6 +74,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§5", "{} where neither a map, a set nor a record is expected", "{} is an empty map, set or record"},
 	{"§5", "a field, method or index a type doesn't have, or a type a value can't have", "every type has only its own fields and methods"},
 	{"§11", "a default method using what its trait doesn't have", "a trait's default method sees self as the trait"},
+	{"§8", "a collection function given what isn't a collection it takes, or arguments it doesn't take", "a collection function takes the collections and arguments it declares"},
 	{"§13", "a built-in given a function of the wrong type, or an argument it doesn't take", "a built-in that takes a function is checked against its declaration"},
 	{"§12", "a function of the wrong function type", "a function type is checked like any type"},
 	{"§11", "a function shown, compared or saved", "a function has none of the derived traits"},

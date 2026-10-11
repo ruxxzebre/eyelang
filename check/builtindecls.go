@@ -37,6 +37,7 @@ var goRules = map[string]bool{
 type builtinDecls struct {
 	funcs map[string]*ir.Func // the signatures calls are checked against
 	uses  map[string][]string // every built-in's uses clause
+	rules map[string][]fparam // the parameters of goRules, by name, without types
 }
 
 // loadBuiltins lowers the signatures in ir/builtin.eye. Its types are the
@@ -50,7 +51,7 @@ func (c *checker) loadBuiltins() {
 		values: map[string]any{},
 		types:  map[string]any{},
 	}
-	c.builtins = builtinDecls{funcs: map[string]*ir.Func{}, uses: map[string][]string{}}
+	c.builtins = builtinDecls{funcs: map[string]*ir.Func{}, uses: map[string][]string{}, rules: map[string][]fparam{}}
 	for _, d := range f.Tree.Root.Children {
 		if d.Kind != syntax.ExternDeclaration {
 			continue
@@ -63,6 +64,7 @@ func (c *checker) loadBuiltins() {
 		}
 		c.builtins.uses[name], _ = usesOf(f, d)
 		if goRules[name] {
+			c.builtins.rules[name] = ruleParams(f, d)
 			continue
 		}
 		fn := &ir.Func{Name: name, Module: m.mod, Pub: true, Pos: pos(f, d), Extern: true, Host: host}

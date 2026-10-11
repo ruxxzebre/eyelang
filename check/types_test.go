@@ -485,6 +485,27 @@ trait Box(a) {
 			"5:30: self is any type that implements Named, so it has only the methods of Named, and nick isn't one",
 			"10:25: expected a, found Int",
 		}},
+		{"a collection function takes the collections and arguments it declares", `type User = { name: String }
+fn f(u: User, xs: List(Int), m: Map(String, Int), o: Option(Int)) {
+  let a = u.size()
+  let b = xs |> map(fn x: x, 3)
+  let c = xs |> filter(keep: fn x: x > 1, extra: 2)
+  let d = xs |> keys
+  let g = o |> first
+  let h = xs |> map
+  let k = 5 |> size
+  let n = xs |> count
+}
+fn untyped(xs) = xs |> size`, []string{
+			"3:11: size takes a List, a Set, a Map, a Range, a String, an Iter or a Bytes, and this is User",
+			"4:30: too many arguments to map: it takes 2",
+			"5:50: filter has no parameter extra",
+			"6:11: keys takes a Map, and this is List(Int)",
+			"7:11: first takes a List, a Set, a Map, a Range, a String, an Iter or a Bytes, and this is Option(Int)",
+			"8:11: map needs an argument for f",
+			"9:11: size takes a List, a Set, a Map, a Range, a String, an Iter or a Bytes, and this is Int",
+			"12:18: the type of xs isn't known here, so size can't tell what kind of collection it is: write its type where it is declared",
+		}},
 		{"a built-in that takes a function is checked against its declaration", `job j() {
   let ok = poll!(every: 1 min, within: 2 h, fn { 1 })
   let late = poll!(every: 1 min, inside: 2 h, within: 3 h, check: fn { true })
