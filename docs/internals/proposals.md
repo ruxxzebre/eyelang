@@ -6,8 +6,13 @@ title: Proposals
 
 Decisions for the user, drafted on 2026-10-11 against `dev` at 1cc429d. Each section gives the
 problem with an example from the repository, two or three options, a recommendation, and what
-changes if the recommendation is accepted. None of this is decided: a decision goes into SPECS.md's
-decision log, and its examples, tests and docs change with it.
+changes if the recommendation is accepted.
+
+**Decided 2026-10-11: the user accepted every recommendation.** SPECS.md's decision log has a row
+for each, its rules and examples changed with them, and ROADMAP.md lists the work each needs. This
+page keeps the reasoning. One fact changed after it was written: `eye` did not move to tree-sitter
+and cgo. The hand-written parser stays, tree-sitter is used only in tests, and `eye` itself stays
+free of cgo; the sections below say what that changes.
 
 The first five sections are open questions from SPECS.md §24. The sixth, module roots in
 `eye.toml`, came from deploying the lab's digest. The last three are places where
@@ -17,6 +22,9 @@ Nothing here needs new syntax. Where an example shows code as it would be after 
 code already parses today; only the rules about it would change.
 
 ## Q17: approvals answered by id, and who may answer
+
+**Decided 2026-10-11: accepted** (option 1). SPECS.md §15 and the decision log's "Answering
+approvals".
 
 ### The problem
 
@@ -83,6 +91,8 @@ approvals.answered.publish!({ id: r.id, approved: press.choice == yes.id, by: "{
 - Docs: the guide's approvals pages and the tutorial's approvals chapter.
 
 ## Q19 and Q22: which actions are effects
+
+**Decided 2026-10-11: accepted** (option 1). SPECS.md §12 and the decision log's "Recorded steps".
 
 ### The problem
 
@@ -154,6 +164,9 @@ replays stop mattering.
 
 ## Q21: `Handle` against `extern type`, and issue #42
 
+**Decided 2026-10-11: accepted** (option 1). SPECS.md §18 and the decision log's "Foreign values";
+issue #42 has the text below.
+
 ### The problem
 
 Two features name a value that foreign code owns:
@@ -221,10 +234,14 @@ Option 1. One obvious way, a name that checks, and the saving rule applied to it
   > crashing where that is detectable; and holding a value of an `extern type` across a `!` is a
   > compile error.
 
-  Its second point, "loads a C function at run time without cgo", also needs a look once track A
-  brings cgo into the build (see [contradiction 3](#contradiction-3-the-typed-ir-in-specs-section-22-against-roadmap)).
+  Its second point, "loads a C function at run time without cgo", stays: `eye` is free of cgo
+  (see [contradiction 3](#contradiction-3-the-typed-ir-in-specs-section-22-against-roadmap)).
 
 ## Q9 and Q4: long runs, and code changes while runs are paused
+
+**Decided 2026-10-11: accepted.** Long runs: saved frames, in the interpreter in v0.3 (ROADMAP
+task 7.3). Code changes: detect and refuse, with the replay check first. SPECS.md §15 and the
+decision log's "Long runs" and "Job code changes".
 
 ### The problem
 
@@ -302,10 +319,14 @@ For code changes:
 - `interp/jobs.go`: `replay` compares the step's `Call` with the call being replayed.
 - With frames: the run record keeps a resume point's identity; `eye run` checks it at start, as
   `TestRunMigratesStoredEntities` does for entities; `eye runs` names runs whose code changed.
-- ROADMAP: task 7.3 (jobs as state machines) may move into v0.3; the user decides.
+- ROADMAP: task 7.3 (jobs as state machines) moves into v0.3, with 7.1 before it.
 - The lab: `watch` restarts itself until frames land.
 
 ## Q15: typed choices
+
+**Decided 2026-10-11: accepted** (option 2). SPECS.md §11 and the decision log's "Typed choices".
+The question about labels below was not decided: it stays in open question 15, and until it is,
+a label is the variant's `Show`.
 
 ### The problem
 
@@ -379,6 +400,8 @@ interface text mixes two jobs. A `Show` impl is the existing way to choose how a
 
 ## Module roots in eye.toml
 
+**Decided 2026-10-11: accepted** (option 1). SPECS.md §13 and the decision log's "Module roots".
+
 ### The problem
 
 `eye run` runs every job of every module a program imports. So the lab can't be deployed one
@@ -420,6 +443,9 @@ context, so that a copy of the program has everything it needs.
   instead of following links.
 
 ## Contradiction 1: jobs as processes against one runner per store
+
+**Decided 2026-10-11: accepted** (option 1). ROADMAP.md's v0.4 row and issue #8 say "jobs compiled
+to state machines; a waiting run is a record in the store".
 
 ### The problem
 
@@ -463,6 +489,9 @@ both need a store that doesn't live in one runner's memory.
 
 ## Contradiction 2: when a job's state is saved, SPECS section 15 against section 22 and the code
 
+**Decided 2026-10-11: accepted** (option 3). SPECS.md §15 states the guarantee now; it drops the
+replay sentence when task 7.3 lands.
+
 ### The problem
 
 - SPECS §15: "At each `!` the job's live variables are saved, and the call's result is recorded.
@@ -500,6 +529,10 @@ separately when frames arrive (see Q9 and Q4 above).
 
 ## Contradiction 3: the typed IR in SPECS section 22 against ROADMAP
 
+**Decided 2026-10-11: accepted** (option 1). SPECS.md §22 describes the IR as built, with the typed
+IR as a step of its own. Since `eye` stays free of cgo, "without cgo" stays in step 5 and in issue
+#42: the interpreter loads C libraries at run time without it.
+
 ### The problem
 
 SPECS §22 step 5 reads: "Typed IR, plus a reference interpreter on that IR … `extern` functions
@@ -511,9 +544,10 @@ built or planned:
   untyped IR the thin slice built. ROADMAP's phase 3 says so; §22 doesn't.
 - **Domain constructs.** Entities, jobs, views and contracts are declarations in `ir/`, and the
   interpreter runs them directly. Nothing lowers them into core IR.
-- **Without cgo.** Track A moves the release build to cgo with `zig cc`, so "without cgo" is no
-  longer a constraint the build imposes. (Track A also replaces the hand-written parser that §22
-  describes; it updates §22's parsing part itself.)
+- **Without cgo.** When this was written, track A was expected to move the release build to cgo
+  with `zig cc` and replace the hand-written parser with tree-sitter. It didn't: the hand-written
+  parser stays, tree-sitter is used only in tests, and `eye` itself stays free of cgo. So "without
+  cgo" is still a constraint, and §22's parsing part stands as it is.
 
 ### Options
 
@@ -530,14 +564,14 @@ built or planned:
 Option 1. §22 should describe the order things are built in. The compilation design proposes
 that the interpreter run the typed IR too once 7.1 lands, so the end state is close to what step 5
 describes, reached in a different order. For C libraries, `@library` should use whatever the
-build has: cgo in builds that have it, and a direct link in compiled programs.
+build has. `eye`'s build has no cgo, so the interpreter loads a C function at run time without it,
+and a compiled program links it directly.
 
 ### What changes
 
 - SPECS §22: step 5 and a new step before step 7 as in option 1; step 7 links the
   [compilation design](https://github.com/ruxxzebre/eyelang/blob/dev/docs/internals/compilation.md).
-  The "without cgo" clause goes, after track A merges.
+  The "without cgo" clause stays, since `eye` is free of cgo.
 - Issue #28's body: the IR is typed for compilation, not for phase 4, and its "Done when" is the
   one the compilation design proposes for 7.1.
-- Issue #42's body: "loads a C function at run time without cgo" becomes "loads a C function at
-  run time", if the user agrees that cgo is now acceptable.
+- Issue #42's body keeps "loads a C function at run time without cgo".

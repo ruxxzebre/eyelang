@@ -8,10 +8,17 @@ This is the design for phase 7 (v0.4): native code, reference counting with in-p
 generic code specialised per type, and jobs that resume from saved state. SPECS.md §22 refers to
 it as "the compilation analysis".
 
-It is a draft, written on 2026-10-11 against `dev` at 1cc429d. Nothing in it is decided until
-SPECS.md's decision log says so. Recommendations are marked **Recommendation**, and points that
-are still open are marked **Question**. The decisions it asks for are collected in
-[Proposals](/internals/proposals).
+It was written on 2026-10-11 against `dev` at 1cc429d. Recommendations are marked
+**Recommendation**, points that are still open are marked **Question**, and points the user has
+settled are marked **Decided**, as SPECS.md's decision log records them. The decisions it asked
+for are collected in [Proposals](/internals/proposals).
+
+**Decided 2026-10-11:** the back end is C, and `eye` ships `zig` to compile the C it emits
+(section 1); jobs resume from saved frames in the interpreter in v0.3, before the C back end
+exists (section 4); in v0.4 a waiting run is a record in the store, not a process (section 4,
+"Processes"). One fact changed after this was written: `eye` did not move to tree-sitter and cgo.
+The hand-written parser stays, tree-sitter is used only in tests, and `eye` itself stays free of
+cgo, which changes how the runner hosts compiled code (section 1, "Where the runtime lives").
 
 Phase 7 is done when the morning digest runs as a native job, with its idle cost and resume time
 measured and recorded in ROADMAP.md.
@@ -108,16 +115,16 @@ Four back ends fit a compiler written in Go that later compiles itself.
 | From self-hosted Eyelang | Write text | Write text | Needs FFI into Rust | Write text |
 | Who uses it | Koka, Lean 4, Nim, Chicken Scheme | Hare, cproc | Wasmtime, Rust's debug backend | Rust, Swift, Zig, Crystal |
 
-**Recommendation: emit C.**
+**Recommendation: emit C.** **Decided 2026-10-11:** accepted.
 
 - **The workload doesn't need the best code.** Eyelang programs mostly wait. Native code matters
   for memory and for resume time, and C at `-O2` is far ahead of the interpreter on both.
 - **The bootstrap seed is C already.** SPECS §22 says releases publish the self-hosted compiler's
   generated C, so a fresh machine can build Eyelang without an Eyelang binary. With a C back end
   the seed is just the compiler's normal output.
-- **The toolchain is already coming.** Track A moves the release build to cgo with `zig cc`, and
-  showed it builds all five targets. `zig cc` cross-compiles from any host, so `eye build` can
-  use it the same way.
+- **One toolchain for every target.** `zig cc` cross-compiles C to all five release targets from
+  any host, so `eye build` can ship it and use it everywhere. `eye` itself needs no C compiler:
+  it stays free of cgo, and only `eye build` compiles C.
 - **The closest prior art is C.** Koka and Lean 4 compile functional languages with reference
   counting and in-place reuse to C. Their runtimes and papers are the model for section 2.
 - **No garbage collector means no stack maps.** The usual problem with C as a target, finding GC
@@ -140,9 +147,10 @@ What C costs, and what to do about it:
 it, and a second back end can be added later from the same IR. QBE is the likely second, for
 fast debug builds, if C compile times hurt.
 
-**Question:** should `eye` ship `zig` (a large download, tens of MB) or use the system's `cc` and
-offer `zig` as an option? Shipping it makes cross-compiling and reproducible builds work
-everywhere. Using `cc` keeps `eye` small.
+**Decided 2026-10-11:** `eye` ships `zig` (a large download, tens of MB) and compiles the C it
+emits with `zig cc`, rather than using the system's `cc`. Shipping it makes cross-compiling and
+reproducible builds work everywhere, with the same compiler on every machine; using `cc` would
+have kept `eye` small.
 
 ### Where the runtime lives
 
@@ -160,8 +168,20 @@ different needs.
 **Recommendation:** write the core runtime in C (and later in Eyelang over `extern` functions),
 and keep the durable runner in Go. The compiled program is built as a C library with a small
 interface: run `main`, run a test, call an entity method on a state, step a job's state machine,
-and encode or decode each saved type. The Go runner links it through cgo, which track A already
-brings into the build, and calls it.
+and encode or decode each saved type. `eye` stays free of cgo, so the runner can't link that
+library through cgo inside `eye`. Two ways remain:
+
+- **The runner loads the program at run time.** `eye build` compiles the program to a shared
+  library with `zig cc`, and the runner, still pure Go, opens it and calls its interface without
+  cgo, with the same loader that task 6.1 builds for `@library`. Every artifact of the release
+  stays free of cgo; a deployment is the runner and the program's library, two files.
+- **The runner is linked into the program.** The release also ships the runner as a static
+  library built from Go (`go build -buildmode=c-archive`, which needs cgo when the release is
+  built, though not in `eye`), and `eye build` links it with the program into one binary with
+  `zig cc`. A deployment is one file; the release carries one more library per target.
+
+**Question:** which of the two? The first reuses 6.1's loader and keeps cgo out of every build;
+the second gives a single binary. Both keep the points below.
 
 - The runner's code is reused, not rewritten, and its tests keep covering it.
 - Go's garbage collector stays in the process, but it manages only the runner's own buffers.
@@ -339,8 +359,9 @@ The checker already knows which functions wait: a function whose effects include
 
 What makes this possible is already checked: only values with `Save` may be live across a `!`
 (`checkSave` in `check/effects.go`), so every frame can be encoded. One hole matters here: a value
-of an `extern type` can be held across a `!` today, while a `Handle` can't (see
-[Proposals](/internals/proposals), open question 21).
+of an `extern type` can be held across a `!` today, while a `Handle` can't. **Decided
+2026-10-11** (open question 21): `Handle` goes, and a program's `extern type` can't be saved, so
+the hole closes when the checker enforces it (see [Proposals](/internals/proposals)).
 
 ### The journal and exactly once
 
@@ -374,8 +395,9 @@ The cost: a tree-walking interpreter can't jump into the middle of a loop, so th
 produce a flat form, blocks with jumps, and the interpreter needs an evaluator for that form,
 used for waiting functions only.
 
-**Question:** is that second evaluator worth it, or should the interpreter keep replaying until
-compiled jobs replace it? The answer moves the fix for open question 9 by one release.
+**Decided 2026-10-11:** the second evaluator is worth it. The interpreter resumes jobs from frames
+in v0.3 (task 7.3, with 7.1 before it), so open question 9 is fixed for the lab a release before
+compiled jobs.
 
 ### Runs saved by older versions
 
@@ -389,9 +411,13 @@ and nobody has to drain their runs before upgrading.
 ROADMAP says that in v0.4 "jobs run as short-lived processes", and issue #8 that "jobs [are]
 compiled to native state machines that run as short-lived processes". SPECS §1 says that a
 waiting job "is a saved record in the store, not a process or a thread". The design above runs
-state machines inside one runner, which owns the store. What "process" should mean, and how it
-fits one runner per store (open question 28), is a decision for the user:
-[Proposals, contradiction 1](/internals/proposals#contradiction-1-jobs-as-processes-against-one-runner-per-store).
+state machines inside one runner, which owns the store.
+**Decided 2026-10-11**
+([Proposals, contradiction 1](/internals/proposals#contradiction-1-jobs-as-processes-against-one-runner-per-store)):
+"process" means the runner. v0.4's runner is a native process that executes runs as compiled
+state machines; a waiting run is a record in the store, not a process, and one runner per store
+stays (open question 28 stays open). Worker processes for runs that call C code can come later
+without a language change.
 
 ## 5. The typed IR (issue #28)
 
@@ -476,9 +502,10 @@ code only if its resume point still exists and its live variables still have the
 types. That makes the change detectable, which replay by position isn't. See
 [Proposals](/internals/proposals#q9-and-q4-long-runs-and-code-changes-while-runs-are-paused).
 
-## 7. Proposed tasks for phase 7
+## 7. Tasks for phase 7
 
-ROADMAP adds a phase's tasks when the phase before it is close to done. These are drafts for then.
+ROADMAP.md lists these as phase 7's tasks, each with its issue. 7.1 and 7.3 come first and land in
+v0.3, so that the interpreter resumes jobs from frames before the C back end exists.
 
 | Task | Needs | Done when |
 |---|---|---|
@@ -491,11 +518,19 @@ ROADMAP adds a phase's tasks when the phase before it is close to done. These ar
 
 ## 8. Open points, collected
 
-- Ship `zig`, or use the system's `cc`? (section 1)
+Still open:
+
 - A Go host in every compiled program for v0.4? (section 1)
+- Does the runner load the compiled program as a shared library, or link into it as a static
+  library built from Go? (section 1)
 - Small records by value? (section 2)
 - Does `parallelMap` use several cores? (section 2)
 - Is `List(Logger)` to `List(dyn Handler)` an implicit copy? (section 3)
 - Code size of full specialisation, measured on the self-hosted compiler. (section 3)
-- State machines in the interpreter in v0.3, or replay until v0.4? (section 4)
-- What "jobs as short-lived processes" means. (section 4, and Proposals)
+
+Decided 2026-10-11:
+
+- C is the back end, and `eye` ships `zig` to compile it. (section 1)
+- State machines in the interpreter in v0.3. (section 4)
+- "Jobs as short-lived processes" means the runner; a waiting run is a record. (section 4, and
+  Proposals)
