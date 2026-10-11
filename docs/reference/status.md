@@ -147,7 +147,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| Trait declarations, with default methods | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L64) |
+| Trait declarations, with default methods | ✓ | ✓ (a default method sees self as any type with the trait) | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L64), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L418) |
 | `impl Trait for Type`, every method and no others, with the trait's types | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L192) |
 | Coherence: an impl lives with its trait or its type, once per type | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L208) |
 | A one-variant wrapper shows as the value it wraps | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |

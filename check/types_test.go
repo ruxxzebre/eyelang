@@ -416,6 +416,21 @@ fn nothing() -> Int = run(fn: 1)`, []string{
 			"4:23: expected Int, found (a, b)",
 			"8:23: expected Int, found ()",
 		}},
+		{"a trait's default method sees self as the trait", `trait Named {
+  fn name(self) -> String
+  fn greet(self) -> String = "hi {self.name()}"
+  fn bad(self) -> Int = self.name()
+  fn worse(self) -> String = self.nick()
+}
+trait Box(a) {
+  fn get(self) -> a
+  fn twice(self) -> (a, a) = (self.get(), self.get())
+  fn wrong(self) -> a = 1
+}`, []string{
+			"4:25: expected Int, found String",
+			"5:30: self is any type that implements Named, so it has only the methods of Named, and nick isn't one",
+			"10:25: expected a, found Int",
+		}},
 		{"a function has none of the derived traits", `fn show(f: fn() -> Int) = print(f)
 fn same(f: fn() -> Int, g: fn() -> Int) -> Bool = f == g
 job j(f: fn() -> Int) {}

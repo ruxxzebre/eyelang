@@ -139,7 +139,8 @@ func (c *checker) checkTypes() {
 		kind   fnKind
 		entity *ir.Entity
 		self   *ir.Type
-		selfT  typ // self's type, for a method of no declared type
+		selfT  typ       // self's type, for a method of no declared type
+		trait  *ir.Trait // the trait whose default method this is
 		op     *ir.Op
 		want   typ
 	}
@@ -196,7 +197,7 @@ func (c *checker) checkTypes() {
 		for _, tr := range m.Traits {
 			for _, f := range tr.Methods {
 				if f.Body != nil {
-					bodies = append(bodies, body{fn: f, selfT: unknown}) // a default: self is whatever implements it
+					bodies = append(bodies, body{fn: f, trait: tr}) // a default: self is whatever implements it
 				}
 			}
 		}
@@ -245,6 +246,9 @@ func (c *checker) checkTypes() {
 		}
 		if b.selfT != nil {
 			x.self = b.selfT
+		}
+		if b.trait != nil {
+			x.self = x.traitSelf(b.trait)
 		}
 		var ret typ
 		if b.op != nil {
@@ -307,6 +311,23 @@ func (x *fnCheck) signature() typ {
 		x.c.ts.bounds[v] = append(x.c.ts.bounds[v], cb)
 	}
 	return ret
+}
+
+// traitSelf is self's type in a trait's default method: whatever type
+// implements the trait, so it has the trait's methods and nothing else. The
+// trait's own type parameters stand for any type there.
+func (x *fnCheck) traitSelf(tr *ir.Trait) typ {
+	self := x.c.fresh()
+	self.name, self.rigid = "Self", true
+	b := cbound{trait: tr}
+	for _, p := range tr.Params {
+		v := x.c.fresh()
+		v.name, v.rigid = p, true
+		x.env[p] = v
+		b.args = append(b.args, v)
+	}
+	x.c.ts.bounds[self] = append(x.c.ts.bounds[self], b)
+	return self
 }
 
 // operation gives a function that serves a contract's operation the types
@@ -1217,6 +1238,12 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				}
 			}
 			if !isBuiltin(e.Name) {
+				if r.name == "Self" && len(c.ts.bounds[r]) == 1 {
+					tr := c.ts.bounds[r][0].trait
+					c.typeErrorf(e.Pos, "self is any type that implements %s, so it has only the methods of %s, and %s isn't one", tr.Name, tr.Name, e.Name)
+					x.inferArgs(e.Args)
+					return unknown
+				}
 				c.typeErrorf(e.Pos, "%s may be any type, so it has no method %s: require a trait that has one, as `where %s: Trait`", r.name, e.Name, r.name)
 				x.inferArgs(e.Args)
 				return unknown
