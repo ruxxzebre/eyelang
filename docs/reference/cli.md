@@ -75,7 +75,7 @@ types, exhaustive matches, effects and where waiting calls may appear are checke
 ## eye run {#run}
 
 ```text
-usage: eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]
+usage: eye run [--store url | --journal file [--fresh] | --memory] [program-directory] [-- arguments…]
 
 Runs main, then keeps the program's jobs going: sleeping runs wake on time,
 schedules fire, and a restart carries on where the last run of eye stopped.
@@ -84,6 +84,8 @@ It stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.
 State is kept in the program's journal, or with --store in a Postgres database,
 in the first schema of its search_path: postgres://…/db?search_path=lab gives
 a program its own schema. One eye run at a time writes a journal or a schema.
+  -fresh
+    	start with an empty journal; the old one is kept as JOURNAL.old
   -journal string
     	the journal that keeps entities, runs and events (default program-directory/.eye/journal)
   -memory

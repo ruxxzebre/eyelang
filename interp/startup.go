@@ -1,6 +1,8 @@
 package interp
 
 import (
+	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -83,4 +85,31 @@ func memoryText(n int64) string {
 		return s
 	}
 	return bytesText(n)
+}
+
+// nothingToDo says why a runner stops as soon as it starts: main started no
+// new run, since the runs its keys name are finished, and nothing waits or
+// is scheduled. A journal can be started over with eye run --fresh.
+func (rt *runtime) nothingToDo(w io.Writer, store Store) {
+	if len(rt.queue) > 0 || rt.nextSleeper() != nil {
+		return
+	}
+	if s, _ := rt.nextFiring(); s != nil {
+		return
+	}
+	finished := 0
+	for _, id := range rt.store.Runs() {
+		data, _ := rt.store.Run(id)
+		if st := decodeRun(data).Status; st == "done" || st == "failed" {
+			finished++
+		}
+	}
+	if finished == 0 {
+		return
+	}
+	line := fmt.Sprintf("eye run: nothing to do: main started no new run, every run in the store has finished (%d), and no job is scheduled", finished)
+	if _, ok := store.(*Journal); ok {
+		line += "; eye run --fresh starts over with an empty journal"
+	}
+	fmt.Fprintln(w, line)
 }

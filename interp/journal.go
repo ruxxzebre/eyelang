@@ -75,6 +75,17 @@ const (
 // OpenJournal opens the journal at path for a running program, creating it
 // if need be. Only one process may hold a journal open for writing.
 func OpenJournal(path string) (*Journal, error) {
+	return openJournal(path, false)
+}
+
+// OpenFreshJournal opens an empty journal at path, as `eye run --fresh`
+// does: once it holds the journal's lock, it moves the journal there, if
+// any, to path.old, replacing an older one.
+func OpenFreshJournal(path string) (*Journal, error) {
+	return openJournal(path, true)
+}
+
+func openJournal(path string, fresh bool) (*Journal, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
@@ -85,6 +96,12 @@ func OpenJournal(path string) (*Journal, error) {
 	if err := lockFile(lock); err != nil {
 		lock.Close()
 		return nil, fmt.Errorf("%s is in use by another eye run", path)
+	}
+	if fresh {
+		if err := os.Rename(path, path+".old"); err != nil && !os.IsNotExist(err) {
+			lock.Close()
+			return nil, err
+		}
 	}
 	mem, err := replay(path)
 	if err != nil {

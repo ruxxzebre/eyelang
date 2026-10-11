@@ -28,7 +28,7 @@ func storeURL(flagValue string) string {
 	return os.Getenv("EYE_STORE")
 }
 
-// runRun implements `eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]`.
+// runRun implements `eye run [--store url | --journal file [--fresh] | --memory] [program-directory] [-- arguments…]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	var progArgs []string
 	for i, a := range args {
@@ -42,10 +42,11 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	journal := fs.String("journal", "", "the journal that keeps entities, runs and events (default program-directory/.eye/journal)")
 	memory := fs.Bool("memory", false, "keep everything in memory, so nothing survives the process")
+	fresh := fs.Bool("fresh", false, "start with an empty journal; the old one is kept as JOURNAL.old")
 	store := fs.String("store", "", "keep entities, runs and events in this Postgres database, postgres://… (default $EYE_STORE)")
 	memLimit := fs.String("memory-limit", "", "the memory runs may hold, which @memory and reserve! wait for, such as 512MiB (default the cgroup's limit, such as a container's, or the host's memory)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]")
+		fmt.Fprintln(stderr, "usage: eye run [--store url | --journal file [--fresh] | --memory] [program-directory] [-- arguments…]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs main, then keeps the program's jobs going: sleeping runs wake on time,")
 		fmt.Fprintln(stderr, "schedules fire, and a restart carries on where the last run of eye stopped.")
@@ -74,6 +75,18 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	if url != "" && (*journal != "" || *memory) || *journal != "" && *memory {
 		fmt.Fprintln(stderr, "eye run keeps its state in one place: give one of --store, --journal and --memory")
+		return exitUsage
+	}
+	if *fresh && url != "" {
+		from := "--store"
+		if *store == "" {
+			from = "$EYE_STORE"
+		}
+		fmt.Fprintf(stderr, "eye run: --fresh starts a journal over, and never empties a database; %s names one, so delete what it holds by hand if that is what you want\n", from)
+		return exitUsage
+	}
+	if *fresh && *memory {
+		fmt.Fprintln(stderr, "eye run: --fresh means nothing with --memory, which keeps nothing from one run to the next")
 		return exitUsage
 	}
 	if url != "" && !interp.IsPostgres(url) {
@@ -125,7 +138,11 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		if path == "" {
 			path = journalPath(dir)
 		}
-		j, err := interp.OpenJournal(path)
+		open := interp.OpenJournal
+		if *fresh {
+			open = interp.OpenFreshJournal
+		}
+		j, err := open(path)
 		if err != nil {
 			fmt.Fprintf(stderr, "eye run: %v\n", err)
 			return exitErrors
