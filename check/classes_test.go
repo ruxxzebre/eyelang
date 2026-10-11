@@ -90,6 +90,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§14", "a migration to a version that doesn't exist", "migrations go to versions that exist"},
 	{"§14", "a last migration that doesn't give the declared state", "the last migration gives the declared state"},
 	{"§14", "an older migration of the wrong shape", "older migrations give the next version's shape, read by name"},
+	{"§14", "a migration reading a field the one before doesn't give", "a migration reads what the one before gives"},
 	{"§14", "a migration with effects", "a migration is pure"},
 	{"§15", "a job argument that can't be saved", "a job's arguments are saved"},
 	{"§15", "what can't be saved held across a !", "what can't be saved isn't held across a !"},

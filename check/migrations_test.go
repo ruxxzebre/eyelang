@@ -51,6 +51,12 @@ entity P(id: Int) {
   migrate from 1 (old) { { nick: old.nickname, extra: 1 } }
   migrate from 2 (old) { { name: old.nick } }
 }`, nil},
+		{"a migration reads what the one before gives", `@version(3)
+entity P(id: Int) {
+  state name: String
+  migrate from 1 (old) { { nick: old.nickname } }
+  migrate from 2 (old) { { name: old.nik } }
+}`, []string{"5:34: the row has no field nik: the migration before this one gives nick"}},
 		{"a migration is pure", `@version(2)
 entity P(id: Int) {
   state name: String

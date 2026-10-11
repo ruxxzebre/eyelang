@@ -70,10 +70,23 @@ func (c *checker) entityVersions(m *module, f *ir.File, d *syntax.Node, e *ir.En
 	}
 }
 
-// rowType is the type of a row as it was stored at an older version of an
-// entity. That shape isn't declared anywhere, so its fields are read by
-// name: each field's type is what the migration that made the row gave it,
-// or, for the oldest version, what the code that reads it needs.
+// row is a row as it was stored at an older version of an entity. That
+// shape isn't declared anywhere, so its fields are read by name: each
+// field's type is what the migration that made the row gave it, or, for the
+// oldest version, what the code that reads it needs.
+type row struct {
+	fields map[string]typ
+	made   bool            // a migration makes rows of this version
+	given  map[string]bool // the fields that migration gives
+	reads  []rowRead
+}
+
+type rowRead struct {
+	name string
+	at   ir.Pos
+}
+
+// rowType is the type of a row stored at an older version of an entity.
 func (c *checker) rowType(e *ir.Entity, version int) *tcon {
 	if c.ts.rows[e] == nil {
 		c.ts.rows[e] = map[int]*tcon{}
@@ -82,7 +95,7 @@ func (c *checker) rowType(e *ir.Entity, version int) *tcon {
 		return t
 	}
 	d := &ir.Type{Name: fmt.Sprintf("%s at version %d", e.Name, version), Module: e.Module, Methods: map[string]*ir.Func{}, Pos: e.Pos}
-	c.ts.rowFields[d] = map[string]typ{}
+	c.ts.rowOf[d] = &row{fields: map[string]typ{}, given: map[string]bool{}}
 	t := &tcon{name: d.Name, decl: d}
 	c.ts.rows[e][version] = t
 	return t
@@ -91,16 +104,41 @@ func (c *checker) rowType(e *ir.Entity, version int) *tcon {
 // rowField is the type of a field of an old row: one type for each name,
 // which its uses decide.
 func (c *checker) rowField(d *ir.Type, name string) (typ, bool) {
-	fields, ok := c.ts.rowFields[d]
+	r, ok := c.ts.rowOf[d]
 	if !ok {
 		return nil, false
 	}
-	if t, ok := fields[name]; ok {
+	if t, ok := r.fields[name]; ok {
 		return t, true
 	}
 	t := c.fresh()
-	fields[name] = t
+	r.fields[name] = t
 	return t, true
+}
+
+// checkRowReads reports a field read from a row that the migration that
+// made the row doesn't give. The oldest version's rows were made by code
+// that is gone, so what they hold can't be checked.
+func (c *checker) checkRowReads() {
+	var rows []*row
+	for _, r := range c.ts.rowOf {
+		rows = append(rows, r)
+	}
+	for _, r := range rows {
+		if !r.made {
+			continue
+		}
+		for _, rd := range r.reads {
+			if !r.given[rd.name] {
+				var given []string
+				for name := range r.given {
+					given = append(given, name)
+				}
+				sort.Strings(given)
+				c.typeErrorf(rd.at, "the row has no field %s: the migration before this one gives %s", rd.name, strings.Join(given, ", "))
+			}
+		}
+	}
 }
 
 // migrationResult is the type a migration gives: the entity's state, for the
@@ -109,7 +147,9 @@ func (c *checker) rowField(d *ir.Type, name string) (typ, bool) {
 // migration reads by name.
 func (c *checker) migrationResult(e *ir.Entity, mg *ir.Migration) typ {
 	if mg.From != e.Version-1 {
-		return c.rowType(e, mg.From+1)
+		t := c.rowType(e, mg.From+1)
+		c.ts.rowOf[t.decl].made = true
+		return t
 	}
 	// Every state field may be given; those without a default must be.
 	rec := &ir.TypeExpr{Name: "record"}

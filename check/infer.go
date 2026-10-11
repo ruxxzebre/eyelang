@@ -43,8 +43,8 @@ type typeState struct {
 	bounds map[*tvar][]cbound
 	// The rows of entities' older versions, which migrations read, and the
 	// types of their fields (migrations.go).
-	rows      map[*ir.Entity]map[int]*tcon
-	rowFields map[*ir.Type]map[string]typ
+	rows  map[*ir.Entity]map[int]*tcon
+	rowOf map[*ir.Type]*row
 }
 
 type zoneLit struct {
@@ -134,7 +134,7 @@ func (c *checker) checkTypes() {
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
 		bounds: map[*tvar][]cbound{},
-		rows:   map[*ir.Entity]map[int]*tcon{}, rowFields: map[*ir.Type]map[string]typ{},
+		rows:   map[*ir.Entity]map[int]*tcon{}, rowOf: map[*ir.Type]*row{},
 	}
 	c.fillImplMethods()
 	c.checkDyns()
@@ -272,6 +272,7 @@ func (c *checker) checkTypes() {
 		}
 	}
 	c.checkZones()
+	c.checkRowReads()
 	c.checkEffects()
 }
 
@@ -1402,6 +1403,9 @@ func (x *fnCheck) field(e *ir.Field) typ {
 		}
 		if t, ok := c.fieldType(r, e.Name); ok {
 			c.useField(e, r, e.Name)
+			if row := c.ts.rowOf[r.decl]; row != nil && r.decl != nil {
+				row.reads = append(row.reads, rowRead{e.Name, e.Pos})
+			}
 			return t
 		}
 	case *tdyn:
@@ -1806,10 +1810,11 @@ func (x *fnCheck) record(e *ir.Record, want typ) typ {
 		e.Type = rec.decl
 		return rec
 	}
-	if row, ok := prune(orNil(want)).(*tcon); ok && row.decl != nil && c.ts.rowFields[row.decl] != nil {
+	if row, ok := prune(orNil(want)).(*tcon); ok && row.decl != nil && c.ts.rowOf[row.decl] != nil {
 		// A migration's row for the next version has the fields it gives.
 		for i, v := range e.Values {
 			ft, _ := c.rowField(row.decl, e.Names[i])
+			c.ts.rowOf[row.decl].given[e.Names[i]] = true
 			x.check(v, ft)
 		}
 		return row
