@@ -76,9 +76,11 @@ title: "Open questions"
     from the variant's name? `##` comments are documentation, and using them as text for people
     mixes two jobs; an impl of `Show` is the existing way to choose how a value is written. Until
     this is decided, a label is the variant's `Show`.
-16. **What a fake received.** A test can't see which calls a fake answered, so the lab's digest
-    records the keys it sent with in an entity to make sending testable. Should a test be able to
-    ask `fakes(notify).sent(…)`, or fail when a recording has exchanges no call used?
+16. **What a fake received:** decided on 2026-10-11: `fakes(…)` is a value that a test names and
+    applies with `with`, and `sent.calls(notify.send)` lists the calls the fakes answered, as
+    records of their arguments with defaults filled in and the key ([section 17](/reference/language/contracts-talking-to-other-services)). The lab's digest
+    no longer keeps the keys it sent with in an entity. Whether a recording's unused exchanges
+    should fail a test is still open: one recording serves several tests.
 17. **Where approvals go:** decided on 2026-10-11: through the program. A run that waits at
     `approval!` publishes `approvals.requested`; the program routes it with a job of its own (the
     lab's `approving` module asks the operator on Notify) and answers with `approvals.answered`,

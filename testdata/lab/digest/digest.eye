@@ -16,12 +16,8 @@ import web
 ## costs no model call.
 entity Day(date: Date) {
   state article: Option(Article) = None
-  ## The keys it was sent with: the schedule's, and one per /digest.
-  state sent: Set(Key) = {}
 
   pub fn keep(a: Article) { article = Some(a) }
-
-  pub fn sentAs(key: Key) { sent = sent |> add(key) }
 }
 
 type Article = { day: Date, title: String, document: String }
@@ -174,10 +170,7 @@ fn deliver(
   ).reconcile!()
   match delivery {
     Accepted(deliveries: 0, deduped: false, ..) => Err(NoReaders)
-    Accepted(..) => {
-      Day(article.day).sentAs!(key)
-      Ok(delivery)
-    }
+    Accepted(..) => Ok(delivery)
     Pending(action) => Err(StillPending(action))
     Refused(error) => Err(NotSent(error))
   }
@@ -644,29 +637,37 @@ fn digestCommand(chat: Int, from: Int) -> telegram.Update = {
   body: Command(name: "digest", args: ""),
 }
 
+## The keys Notify was sent briefings with.
+fn keys(sent: Handler) -> List(Key) = sent.calls(notify.send) |> map(fn c: c.key)
+
 test "/digest sends today's briefing again without writing it" {
-  with fakes(notify, from: "recordings/")
+  let sent = fakes(notify, from: "recordings/")
+  with sent
   with clock(2026-10-12 09:00 in dublin)
   Day(2026-10-12).keep(today)
   telegram.updates.publish(digestCommand(42, from: 42))
-  expect(Day(2026-10-12).sent == toSet(["digest-7"]))
+  expect(keys(sent) == ["digest-7"])
+  let [briefing] = sent.calls(notify.send) else { unreachable("not sent once") }
+  expect(briefing.title == today.title && briefing.priority == High && briefing.format == Markdown)
 }
 
 test "the morning's briefing goes at 07:40 Irish time, for the Irish day" {
-  with fakes(notify, from: "recordings/")
+  let sent = fakes(notify, from: "recordings/")
+  with sent
   with clock(2026-10-12 06:30 in "UTC")  # 07:30 in Dublin, on summer time
   Day(2026-10-12).keep(today)
   advance(9 min)
-  expect(Day(2026-10-12).sent == {})
+  expect(keys(sent) == [])
   advance(1 min)
-  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+  expect(keys(sent) == ["ireland-2026-10-12"])
 }
 
 test "the morning reads its sources, has the briefing written, and sends it" {
-  with fakes(notify, miniflux, flaresolverr, http, ai, from: "recordings/")
+  let services = fakes(notify, miniflux, flaresolverr, http, ai, from: "recordings/")
+  with services
   with clock(2026-10-12 06:30 in "UTC")  # 07:30 in Dublin
   advance(10 min)
-  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+  expect(keys(services) == ["ireland-2026-10-12"])
   let Some(article) = Day(2026-10-12).article else { unreachable("the morning wrote no briefing") }
   expect(article.title == "Ireland & Dublin — Monday 12 October")
   expect(article.document |> contains("- Temporary protection is extended to 4 March 2027"))
@@ -676,11 +677,12 @@ test "the morning reads its sources, has the briefing written, and sends it" {
 }
 
 test "/digest in a group chat gets silence" {
-  with fakes(notify, from: "recordings/")
+  let sent = fakes(notify, from: "recordings/")
+  with sent
   with clock(2026-10-12 09:00 in dublin)
   Day(2026-10-12).keep(today)
   telegram.updates.publish(digestCommand(-100, from: 42))
-  expect(Day(2026-10-12).sent == {})
+  expect(sent.calls(notify.send) == [] && sent.calls(notify.identity) == [])
 }
 
 test "a page that can't be read is reported, not fatal" {

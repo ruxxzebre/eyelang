@@ -33,6 +33,16 @@ import (
 type fakeSet struct {
 	path      string
 	exchanges []exchange
+	// answered are the calls the fakes answered, in order, for
+	// fakes.calls(op).
+	answered []fakeCall
+}
+
+// fakeCall is a call a fake answered: the operation, and its arguments as
+// a record, with defaults filled in and the key last.
+type fakeCall struct {
+	op   *ir.Op
+	args *Record
 }
 
 type exchange struct {
@@ -75,10 +85,42 @@ func (r recordedReply) spent(model string) spend {
 	return usage(model, r.Usage.Input, r.Usage.Output, r.Usage.USD)
 }
 
-// fakesHandler is the value of `fakes(…)`.
+// fakesHandler is the value of `fakes(…)`. Applied, it keeps the fakes it
+// made, so a test can ask what they were called with.
 type fakesHandler struct {
 	modules []*ir.Module
 	dir     string
+	sets    map[*ir.Contract]*fakeSet
+}
+
+// calls is fakes.calls(op): the calls the fakes answered for op, oldest
+// first, each a record of its arguments.
+func (h *fakesHandler) calls(in *Interp, args []Value, at ir.Pos) Value {
+	var o *ir.Op
+	if len(args) == 1 {
+		if v, ok := args[0].(*OpVal); ok {
+			o = v.Op
+		}
+	}
+	if o == nil {
+		in.faultf(at, "calls takes an operation of a contract the fakes answer for, as calls(notify.send)")
+	}
+	faked := false
+	for _, m := range h.modules {
+		faked = faked || m == o.Contract.Module
+	}
+	if !faked {
+		in.faultf(at, "these fakes don't answer for %s, so they saw no call of %s", o.Contract.Module.Name, o.Name)
+	}
+	list := &List{}
+	if fs := h.sets[o.Contract]; fs != nil {
+		for _, c := range fs.answered {
+			if c.op == o {
+				list.Elems = append(list.Elems, c.args)
+			}
+		}
+	}
+	return list
 }
 
 func (h *fakesHandler) apply(in *Interp, at ir.Pos) {
@@ -108,6 +150,10 @@ func (h *fakesHandler) apply(in *Interp, at ir.Pos) {
 			in.faultf(at, "%v", err)
 		}
 		in.rt.fakes[ct] = fs
+		if h.sets == nil {
+			h.sets = map[*ir.Contract]*fakeSet{}
+		}
+		h.sets[ct] = fs
 	}
 }
 
@@ -201,6 +247,7 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 	key, _ := named["key"].(string)
 	for _, e := range fs.exchanges {
 		if e.op == op.Name && (key == "" || e.key == key) {
+			fs.answered = append(fs.answered, fakeCall{op, rt.callArgs(op, args, named)})
 			if v, ok := e.result.(*Variant); ok && v.V.Name == "Uncertain" && len(v.Vals) == 1 {
 				rt.lost(keyOf(v.Vals[0]), sentCommand{op, args, named})
 			}
@@ -212,6 +259,28 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 	}
 	rt.in.faultf(at, "%s has no exchange for %s.%s", fs.path, mod, op.Name)
 	return nil
+}
+
+// callArgs is a call's arguments as a record: one field per parameter, in
+// order, with defaults filled in, and the key last for a command with @key.
+func (rt *runtime) callArgs(op *ir.Op, args []Value, named map[string]Value) *Record {
+	rec := &Record{}
+	for i, p := range op.Params {
+		var v Value
+		switch {
+		case i < len(args):
+			v = args[i]
+		case named[p.Name] != nil:
+			v = named[p.Name]
+		case p.Default != nil:
+			v = rt.in.eval(&frame{fn: &ir.Func{Name: op.Name}, slots: make([]Value, 16)}, p.Default)
+		}
+		rec.Names, rec.Vals = append(rec.Names, p.Name), append(rec.Vals, v)
+	}
+	if op.Key {
+		rec.Names, rec.Vals = append(rec.Names, "key"), append(rec.Vals, named["key"])
+	}
+	return rec
 }
 
 // sentCommand is a command whose reply was lost, kept so that reconcile can

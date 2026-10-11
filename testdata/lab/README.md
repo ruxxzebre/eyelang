@@ -262,7 +262,7 @@ eye runs /program 2 9        # one step's whole result, such as the model's repl
 runs. A good morning shows:
 
 ```
-#1 digest.morning(2026-10-12)  done: Ok(Accepted(id: "m-…", deliveries: 1, deduped: false))  [7 steps, 1.4 KiB]
+#1 digest.morning(2026-10-12)  done: Ok(Accepted(id: "m-…", deliveries: 1, deduped: false))  [6 steps, 1.3 KiB]
 #2 digest.write(2026-10-12)  done: Ok({ day: 2026-10-12, title: "Ireland & Dublin — Monday 12 October", document: …  [10 steps, 1.8 KiB, 30000 tokens in, 3000 out, $0.1650]
 ```
 

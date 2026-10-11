@@ -193,10 +193,6 @@ func TestDigestOverHTTP(t *testing.T) {
 			t.Errorf("the briefing has no %q:\n%s", want, text)
 		}
 	}
-	sent := in.field(&EntityRef{Entity: digest.Entities["Day"], ID: day}, "sent", ir.Pos{})
-	if show(sent) != `{"ireland-2026-10-12"}` {
-		t.Errorf("Day(2026-10-12).sent = %s", show(sent))
-	}
 }
 
 // loadFiles checks a program made of the given files, by path.

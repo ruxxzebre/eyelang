@@ -198,7 +198,9 @@ pub extern fn decline(what: String, by: who = "test")
 
 ## Used as `with fakes(notify, from: "receipts/")`: calls to the contract modules replay the
 ## exchanges recorded in `receipts/notify.json`, checked against the contract's types.
-## It takes any number of contract modules, written as separate arguments.
+## It takes any number of contract modules, written as separate arguments. Named first, as
+## `let sent = fakes(notify, from: …)` and `with sent`, it lists the calls it answered:
+## `sent.calls(notify.send)`, each a record of the call's arguments and its key.
 pub extern fn fakes(modules: List(Module), from: String) -> Handler
 
 # == Time

@@ -49,10 +49,14 @@ job restart() {
 }
 
 test "an approval is asked on Notify, and a press on Approve answers it" {
+  let asked = fakes(notify, from: "recordings/")
+  with asked
   restart.start()
   expect(Outcome("router").decided == None)
+  let [q] = asked.calls(notify.ask) else { unreachable("not asked once") }
+  expect(q.to == operator && q.text == "Restart the router?" && q.choices == [yes, no] && q.within == 1 h)
   notify.answered.publish({
-    question: QuestionId("approval-1-0"),
+    question: QuestionId("q-41"),  # what the recording answered the ask with
     choice: "approve",
     by: operator,
     at: now(),
@@ -61,6 +65,7 @@ test "an approval is asked on Notify, and a press on Approve answers it" {
 }
 
 test "a question nobody presses ends as Expired" {
+  with fakes(notify, from: "recordings/")
   restart.start()
   advance(2 h)
   expect(Outcome("router").decided == Some(false))

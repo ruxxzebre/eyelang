@@ -136,6 +136,28 @@ type Delivery =
   A command's lost reply is recorded as `{ "kind": "Uncertain", "key": "…" }`. Recordings written
   before this shape was settled, with a variant as its name's only key (`{ "Accepted": {…} }`), are
   still read.
+- **A test sees what a fake received.** `fakes(…)` is a value: a test that wants to look names
+  it, applies it with `with`, and asks it with `calls(op)`. That lists every call of the operation
+  the fakes answered, oldest first, each a record of the call's arguments with their defaults
+  filled in, and `key` last for a command with `@key`. A reconcile that asks a query, or sends a
+  command again, adds a call too. So a test checks what a program sent without the program
+  keeping a record of it:
+
+  ```eye
+  test "the morning's briefing goes at 07:40, for the Irish day" {
+    let sent = fakes(notify, from: "recordings/")
+    with sent
+    with clock(2026-10-12 06:30 in "UTC")
+    advance(10 min)
+    let [briefing] = sent.calls(notify.send) else { unreachable("sent more or less than once") }
+    expect(briefing.key == "ireland-2026-10-12" && briefing.priority == Normal)
+  }
+  ```
+
+  `calls` takes an operation of a contract the fakes answer for; its result is a `List` of the
+  record whose fields are the operation's parameters. `ai` and `http` have no operations, so
+  their fakes show nothing this way. A call the fakes had no answer for stopped its run, so it
+  isn't listed.
 - **Services without a contract,** such as web pages, are read with the standard `http` module:
   `http.get!(url, headers: { "Accept": "text/html" }, via: proxy)` returns
   `Result(Response, HttpError)`, with the status, the headers and the body as text. Any answer is
