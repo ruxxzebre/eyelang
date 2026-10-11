@@ -14,7 +14,7 @@ import (
 // the precedence table of SPECS.md section 23.
 func Parse(src []byte) *File {
 	tokens, lexDiags := Lex(src)
-	p := &parser{src: src, lines: NewLines(src), errLines: map[int]bool{}, errTok: -1}
+	p := &parser{src: src, lines: NewLines(src), errLines: map[int]bool{}, errTok: -1, fuel: fuel}
 	var trivia []Token
 	for _, t := range tokens {
 		if t.Kind.IsTrivia() {
@@ -55,18 +55,35 @@ type parser struct {
 	// match arm, which is where tree-sitter's scanner may produce _newline.
 	// Delimited constructs and parts that can't end an element turn it off.
 	nl bool
+
+	fuel int // looks left before the next token is consumed
 }
 
 // ---------------------------------------------------------------- tokens
 
-func (p *parser) tok() Token { return p.toks[p.pos] }
+// fuel is how many times the parser may look at tokens without consuming
+// one. A loop that runs out has stopped making progress: rather than hang an
+// editor, the parser panics, and the fuzz test reports the input.
+const fuel = 1024
 
-func (p *parser) kind() Kind { return p.toks[p.pos].Kind }
+// look spends fuel on one look at the tokens.
+func (p *parser) look() {
+	p.fuel--
+	if p.fuel < 0 {
+		panic(fmt.Sprintf("syntax: the parser is stuck at offset %d, %s: it looked %d times without consuming a token",
+			p.toks[p.pos].Span.Start, p.toks[p.pos].Kind, fuel))
+	}
+}
 
-func (p *parser) at(k Kind) bool { return p.toks[p.pos].Kind == k }
+func (p *parser) tok() Token { p.look(); return p.toks[p.pos] }
+
+func (p *parser) kind() Kind { p.look(); return p.toks[p.pos].Kind }
+
+func (p *parser) at(k Kind) bool { p.look(); return p.toks[p.pos].Kind == k }
 
 // peek returns the token n positions ahead, or EOF.
 func (p *parser) peek(n int) Token {
+	p.look()
 	if i := p.pos + n; i < len(p.toks) {
 		return p.toks[i]
 	}
@@ -88,6 +105,7 @@ func (p *parser) bump() *Node {
 	n := &Node{Kind: t.Kind, Flags: t.Flags, Span: t.Span, Leading: p.trivia[p.pos]}
 	if t.Kind != EOF {
 		p.pos++
+		p.fuel = fuel
 	}
 	return n
 }

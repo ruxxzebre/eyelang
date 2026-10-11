@@ -10,7 +10,7 @@ import (
 )
 
 // eyeFiles lists every .eye file in the repository that should parse.
-func eyeFiles(t *testing.T) []string {
+func eyeFiles(t testing.TB) []string {
 	t.Helper()
 	var files []string
 	for _, root := range []string{"testdata/syntax/valid", "testdata/programs", "testdata/lab", "testdata/fmt", "docs", "check", "ir"} {

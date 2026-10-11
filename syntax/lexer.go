@@ -20,7 +20,24 @@ import (
 func Lex(src []byte) ([]Token, []Diagnostic) {
 	l := lexer{src: src}
 	l.run()
+	l.nulBytes()
 	return l.tokens, l.diags
+}
+
+// nulBytes reports a NUL byte in a comment or a string. Elsewhere one is an
+// Illegal token already. As in Go, source text may not contain NUL anywhere:
+// tools such as tree-sitter read it as the end of the file.
+func (l *lexer) nulBytes() {
+	for _, t := range l.tokens {
+		if t.Kind != Comment && t.Kind != StringText {
+			continue
+		}
+		for i := t.Span.Start; i < t.Span.End; i++ {
+			if l.src[i] == 0 {
+				l.errorf(Span{i, i + 1}, "invalid NUL character")
+			}
+		}
+	}
 }
 
 type lexer struct {

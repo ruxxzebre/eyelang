@@ -17,6 +17,7 @@ missing-comma.eye:1:13: expected ',' or ')', found 'b'
 missing-paren.eye:2:17: expected ')' before the end of the line
 mut-as-name.eye:1:5: expected a pattern, found 'mut'
 named-field-in-alias.eye:1:12: a type argument can't have a name; to declare a variant with named fields, start the list with '|'
+nul-in-comment.eye:1:34: invalid NUL character
 open-range-in-list.eye:1:13: expected an expression, found ']'
 pub-let-in-block.eye:1:9: expected a statement before the end of the line
 pub-test.eye:1:1: test declarations can't be pub

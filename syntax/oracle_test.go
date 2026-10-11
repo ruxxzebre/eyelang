@@ -10,7 +10,7 @@ import (
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
-	eyelang "eyelang/tree-sitter-eyelang/bindings/go"
+	eyelang "eyelang/tree-sitter-eyelang/src"
 )
 
 var language = sync.OnceValue(func() *ts.Language { return ts.NewLanguage(eyelang.Language()) })

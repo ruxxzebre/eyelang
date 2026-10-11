@@ -123,7 +123,8 @@ static bool scan_string_content(TSLexer *lexer) {
   bool has_content = false;
   for (;;) {
     int32_t c = lexer->lookahead;
-    if (c == '"' || c == '\\' || c == '{' || c == '\n' || lexer->eof(lexer)) {
+    // A NUL byte is never text: source may not contain one (the Go lexer reports it).
+    if (c == '"' || c == '\\' || c == '{' || c == '\n' || c == 0 || lexer->eof(lexer)) {
       break;
     }
     advance(lexer);
@@ -140,7 +141,7 @@ static bool scan_multiline_string_content(TSLexer *lexer) {
   bool has_content = false;
   for (;;) {
     int32_t c = lexer->lookahead;
-    if (c == '\\' || c == '{' || lexer->eof(lexer)) {
+    if (c == '\\' || c == '{' || c == 0 || lexer->eof(lexer)) {
       break;
     }
     if (c == '"') {

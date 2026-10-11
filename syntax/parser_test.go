@@ -1,6 +1,8 @@
 package syntax
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -79,18 +81,42 @@ fn fourth() = ok
 	}
 }
 
+// FuzzParse feeds the parser mutations of the corpus, the spec's examples and
+// every Eyelang file in the repository, and checks, for each input, that
+//
+//   - the parser neither panics nor gets stuck: it runs out of fuel instead
+//     of hanging;
+//   - the tree reproduces the source byte for byte, errors and all;
+//   - a tree with an error has a diagnostic;
+//   - the parser and the tree-sitter grammar agree on whether the input
+//     parses, and when it does, their trees are equal, node for node.
+//
+// `go test` runs the seeds and every input saved in testdata/fuzz, so a
+// failure found once stays a test; `task fuzz` searches for new ones.
 func FuzzParse(f *testing.F) {
 	for _, src := range exampleInputs(f) {
 		f.Add(src)
 	}
+	files := eyeFiles(f)
+	invalid, _ := filepath.Glob(filepath.Join("..", "testdata", "syntax", "invalid", "*.eye"))
+	for _, path := range append(files, invalid...) {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(string(src))
+	}
 	f.Fuzz(func(t *testing.T, src string) {
 		file := Parse([]byte(src))
 		if got := string(file.Root.Source(file.Src)); got != src {
-			t.Fatalf("the tree does not reproduce the source")
+			t.Fatalf("the tree does not reproduce the source\n%s", firstDifference(src, got))
 		}
 		if file.Root.HasError() && len(file.Diagnostics) == 0 {
 			t.Fatalf("the tree has an error but no diagnostic was reported:\n%s",
 				file.Root.SExpr(file.Src, SExprOptions{Fields: true, Tokens: true, Text: true}))
+		}
+		if diff := agree([]byte(src)); diff != "" {
+			t.Fatalf("%s\ninput: %q", diff, src)
 		}
 	})
 }
