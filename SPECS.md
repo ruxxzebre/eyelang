@@ -1750,3 +1750,11 @@ operator. All binary operators associate to the left except `??`, which associat
     clumsily: the parameter is `Option(Provider) = None` so that leaving it out means "from the
     model's name". Should a call be able to pass a bare value to such a parameter, or should a
     default be able to say "chosen later" without `Option`?
+32. **Byte offsets and character counts are both `Int`.** Searching and slicing a `String` count
+    bytes, while `size`, `take` and `drop` count characters (decision log, "String offsets"). Both
+    are `Int`, so mixing them type-checks: `s.slice(0..(s |> size))` on `"Málaga"` is
+    `Some("Málag")`, the last letter quietly gone, and `None` comes only when a range splits a
+    character. Should offsets be a type of their own, as Swift's `String.Index` is: `indexOf`
+    returning an `Offset`, `slice` taking a `Range(Offset)`, `s.end()` the last one, and an `Int`
+    in their place a compile error? The scanner stays as cheap, and the easy mistake stops
+    compiling.
