@@ -23,7 +23,7 @@ listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/
 along with the test that reports it.
 
 **The biggest gaps today.** Some waits (`lock!`, `all!`, `first!`, ending an entity), coding
-agents and model tools, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destructive`,
+agents and model tools, the checks that come from contracts (`@fresh`, `@destructive`,
 `@unwitnessed`), fixed-width integers, and native compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
@@ -252,7 +252,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@version(N)` | ✓ | ✓ | ✓ | [migrations_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/migrations_test.go#L14) |
 | `@key`, `@reconcile` | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | `@http`, `@auth` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
-| `@port`, `@allow` | ✓ | partial: only where they go and what they take | — | |
+| `@port`, `@allow` | ✓ | ✓: a served contract and one with `@allow` need `@port`; a call from a module `@allow` doesn't list, a name that isn't a module, and any call under `@allow(nobody)` are errors | — (`eye run` doesn't listen on a port yet) | [ports_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/ports_test.go#L41) |
 | `@fresh`, `@destructive` | ✓ | partial: only where they go; no `basedOn:` or `Approval` argument is added | — | |
 | `@unwitnessed("why")` | ✓ | partial: only where it goes | — | |
 | `@library`, `@host` | ✓ | ✓ | partial: only the standard library's host functions exist | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L30) |
@@ -271,7 +271,7 @@ Runs column says whether the runtime does what the attribute says.
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
 | `contract` with commands, queries and events | ✓ | ✓ | ✓ | [tour notify](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/notify/notify.eye#L16) |
-| `import` as a typed edge: a wrong port or caller is a compile error | ✓ | — | — | |
+| `import` as a typed edge: a wrong port or caller is a compile error | ✓ | ✓ | n/a: network policy from it is 6.5 | [ports_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/ports_test.go#L41), [lab](https://github.com/ruxxzebre/eyelang/blob/dev/check/ports_test.go#L154) |
 | Commands can return `Uncertain`, which must be handled or reconciled | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L127), [tour worlds](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/worlds.eye#L26) |
 | `.reconcile!()` through a query, resending only on `None` | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L136) |
 | `@reconcile(send)`: reconciling resends with the same key | ✓ | ✓ | ✓ | [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L144) |

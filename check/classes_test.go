@@ -13,10 +13,10 @@ import (
 // or a test function. Each message says what was expected, what was found
 // and where (CLAUDE.md, "Writing").
 //
-// Not checked yet, and so not listed: a contract's port and its allowed
-// callers (phase 6), the Approval that @destructive commands and ending an
-// entity need, recordings that lack a field the code reads (@unwitnessed),
-// values captured by structured concurrency's tasks (3.5) and dyn (v0.2).
+// Not checked yet, and so not listed: the Approval that @destructive
+// commands and ending an entity need, recordings that lack a field the
+// code reads (@unwitnessed), values captured by structured concurrency's
+// tasks (3.5) and dyn (v0.2).
 var errorClasses = []struct{ section, class, test string }{
 	{"§4, §23", "a syntax error", "syntax errors"},
 	{"§6", "a name nothing declares", "undefined names"},
@@ -130,6 +130,11 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§17", "a served contract missing an operation or changing its parameters", "a served contract serves every operation, as declared"},
 	{"§17", "a trigger that isn't an event", "a trigger names a contract's event"},
 	{"§17", "a fake's calls given what isn't an operation of a contract", "TestFakeCalls"},
+	{"§17", "an operation called or used by a module its contract's @allow doesn't list", "a caller not in @allow"},
+	{"§17", "an operation called by any module of the program under @allow(nobody)", "@allow(nobody) lets only the server call it"},
+	{"§17", "a name in @allow that isn't a module, or nobody beside other names", "@allow names modules"},
+	{"§17", "a served contract, or one with @allow, without @port, or a port out of range", "a served or guarded contract has a port"},
+	{"§17", "the lab's call of Notify from a module taken out of its @allow", "TestLabAllowNeedsApproving"},
 	{"§19", "a model asked for a type without a Schema", "a model is asked for a type with a Schema"},
 }
 

@@ -598,6 +598,7 @@ func (l *lowerer) name(n *syntax.Node) ir.Expr {
 	}
 	if d := l.c.lookupValue(l.m, name); d != nil {
 		l.c.use(at.Pos, d)
+		l.mayCall(n, d)
 		return &ir.Ref{At: at, Decl: d}
 	}
 	l.errorf(n, "undefined name %s", name)
@@ -846,6 +847,7 @@ func (l *lowerer) callee(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir
 		if decl := l.qualified(recvNode, name); decl != nil {
 			l.c.use(l.pos(fnNode.ChildByField(syntax.FieldField)), decl)
 			l.visible(fnNode.ChildByField(syntax.FieldField), decl, name)
+			l.mayCall(fnNode.ChildByField(syntax.FieldField), decl)
 			l.checkDurable(n, decl, waiting)
 			return &ir.Call{At: at, Func: &ir.Ref{At: l.at(fnNode), Decl: decl}, Args: args}
 		}
@@ -1020,6 +1022,7 @@ func (l *lowerer) field(n *syntax.Node) ir.Expr {
 	if decl := l.qualified(recv, name); decl != nil {
 		l.c.use(l.pos(n.ChildByField(syntax.FieldField)), decl)
 		l.visible(n.ChildByField(syntax.FieldField), decl, name)
+		l.mayCall(n.ChildByField(syntax.FieldField), decl)
 		return &ir.Ref{At: l.at(n), Decl: decl}
 	}
 	f := &ir.Field{At: l.at(n), Value: l.expr(recv), Name: name}

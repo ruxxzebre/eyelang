@@ -14,6 +14,7 @@ const contract = `pub type Sent = | Sent(Int)
 pub type Raw = | Done
 pub type Ping = { id: Int, text: String }
 
+@port(3001)
 contract Svc {
   @key(required)
   @reconcile(sent)

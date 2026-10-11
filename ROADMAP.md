@@ -59,7 +59,7 @@ have no issue yet.
    does no more than its type says, and callbacks can't be kept there.)
 2. The digest in the homelab, closing phase 5's exit criterion.
 3. Phase 6 (v0.3): its tasks are below the phase, each with its issue (6.1 to 6.12). `@port` and
-   `@allow` (6.2) need `pub` and `opaque` enforced first, from item 1. The typed IR (7.1, #28)
+   `@allow` (6.2) are checked, so network policy from them (6.5) can start. The typed IR (7.1, #28)
    and checkpoints in the interpreter (7.3, #76), pulled forward from phase 7 so that the lab's
    never-ending runs stop growing (open question 9), are done, and so are enums (6.11).
 4. Self-hosting's early start: an Eyelang lexer as a test program, checked by the conformance
@@ -470,6 +470,13 @@ What each task is, until its issue holds it:
   **Done when:** a test shows each error with its span; the lab checks with Notify's `@allow` as
   it is, and fails when `approving` is taken out of it; the port rule is in SPECS §17 with a
   passing and a failing test.
+  Done on 2026-10-11, with a different port rule than the likeliest reading, which would have
+  given the lab's outside services (Telegram, Miniflux, NetBird) made-up ports: a contract that a
+  program serves must declare `@port`, and so must one with `@allow`; a contract without a port
+  is an outside service any module may call. A call from a module `@allow` doesn't list (its own
+  module, its servers and tests aside), a name in it that the program can't import, and any
+  call under `@allow(nobody)` are errors (SPECS §17, decision log "Ports and callers";
+  `check/ports.go`, `check/ports_test.go`).
 - **6.3 `@fresh` and `@destructive`.** A `@fresh` command takes a required `basedOn: Version`
   and adds `Stale` and `Expired` to its outcomes, which a `match` must handle. A `@destructive`
   command takes a required `Approval`, which only `approval!` makes. The same `@destructive` on a

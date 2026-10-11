@@ -114,7 +114,6 @@ Checker:
 - `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.
 - Generic private functions: `double(2.5)` gives two errors where one would do, and calling
   itself at a bigger type isn't detected.
-- `@allow(nobody)` is unchecked; it belongs to 6.2 (#54).
 - `eye fix` doesn't add the `!` that `publish!` and `start!` now need in jobs; the call sites
   were changed by hand.
 - `check/resolve_test.go`'s unresolvable list keeps `nick` and `nickname` on purpose: a

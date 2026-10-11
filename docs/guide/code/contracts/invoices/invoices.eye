@@ -18,6 +18,7 @@ pub type Issue =
   | Refused(reason: String)
 
 # region contract
+@port(8080)
 @http(names: snake)
 contract Invoices {
   ## Bills a customer. The key names the invoice, so issuing it again with the

@@ -776,6 +776,7 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 	ct := &ir.Contract{Name: text(f, nameNode), Module: m.mod, Ops: map[string]*ir.Op{}, Events: map[string]*ir.Event{}}
 	m.mod.Contracts[ct.Name] = ct
 	c.define(m, f, nameNode, ct.Name, ct)
+	c.contractPolicy(m, f, d, ct)
 	if _, named, ok := attribute(f, d, "http"); ok {
 		if n := named["names"]; n != nil {
 			if text(f, n) != "snake" {
@@ -1025,6 +1026,7 @@ func (c *checker) contractNamed(m *module, f *ir.File, n *syntax.Node) *ir.Contr
 // with their types and defaults from the contract, and `key` last for a
 // command with @key. It runs as one transaction, like an entity method.
 func (c *checker) serve(m *module, f *ir.File, d *syntax.Node, ct *ir.Contract) {
+	c.servedPort(m, f, d, ct)
 	served := map[string]bool{}
 	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
 		if member.Kind != syntax.FunctionDeclaration {

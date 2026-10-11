@@ -264,6 +264,13 @@ separate table of keys:
 A program that serves a contract calls its own implementation, unless the service's URL is set in
 the environment; then the service is elsewhere.
 
+`@port(8080)` says where the service listens. A contract that a program serves must have one, and
+a contract without one, such as the payment service's, is a service outside your network, reached
+at the URL in its configuration. A contract with a port can also say who may call it:
+`@allow(shop, billing)` lets only those modules call its operations, and a call from any other
+module fails to compile, at the call. The contract's own module, the module that serves it and
+tests may always call it.
+
 ::: info Not yet
 `eye run` doesn't accept HTTP requests yet, so an `impl` serves the program's own calls and its
 tests. Types generated from contracts for other languages are planned for v0.3.

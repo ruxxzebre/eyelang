@@ -349,6 +349,14 @@ type Contract struct {
 	Ops    map[string]*Op
 	Events map[string]*Event
 	HTTP   ContractHTTP // from @http(names: …) and @auth(…) on the contract
+
+	// Port is where its service listens, from @port(n); 0 without one.
+	Port int
+	// Guarded says it has @allow: only the modules in Allowed may call its
+	// operations, besides its own module, those that serve it, and tests.
+	// @allow(nobody) leaves Allowed empty.
+	Guarded bool
+	Allowed []string
 }
 
 // ContractHTTP is what a contract's operations share over HTTP.
