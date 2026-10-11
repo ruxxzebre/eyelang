@@ -78,6 +78,15 @@ const learn: DefaultTheme.SidebarItem[] = [
   },
 ]
 
+// Design documents for how Eyelang is built, written by hand (not from SPECS.md).
+const internals = {
+  text: 'Implementation',
+  items: [
+    { text: 'Compilation', link: '/internals/compilation' },
+    { text: 'Proposals', link: '/internals/proposals' },
+  ],
+}
+
 export default defineConfig({
   title: 'Eyelang',
   description: 'A language for software that keeps state and waits.',
@@ -91,7 +100,7 @@ export default defineConfig({
     nav: [
       { text: 'Learn', link: '/quickstart', activeMatch: '^/(why|quickstart|tutorial|guide)' },
       { text: 'Reference', link: '/reference/', activeMatch: '^/reference/' },
-      { text: 'Design', link: '/design/', activeMatch: '^/design/' },
+      { text: 'Design', link: '/design/', activeMatch: '^/(design|internals)/' },
     ],
     sidebar: {
       '/reference/': [
@@ -99,7 +108,8 @@ export default defineConfig({
         { ...spec[0], collapsed: false },
         { text: 'API reference', link: '/reference/api/', items: apiPages() },
       ],
-      '/design/': [spec[1]],
+      '/design/': [spec[1], internals],
+      '/internals/': [spec[1], internals],
       '/': learn,
     },
     outline: [2, 3],

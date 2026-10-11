@@ -1482,7 +1482,8 @@ diagnostics layer, and a conversion from its editor-oriented tree.
    v1.0.
 6. The runtime pieces: the `Store` trait, the runner, the in-memory store written in Eyelang, and the
    Postgres store.
-7. Code generation to C with reference counting, as described in the compilation analysis.
+7. Code generation to C with reference counting, as described in the compilation analysis,
+   [docs/internals/compilation.md](docs/internals/compilation.md) (a draft).
 
 **Self-hosting**, after native compilation (v0.4), starts with the lexer and parser:
 
