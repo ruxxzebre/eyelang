@@ -5,7 +5,8 @@ ROADMAP.md's "What's next" stay the source of truth for the plan; this file hold
 can't: branches in flight, findings that have no issue yet, and the state of the homelab deploy.
 Delete it once its items are done or moved to issues.
 
-dev is at `111a64e`. Every lane that ran today is merged except `track/runtime-wip`.
+dev is at `bbf2505`, and CI passes there (see "CI and checks"). Every lane that ran today is
+merged except `track/runtime-wip`.
 
 ## Pick up first
 
@@ -24,9 +25,28 @@ dev is at `111a64e`. Every lane that ran today is merged except `track/runtime-w
    `fakeCalls`) against generic private functions (e3abeea), add a `check/` unit test for its
    error message, then `task check`. Known gap: `fakes(…)` still returns the plain `Handler`
    type, so `clock(…).calls(op)` fails only at run time; a separate `Fakes` type would catch it.
-2. **Run `TestMorningDigestOnPostgres` once Docker answers.** It is phase 5's exit test. Its
-   stand-ins changed today and it couldn't run, because Docker didn't respond.
-3. **Watch the digest's first real run in the homelab** (below), and fix what it shows.
+2. **Watch the digest's first real run in the homelab** (below), and fix what it shows.
+3. **Run the parser fuzz once**, after lane B's grammar change (eea8493, string effect targets)
+   and before or with #69: `FUZZTIME=60s FUZZWORKERS=2 task fuzz`. It was held back while the
+   disk was full; the last full run (4.7M inputs) was clean, before eea8493.
+
+## CI and checks
+
+- **CI on dev was red from fca3a9f to d45535b,** all day, and nobody looked at it: every merge
+  was checked with a local `task check`, which can't run the Docker tests on this laptop and
+  skips the VS Code window test on macOS. Two causes, both fixed in bbf2505, whose CI run passes:
+  - `task check`'s vscode step called `{{.TASK_EXE}}`, which CI's Task leaves empty, so on Linux
+    it failed before the VS Code end-to-end test (from fca3a9f).
+  - Once `pub` was enforced (25e1998), the exit test's `main` couldn't start `digest.morning`,
+    so `TestMorningDigestOnPostgres` timed out waiting for the model. The test's copy of the lab
+    now makes `morning` public, and checks the copy before `eye run` starts.
+- bbf2505's CI run is the first in which the VS Code end-to-end test checked completion
+  (b297dbf, eyelang-3b) and the Postgres exit test ran on today's lab. Both pass.
+- **After every push to dev, check CI:** `gh run list --branch dev --workflow ci.yml --limit 3`.
+  A local `task check` is not enough: CI runs the Docker tests (`EYE_TEST_DOCKER=1`) and the
+  VS Code window test, and this laptop runs neither by default.
+- Locally, Docker didn't answer at the end of the day (`docker info` hung), and the disk had
+  about 11 GB free. `go clean -cache` frees the most; it filled to ENOSPC once.
 
 ## The digest in the homelab
 
@@ -83,7 +103,9 @@ Checker:
 - `@allow(nobody)` is unchecked; it belongs to 6.2 (#54).
 - `eye fix` doesn't add the `!` that `publish!` and `start!` now need in jobs; the call sites
   were changed by hand.
-- `check/resolve_test.go`'s unresolvable list still has `nick` and `nickname`.
+- `check/resolve_test.go`'s unresolvable list keeps `nick` and `nickname` on purpose: a
+  migration reads the old row by name, which nothing declares, so they don't resolve. `unix` and
+  `name` left it today.
 
 Library:
 - No hour-and-minute format for a time of day; the digest takes the first five characters of
@@ -113,6 +135,43 @@ This follows ROADMAP's "What's next", with what today changed:
 4. Phase 6's exit test: 6.6 (#58), Notify generated from its contract, and 6.8 (#60), the
    `agents` module, which needs 6.7 (#59), model `tools:`.
 5. 7.1 (#28), the typed IR, and 7.3 (#76), saved frames, both pulled into v0.3.
+
+## Each session's state
+
+What every session that worked today said was left, at the end of the day. Claims are in
+`task next`; each owner releases its own with `task claim -- --release WHO` when the user says so.
+
+- **eyelang-20 (phase 5, v0.2.0, merges into dev).** Nothing unmerged. Claim: `dev` (merges in
+  the main checkout) and `tools/next`; the next session that merges takes the `dev` claim.
+  Open: maps and sets built one element at a time are quadratic (above).
+- **eyelang-77 (lanes B to F, this handoff).** All lanes stopped; only `track/runtime-wip`
+  (above). Its worktrees `handoff` and `runtime` are merged and can be removed.
+- **eyelang-55 (language server, parser).** Nothing unmerged; `ts-parser`, `list-append`,
+  `list-comment`, `lsp-*` and `builtin-decls` are merged and removed. Claim: `internal/lsp`
+  except completion, `check/index.go`, `check/resolve_test.go`. Not started, nobody owns them:
+  - hover shows a private function's inferred effects;
+  - the checker works around a syntax error, skipping only the declaration that has it, so type
+    errors, hover and completion keep working while a file is half typed.
+  For the next syntax change: golden messages in `testdata/syntax/invalid/diagnostics.txt`
+  (`go test ./syntax -run TestSyntaxErrors -update`), conformance against tree-sitter in the
+  same process, `tree-sitter-eyelang/src` committed and diffed by `task generated`. `eye` stays
+  cgo-free; the tests need a C compiler. Keep the tree-sitter binding in
+  `tree-sitter-eyelang/src`: Go's build cache doesn't see C files included from another
+  directory.
+- **eyelang-42 (docs site).** Merged (`docs-site` at 1b2cb22); a VitePress dev server still runs
+  from that worktree on http://localhost:5173. Its claim marks `docs/` as written by hand: tell
+  them, or the user, before large changes there. Open: about 20 checker and interpreter bugs the
+  tutorial and guide writers hit, most passing `eye check` and failing at run time. eyelang-15
+  holds the full list and asked the user whether to file them; lane B may have fixed some. They
+  include `Int * Duration`, iterating a view, `?` not wrapping `String` errors, `ai.generate` for
+  maps, tuples and `Time`, and a faulted run staying failed.
+- **eyelang-3b (editor and tasks).** Nothing open. Claim: `editors/vscode` and the `vscode:*`
+  tasks; the rest of `Taskfile.yml` is shared. Open, low priority: CI could cache
+  `editors/vscode/node_modules` by `package-lock.json` (about 4 s); the extension's README
+  doesn't say whether hover works while a program has type errors.
+- **eyelang-17 (completion).** Merged; its worktrees are removed and its claim released.
+- **eyelang-af (homelab deploy).** In the stacks-homelab repository; see "The digest in the
+  homelab" above.
 
 ## How today ran
 

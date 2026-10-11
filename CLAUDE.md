@@ -156,6 +156,9 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `tools/next/` | `task next` and `task claim`: what's next, and who works on what |
 | `tools/spechtml/`, `internal/highlight/` | Render SPECS.md as one HTML page (`task spec`), highlighted by the parser |
 | `internal/apidoc/` | The API reference `eye doc` writes from `##` comments |
+| `docs/` | The docs site (VitePress): guides and tutorial written by hand, reference pages generated; `task docs` builds it, `task docs-dev` serves it |
+| `tools/specpages/` | SPECS.md as the site's language reference (`docs/reference/language`) and design pages (`docs/design`) |
+| `tools/clidoc/` | `eye help` as the site's command reference, `docs/reference/cli.md` |
 | `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
 | `check/` | Loads a program's modules, resolves names, checks types, matches and effects, reports errors; `prelude.eye` and `std/` are the standard library written in Eyelang, and `runtime/store.eye` the in-memory store the runtime keeps every program's state in |
 | `ir/` | The resolved form programs are lowered to |
