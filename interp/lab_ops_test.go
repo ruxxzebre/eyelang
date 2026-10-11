@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -107,7 +108,7 @@ func digestStandIns(t *testing.T) *digestServices {
 	} {
 		t.Setenv(k, v)
 	}
-	for _, k := range []string{"DIGEST_MODEL", "DIGEST_EVENT"} {
+	for _, k := range []string{"DIGEST_MODEL", "DIGEST_EVENT", "DIGEST_TO"} {
 		t.Setenv(k, "") // restored after the test
 		_ = os.Unsetenv(k)
 	}
@@ -348,37 +349,83 @@ func TestDigestDeployProgram(t *testing.T) {
 	}
 }
 
-// DIGEST_EVENT sends the digest on an event of its own, with keys of its
-// own, so a shadow run beside the TypeScript digest reaches only those who
-// receive that event, and Notify doesn't drop it as a repeat of the other
-// digest's send. Unset, empty or digest.ireland, it changes nothing.
+// DIGEST_EVENT and DIGEST_TO send the digest on an event of its own, to
+// the Authentik uids listed, with keys of its own: a shadow run beside the
+// TypeScript digest reaches only the operator, and Notify doesn't drop
+// either digest's send as a repeat of the other's, since it dedupes by
+// caller and key whatever the event and the recipients. Unset or empty,
+// they change nothing. The failure notice goes the same way.
 func TestDigestShadowChannel(t *testing.T) {
-	cases := []struct{ setting, event, key string }{
-		{"", "digest.ireland", "ireland-2026-10-12"},
-		{"digest.ireland", "digest.ireland", "ireland-2026-10-12"},
-		{"digest.ireland.eye", "digest.ireland.eye", "digest.ireland.eye:ireland-2026-10-12"},
+	cases := []struct {
+		name, event, to string
+		failed          bool   // the write fails, so the morning sends its failure notice
+		wantEvent, key  string // the key without the -failed of a notice
+		wantTo          string // `to` as JSON, "" for none
+	}{
+		{"unset", "", "", false, "digest.ireland", "ireland-2026-10-12", ""},
+		{"empty", " ", " , ", false, "digest.ireland", "ireland-2026-10-12", ""},
+		{"default event", "digest.ireland", "", false, "digest.ireland", "ireland-2026-10-12", ""},
+		{"own event", "digest.ireland.eye", "", false, "digest.ireland.eye", "digest.ireland.eye:ireland-2026-10-12", ""},
+		{"operator only", "digest.ireland.eye", " 7bd86dfac2ab ,, b-2 ", false, "digest.ireland.eye", "digest.ireland.eye:ireland-2026-10-12", `["7bd86dfac2ab","b-2"]`},
+		{"recipients alone", "", "7bd86dfac2ab", false, "digest.ireland", "digest.ireland:ireland-2026-10-12", `["7bd86dfac2ab"]`},
+		{"failure notice", "digest.ireland.eye", "7bd86dfac2ab", true, "digest.ireland.eye", "digest.ireland.eye:ireland-2026-10-12-failed", `["7bd86dfac2ab"]`},
 	}
 	for _, c := range cases {
-		t.Run("DIGEST_EVENT="+c.setting, func(t *testing.T) {
+		t.Run(c.name, func(t *testing.T) {
 			lab := digestStandIns(t)
-			t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
-			if c.setting != "" {
-				t.Setenv("DIGEST_EVENT", c.setting)
+			if !c.failed {
+				t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+			}
+			if c.event != "" {
+				t.Setenv("DIGEST_EVENT", c.event)
+			}
+			if c.to != "" {
+				t.Setenv("DIGEST_TO", c.to)
 			}
 			in, run := runDigestJob(t, "../testdata/lab/deploy/digest", "morning")
 			if run.Status != "done" {
 				t.Fatalf("morning is %s (%s)", run.Status, run.Fault)
 			}
-			if got := show(in.decode(run.Result, ir.Pos{})); !strings.HasPrefix(got, "Ok(Accepted(") {
+			want := "Ok(Accepted("
+			if c.failed {
+				want = "Err(Faulted("
+			}
+			if got := show(in.decode(run.Result, ir.Pos{})); !strings.HasPrefix(got, want) {
 				t.Errorf("morning returned %s", got)
 			}
 			if len(lab.sends) != 1 {
 				t.Fatalf("Notify got %d sends, want 1", len(lab.sends))
 			}
-			if b := lab.sends[0]; b["event"] != c.event || b["dedupe_key"] != c.key || lab.keys[0] != c.key {
-				t.Errorf("Notify got event %v with key %v (header %s), want %s with %s", b["event"], b["dedupe_key"], lab.keys[0], c.event, c.key)
+			b := lab.sends[0]
+			if b["event"] != c.wantEvent || b["dedupe_key"] != c.key || lab.keys[0] != c.key {
+				t.Errorf("Notify got event %v with key %v (header %s), want %s with %s", b["event"], b["dedupe_key"], lab.keys[0], c.wantEvent, c.key)
+			}
+			to, sent := b["to"]
+			got, _ := json.Marshal(to)
+			if c.wantTo == "" && sent || c.wantTo != "" && string(got) != c.wantTo {
+				t.Errorf("Notify got to %s (sent: %v), want %q", got, sent, c.wantTo)
 			}
 		})
+	}
+}
+
+// Notify sends to at most 20 people, so DIGEST_TO with more fails the
+// morning's run before anything is written or sent, with a fault that
+// names it.
+func TestDigestToTakesAtMostTwenty(t *testing.T) {
+	lab := digestStandIns(t)
+	t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+	uids := make([]string, 21)
+	for i := range uids {
+		uids[i] = "u" + strconv.Itoa(i)
+	}
+	t.Setenv("DIGEST_TO", strings.Join(uids, ","))
+	_, run := runDigestJob(t, "../testdata/lab/deploy/digest", "morning")
+	if run.Status != "failed" || !strings.Contains(run.Fault, "DIGEST_TO lists 21 people") {
+		t.Errorf("morning is %s (%s), want failed with a fault that names DIGEST_TO", run.Status, run.Fault)
+	}
+	if lab.asked() != 0 || len(lab.sends) != 0 {
+		t.Errorf("the model was asked %d times and Notify sent %d messages", lab.asked(), len(lab.sends))
 	}
 }
 

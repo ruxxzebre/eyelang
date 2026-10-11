@@ -127,6 +127,9 @@ from the app's secret (`postgres-app`), with the schema added:
 EYE_STORE=postgresql://app:…@postgres-rw.NAMESPACE.svc.cluster.local:5432/app?search_path=lab
 ```
 
+For example, in a database `digest` with the schema `eyelang`:
+`postgresql://…/digest?search_path=eyelang`, after `CREATE SCHEMA eyelang;`.
+
 - `postgres://` and `postgresql://` are both taken. Any libpq parameter
   works beside `search_path` (`sslmode=require`, `connect_timeout=5`; pgx
   reads them). Without `sslmode`, the connection tries TLS and falls back to
@@ -167,6 +170,7 @@ fine.
 | `DIGEST_MODEL` | optional; `gpt-5.6-terra` without it |
 | `AI_PRICES` | `gpt-5.6-terra=IN/OUT`, the model's price per million tokens: required (see above) |
 | `DIGEST_EVENT` | optional; `digest.ireland` without it. See "Running beside the TypeScript digest" |
+| `DIGEST_TO` | optional; Authentik uids separated by commas, at most 20, that the briefing and its failure notice go to instead of everyone who receives the event. See "Running beside the TypeScript digest" |
 
 The addresses are the ones the TypeScript digest's deployment
 (`clusters/mainframe/infrastructure/automation/deployment.yaml`) uses today.
@@ -186,21 +190,33 @@ through the proxy and FlareSolverr.
 
 ### Running beside the TypeScript digest
 
-While the TypeScript digest still sends, the two can run side by side with
-`DIGEST_EVENT=digest.ireland.eye`:
+While the TypeScript digest still sends, the two can run side by side, with
+the Eyelang digest going to the operator alone:
 
-- The digest sends on that event, so it reaches only the people who receive
-  it. In Notify, subscribe the operator alone to `digest.ireland.eye`
-  (`TOKEN_DIGEST` may send any `digest.*` event). Someone subscribed to
-  `digest.*` or `*` gets it too.
-- Its keys start with the event (`digest.ireland.eye:ireland-YYYY-MM-DD`).
-  Notify drops a key it has seen from the same caller in the last six hours,
-  and both digests send as `digest` with the key `ireland-YYYY-MM-DD`, so
-  without that the second to send would be dropped.
+```sh
+DIGEST_EVENT=digest.ireland.eye
+DIGEST_TO=<the operator's Authentik uid>
+```
 
-To switch over, stop the TypeScript digest's schedule and remove
-`DIGEST_EVENT`. Notify then drops the morning's second send by its key, if
-both send that day.
+- `DIGEST_TO` narrows the send to the uids it lists, separated by commas
+  (Notify's `to`, at most 20; spaces and empty items are ignored). Each
+  still needs the event's category and their own settings to accept it, so
+  subscribe the operator to `digest.ireland.eye` in Notify. More than 20 fails
+  the morning's run with a fault that names `DIGEST_TO`.
+- `DIGEST_EVENT` sends on an event of its own, so the operator can tell the
+  two digests apart and mute one. `TOKEN_DIGEST` may send any `digest.*`
+  event. Without `DIGEST_TO`, everyone subscribed to `digest.ireland.eye`,
+  `digest.*` or `*` gets it.
+- With either set, the keys start with the event
+  (`digest.ireland.eye:ireland-YYYY-MM-DD`). Notify drops a key it has seen
+  from the same caller in the last six hours, whatever its event and
+  recipients, and both digests send as `digest` with `ireland-YYYY-MM-DD`:
+  with the same keys, whichever sent second would be dropped, and readers
+  could lose the TypeScript digest to the operator's copy.
+
+The failure notice goes the same way. To switch over, stop the TypeScript
+digest's schedule and remove both variables. Notify then drops the
+morning's second send by its key, if both send that day.
 
 ### After the first morning
 
