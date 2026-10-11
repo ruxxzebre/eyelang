@@ -49,6 +49,11 @@ func (l *List) appended(vals ...Value) *List {
 type Value any
 
 type (
+	// List is a list value. Never write into Elems in place: lists made by
+	// appended share one backing array, so a write would change every list
+	// that shares it. Build a new slice instead, as sort and reverse do; an
+	// in-place operation, such as element assignment or a mut method, if one
+	// ever comes, must copy Elems first.
 	List struct {
 		Elems []Value
 		// grow is shared by the lists that share Elems' backing array: how
