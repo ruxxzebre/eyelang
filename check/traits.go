@@ -390,30 +390,49 @@ func (c *checker) preludeTrait(name string) *ir.Trait {
 	return c.prelude.mod.Traits[name]
 }
 
-// settle reports each requirement the body's types don't meet.
+// settleRequirements reports each requirement the body's types don't
+// meet. One on a type nothing has decided yet, such as an untyped
+// parameter's, waits until every body is checked: a later call may decide
+// it (settleDeferred).
 func (x *fnCheck) settleRequirements() {
-	c := x.c
 	for _, r := range x.reqs {
-		t := defaultLiteral(r.t)
-		ok, why := c.has(t, r.b, map[*ir.Type]bool{})
-		if ok {
+		if v, ok := defaultLiteral(r.t).(*tvar); ok && !v.rigid {
+			x.c.ts.deferred = append(x.c.ts.deferred, r)
 			continue
 		}
-		need := traitName(r.b)
-		var msg string
-		if r.role != "" {
-			msg = fmt.Sprintf("%s needs %s: %s, and %s is %s here, which has no %s", r.where, r.role, need, r.role, show(t), r.b.trait.Name)
-		} else {
-			msg = fmt.Sprintf("%s needs %s, and %s has no %s", r.where, need, show(t), r.b.trait.Name)
-		}
-		if why != "" {
-			msg += ": " + why
-		}
-		if v, isVar := prune(t).(*tvar); isVar && v.rigid {
-			msg = fmt.Sprintf("%s needs %s, and %s may be any type: require it, as `where %s: %s`", r.where, need, v.name, v.name, need)
-		}
-		c.typeErrorf(r.at, "%s", msg)
+		x.c.settle(r)
 	}
+}
+
+// settleDeferred settles the requirements that waited for the whole
+// program. A type still undecided may be any type, so it meets them.
+func (c *checker) settleDeferred() {
+	for _, r := range c.ts.deferred {
+		c.settle(r)
+	}
+}
+
+// settle reports a requirement the types don't meet.
+func (c *checker) settle(r requirement) {
+	t := defaultLiteral(r.t)
+	ok, why := c.has(t, r.b, map[*ir.Type]bool{})
+	if ok {
+		return
+	}
+	need := traitName(r.b)
+	var msg string
+	if r.role != "" {
+		msg = fmt.Sprintf("%s needs %s: %s, and %s is %s here, which has no %s", r.where, r.role, need, r.role, show(t), r.b.trait.Name)
+	} else {
+		msg = fmt.Sprintf("%s needs %s, and %s has no %s", r.where, need, show(t), r.b.trait.Name)
+	}
+	if why != "" {
+		msg += ": " + why
+	}
+	if v, isVar := prune(t).(*tvar); isVar && v.rigid {
+		msg = fmt.Sprintf("%s needs %s, and %s may be any type: require it, as `where %s: %s`", r.where, need, v.name, v.name, need)
+	}
+	c.typeErrorf(r.at, "%s", msg)
 }
 
 func traitName(b cbound) string {

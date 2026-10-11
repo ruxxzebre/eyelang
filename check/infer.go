@@ -45,6 +45,9 @@ type typeState struct {
 	// types of their fields (migrations.go).
 	rows  map[*ir.Entity]map[int]*tcon
 	rowOf map[*ir.Type]*row
+	// deferred are trait requirements on types no body had decided when
+	// its function was checked.
+	deferred []requirement
 }
 
 type zoneLit struct {
@@ -272,6 +275,7 @@ func (c *checker) checkTypes() {
 		}
 	}
 	c.checkZones()
+	c.settleDeferred()
 	c.checkRowReads()
 	c.checkEffects()
 }
@@ -985,7 +989,7 @@ func (x *fnCheck) apply(callee typ, args []ir.Arg, want typ, name string, at ir.
 	case *tvar:
 		if f.rigid {
 			x.inferArgs(args)
-			return x.c.unknownf(at, "%s is a %s, which may be any type, so it can't be called: give it a function type, as fn(…) -> …", name, f.name)
+			return x.c.unknownf(at, "%s's type is %s, which may be any type, so it can't be called: give it a function type, as fn(…) -> …", name, f.name)
 		}
 		fn := &tfun{ret: x.c.fresh()}
 		for _, a := range args {

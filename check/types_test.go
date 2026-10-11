@@ -258,6 +258,17 @@ pub fn partly() -> Instant uses {stdio} = now()`, []string{
 		{"effects pass through private functions", `import svc
 fn send(t: String) = svc.raw(t)
 pub fn f() = send("x")`, []string{"3:1: f uses net Svc.raw, which its signature doesn't list"}},
+		{"a type variable or an untyped parameter has only what its uses need", `fn show(x) -> String = "{x}"
+fn leak() -> String = show(secret("a"))
+fn bigger(a, b) -> Bool = a > b
+fn f(g: fn() -> Int) -> Bool = bigger(g, g)
+fn call(x: a) = x()
+fn index(x: a) = x[0]`, []string{
+			"1:26: showing a value in a string needs Show, and Secret(String) has no Show",
+			"3:27: comparing with > needs Ord, and fn() -> Int has no Ord",
+			"5:17: x's type is a, which may be any type, so it can't be called",
+			"6:18: a can't be indexed",
+		}},
 		{"effects don't escape through traits or private uses clauses", `trait Clock {
   fn read(self) -> Instant
 }
