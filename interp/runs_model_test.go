@@ -30,6 +30,9 @@ func TestRunsShowAModelCall(t *testing.T) {
 	if !strings.Contains(out.String(), want) {
 		t.Errorf("eye runs shows:\n%s\nwant a step\n%s", out.String(), want)
 	}
+	if o := Runs(prog, store)[0].Steps[0].Spent.Options; !strings.HasPrefix(o, "Anthropic's Messages API: output_config.format json_schema, max_tokens ") {
+		t.Errorf("sent as %q", o)
+	}
 	whole, err := StepValue(prog, store, 1, 1)
 	if err != nil || whole != "Ok({ n: 3, unit: Boxes })" {
 		t.Errorf("step 1 is %q, %v", whole, err)
@@ -71,5 +74,46 @@ func TestClipCutsOnACharacter(t *testing.T) {
 	}
 	if got := clip("abc", 3); got != "abc" {
 		t.Errorf("clip = %q", got)
+	}
+}
+
+// A call through a gateway records how it was sent, so an operator can
+// compare it with another client: the schema's format, and that no
+// reasoning settings went with it. --json and --show-replies keep the
+// whole reply; the listing cuts it to a line.
+func TestRunsShowHowACallWasSent(t *testing.T) {
+	noGateway(t)
+	long := strings.Repeat("box ", 60)
+	reply := `{"n": 3, "unit": "Boxes", "note": "` + long + `"}`
+	api := &standIn{replies: []map[string]any{chatReply(reply, "stop", 1000, 250)}}
+	t.Setenv("AI_URL", api.serve(t).URL)
+	prog := load(t, `
+import ai
+
+type Answer = { n: Int, unit: Unit, note: String }
+type Unit = Items | Boxes
+
+job ask() -> Result(Answer, ai.AiError) {
+  ai.generate!(model: "gpt-5.6-terra", prompt: "three boxes")
+}
+`)
+	in := New(prog, io.Discard, io.Discard)
+	in.rt.startNow(prog.Root.Jobs["ask"], nil, nil, ir.Pos{})
+	runs := Runs(prog, in.rt.index.Store)
+	step := runs[0].Steps[0]
+	if step.Spent == nil || step.Spent.Options != "chat completions at AI_URL: response_format json_schema, strict; no reasoning_effort or other reasoning settings" {
+		t.Errorf("the step was sent as %+v", step.Spent)
+	}
+	if !strings.Contains(step.Value, long) || !strings.Contains(runs[0].Result, long) {
+		t.Errorf("RunInfo cut the reply: %q", step.Value)
+	}
+	var listed, replies strings.Builder
+	FormatRuns(&listed, runs, true, time.Now())
+	if strings.Contains(listed.String(), long) || !strings.Contains(listed.String(), "…") {
+		t.Errorf("the listing shows the whole reply:\n%s", listed.String())
+	}
+	FormatRunsWith(&replies, runs, FormatOptions{Steps: true, Replies: true}, time.Now())
+	if !strings.Contains(replies.String(), "\n        Ok({ n: 3, unit: Boxes, note: \""+long) {
+		t.Errorf("--show-replies shows:\n%s", replies.String())
 	}
 }

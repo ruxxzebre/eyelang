@@ -33,6 +33,7 @@ type spend struct {
 	In, Out        int64
 	USD            float64
 	Model          string `json:",omitempty"` // the models, separated by ", "
+	Options        string `json:",omitempty"` // how the calls were sent, separated by " | "
 	Sent, Received int64  `json:",omitempty"`
 }
 
@@ -43,21 +44,28 @@ func (s *spend) add(t spend) {
 	s.USD += t.USD
 	s.Sent += t.Sent
 	s.Received += t.Received
-	for _, m := range strings.Split(t.Model, ", ") {
-		if m != "" && !slices.Contains(strings.Split(s.Model, ", "), m) {
-			if s.Model != "" {
-				s.Model += ", "
-			}
-			s.Model += m
-		}
-	}
+	s.Model = joinNew(s.Model, t.Model, ", ")
+	s.Options = joinNew(s.Options, t.Options, " | ")
 }
 
-// noteCall records, for the step being taken, a model call: the model, and
-// the bytes of the prompt sent and of the reply.
-func (in *Interp) noteCall(model string, sent, received int) {
+// joinNew adds to a list joined by sep the items of more it doesn't have.
+func joinNew(list, more, sep string) string {
+	for _, m := range strings.Split(more, sep) {
+		if m != "" && !slices.Contains(strings.Split(list, sep), m) {
+			if list != "" {
+				list += sep
+			}
+			list += m
+		}
+	}
+	return list
+}
+
+// noteCall records, for the step being taken, a model call: the model, how
+// it was sent, and the bytes of the prompt sent and of the reply.
+func (in *Interp) noteCall(model, options string, sent, received int) {
 	if in.stepSpend != nil {
-		in.stepSpend.add(spend{Model: model, Sent: int64(sent), Received: int64(received)})
+		in.stepSpend.add(spend{Model: model, Options: options, Sent: int64(sent), Received: int64(received)})
 	}
 }
 

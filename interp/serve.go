@@ -362,6 +362,7 @@ type Spent struct {
 	TokensOut int64   `json:"tokensOut,omitempty"`
 	USD       float64 `json:"usd"`
 	Model     string  `json:"model,omitempty"`
+	Options   string  `json:"options,omitempty"` // how the calls were sent
 	Sent      int64   `json:"sent,omitempty"`
 	Received  int64   `json:"received,omitempty"`
 }
@@ -370,7 +371,7 @@ func spentInfo(s spend) *Spent {
 	if s == (spend{}) {
 		return nil
 	}
-	return &Spent{Tokens: s.Tokens, TokensIn: s.In, TokensOut: s.Out, USD: s.USD, Model: s.Model, Sent: s.Sent, Received: s.Received}
+	return &Spent{Tokens: s.Tokens, TokensIn: s.In, TokensOut: s.Out, USD: s.USD, Model: s.Model, Options: s.Options, Sent: s.Sent, Received: s.Received}
 }
 
 // String shows what was spent: 12000 tokens in, 900 out, $0.0525.
@@ -424,7 +425,7 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 				s = "(can't be read by this version of the program)"
 			}
 		}()
-		return brief(showValue(in.decode(data, ir.Pos{})))
+		return showValue(in.decode(data, ir.Pos{}))
 	}
 	for _, a := range r.Args {
 		info.Args = append(info.Args, value(a))
@@ -505,14 +506,32 @@ func brief(s string) string {
 }
 
 // FormatRuns writes runs as `eye runs` shows them: one line per run, with
-// its steps below it when steps is set.
+// its steps below it when steps is set. Values are cut to one line of 100
+// characters.
 func FormatRuns(w io.Writer, runs []RunInfo, steps bool, now time.Time) {
+	FormatRunsWith(w, runs, FormatOptions{Steps: steps}, now)
+}
+
+// FormatOptions say what FormatRunsWith shows.
+type FormatOptions struct {
+	Steps bool // each run's steps
+	// Replies shows, below each model call's step, its whole reply, as
+	// `eye runs --show-replies` does.
+	Replies bool
+}
+
+// FormatRunsWith writes runs as FormatRuns does, with the options.
+func FormatRunsWith(w io.Writer, runs []RunInfo, opts FormatOptions, now time.Time) {
 	if len(runs) == 0 {
 		fmt.Fprintln(w, "no runs")
 		return
 	}
 	for _, r := range runs {
-		line := fmt.Sprintf("#%d %s(%s)  %s", r.ID, r.Job, strings.Join(r.Args, ", "), r.Status)
+		args := make([]string, len(r.Args))
+		for i, a := range r.Args {
+			args[i] = brief(a)
+		}
+		line := fmt.Sprintf("#%d %s(%s)  %s", r.ID, r.Job, strings.Join(args, ", "), r.Status)
 		switch r.Status {
 		case "sleeping":
 			if r.Waits != "" {
@@ -526,7 +545,7 @@ func FormatRuns(w io.Writer, runs []RunInfo, steps bool, now time.Time) {
 			}
 		case "done":
 			if r.Result != "" && r.Result != "()" {
-				line += ": " + r.Result
+				line += ": " + brief(r.Result)
 			}
 		case "failed":
 			line += ": " + r.Fault
@@ -547,13 +566,21 @@ func FormatRuns(w io.Writer, runs []RunInfo, steps bool, now time.Time) {
 			line += "\n    warning: a run this long keeps every step it took; a job that never ends grows without bound (SPECS.md, open question 9)"
 		}
 		fmt.Fprintln(w, line)
-		if !steps {
+		if !opts.Steps {
 			continue
 		}
 		for i, s := range r.Steps {
 			FormatStep(w, i+1, s, now)
+			if opts.Replies && s.Spent != nil && s.Spent.Model != "" {
+				fmt.Fprintln(w, indent(clip(s.Value, replyLimit), "        "))
+			}
 		}
 	}
+}
+
+// indent puts prefix before every line of text.
+func indent(text, prefix string) string {
+	return prefix + strings.ReplaceAll(text, "\n", "\n"+prefix)
 }
 
 // FormatStep writes step n of a run as `eye runs` lists it.
@@ -568,7 +595,7 @@ func FormatStep(w io.Writer, n int, s StepInfo, now time.Time) {
 		if s.Until != nil {
 			step += ", slept until " + clockTime(*s.Until, now)
 		} else if s.Value != "()" {
-			step += " → " + s.Value
+			step += " → " + brief(s.Value)
 		}
 	}
 	if s.Spent != nil {
