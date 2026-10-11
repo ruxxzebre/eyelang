@@ -100,7 +100,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     }
   ```
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
-  part of the transaction) and from jobs, where it starts a child run. Scheduled starts take
+  part of the transaction) and from jobs, where it starts a child run; there the start is recorded
+  as a step, so a resumed run doesn't start the child again. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.

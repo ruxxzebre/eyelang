@@ -110,6 +110,30 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 	return nil
 }
 
+// startChild starts a child run from a job's run. The start is a step of the
+// parent: a replayed parent gets the run it started the first time, rather
+// than starting another, and the child is saved in the same commit as the
+// step, so a crash can't leave one without the other.
+func (in *Interp) startChild(run *jobRun, job *ir.Job, args []Value, named map[string]Value, at ir.Pos) Value {
+	if v, ok := in.replay(run, at); ok {
+		return v
+	}
+	rt := in.rt
+	in.call = "start " + job.Name
+	if v, ok := rt.keyed(job, named); ok {
+		return in.record(run, v, at)
+	}
+	child := rt.newRun(job, args, named, at)
+	v := &RunVal{ID: child.ID}
+	run.Log = append(run.Log, step{Call: in.call, Value: in.encode(v, at), Seq: rt.seq()})
+	run.cursor++
+	rt.store.Commit(&Commit{Runs: []RunWrite{{ID: child.ID, Data: child.encode()}, {ID: run.ID, Data: run.encode()}}})
+	if child.Status == "ready" {
+		rt.queue = append(rt.queue, child.ID)
+	}
+	return v
+}
+
 // join waits for a run started earlier and returns its outcome:
 // Completed(value), or Failed(fault) if it stopped first. A run that ends
 // publishes its outcome as an event, run/<id>, which wakes the runs joining it.

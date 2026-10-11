@@ -85,6 +85,8 @@ title: "Open questions"
 19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and
     standard output are. Are logging, publishing an event and starting a job effects too, to be
     stated with `uses`? (`publish T` is in the table of [section 12](/reference/language/effects-and-signatures); the checker doesn't infer it yet.)
+    In a job, publishing is written `publish!` but starting a child run is written `start`, though
+    both are recorded steps; if starting a job became an effect, it would take `!` too.
 20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
     with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,

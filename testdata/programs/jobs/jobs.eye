@@ -126,3 +126,27 @@ test "a step that reads the clock is recorded once" {
   advance(20 min)
   expect(Stamps("s").seen == [start])
 }
+
+# A child run is started once, though its parent is replayed each time it
+# wakes: the start is one of the parent's steps.
+entity Children(id: String) {
+  state started: Int = 0
+
+  pub fn add() { started += 1 }
+}
+
+job child() {
+  Children("all").add!()
+}
+
+job parent() {
+  child.start()
+  sleep!(5 min)
+  sleep!(5 min)
+}
+
+test "a child run starts once, however often its parent is replayed" {
+  parent.start()
+  advance(20 min)
+  expect(Children("all").started == 1)
+}

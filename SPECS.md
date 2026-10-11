@@ -989,7 +989,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     }
   ```
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
-  part of the transaction) and from jobs, where it starts a child run. Scheduled starts take
+  part of the transaction) and from jobs, where it starts a child run; there the start is recorded
+  as a step, so a resumed run doesn't start the child again. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.
@@ -1668,6 +1669,8 @@ operator. All binary operators associate to the left except `??`, which associat
 19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and
     standard output are. Are logging, publishing an event and starting a job effects too, to be
     stated with `uses`? (`publish T` is in the table of section 12; the checker doesn't infer it yet.)
+    In a job, publishing is written `publish!` but starting a child run is written `start`, though
+    both are recorded steps; if starting a job became an effect, it would take `!` too.
 20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
     with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,

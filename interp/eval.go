@@ -712,6 +712,9 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 	case *JobVal:
 		if name == "start" {
 			pos, named := split(args)
+			if run := in.run; run != nil && in.rt.tx == nil {
+				return in.startChild(run, r.Job, pos, named, at), nil
+			}
 			return in.rt.start(r.Job, pos, named, at), nil
 		}
 	case *entityVal:
