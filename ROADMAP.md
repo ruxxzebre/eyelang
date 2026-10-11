@@ -52,9 +52,8 @@ Checked: 2026-10-11
 **Ahead, in order**
 
 1. The gaps in the core that phase 7 and self-hosting need closed: a function type in a signature
-   has its shape checked but not its effects, and a private function's inferred type isn't
-   generic. Then the rest of the
-   checker's partial rows in status.md (`NonZero`, `opaque`, effects that aren't inferred).
+   has its shape checked but not its effects. Then the checker's remaining partial rows in
+   status.md.
 2. The digest in the homelab, closing phase 5's exit criterion.
 3. Phase 6 (v0.3): its tasks are below the phase, each with its issue (6.1 to 6.12). `@port` and
    `@allow` (6.2) need `pub` and `opaque` enforced first, from item 1. v0.3 also brings the
@@ -134,7 +133,8 @@ change, and no closure capturing a `var` or `mut` parameter. Diagnostics (2.7):
 shows it at its exact place. The store's `Store` trait, which `MemoryStore` implements, closes 4.2.
 Still approximated: function types kept in data, `dyn` (v0.2), NonZero divisors, which are their
 number type, and the types of private functions that leave them out, which are one type for the
-whole program rather than generic.
+whole program rather than generic. (Since 2026-10-11 NonZero divisors are checked and private
+functions are generic.)
 
 **The durable runner, 2026-10-10.** `eye run` keeps a program's jobs going on the system clock and
 across restarts, in a journal file (SPECS.md open question 9): sleeping runs wake on time,
