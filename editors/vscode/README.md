@@ -32,9 +32,14 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
   publishes, for your own declarations, the prelude, standard modules and built-in types such as
   `String`. On a keyword or operator it gives a one-line meaning and a link to the section of
   SPECS.md that defines it. A `[Name]` in a doc comment links to the declaration it names.
+- **completion** of keywords that fit where you type (Ctrl-Space): declarations at the top of
+  a file (`pub`, `fn`, `type`, `entity`, …), what may follow `pub` (`fn`, `extern`, `type`,
+  `opaque`, …) or `extern` (`fn`, `type`), the members of an entity, trait, impl or contract, and
+  statements and expressions in a body, where the names written in the file are offered too.
 
 Fields and methods resolve once the program type-checks: while it has errors, go-to-definition
-still finds every other name. Completion is coming.
+still finds every other name. Completion offers keywords and the file's words for now, not yet
+the names in scope or a value's fields and methods.
 
 ## Programs and eye.toml
 
