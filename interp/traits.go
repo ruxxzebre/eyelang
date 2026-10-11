@@ -101,3 +101,32 @@ func (in *Interp) display(v Value) string {
 	}
 	return show(v)
 }
+
+// enumFn is `T.variants` or `T.parse`, derived on a type whose variants have
+// no fields: every variant in the order declared, or Some of the variant
+// whose name is the argument, else None (SPECS.md §11).
+func enumFn(d ir.EnumFn) *BuiltinFn {
+	name := d.Type.Name + "." + d.Name
+	if d.Name == "variants" {
+		return &BuiltinFn{Name: name, Fn: func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+			in.need(args, 0, name, at)
+			out := make([]Value, len(d.Type.Variants))
+			for i, v := range d.Type.Variants {
+				out[i] = &Variant{V: v}
+			}
+			return &List{Elems: out}
+		}}
+	}
+	return &BuiltinFn{Name: name, Fn: func(in *Interp, args []Value, named map[string]Value, at ir.Pos) Value {
+		if v, ok := named["name"]; ok {
+			args = append(args, v)
+		}
+		s := in.str(args, name, at)
+		for _, v := range d.Type.Variants {
+			if v.Name == s {
+				return in.some(&Variant{V: v})
+			}
+		}
+		return in.none()
+	}}
+}

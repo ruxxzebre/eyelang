@@ -964,6 +964,10 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 				l.c.use(l.pos(recv), d)
 				return fn
 			}
+			if name == "variants" || name == "parse" {
+				l.c.use(l.pos(recv), d)
+				return l.enumFn(recv, d, name)
+			}
 		case *ir.Variant:
 			if fn, ok := d.Type.Methods[name]; ok {
 				l.c.use(l.pos(recv), d)
@@ -972,6 +976,42 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 		}
 	}
 	return nil
+}
+
+// enumFn is `T.variants` or `T.parse`, which a type whose variants have no
+// fields has without declaring them (SPECS.md §11). On another type it is an
+// error, reported at the type's name.
+func (l *lowerer) enumFn(recv *syntax.Node, t *ir.Type, name string) any {
+	fn := ir.EnumFn{Type: t, Name: name}
+	why := ""
+	switch {
+	case t.Fields != nil || t.Alias != nil && t.Alias.Name == "record":
+		why = t.Name + " is a record"
+	case t.Alias != nil:
+		why = t.Name + " is another name for " + t.Alias.Name
+	case len(t.Variants) == 0:
+		why = t.Name + " has no variants"
+	default:
+		for _, v := range t.Variants {
+			if len(v.Fields) > 0 {
+				why = "its variant " + v.Name + " has fields"
+				break
+			}
+		}
+	}
+	if why != "" {
+		todo := "write the list of values by hand"
+		if name == "parse" {
+			todo = "match the String instead"
+		}
+		l.errorf(recv, "%s.%s() is derived only for a type whose variants have no fields, and %s: %s", t.Name, name, why, todo)
+		return ir.Builtin{Name: "?"}
+	}
+	if l.c.opaque[t] && t.Module != l.m.mod {
+		l.errorf(recv, "%s", l.c.opaqueMessage(t, "variants"))
+		return ir.Builtin{Name: "?"}
+	}
+	return fn
 }
 
 func (l *lowerer) field(n *syntax.Node) ir.Expr {

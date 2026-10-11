@@ -149,3 +149,23 @@ test "dyn Named holds values of different types, and calls their own methods" {
   expect(host(Some("bo")).name() == "bo")
   expect(roll([p]) == "<ann>")  # a List(Player) is a List(dyn Named)
 }
+
+## How someone new is let in: a choice that arrives as a pressed button.
+type Admission = Guest | Member | Refuse
+
+fn groups(choice: String) -> List(String) =
+  match Admission.parse(choice) {
+    Some(Guest) => ["guests"]
+    Some(Member) => ["guests", "members"]
+    Some(Refuse) | None => []
+  }
+
+test "an enum lists its variants and reads one by name" {
+  expect(Admission.variants() == [Guest, Member, Refuse])
+  expect(Admission.variants() |> map(fn a: "{a}") == ["Guest", "Member", "Refuse"])
+  expect(Admission.parse("Member") == Some(Member))
+  expect(Admission.parse("member") == None)
+  expect(Priority.variants() |> map(fn p: Priority.parse("{p}")) == [Some(Low), Some(Normal), Some(High)])
+  expect(["Guest", "Member", "Admin"] |> map(groups) == [["guests"], ["guests", "members"], []])
+  expect(["High", "Low"] |> map(Priority.parse) == [Some(High), Some(Low)])
+}

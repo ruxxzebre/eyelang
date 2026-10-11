@@ -769,6 +769,30 @@ job k() {
 			"3:1: j's argument f is a function, which can't be saved",
 			"7:14: f is a function, which can't be saved, and it is still needed after a waiting call",
 		}},
+		{"an enum's parse gives an Option of its variants, matched exhaustively", `type Admission = Guest | Member | Refuse
+fn groups(s: String) -> Int = match Admission.parse(s) {
+  Some(Guest) => 1
+  Some(Refuse) | None => 0
+}
+fn wrong() -> List(String) = Admission.variants()
+fn number(n: Int) -> Option(Admission) = Admission.parse(n)`, []string{
+			"2:31: this match doesn't handle Some(Member)",
+			"6:30: expected List(String), found List(Admission)",
+			"7:58: expected String, found Int",
+		}},
+		{"a misspelt variant in a match on an enum's parse", `type Admission = Guest | Member | Refuse
+fn groups(s: String) -> Int = match Admission.parse(s) {
+  Some(Guest) => 1
+  Some(Membr) => 2
+  Some(Refuse) | None => 0
+}`, []string{"4:8: undefined variant Membr"}},
+		{"variants() and parse() only on a type whose variants have no fields", `type Shape = | Circle(Float) | Dot
+type User = { name: String }
+fn shapes() = Shape.variants()
+fn user(s: String) = User.parse(s)`, []string{
+			"3:15: Shape.variants() is derived only for a type whose variants have no fields, and its variant Circle has fields: write the list of values by hand",
+			"4:22: User.parse() is derived only for a type whose variants have no fields, and User is a record: match the String instead",
+		}},
 		{"well-typed code has no diagnostics", `type Shape = | Circle(Float) | Dot
 type User = { name: String, age: Int }
 fn area(s: Shape) -> Float = match s {

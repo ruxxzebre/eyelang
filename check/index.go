@@ -343,6 +343,8 @@ func Definition(target any) (ir.Pos, bool) {
 		return named(d.Pos)
 	case *ir.Type:
 		return named(d.Pos)
+	case ir.EnumFn:
+		return named(d.Type.Pos) // derived: the type declares it
 	case *ir.Trait:
 		return named(d.Pos)
 	case *ir.Entity:

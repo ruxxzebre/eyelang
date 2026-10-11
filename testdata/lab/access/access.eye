@@ -115,11 +115,13 @@ job resolve(s: Ref(Sync)) {
 
 # ---------------------------------------------------------------- admission
 
-let guest: Choice = { id: "guest", label: "Guest" }
-let member: Choice = { id: "member", label: "Member" }
-let refuse: Choice = { id: "refuse", label: "Refuse" }
+## How the operator may let someone in: the question's buttons, in this
+## order. A button's id and label are the variant's name.
+type Admission = Guest | Member | Refuse
 
-type Admission =
+let buttons: List(Choice) = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+
+type Decision =
   | Admitted(groups: Set(String))
   | Refused
   | Unanswered
@@ -132,12 +134,12 @@ type AdmitError =
 ## the order they joined.
 @on(event(netbird.pending))
 @concurrency(1)
-job admit(user: Pending) -> Result(Admission, AdmitError) {
+job admit(user: Pending) -> Result(Decision, AdmitError) {
   let asked = notify.ask!(
     event: "netbird.approval",
     to: operator,
     text: "{user.email} joined NetBird. Let them in?",
-    choices: [guest, member, refuse],
+    choices: buttons,
     within: 7 days,
     key: "netbird-approval-{user.id}",
   ).reconcile!()
@@ -148,10 +150,10 @@ job admit(user: Pending) -> Result(Admission, AdmitError) {
   let Some(answer) = next!(notify.answered, where: fn a: a.question == question, within: 7 days) else {
     return Ok(Unanswered)
   }
-  let step = match answer.choice {
-    "guest" => Admit(user: user.id, groups: toSet(["guests"]))
-    "member" => Admit(user: user.id, groups: toSet([people, "members"]))
-    _ => Reject(user: user.id)
+  let step = match Admission.parse(answer.choice) {
+    Some(Guest) => Admit(user: user.id, groups: toSet(["guests"]))
+    Some(Member) => Admit(user: user.id, groups: toSet([people, "members"]))
+    Some(Refuse) | None => Reject(user: user.id)
   }
   apply!(step).mapErr(NotApplied)?
   Ok(match step {
@@ -179,8 +181,12 @@ test "the operator lets someone new in as a member" {
   with fakes(notify, netbird, from: "recordings/")
   netbird.pending.publish({ id: PeerUserId("p9"), email: "new@example.com", joinedAt: now() })
   expect(netbirdSync.applied == 0)
-  notify.answered.publish({ question: QuestionId("q-9"), choice: "member", by: operator, at: now() })
+  notify.answered.publish({ question: QuestionId("q-9"), choice: "Member", by: operator, at: now() })
   expect(netbirdSync.applied == 1)
+}
+
+test "the question's buttons are the admissions, in order" {
+  expect(buttons |> map(fn b: b.id) == ["Guest", "Member", "Refuse"])
 }
 
 test "a doubtful change stops the sync until the operator has checked it" {

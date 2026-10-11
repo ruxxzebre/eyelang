@@ -289,6 +289,8 @@ func declString(d any) string {
 		return "builtin " + d.Name
 	case RuntimeMethod:
 		return "runtime " + d.Name
+	case EnumFn:
+		return "derived " + d.Type.Name + "." + d.Name
 	case FieldCall:
 		if f, ok := d.Call.Func.(*Field); ok {
 			return "the function in field " + f.Name

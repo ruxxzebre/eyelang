@@ -576,6 +576,8 @@ func (in *Interp) ref(x *ir.Ref) Value {
 		return &ModuleVal{Module: d}
 	case *ir.Type:
 		return &TypeVal{Type: d}
+	case ir.EnumFn:
+		return enumFn(d)
 	case ir.Builtin:
 		if b, ok := in.builtins[d.Name]; ok {
 			return b

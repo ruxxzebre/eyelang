@@ -446,7 +446,7 @@ type (
 		Name string
 	}
 	// Ref names a declaration: *Func, *Global, *Variant, *Entity, *Job,
-	// *View, *Op, *Module, *Type or a Builtin.
+	// *View, *Op, *Module, *Type, a Builtin or an EnumFn.
 	Ref struct {
 		At
 		Decl any
@@ -652,6 +652,14 @@ type Builtin struct{ Name string }
 // command's result, calls on fakes, the methods of a task group, a channel's
 // ends and times.
 type RuntimeMethod struct{ Name string }
+
+// EnumFn is a function derived on a type whose variants have no fields:
+// `T.variants()`, every variant in the order declared, or `T.parse(s)`, Some
+// of the variant named s (SPECS.md §11). Name is "variants" or "parse".
+type EnumFn struct {
+	Type *Type
+	Name string
+}
 
 // FieldCall is the target of `timer.read()` where read is a field that
 // holds a function: the call it is, of the field's value.

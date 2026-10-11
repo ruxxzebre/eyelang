@@ -61,7 +61,7 @@ have no issue yet.
 3. Phase 6 (v0.3): its tasks are below the phase, each with its issue (6.1 to 6.12). `@port` and
    `@allow` (6.2) need `pub` and `opaque` enforced first, from item 1. The typed IR (7.1, #28)
    and checkpoints in the interpreter (7.3, #76), pulled forward from phase 7 so that the lab's
-   never-ending runs stop growing (open question 9), are done.
+   never-ending runs stop growing (open question 9), are done, and so are enums (6.11).
 4. Self-hosting's early start: an Eyelang lexer as a test program, checked by the conformance
    suite. Not begun.
 5. Phase 7 (v0.4), after 1: code generation to C built by the `zig cc` that `eye` ships,
@@ -529,10 +529,13 @@ What each task is, until its issue holds it:
   `extern type`. SPECS §18 has the rules.
   **Done when:** holding a value of a program's `extern type` across a `!` is a compile error
   with a test, as are printing, comparing and asking a model for one; `Handle` is undefined.
-- **6.11 Enums (open question 15).** A type whose variants have no fields gets `T.variants()`
-  and `T.parse(s)`, derived as the traits are (SPECS §11), in the checker and the interpreter.
-  The lab's buttons (`access.eye`, `approving.eye`, `trains.eye`) then come from enums and are
-  matched as variants. Labels are the variant's `Show` until open question 15 decides otherwise.
+- **6.11 Enums (open question 15).** Done on 2026-10-11. A type whose variants have no fields
+  gets `T.variants()` and `T.parse(s)`, derived as the traits are (SPECS §11), in the checker
+  and the interpreter. The NetBird admission's buttons in `access.eye` come from
+  `Admission.variants()`, and the answer is matched on `Admission.parse(…)`. `trains.eye` keeps
+  its string buttons: "Not taking it" isn't a variant's name, and an impl of `Show` would make
+  `parse("{v}")` miss, which waits on open question 15; `approving.eye` has no buttons. Labels
+  are the variant's `Show` until open question 15 decides otherwise.
   **Done when:** tests show both functions, `parse` of an unknown name giving `None`, a
   misspelt variant and a missing arm in a match on `T.parse(…)` failing to compile, and
   `variants()` refused on a type with fields; the lab's NetBird admission matches an enum.

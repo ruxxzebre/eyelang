@@ -77,6 +77,13 @@ func describe(target any, link func(string) (string, bool)) string {
 			}
 		}
 		return hoverText("type "+t.Name, "A type built into the language.", link)
+	case ir.EnumFn:
+		if t.Name == "variants" {
+			return hoverText("fn "+t.Type.Name+".variants() -> List("+t.Type.Name+")",
+				"Every variant of "+t.Type.Name+", in the order declared. Derived for a type whose variants have no fields.", link)
+		}
+		return hoverText("fn "+t.Type.Name+".parse(name: String) -> Option("+t.Type.Name+")",
+			"`Some` of the variant of "+t.Type.Name+" whose name is `name`, else `None`. Derived for a type whose variants have no fields.", link)
 	case check.Local:
 		return "" // its type isn't recorded yet
 	case *ir.Module:

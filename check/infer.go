@@ -930,6 +930,13 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 		return con("Event", c.fromExpr(d.Type, typeEnv{}, false))
 	case *ir.Module:
 		return tmodule{}
+	case ir.EnumFn:
+		// Derived on a type whose variants have no fields (SPECS.md §11).
+		t, _ := c.declType(d.Type)
+		if d.Name == "variants" {
+			return &tfun{ret: con("List", t)}
+		}
+		return &tfun{params: []fparam{{name: "name", t: tString}}, ret: &tcon{name: "Option", decl: c.ts.option, args: []typ{t}}}
 	case ir.Builtin:
 		if fn := c.builtins.funcs[d.Name]; fn != nil {
 			x.builtinEffects(d.Name, nil) // named as a value: the bare kind
@@ -1070,6 +1077,8 @@ func calleeName(e ir.Expr) string {
 			return d.Name
 		case *ir.Op:
 			return d.Name
+		case ir.EnumFn:
+			return d.Type.Name + "." + d.Name
 		}
 	case *ir.Local:
 		return f.Name

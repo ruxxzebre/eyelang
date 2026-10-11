@@ -58,8 +58,11 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   ```
 
   `parse` takes the variant's name, which is what the derived `Show` writes, so
-  `T.parse("{v}")` is `Some(v)` unless an impl of `Show` writes something else. Whether a
-  choice's label should come from its `##` comment or from `Show` is open question 15.
+  `T.parse("{v}")` is `Some(v)` unless an impl of `Show` writes something else. A record, or a
+  type with a variant that has fields, has neither function: `Shape.variants()` is a compile
+  error that names the variant with fields. A method the type declares with either name is
+  called instead. Whether a choice's label should come from its `##` comment or from `Show` is
+  open question 15.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
 - **Operators are traits.** `a + b` calls `Add`, and likewise `-` (`Sub`), `*` (`Mul`), `/`
   (`Div`), `%` (`Rem`) and unary `-` (`Neg`); `==` uses `Eq` and `<` uses `Ord`. A trait names the

@@ -70,7 +70,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | Iteration with `for`; `s.chars()`; lazy `xs.iter()` | ✓ | partial: `iter` isn't built, so the checker reports it as a method that doesn't exist | partial: lists, sets, ranges, maps and `s.chars()` work; `iter` and `Iter` don't exist | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L94), [core: strings](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/strings.eye#L49) |
 | `Ref(E)`, different for each entity | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L35) |
 | `Secret(a)`: no printing, no saving | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L180) |
-| `Approval`, made only by `approval!` | ✓ | partial: nothing requires one yet, and its `what` and `by` can't be read ([#71](https://github.com/ruxxzebre/eyelang/issues/71)) | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L186) |
+| `Approval`, made only by `approval!` | ✓ | partial: nothing requires one yet, and its `what` and `by` can't be read ([#71](https://github.com/ruxxzebre/eyelang/issues/71)) | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L192) |
 | `Key`, `Run(a)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | A program's `extern type`, whose values foreign code owns: not saved, shown or compared (`Handle` is gone, open question 21) | ✓ | ✓ | — (no foreign code yet) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 | `opaque` types | ✓ | ✓ (other modules can't read, write, build or match its fields or variants) | ✓ as an ordinary type | [visibility_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/visibility_test.go#L35), [spec-08 example](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/spec-08-methods-and-generics-1.eye) |
@@ -154,7 +154,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | A one-variant wrapper shows as the value it wraps | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | Derived `Eq`, `Ord`, `Show`, `Hash`, `Save`, `Schema`, asked for where they are used | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L98), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L244) |
 | An impl of `Show` replaces the derived form | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L93) |
-| `T.variants()` and `T.parse(s)` on enums | ✓ | — ([#63](https://github.com/ruxxzebre/eyelang/issues/63)) | — | |
+| `T.variants()` and `T.parse(s)` on enums | ✓ | ✓ (refused on a record or a type with a variant that has fields) | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L163), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L772), [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L188) |
 | Operators as traits (`Add`, `Mul`, `Neg` for `-x`, …); no implicit conversions | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L81), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 
 ## [Effects and signatures](/reference/language/effects-and-signatures)
@@ -326,7 +326,7 @@ Runs column says whether the runtime does what the attribute says.
 | `let sent = fakes(…)`, `with sent`, and `sent.calls(op)`: the calls a fake answered, as records of their arguments and key | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L54), [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye) |
 | `with memory(…)` | ✓ | — (undefined) | — | |
 | `with` only in tests | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L108) |
-| Published events start and wake runs in tests; `approve` and `decline` | ✓ | ✓ | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L178) |
+| Published events start and wake runs in tests; `approve` and `decline` | ✓ | ✓ | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L180) |
 | `expect` shows the value it got | ✓ | ✓ | ✓ | [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L212) |
 | A run that stops on a bug fails its test; a declared outcome doesn't | n/a | n/a | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101), [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L153) |
 
