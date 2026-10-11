@@ -48,9 +48,16 @@ impl Mul(Int, Money) for Money {
   fn mul(self, n: Int) -> Money = { cents: self.cents * n }
 }
 
+impl Neg(Money) for Money {
+  fn neg(self) -> Money = { cents: -self.cents }
+}
+
 impl Show for Money {
   fn show(self) -> String = "€{self.cents / 100}.{self.cents % 100}"
 }
+
+## Turns anything around that has a minus.
+fn opposite(x: a) -> a where a: Neg(a) = -x
 
 ## Adds up anything that adds to itself.
 fn total(xs: List(a), zero: a) -> a where a: Add(a, a) {
@@ -78,6 +85,9 @@ test "operators are traits" {
   expect(price * 3 == { cents: 750 })
   expect(total([price, shipping], { cents: 0 }) == { cents: 449 })
   expect(total([1, 2, 3], 0) == 6)
+  expect(-price == { cents: -250 })
+  expect(opposite(shipping) == { cents: -199 })
+  expect(opposite(5) == -5)
 }
 
 test "an impl's show replaces the derived form" {

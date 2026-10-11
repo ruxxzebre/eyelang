@@ -902,6 +902,9 @@ func (in *Interp) unary(op string, v Value, at ir.Pos) Value {
 		case ir.Duration:
 			return -x
 		}
+		if r, ok := in.userNeg(v, at); ok {
+			return r
+		}
 	}
 	in.faultf(at, "%s%s isn't defined", op, kindName(v))
 	return nil

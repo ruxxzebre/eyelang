@@ -116,7 +116,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | Generic functions and types with type variables | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L33) |
 | `where` requirements, and a trait as a parameter's type | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L27), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L225) |
 | Generic code specialised at compile time | n/a | n/a | — (v0.4) | |
-| `dyn Trait` (v0.2) | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L99), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L188) |
+| `dyn Trait` (v0.2) | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L109), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L188) |
 
 ## [Pattern matching](/reference/language/pattern-matching)
 
@@ -147,14 +147,14 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| Trait declarations, with default methods | ✓ | ✓ (a default method sees self as any type with the trait) | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L64), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L418) |
+| Trait declarations, with default methods | ✓ | ✓ (a default method sees self as any type with the trait) | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L71), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L418) |
 | `impl Trait for Type`, every method and no others, with the trait's types | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L192) |
 | Coherence: an impl lives with its trait or its type, once per type | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L208) |
 | A one-variant wrapper shows as the value it wraps | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
-| Derived `Eq`, `Ord`, `Show`, `Hash`, `Save`, `Schema`, asked for where they are used | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L88), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L244) |
-| An impl of `Show` replaces the derived form | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L83) |
+| Derived `Eq`, `Ord`, `Show`, `Hash`, `Save`, `Schema`, asked for where they are used | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L98), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L244) |
+| An impl of `Show` replaces the derived form | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L93) |
 | `T.variants()` and `T.parse(s)` on enums | ✓ | — ([#63](https://github.com/ruxxzebre/eyelang/issues/63)) | — | |
-| Operators as traits (`Add`, `Mul`, `Neg` for `-x`, …); no implicit conversions | ✓ | ✓ | partial: `-x` runs on numbers and durations, not through a declared type's impl of `Neg` | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L74), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
+| Operators as traits (`Add`, `Mul`, `Neg` for `-x`, …); no implicit conversions | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L81), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 
 ## [Effects and signatures](/reference/language/effects-and-signatures)
 

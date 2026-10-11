@@ -104,7 +104,6 @@ Runtime and tools:
   map copy the value. The shared-array idea behind constant-time list appends works if lookups
   also check that the index found is below the value's own length. String building is most of
   what is left of `plain()`'s 0.47 s. Session eyelang-55 knows this code.
-- In the interpreter, `-x` doesn't call a declared type's `Neg` impl.
 
 Checker:
 - A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`

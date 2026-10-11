@@ -4,8 +4,8 @@ import "eyelang/ir"
 
 // Traits at run time: the checker has settled which impl each use means, and
 // the interpreter finds it again from the value. Operators on declared types
-// call their impls of Add, Sub, Mul, Div and Rem; an impl of Show gives how a
-// value is written.
+// call their impls of Add, Sub, Mul, Div, Rem and Neg; an impl of Show gives
+// how a value is written.
 
 var opMethods = map[string]struct{ trait, method string }{
 	"+": {"Add", "add"}, "-": {"Sub", "sub"}, "*": {"Mul", "mul"}, "/": {"Div", "div"}, "%": {"Rem", "rem"},
@@ -66,6 +66,24 @@ func (in *Interp) userOp(op string, a, b Value, at ir.Pos) (Value, bool) {
 	}
 	r, _ := in.callMethodFunc(fn, a, []argVal{{v: b}}, at)
 	return r, true
+}
+
+// userNeg runs `-a` through a's impl of Neg.
+func (in *Interp) userNeg(a Value, at ir.Pos) (Value, bool) {
+	t := in.typeOf(a)
+	if t == nil {
+		return nil, false
+	}
+	for _, impl := range t.Impls {
+		if impl.Trait == nil || impl.Trait.Name != "Neg" || impl.Trait.Module != in.prog.Prelude {
+			continue
+		}
+		if fn := impl.Methods["neg"]; fn != nil {
+			r, _ := in.callMethodFunc(fn, a, nil, at)
+			return r, true
+		}
+	}
+	return nil, false
 }
 
 // fits reports whether a value is of a type as written, as far as an impl's
