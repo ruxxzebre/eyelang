@@ -1062,17 +1062,25 @@ func (in *Interp) try(v Value, x *ir.Try) Value {
 }
 
 // wrapError puts an error into the variant of target whose one field holds
-// the error's type, when the error isn't already of type target.
+// the error's type, when the error isn't already of type target. The checker
+// has made sure one variant holds it; the error's value finds which, as fits
+// does: a String error goes into the variant that holds a String.
 func (in *Interp) wrapError(err Value, target *ir.Type) Value {
 	if p := in.pre.problem; p != nil && target == p.Type {
 		return in.problem(err, nil)
 	}
-	ev, ok := err.(*Variant)
-	if target == nil || !ok || ev.V.Type == target {
+	if target == nil || in.typeOf(err) == target {
 		return err
 	}
 	for _, v := range target.Variants {
-		if len(v.Fields) == 1 && v.Fields[0].Type != nil && v.Fields[0].Type.Decl == ev.V.Type {
+		if len(v.Fields) != 1 {
+			continue
+		}
+		t := v.Fields[0].Type
+		for t != nil && t.Decl != nil && t.Decl.Alias != nil && len(t.Decl.Fields) == 0 {
+			t = t.Decl.Alias
+		}
+		if in.fits(t, err) {
 			return &Variant{V: v, Vals: []Value{err}}
 		}
 	}
