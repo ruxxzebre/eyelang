@@ -632,28 +632,61 @@ The characters of s, in order: `for c in s.chars() { … }`.
 ### indexOf {#indexOf}
 
 ```eye
-fn indexOf(s: String, part: String, from: Int = 0) -> Option(Int)
+fn indexOf(s: String, part: String, from: Offset = start) -> Option(Offset)
 ```
 
-The byte offset of the first part at or after from, or `None` if there is none. Offsets count
-bytes of UTF-8, as [`slice`](./builtins#slice) takes them; [`size`](./builtins#size) counts characters.
+Where the first part at or after from starts, or `None` if there is none. Without from, it
+looks from the start.
 
 ### slice {#slice}
 
 ```eye
-fn slice(s: String, range: Range(Int)) -> Option(String)
+fn slice(s: String, range: Range(Offset)) -> Option(String)
 ```
 
-The part of s between two byte offsets: `s.slice(2..5)`. A range past either end is cut to fit;
-it is `None` when an end would split a character.
+The part of s between two positions: `s.slice(s.start()..i)`. A range past either end is cut to
+fit; it is `None` when an end would split a character, as an [`Offset`](./prelude#Offset) from another string may.
 
-### byteSize {#byteSize}
+### start {#start}
 
 ```eye
-fn byteSize(s: String) -> Int
+fn start(s: String) -> Offset
 ```
 
-The length of s in bytes of UTF-8: where `s.slice(…)` ends. [`size`](./builtins#size) counts characters.
+The position before the first character of s.
+
+### end {#end}
+
+```eye
+fn end(s: String) -> Offset
+```
+
+The position after the last character of s: `s.slice(i..s.end())` is the rest of s from i.
+
+### after {#after}
+
+```eye
+fn after(s: String, at: Offset, by: Int = 1) -> Option(Offset)
+```
+
+The position by characters after at, or `None` past the end: `s.after(i)` steps over the
+character at i.
+
+### before {#before}
+
+```eye
+fn before(s: String, at: Offset, by: Int = 1) -> Option(Offset)
+```
+
+The position by characters before at, or `None` before the start.
+
+### charAt {#charAt}
+
+```eye
+fn charAt(s: String, at: Offset) -> Option(Char)
+```
+
+The character that starts at at, or `None` at the end or inside a character.
 
 ### code {#code}
 

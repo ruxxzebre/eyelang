@@ -52,6 +52,19 @@ error with `Show` into one, and `.context("reading {path}")` adds a line.
 It shows as its context, outermost first, then the error:
 `reading eye.toml: not a whole number: "x"`.
 
+### Offset {#Offset}
+
+```eye
+pub opaque type Offset = | Offset(Int)
+```
+
+A position in a string, between two characters: what `s.indexOf(…)` finds
+and `s.slice(…)` takes. Only a string's own functions make or move one
+(`s.start()`, `s.end()`, `s.after(i)`, `s.before(i)`), so a count of
+characters can't be passed where a position goes. Offsets compare with `==`
+and `<`. Underneath it counts bytes, so moving to one costs nothing, and it
+shows as the byte it is at: `byte 5`.
+
 ### Outcome(a) {#Outcome}
 
 ```eye

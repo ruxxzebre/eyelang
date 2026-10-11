@@ -34,6 +34,20 @@ impl Show for Problem {
   }
 }
 
+## A position in a string, between two characters: what `s.indexOf(…)` finds
+## and `s.slice(…)` takes. Only a string's own functions make or move one
+## (`s.start()`, `s.end()`, `s.after(i)`, `s.before(i)`), so a count of
+## characters can't be passed where a position goes. Offsets compare with `==`
+## and `<`. Underneath it counts bytes, so moving to one costs nothing, and it
+## shows as the byte it is at: `byte 5`.
+pub opaque type Offset = | Offset(Int)
+
+impl Show for Offset {
+  fn show(self) -> String = match self {
+    Offset(n) => "byte {n}"
+  }
+}
+
 ## How a run of a job ended: `Completed` with what the job returned, or
 ## `Failed` when it stopped first. `run.join!()` waits for it.
 pub type Outcome(a) = Completed(a) | Failed(Fault)

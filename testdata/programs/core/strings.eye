@@ -1,18 +1,33 @@
 # Strings, characters and the numbers read from text.
 
-test "strings are searched and sliced by byte offsets" {
-  let s = "héllo world"
-  expect(s |> size == 11)     # characters
-  expect(s.byteSize() == 12)  # bytes: é takes two
-  expect(s.indexOf("o") == Some(5))
-  expect(s |> indexOf("o", from: 6) == Some(8))
-  expect(s.indexOf("zz") == None)
-  expect(s.slice(0..3) == Some("hé"))
-  expect(s.slice(0..2) == None)  # would split the é
-  expect(s.slice(7..100) == Some("world"))
-  expect(s.slice(7..=7) == Some("w"))
-  let start = s.indexOf("w") ?? 0
-  expect(s.slice(start..s.byteSize()) == Some("world"))
+test "strings are searched and sliced by position" {
+  let city = "Málaga"
+  expect(city |> size == 6)  # characters
+  expect(city.slice(city.start()..city.end()) == Some("Málaga"))
+  let Some(l) = city.indexOf("l") else { return unreachable("Málaga has an l") }
+  expect(city.slice(city.start()..l) == Some("Má"))
+  expect(city.slice(l..city.end()) == Some("laga"))
+  expect(city.slice(l..=l) == Some("l"))
+  let Some(a) = city |> indexOf("a", from: l) else { return unreachable("an a after the l") }
+  expect(city.slice(l..a) == Some("l"))
+  expect(city.indexOf("zz") == None)
+  expect(city.start() < l && l < a && a < city.end())
+  expect("{l}" == "byte 3")
+}
+
+test "positions step over characters" {
+  let city = "Málaga"
+  let Some(second) = city.after(city.start()) else { return unreachable("M") }
+  expect(city.charAt(second) == Some('á'))
+  expect(city.after(second) == city.indexOf("l"))  # á is two bytes
+  expect(city |> before(city.end(), by: 2) == city.indexOf("ga"))
+  expect(city.after(city.end()) == None)
+  expect(city.before(city.start()) == None)
+  expect(city.charAt(city.end()) == None)
+  # A position from another string may fall inside a character.
+  let Some(one) = "ab".after("ab".start()) else { return unreachable("a") }
+  expect("é".slice("é".start()..one) == None)
+  expect("é".charAt(one) == None)
 }
 
 test "take and drop count characters" {

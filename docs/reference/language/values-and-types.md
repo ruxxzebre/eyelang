@@ -48,10 +48,19 @@ title: "Values and types"
   need.
 - **Slices:** `xs[2..5]`, `xs[..n]` and `bytes[i..]` are views that share storage with what they
   come from. A slice is clamped to the elements that exist, so it never fails, while `xs[i]`
-  returns an `Option`. Strings are sliced by byte offsets with `s.slice(2..5)`, an `Option(String)`
-  that is `None` when the range would split a character. `s.indexOf("<", from: i)` finds an offset
-  and `s.byteSize()` is the end one; `size`, `take` and `drop` count characters, as `for` over
-  `s.chars()` does.
+  returns an `Option`.
+- **Positions in strings** are `Offset`s, not `Int`s. Only a string's own functions make one:
+  `s.start()` and `s.end()`, `s.indexOf(part, from: i)`, and `s.after(i)` and `s.before(i)`, which
+  step over one character, or `by: n`, and are `None` past either end. `s.slice(a..b)` takes a
+  `Range(Offset)` and gives an `Option(String)`, `None` when an end would split a character, and
+  `s.charAt(i)` gives the character there. Offsets compare with `==` and `<`; they have no
+  arithmetic. `size`, `take` and `drop` count characters, as `for` over `s.chars()` does, and a
+  count is an `Int`, so it can't be passed where a position goes: with `let city = "Málaga"`,
+  `city.slice(city.start()..city.end())` is `Some("Málaga")`, and `city.slice(0..(city |> size))`
+  is an error, `expected Range(Offset), found Range(Int)`, which says where offsets come from.
+  An `Offset` counts bytes underneath, so scanning by position costs nothing per step, but there
+  is no number to read from it, since it means something only in its own string; it shows as
+  `byte 5`.
 - **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
   characters (`s.chars()`) and any `Iter(a)`. `xs.iter()` gives a lazy `Iter(a)` whose pipelines
   (`map`, `filter`, `take`, `enumerate`, `zip`) don't build intermediate lists; `toList` collects

@@ -109,7 +109,7 @@ construct that also works outside that domain.
 | Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
 | Blocks | **Braces**, only where they hold several statements. A branch that is one expression or one assignment needs none: `if c then a else b`, `Pattern => value`, `Ok(t) => found += [t]`, `fn x: value`, `fn f() = value`. Layout is free; indentation means nothing | Keeps parsing simple and pasting safe, with no whitespace pitfalls, while one-liners stay light. From the lab: sorting results into lists in a `match` needed braces on every arm |
 | Strings | **One line, or `"""` for many lines.** A multi-line string starts with `"""` and a line break and ends with `"""` on a line of its own, apart from what follows it; that line's indentation is removed from every line (section 4) | Prompts and messages read as text in the code, an unclosed `"` still can't swallow a file, and the formatter re-indents code without changing a string. From the lab: the digest's 40-line prompt |
-| String offsets | **Searching and slicing count bytes; `size`, `take` and `drop` count characters.** `s.indexOf(part, from:)` gives a byte offset that `s.slice(a..b)` takes, and `s.byteSize()` is the end; a slice that would split a character is `None` | Scanning text by offsets costs nothing per step and can't produce broken text, while the everyday measures of text stay in characters. From the lab: the digest's HTML-to-text scanner |
+| String positions | **A position in a string is an `Offset`, not an `Int`**, as Swift's `String.Index` is. `s.indexOf(part)` gives one, `s.slice(a..b)` takes a `Range(Offset)`, and `s.start()`, `s.end()`, `s.after(i)` and `s.before(i)` make and move them; `size`, `take` and `drop` count characters, in `Int`s | Scanning by position costs nothing per step and can't cut a character in two, and a count can't be passed where a position goes: with `Int` offsets, `s.slice(0..(s \|> size))` on `"Málaga"` quietly dropped the last letter. From the lab: the digest's HTML-to-text scanner (open question 32) |
 | Arguments | **`name:` alone passes the variable of that name**: `send(key:)` is `send(key: key)` | Keys, priorities and recipients pass through several layers under their own names, and the label still shows at each call. From the lab: `key: key` and `priority: priority` in every layer of the digest and the reminders |
 | Statements | **A newline ends a statement** unless the next line starts with an operator, `.`, `,`, `:`, `=` or `else`. `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
 | Braces in expressions | A `{` after `if … `, `else`, `for`, `while`, a signature or a lambda's parameters opens a block; anywhere else it starts a record or map. After `=>` it opens a block unless `name:`, `name,` or `name with` follows, which only a record can start. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found with at most two tokens of lookahead, in both parsers; a match arm returns a record without extra parentheses |
@@ -348,10 +348,19 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   need.
 - **Slices:** `xs[2..5]`, `xs[..n]` and `bytes[i..]` are views that share storage with what they
   come from. A slice is clamped to the elements that exist, so it never fails, while `xs[i]`
-  returns an `Option`. Strings are sliced by byte offsets with `s.slice(2..5)`, an `Option(String)`
-  that is `None` when the range would split a character. `s.indexOf("<", from: i)` finds an offset
-  and `s.byteSize()` is the end one; `size`, `take` and `drop` count characters, as `for` over
-  `s.chars()` does.
+  returns an `Option`.
+- **Positions in strings** are `Offset`s, not `Int`s. Only a string's own functions make one:
+  `s.start()` and `s.end()`, `s.indexOf(part, from: i)`, and `s.after(i)` and `s.before(i)`, which
+  step over one character, or `by: n`, and are `None` past either end. `s.slice(a..b)` takes a
+  `Range(Offset)` and gives an `Option(String)`, `None` when an end would split a character, and
+  `s.charAt(i)` gives the character there. Offsets compare with `==` and `<`; they have no
+  arithmetic. `size`, `take` and `drop` count characters, as `for` over `s.chars()` does, and a
+  count is an `Int`, so it can't be passed where a position goes: with `let city = "Málaga"`,
+  `city.slice(city.start()..city.end())` is `Some("Málaga")`, and `city.slice(0..(city |> size))`
+  is an error, `expected Range(Offset), found Range(Int)`, which says where offsets come from.
+  An `Offset` counts bytes underneath, so scanning by position costs nothing per step, but there
+  is no number to read from it, since it means something only in its own string; it shows as
+  `byte 5`.
 - **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
   characters (`s.chars()`) and any `Iter(a)`. `xs.iter()` gives a lazy `Iter(a)` whose pipelines
   (`map`, `filter`, `take`, `enumerate`, `zip`) don't build intermediate lists; `toList` collects
@@ -1756,11 +1765,3 @@ operator. All binary operators associate to the left except `??`, which associat
     clumsily: the parameter is `Option(Provider) = None` so that leaving it out means "from the
     model's name". Should a call be able to pass a bare value to such a parameter, or should a
     default be able to say "chosen later" without `Option`?
-32. **Byte offsets and character counts are both `Int`.** Searching and slicing a `String` count
-    bytes, while `size`, `take` and `drop` count characters (decision log, "String offsets"). Both
-    are `Int`, so mixing them type-checks: `s.slice(0..(s |> size))` on `"Málaga"` is
-    `Some("Málag")`, the last letter quietly gone, and `None` comes only when a range splits a
-    character. Should offsets be a type of their own, as Swift's `String.Index` is: `indexOf`
-    returning an `Offset`, `slice` taking a `Range(Offset)`, `s.end()` the last one, and an `Int`
-    in their place a compile error? The scanner stays as cheap, and the easy mistake stops
-    compiling.

@@ -325,12 +325,12 @@ fn plain(html: String, base: Option(String) = None) -> String {
   var parts: List(String) = []
   var link: Option(Link) = None  # the link being read: its text so far, and its target
   var skip = 0                   # how many skipped elements we are inside
-  var read = 0                   # the text before this has been read
-  var look = 0                   # where the next tag may start
+  var read = html.start()        # the text before this has been read
+  var look = html.start()        # where the next tag may start
   while true {
     let Some(open) = html |> indexOf("<", from: look) else { break }
     let Some(tag) = tagAt(html, open) else {
-      look = open + 1
+      look = past(html, open)
       continue
     }
     if skip == 0 { keep(html.slice(read..open) ?? "", mut parts, mut link) }
@@ -340,7 +340,7 @@ fn plain(html: String, base: Option(String) = None) -> String {
     if !tag.closing && raw |> contains(tag.name) {
       # Go to its end tag without reading what is inside; the end tag leaves it.
       skip += 1
-      read = closeOf(html, tag.name, from: tag.end) ?? html.byteSize()
+      read = closeOf(html, tag.name, from: tag.end) ?? html.end()
       look = read
     } else if skipped |> contains(tag.name) {
       skip = if tag.closing then max(0, skip - 1) else skip + 1
@@ -363,7 +363,7 @@ fn plain(html: String, base: Option(String) = None) -> String {
       link = None
     }
   }
-  if skip == 0 { keep(html.slice(read..html.byteSize()) ?? "", mut parts, mut link) }
+  if skip == 0 { keep(rest(html, read), mut parts, mut link) }
   parts
     |> join("")
     |> split("\n")
@@ -383,69 +383,74 @@ fn keep(html: String, mut parts: List(String), mut link: Option(Link)) {
 }
 
 ## A tag, a comment or a declaration (`<!DOCTYPE html>`), which has no name.
-type Tag = { name: String, closing: Bool, attributes: String, end: Int }
+type Tag = { name: String, closing: Bool, attributes: String, end: Offset }
 
-## The tag that starts at `<` at offset at, if one does.
-fn tagAt(html: String, at: Int) -> Option(Tag) {
-  if html.slice(at..at + 4) == Some("<!--") {
-    match html |> indexOf("-->", from: at + 4) {
-      Some(close) => return Some({ name: "", closing: false, attributes: "", end: close + 3 })
+## The tag that starts with the `<` at at, if one does.
+fn tagAt(html: String, at: Offset) -> Option(Tag) {
+  if rest(html, at) |> startsWith("<!--") {
+    match html |> indexOf("-->", from: past(html, at, by: 4)) {
+      Some(close) => return Some({ name: "", closing: false, attributes: "", end: past(html, close, by: 3) })
       None => {}  # unclosed: read as a declaration, up to the next >
     }
   }
-  if byteAt(html, at + 1) == "!" {
-    let close = html |> indexOf(">", from: at + 2)?
-    return Some({ name: "", closing: false, attributes: "", end: close + 1 })
+  let second = past(html, at)
+  if char(html, second) == '!' {
+    let close = html |> indexOf(">", from: second)?
+    return Some({ name: "", closing: false, attributes: "", end: past(html, close) })
   }
-  let closing = byteAt(html, at + 1) == "/"
-  let start = if closing then at + 2 else at + 1
-  if !isLetter(byteAt(html, start)) { return None }
-  var i = start + 1
-  while isNameByte(byteAt(html, i)) { i += 1 }
+  let closing = char(html, second) == '/'
+  let start = if closing then past(html, second) else second
+  if !isLetter(char(html, start)) { return None }
+  var i = past(html, start)
+  while isNameChar(char(html, i)) { i = past(html, i) }
   let close = html |> indexOf(">", from: i)?
   Some({
     name: (html.slice(start..i) ?? "") |> lower,
     closing,
     attributes: html.slice(i..close) ?? "",
-    end: close + 1,
+    end: past(html, close),
   })
 }
 
 ## Where the end tag of a raw element starts, in any case: `</script`.
-fn closeOf(html: String, name: String, from: Int) -> Option(Int) {
+fn closeOf(html: String, name: String, from: Offset) -> Option(Offset) {
   var look = from
   while true {
     let at = html |> indexOf("</", from: look)?
-    let found = html.slice(at + 2..at + 2 + name.byteSize()) ?? ""
+    let start = past(html, at, by: 2)
+    let found = html.slice(start..past(html, start, by: name |> size)) ?? ""
     if found |> lower == name { return Some(at) }
-    look = at + 2
+    look = start
   }
 }
 
 ## The value of a tag's href attribute, decoded and trimmed, or "".
 fn hrefOf(attributes: String) -> String {
-  # Offsets in the lower-case copy are the same as in the original, except
-  # after the few characters whose lower case is longer or shorter.
-  let lowered = attributes |> lower
-  var look = 0
-  while true {
-    let Some(at) = lowered |> indexOf("href", from: look) else { return "" }
-    look = at + 4
-    if at > 0 && isWordByte(byteAt(attributes, at - 1)) { continue }
-    var i = skipSpace(attributes, at + 4)
-    if byteAt(attributes, i) != "=" { continue }
-    i = skipSpace(attributes, i + 1)
-    let quote = byteAt(attributes, i)
-    let value = if quote == "\"" || quote == "'" {
-      let close = attributes |> indexOf(quote, from: i + 1) ?? attributes.byteSize()
-      attributes.slice(i + 1..close) ?? ""
+  var at = attributes.start()
+  var previous = '\0'
+  while at < attributes.end() {
+    let here = at
+    let c = char(attributes, at)
+    at = past(attributes, at)
+    let starts = !isWordChar(previous) && (rest(attributes, here) |> take(4) |> lower) == "href"
+    previous = c
+    if !starts { continue }
+    var i = skipSpace(attributes, past(attributes, here, by: 4))
+    if char(attributes, i) != '=' { continue }
+    i = skipSpace(attributes, past(attributes, i))
+    let quote = char(attributes, i)
+    let value = if quote == '"' || quote == '\'' {
+      let open = past(attributes, i)
+      let close = attributes |> indexOf("{quote}", from: open) ?? attributes.end()
+      attributes.slice(open..close) ?? ""
     } else {
       var end = i
-      while end < attributes.byteSize() && !isSpace(byteAt(attributes, end)) { end += 1 }
+      while end < attributes.end() && !isSpace(char(attributes, end)) { end = past(attributes, end) }
       attributes.slice(i..end) ?? ""
     }
     return value |> decode |> trim
   }
+  ""
 }
 
 ## Text with its character references replaced: `&amp;`, `&#8364;`, `&#x2014;`.
@@ -453,29 +458,30 @@ fn hrefOf(attributes: String) -> String {
 fn decode(text: String) -> String {
   if !(text |> contains("&")) { return text }
   var parts: List(String) = []
-  var read = 0
+  var read = text.start()
   while true {
     let Some(amp) = text |> indexOf("&", from: read) else { break }
     parts += [text.slice(read..amp) ?? ""]
-    let (found, end) = entityAt(text, amp + 1)
+    let (found, end) = entityAt(text, past(text, amp))
     parts += [found ?? (text.slice(amp..end) ?? "")]
     read = end
   }
-  parts += [text.slice(read..text.byteSize()) ?? ""]
+  parts += [rest(text, read)]
   parts |> join("")
 }
 
-## What the reference after a `&` at offset at stands for, if anything, and
-## where it ends, after its optional `;`.
-fn entityAt(text: String, at: Int) -> (Option(String), Int) {
-  let numeric = byteAt(text, at) == "#"
-  let hex = numeric && (byteAt(text, at + 1) |> lower) == "x"
-  let start = if hex then at + 2 else if numeric then at + 1 else at
+## What the reference after a `&`, starting at at, stands for, if anything,
+## and where it ends, after its optional `;`.
+fn entityAt(text: String, at: Offset) -> (Option(String), Offset) {
+  let numeric = char(text, at) == '#'
+  let x = char(text, past(text, at))
+  let hex = numeric && (x == 'x' || x == 'X')
+  let start = if hex then past(text, at, by: 2) else if numeric then past(text, at) else at
   var i = start
-  while referenceByte(byteAt(text, i), hex:, numeric:) { i += 1 }
+  while referenceChar(char(text, i), hex:, numeric:) { i = past(text, i) }
   if i == start { return (None, at) }
   let name = text.slice(start..i) ?? ""
-  let end = if byteAt(text, i) == ";" then i + 1 else i
+  let end = if char(text, i) == ';' then past(text, i) else i
   let value = if numeric {
     match parseInt(name, base: if hex then 16 else 10) {
       Ok(code) if code > 0 => fromCode(code) |> map(fn c: "{c}")
@@ -490,12 +496,12 @@ fn entityAt(text: String, at: Int) -> (Option(String), Int) {
 ## The resolved URL of a link's target, given the URL of the page it is on.
 fn resolve(target: String, against: String) -> Option(String) {
   if hasScheme(target) { return Some(target) }
-  let page = before(before(against, "#"), "?")
+  let page = upTo(upTo(against, "#"), "?")
   let schemeEnd = page |> indexOf("://")?
-  let pathStart = page |> indexOf("/", from: schemeEnd + 3) ?? page.byteSize()
-  let origin = page.slice(0..pathStart)?
-  let path = page.slice(pathStart..page.byteSize())?
-  if target |> startsWith("//") { return Some("{page.slice(0..schemeEnd + 1)?}{target}") }
+  let pathStart = page |> indexOf("/", from: past(page, schemeEnd, by: 3)) ?? page.end()
+  let origin = page.slice(page.start()..pathStart)?
+  let path = rest(page, pathStart)
+  if target |> startsWith("//") { return Some("{page.slice(page.start()..schemeEnd)?}:{target}") }
   if target |> startsWith("/") { return Some(origin + target) }
   if target |> startsWith("?") { return Some(origin + path + target) }
   # The directory: the path up to its last slash.
@@ -517,31 +523,37 @@ fn resolve(target: String, against: String) -> Option(String) {
 ## Whether a link's target starts with a scheme, such as `https:`.
 fn hasScheme(target: String) -> Bool {
   let Some(colon) = target |> indexOf(":") else { return false }
-  let name = target.slice(0..colon) ?? ""
-  colon > 0 && isLetter(byteAt(target, 0)) && name |> chars |> all(fn c: isSchemeChar("{c}"))
+  let name = target.slice(target.start()..colon) ?? ""
+  isLetter(char(target, target.start())) && name |> chars |> all(fn c: isSchemeChar(c))
 }
 
 ## s up to the first mark in it, or all of s.
-fn before(s: String, mark: String) -> String =
-  s.slice(0..(s |> indexOf(mark) ?? s.byteSize())) ?? s
+fn upTo(s: String, mark: String) -> String =
+  s.slice(s.start()..(s |> indexOf(mark) ?? s.end())) ?? s
 
-## The one-byte text at offset i, or "" past the end or inside a character.
-fn byteAt(s: String, i: Int) -> String = if i < 0 then "" else s.slice(i..i + 1) ?? ""
+## The rest of s from i.
+fn rest(s: String, i: Offset) -> String = s.slice(i..s.end()) ?? ""
 
-fn referenceByte(c: String, hex: Bool, numeric: Bool) -> Bool =
+## The position by characters after i, or the end.
+fn past(s: String, i: Offset, by: Int = 1) -> Offset = s |> after(i, by:) ?? s.end()
+
+## The character at i, or `\0` at the end.
+fn char(s: String, i: Offset) -> Char = s.charAt(i) ?? '\0'
+
+fn referenceChar(c: Char, hex: Bool, numeric: Bool) -> Bool =
   if hex then isHexDigit(c) else if numeric then isDigit(c) else isLetter(c)
 
-fn isLetter(c: String) -> Bool = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z")
-fn isDigit(c: String) -> Bool = c >= "0" && c <= "9"
-fn isHexDigit(c: String) -> Bool = isDigit(c) || (c >= "a" && c <= "f") || (c >= "A" && c <= "F")
-fn isWordByte(c: String) -> Bool = isLetter(c) || isDigit(c) || c == "_"
-fn isNameByte(c: String) -> Bool = isWordByte(c) || c == "-"
-fn isSchemeChar(c: String) -> Bool = isWordByte(c) || c == "+" || c == "-" || c == "."
-fn isSpace(c: String) -> Bool = c == " " || c == "\t" || c == "\n" || c == "\r" || c == "\u{C}"
+fn isLetter(c: Char) -> Bool = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+fn isDigit(c: Char) -> Bool = c >= '0' && c <= '9'
+fn isHexDigit(c: Char) -> Bool = isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+fn isWordChar(c: Char) -> Bool = isLetter(c) || isDigit(c) || c == '_'
+fn isNameChar(c: Char) -> Bool = isWordChar(c) || c == '-'
+fn isSchemeChar(c: Char) -> Bool = isWordChar(c) || c == '+' || c == '-' || c == '.'
+fn isSpace(c: Char) -> Bool = c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\u{C}'
 
-fn skipSpace(s: String, from: Int) -> Int {
+fn skipSpace(s: String, from: Offset) -> Offset {
   var i = from
-  while isSpace(byteAt(s, i)) { i += 1 }
+  while isSpace(char(s, i)) { i = past(s, i) }
   i
 }
 

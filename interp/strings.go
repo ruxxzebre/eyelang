@@ -11,9 +11,8 @@ import (
 )
 
 // stringBuiltins adds the functions on strings, characters and Floats that
-// builtin.eye declares under "Strings and numbers". Offsets into a string
-// count bytes of UTF-8, as slice and indexOf use them; size, take and drop
-// count characters.
+// builtin.eye declares under "Strings and numbers", apart from those on
+// positions (offsets.go). size, take and drop count characters.
 func stringBuiltins(add func(string, builtinFunc)) {
 	strs := func(in *Interp, args []Value, n int, name string, at ir.Pos) []string {
 		in.need(args, n, name, at)
@@ -51,53 +50,6 @@ func stringBuiltins(add func(string, builtinFunc)) {
 			out = append(out, r)
 		}
 		return &List{Elems: out}
-	})
-	add("byteSize", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
-		return int64(len(in.str(args, "byteSize", at)))
-	})
-	add("indexOf", func(in *Interp, args []Value, named map[string]Value, at ir.Pos) Value {
-		if len(args) == 3 { // indexOf(s, part, 4)
-			named = map[string]Value{"from": args[2]}
-			args = args[:2]
-		}
-		s := strs(in, args, 2, "indexOf", at)
-		from := 0
-		if v, ok := named["from"]; ok {
-			n, ok := v.(int64)
-			if !ok {
-				in.faultf(at, "indexOf's from: is a byte offset, an Int")
-			}
-			from = int(max(0, min(n, int64(len(s[0])))))
-		}
-		i := strings.Index(s[0][from:], s[1])
-		if i < 0 {
-			return in.none()
-		}
-		return in.some(int64(from + i))
-	})
-	add("slice", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
-		in.need(args, 2, "slice", at)
-		s, ok1 := args[0].(string)
-		r, ok2 := args[1].(*RangeVal)
-		if !ok1 || !ok2 {
-			in.faultf(at, "slice takes a String and a range of byte offsets: s.slice(2..5)")
-		}
-		lo, ok1 := r.Start.(int64)
-		hi, ok2 := r.End.(int64)
-		if !ok1 || !ok2 {
-			in.faultf(at, "slice takes a range of Ints")
-		}
-		if r.Inclusive {
-			hi++
-		}
-		lo, hi = max(0, min(lo, int64(len(s)))), max(0, min(hi, int64(len(s))))
-		if hi < lo {
-			return in.some("")
-		}
-		if !charStart(s, lo) || !charStart(s, hi) {
-			return in.none()
-		}
-		return in.some(s[lo:hi])
 	})
 	add("code", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "code", at)
@@ -205,10 +157,4 @@ func charOffset(s string, n int) int {
 		n--
 	}
 	return len(s)
-}
-
-// charStart reports whether byte offset i of s starts a character, or is
-// its end.
-func charStart(s string, i int64) bool {
-	return i == int64(len(s)) || utf8.RuneStart(s[i])
 }

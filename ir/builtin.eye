@@ -422,16 +422,29 @@ pub extern fn words(s: String) -> List(String)
 ## The characters of s, in order: `for c in s.chars() { … }`.
 pub extern fn chars(s: String) -> List(Char)
 
-## The byte offset of the first part at or after from, or `None` if there is none. Offsets count
-## bytes of UTF-8, as [slice] takes them; [size] counts characters.
-pub extern fn indexOf(s: String, part: String, from: Int = 0) -> Option(Int)
+## Where the first part at or after from starts, or `None` if there is none. Without from, it
+## looks from the start.
+pub extern fn indexOf(s: String, part: String, from: Offset = start) -> Option(Offset)
 
-## The part of s between two byte offsets: `s.slice(2..5)`. A range past either end is cut to fit;
-## it is `None` when an end would split a character.
-pub extern fn slice(s: String, range: Range(Int)) -> Option(String)
+## The part of s between two positions: `s.slice(s.start()..i)`. A range past either end is cut to
+## fit; it is `None` when an end would split a character, as an [Offset] from another string may.
+pub extern fn slice(s: String, range: Range(Offset)) -> Option(String)
 
-## The length of s in bytes of UTF-8: where `s.slice(…)` ends. [size] counts characters.
-pub extern fn byteSize(s: String) -> Int
+## The position before the first character of s.
+pub extern fn start(s: String) -> Offset
+
+## The position after the last character of s: `s.slice(i..s.end())` is the rest of s from i.
+pub extern fn end(s: String) -> Offset
+
+## The position by characters after at, or `None` past the end: `s.after(i)` steps over the
+## character at i.
+pub extern fn after(s: String, at: Offset, by: Int = 1) -> Option(Offset)
+
+## The position by characters before at, or `None` before the start.
+pub extern fn before(s: String, at: Offset, by: Int = 1) -> Option(Offset)
+
+## The character that starts at at, or `None` at the end or inside a character.
+pub extern fn charAt(s: String, at: Offset) -> Option(Char)
 
 ## The character's Unicode code point: `'A'.code()` is 65.
 pub extern fn code(c: Char) -> Int
