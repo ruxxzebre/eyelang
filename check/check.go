@@ -535,6 +535,33 @@ func (c *checker) typeBody(m *module, f *ir.File, t *ir.Type, value *syntax.Node
 	default:
 		t.Alias = c.typeExpr(m, f, value, t.Params)
 	}
+	why := func(v string) string {
+		params := strings.Join(append(append([]string{}, t.Params...), v), ", ")
+		return fmt.Sprintf("%s doesn't declare it: write type %s(%s) = …", t.Name, t.Name, params)
+	}
+	c.strayVars(t.Alias, t.Params, why)
+	for _, v := range t.Variants {
+		for _, field := range v.Fields {
+			c.strayVars(field.Type, t.Params, why)
+		}
+	}
+}
+
+// strayVars reports each type variable in te that isn't among allowed,
+// saying why with why(name): a type variable stands for a type only where
+// something declares it.
+func (c *checker) strayVars(te *ir.TypeExpr, allowed []string, why func(string) string) {
+	if te == nil {
+		return
+	}
+	if te.Decl == nil && te.Entity == nil && te.Trait == nil && isVarName(te.Name) && !slices.Contains(allowed, te.Name) &&
+		te.Name != "record" && te.Name != "tuple" && te.Name != "fn" && te.Name != "dyn" {
+		c.errorf(c.typePos[te], "%s is a type variable, and %s", te.Name, why(te.Name))
+	}
+	for _, a := range te.Args {
+		c.strayVars(a, allowed, why)
+	}
+	c.strayVars(te.Result, allowed, why)
 }
 
 // builtinTypes are the type names every module knows.
@@ -710,6 +737,9 @@ func (c *checker) entityDecl(m *module, f *ir.File, d *syntax.Node) {
 				st := e.States[i]
 				i++
 				st.Type = c.typeExpr(m, f, member.ChildByField(syntax.FieldType), nil)
+				c.strayVars(st.Type, nil, func(string) string {
+					return "an entity's state is of one type, which it names: write that type"
+				})
 				if def := member.ChildByField(syntax.FieldDefault); def != nil {
 					l := c.newFunc(m, f, e.Name+"."+st.Name, pos(f, member), ctxGlobal)
 					l.fn.Body = l.expr(def)
@@ -762,7 +792,12 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			}
 			ct.Events[ev.Name] = ev
 			member := member
-			m.decls = append(m.decls, func() { ev.Type = c.typeExpr(m, f, member.ChildByField(syntax.FieldType), nil) })
+			m.decls = append(m.decls, func() {
+				ev.Type = c.typeExpr(m, f, member.ChildByField(syntax.FieldType), nil)
+				c.strayVars(ev.Type, nil, func(string) string {
+					return "an event's values cross the wire, so its type is named in full"
+				})
+			})
 			continue
 		}
 		if member.Kind != syntax.CommandDeclaration && member.Kind != syntax.QueryDeclaration {
@@ -797,6 +832,13 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 				op.Params = append(op.Params, param)
 			}
 			op.Return = c.typeExpr(m, f, member.ChildByField(syntax.FieldReturnType), nil)
+			wire := func(string) string {
+				return "an operation's values cross the wire, so their types are named in full"
+			}
+			for _, p := range op.Params {
+				c.strayVars(p.Type, nil, wire)
+			}
+			c.strayVars(op.Return, nil, wire)
 		})
 	}
 	// What its attributes name exists, once its types are known.

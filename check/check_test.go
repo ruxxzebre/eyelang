@@ -104,6 +104,23 @@ contract C {}`, []string{
 			"11:11: @limit has no argument every:",
 			"13:1: @fresh goes on a command, not on a contract",
 		}},
+		{"a type variable is declared where it is used", `type Box = { inner: a }
+type Opt = | Has(b) | Not
+type Pair(x) = (x, y)
+entity E(id: Int) {
+  state v: c = 1
+}
+contract C {
+  query q(n: d) -> Int
+  event e: List(e) on "c.e"
+}`, []string{
+			"1:21: a is a type variable, and Box doesn't declare it: write type Box(a) = …",
+			"2:18: b is a type variable, and Opt doesn't declare it: write type Opt(b) = …",
+			"3:20: y is a type variable, and Pair doesn't declare it: write type Pair(x, y) = …",
+			"5:12: c is a type variable, and an entity's state is of one type, which it names: write that type",
+			"8:14: d is a type variable, and an operation's values cross the wire, so their types are named in full",
+			"9:17: e is a type variable, and an event's values cross the wire, so its type is named in full",
+		}},
 		{"attributes name what exists", `pub type Sent = | Sent(Int)
 pub type Ping = { id: Int }
 contract Svc {

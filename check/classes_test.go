@@ -46,6 +46,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§7", "a closure capturing a var", "closures don't capture vars"},
 	{"§7", "a closure capturing a mut parameter", "a closure can't capture what can change"},
 	{"§8", "a type variable used as a type", "a type variable stands for any type"},
+	{"§8", "a type variable a declaration doesn't declare", "a type variable is declared where it is used"},
 	{"§8", "an impl for a type of another module", "impl gives methods to a type this module declares"},
 	{"§8", "a where clause naming what isn't a type variable or a trait", "where names a type variable and a trait"},
 	{"§8", "a trait inside a type", "a trait isn't a type inside a type"},
