@@ -85,3 +85,14 @@ func TestPostgresNameHasNoSecrets(t *testing.T) {
 		t.Errorf("named %q", name)
 	}
 }
+
+// A step recorded before tokens in and out were kept separately shows the
+// tokens it kept.
+func TestSpentOfAnOldStep(t *testing.T) {
+	if got := spentInfo(step{Tokens: 33000, USD: 0.165}.spent()).String(); got != "33000 tokens, $0.1650" {
+		t.Errorf("shown as %q", got)
+	}
+	if spentInfo(step{}.spent()) != nil {
+		t.Error("a step that spent nothing shows a spend")
+	}
+}

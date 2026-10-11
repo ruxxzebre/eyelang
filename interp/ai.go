@@ -331,7 +331,7 @@ func (in *Interp) postJSON(target string, headers http.Header, body map[string]a
 // provider's own figure replaces when it gives one. A model whose price
 // isn't known costs nothing here; a budget in dollars refuses to call it.
 func usage(model string, in, out int64, cost *float64) spend {
-	s := spend{Tokens: in + out}
+	s := spend{Tokens: in + out, In: in, Out: out}
 	if cost != nil {
 		s.USD = *cost
 	} else if p, ok := priceOf(model); ok {

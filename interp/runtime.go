@@ -519,6 +519,8 @@ type jobRun struct {
 	// took instead of the steps.
 	Summarized bool `json:",omitempty"`
 	Steps      int  `json:",omitempty"`
+	// Spent is what the summarized steps' model calls spent.
+	Spent *spend `json:",omitempty"`
 	// Key is the key the run was started with: a job starts once per key.
 	Key string `json:",omitempty"`
 	// Group and RateGroup are the values of the job's @concurrency and
@@ -546,9 +548,17 @@ type step struct {
 	Event  string `json:",omitempty"` // next! is waiting for this event
 	Since  int64  `json:",omitempty"` // and looks at events after this one
 	// What the step's model calls spent, which counts against @budget
-	// again when the run is replayed.
-	Tokens int64   `json:",omitempty"`
-	USD    float64 `json:",omitempty"`
+	// again when the run is replayed: all their tokens, those of the
+	// prompts and of the replies (not kept by runtimes before 2026-10-11),
+	// and their price.
+	Tokens    int64   `json:",omitempty"`
+	TokensIn  int64   `json:",omitempty"`
+	TokensOut int64   `json:",omitempty"`
+	USD       float64 `json:",omitempty"`
+}
+
+func (s step) spent() spend {
+	return spend{Tokens: s.Tokens, In: s.TokensIn, Out: s.TokensOut, USD: s.USD}
 }
 
 func (r *jobRun) encode() []byte {

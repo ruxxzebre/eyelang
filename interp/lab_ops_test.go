@@ -194,6 +194,20 @@ func TestDigestBudgetOnItsDefaultModel(t *testing.T) {
 				t.Errorf("the model call's step spent %d tokens and $%g, want 33000 and $0.165", s.Tokens, s.USD)
 			}
 		}
+		// eye runs shows it, on the step and in the run's total, also
+		// once the run keeps only a summary.
+		var out strings.Builder
+		FormatRuns(&out, []RunInfo{in.runInfo(run)}, true, in.rt.now)
+		const spent = "30000 tokens in, 3000 out, $0.1650]"
+		if strings.Count(out.String(), spent) != 2 || !strings.Contains(out.String(), "  ["+spent) || !strings.Contains(out.String(), " B, "+spent) {
+			t.Errorf("eye runs shows:\n%s\nwant %s on the run and on its ai.generate step", out.String(), spent)
+		}
+		run.summarize()
+		out.Reset()
+		FormatRuns(&out, []RunInfo{in.runInfo(run)}, false, in.rt.now)
+		if !strings.Contains(out.String(), ", 30000 tokens in, 3000 out, $0.1650]") {
+			t.Errorf("a summarized run shows:\n%s", out.String())
+		}
 	})
 }
 

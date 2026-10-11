@@ -142,8 +142,16 @@ func (r *jobRun) sees() int64 {
 	return since
 }
 
-// summarize replaces a finished run's steps with their count.
+// summarize replaces a finished run's steps with their count, and what they
+// spent.
 func (r *jobRun) summarize() {
+	var total spend
+	for _, s := range r.Log {
+		total.add(s.spent())
+	}
+	if total != (spend{}) {
+		r.Spent = &total
+	}
 	r.Steps, r.Log, r.Summarized = len(r.Log), nil, true
 }
 

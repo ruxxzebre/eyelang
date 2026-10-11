@@ -23,10 +23,19 @@ func runFault(at ir.Pos, kind, format string, args ...any) {
 
 // ---------------------------------------------------------------- budgets
 
-// spend is what model calls used: tokens, and their price in US dollars.
+// spend is what model calls used: tokens, of them In for the prompts and
+// Out for the replies, and their price in US dollars.
 type spend struct {
-	Tokens int64
-	USD    float64
+	Tokens  int64
+	In, Out int64
+	USD     float64
+}
+
+func (s *spend) add(t spend) {
+	s.Tokens += t.Tokens
+	s.In += t.In
+	s.Out += t.Out
+	s.USD += t.USD
 }
 
 // budget is a @budget being kept: the limits of one job run, or of one call
@@ -61,13 +70,11 @@ func (in *Interp) charge(s spend) {
 	}
 	for _, b := range in.budgets {
 		b.mu.Lock()
-		b.spent.Tokens += s.Tokens
-		b.spent.USD += s.USD
+		b.spent.add(s)
 		b.mu.Unlock()
 	}
 	if in.stepSpend != nil {
-		in.stepSpend.Tokens += s.Tokens
-		in.stepSpend.USD += s.USD
+		in.stepSpend.add(s)
 	}
 }
 
