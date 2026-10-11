@@ -88,6 +88,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§12", "effects through private functions", "effects pass through private functions"},
 	{"§12", "a call of a function value whose type states effects the caller doesn't", "calling a function value has the effects its type states"},
 	{"§12", "a function kept in data that does more than its type states, or a callback kept in data", "a function kept in data does only what its type states"},
+	{"§8", "a method named like a field that holds a function", "a field that holds a function is called like a method"},
 	{"§12", "an impl's method doing more than its trait's states, or a private function more than its uses clause", "effects don't escape through traits or private uses clauses"},
 	{"§12", "an effect that doesn't exist, or names what doesn't", "a uses clause lists effects that exist"},
 	{"§12", "publishing, starting a child run or calling foreign code in a job without !, a step whose result can't be saved, or an unlisted publish, secret, consume or ffi effect", "publishing, starting a run, secrets and foreign code are steps and effects"},

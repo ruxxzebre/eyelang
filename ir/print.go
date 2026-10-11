@@ -284,6 +284,11 @@ func declString(d any) string {
 		return "builtin " + d.Name
 	case RuntimeMethod:
 		return "runtime " + d.Name
+	case FieldCall:
+		if f, ok := d.Call.Func.(*Field); ok {
+			return "the function in field " + f.Name
+		}
+		return "a field's function"
 	case nil:
 		return "?"
 	}

@@ -164,6 +164,7 @@ func (c *checker) checkTypes() {
 	}
 	c.fillImplMethods()
 	c.checkDyns()
+	c.checkFieldMethods()
 	var bodies []body
 	for _, m := range c.prog.Modules {
 		for _, f := range m.Funcs {
@@ -1356,6 +1357,9 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				}
 				return x.applyFunc(m, envOf(r), e.Args, r.name+"."+e.Name, e.Pos)
 			}
+			if t, ok := x.fieldCall(r, e, want); ok {
+				return t
+			}
 		case r.decl == nil && r.entity == nil:
 			if t, ok := x.timeMethod(r, e); ok {
 				c.useName(e, method(e.Name))
@@ -1436,6 +1440,30 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		}
 	}
 	return c.unknownf(e.Pos, "%s has no method %s", show(defaultLiteral(recv)), e.Name)
+}
+
+// fieldCall checks `timer.read()` where read is a field of the record that
+// holds a function: a call of the field's value (SPECS.md §8). The call is
+// kept as the method call's target.
+func (x *fnCheck) fieldCall(r *tcon, e *ir.MethodCall, want typ) (typ, bool) {
+	c := x.c
+	ft, ok := c.fieldType(r, e.Name)
+	if !ok {
+		return nil, false
+	}
+	if _, isFn := prune(ft).(*tfun); !isFn {
+		return nil, false
+	}
+	if d, ok := c.opaqueTo(x.top.fn.Module, r); ok {
+		return c.unknownf(e.Pos, "%s", c.opaqueMessage(d, "field "+e.Name)), true
+	}
+	c.useField(e, r, e.Name)
+	field := &ir.Field{At: ir.At{Pos: e.Pos}, Value: e.Recv, Name: e.Name}
+	call := &ir.Call{At: ir.At{Pos: e.Pos}, Func: field, Args: e.Args}
+	e.Target = ir.FieldCall{Call: call}
+	t := x.apply(ft, e.Args, want, e.Name, e.Pos)
+	c.ts.exprs = append(c.ts.exprs, typedExpr{field, ft}, typedExpr{call, t})
+	return t, true
 }
 
 // privateMethod reports a call of a method another module doesn't make

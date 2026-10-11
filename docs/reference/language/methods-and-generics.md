@@ -31,6 +31,10 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
 - **Methods** are declared in `impl Type { … }` in the module that defines the type, and called as
   `x.method(args)`. A function in the block without `self` is called on the type: `Lexer.new(src)`.
   Trait methods are called the same way ([section 11](/reference/language/traits)).
+- **A field that holds a function is called like a method.** With `type Timer = { name: String,
+  read: fn() -> Instant uses {clock} }`, `timer.read()` calls the function in the field; the call
+  has the effects its type states. So that the call means one thing, a record type can't have a
+  method named like a field that holds a function.
 - **Pipes and methods.** `x |> f(a)` calls an ordinary function with `x` first; `x.f(a)` calls a
   method. Collection operations in the standard library are functions, used with pipes, so the same
   pipeline works on lists, iterators and entity sets.

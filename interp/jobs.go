@@ -22,7 +22,13 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 	// The callee or receiver and the arguments come first: they may hold
 	// waiting calls of their own, as `a!().reconcile!()` does, whose steps
 	// come before this one.
-	switch c := w.Call.(type) {
+	call := w.Call
+	if m, ok := call.(*ir.MethodCall); ok {
+		if fc, ok := m.Target.(ir.FieldCall); ok {
+			call = fc.Call // a field that holds a function
+		}
+	}
+	switch c := call.(type) {
 	case *ir.Call:
 		callee := in.eval(f, c.Func)
 		args := in.evalArgs(f, c.Args)

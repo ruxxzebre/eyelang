@@ -72,6 +72,26 @@ func markCallbacks(t typ, param string) {
 	}
 }
 
+// checkFieldMethods reports a method named like a field of its record that
+// holds a function: `timer.read()` calls the field, so a method read would
+// make the call mean two things (SPECS.md §8).
+func (c *checker) checkFieldMethods() {
+	for _, m := range c.prog.Modules {
+		for _, t := range m.Types {
+			if t.Alias == nil || t.Alias.Name != "record" {
+				continue
+			}
+			for i, name := range t.Alias.Fields {
+				meth := t.Methods[name]
+				if meth == nil || i >= len(t.Alias.Args) || t.Alias.Args[i].Name != "fn" {
+					continue
+				}
+				c.typeErrorf(meth.Pos, "%s has a field %s that holds a function, which .%s() calls, so a method %s would make that call mean two things: rename one of them", t.Name, name, name, name)
+			}
+		}
+	}
+}
+
 func newFx(src fxSrc) *fxVar { return &fxVar{srcs: []fxSrc{src}} }
 
 func (v *fxVar) root() *fxVar {

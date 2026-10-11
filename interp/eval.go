@@ -660,6 +660,9 @@ func sourceOf(e ir.Expr) string {
 }
 
 func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
+	if fc, ok := m.Target.(ir.FieldCall); ok {
+		return in.evalCall(f, fc.Call) // a field that holds a function
+	}
 	recv := in.eval(f, m.Recv)
 	args := in.evalArgs(f, m.Args)
 	if _, isSelf := m.Recv.(*ir.Self); isSelf && f.fn.Entity != nil {

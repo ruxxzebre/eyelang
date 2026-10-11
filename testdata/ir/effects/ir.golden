@@ -24,9 +24,8 @@ fn readAll(ts) uses {clock}
     ref builtin map : fn(List(Timer), fn(Timer) -> Instant) -> List(Instant)
     local ts#0 : List(Timer)
     lambda(t#0) uses {clock} : fn(Timer) -> Instant
-      call : Instant
-        field .read : fn() -> Instant uses {clock}
-          local t#0 : Timer
+      method .read -> the function in field read : Instant
+        local t#0 : Timer
 
 fn shout(xs) uses {stdio}
   block : ()

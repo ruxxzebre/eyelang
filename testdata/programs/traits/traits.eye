@@ -102,6 +102,15 @@ test "an impl's show replaces the derived form" {
   expect("{price}" == "€12.50")
 }
 
+## Says hello its own way: a field that holds a function.
+type Greeter = { name: String, greet: fn(String) -> String }
+
+test "a field that holds a function is called like a method" {
+  let g: Greeter = { name: "plain", greet: fn n: "hi {n}" }
+  expect(g.greet("Ann") == "hi Ann")
+  expect([g, { g with greet: fn n: "yo {n}" }] |> map(fn x: x.greet("Bo")) == ["hi Bo", "yo Bo"])
+}
+
 test "a record shows through its own type, not another with the same fields" {
   let price: Money = { cents: 1250 }
   let small: Pence = { cents: 40 }

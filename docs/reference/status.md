@@ -111,6 +111,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
+| A field that holds a function, called like a method: `timer.read()` | ✓ | ✓ (a method named like such a field is an error) | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye) |
 | `impl Type { … }` methods, and functions called on the type (`Lexer.new`) | ✓ | ✓ | partial: methods are tested; `Type.f()` has no test, and fails through a module (`lex.Lexer.new`) | [core](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L18) |
 | An `impl Type` only in the module that declares the type | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L117) |
 | Generic functions and types with type variables | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L33) |

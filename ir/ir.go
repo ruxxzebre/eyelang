@@ -469,8 +469,8 @@ type (
 		// Target is what the checker found the call reaches: a *Func (a
 		// method of a type or an entity, an impl's method, or a trait's
 		// method on a dyn value or a type variable, which the value's own
-		// impl answers), a Builtin called as a method (`xs.size()`), or a
-		// RuntimeMethod.
+		// impl answers), a Builtin called as a method (`xs.size()`), a
+		// RuntimeMethod, or a FieldCall.
 		Target any
 	}
 	// Waiting is a waiting call, `f!(x)`: a durable step in a job.
@@ -647,6 +647,10 @@ type Builtin struct{ Name string }
 // command's result, calls on fakes, the methods of a task group, a channel's
 // ends and times.
 type RuntimeMethod struct{ Name string }
+
+// FieldCall is the target of `timer.read()` where read is a field that
+// holds a function: the call it is, of the field's value.
+type FieldCall struct{ Call *Call }
 
 // Unit is the value ().
 type Unit struct{}

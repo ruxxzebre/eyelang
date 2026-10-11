@@ -335,6 +335,21 @@ fn stored() -> Run = stamp`, []string{
 			"16:34: stamp uses clock, which its type here, fn(Int) -> Instant uses {}, doesn't list",
 			"21:22: stamp uses clock, which its type here, fn(Int) -> Instant, doesn't list",
 		}},
+		{"a field that holds a function is called like a method", `type Timer = { name: String, read: fn() -> Instant uses {clock}, label: fn(Int) -> String }
+pub fn readIt(t: Timer) -> Instant uses {clock} = t.read()
+pub fn quiet(t: Timer) -> Instant = t.read()
+fn labelled(t: Timer) -> String = t.label(3)
+fn wrong(t: Timer) -> String = t.label("x")
+fn unknown(t: Timer) -> String = t.name()
+type Clash = { run: fn() }
+impl Clash {
+  fn run(self) {}
+}`, []string{
+			"3:1: quiet uses clock, which its signature doesn't list",
+			"5:40: expected Int, found String",
+			"6:34: Timer has no method name",
+			"9:3: Clash has a field run that holds a function, which .run() calls, so a method run would make that call mean two things",
+		}},
 		{"effects don't escape through traits or private uses clauses", `trait Clock {
   fn read(self) -> Instant
 }
