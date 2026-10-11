@@ -245,6 +245,27 @@ func TestNameCompletion(t *testing.T) {
 			not:  []string{"label"},
 		},
 		{
+			name: "inside parentheses that aren't closed yet",
+			src:  header + "fn f(p: Point) {\n  print(p.‸\n}\n",
+			want: map[string]int{"x": completionField, "y": completionField},
+		},
+		{
+			name: "inside brackets and parentheses, a name being typed",
+			src:  header + "fn f(p: Point) {\n  print([1, p.y‸\n}\n",
+			want: map[string]int{"x": completionField, "y": completionField},
+		},
+		{
+			name: "a module inside parentheses",
+			src:  header + "fn f() {\n  print(shapes.‸\n}\n",
+			want: map[string]int{"shapeSize": completionFunction},
+		},
+		{
+			name: "a field of a field",
+			src:  header + "type Line = { from: Point, to: Point }\n\nfn f(l: Line) -> Int {\n  l.from.‸\n}\n",
+			want: map[string]int{"x": completionField, "y": completionField},
+			not:  []string{"from", "to"},
+		},
+		{
 			name: "a built-in type has no members",
 			src:  header + "fn f(n: Int) {\n  n.‸\n}\n",
 			not:  []string{"let", "print", "n"},

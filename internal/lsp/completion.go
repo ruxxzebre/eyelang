@@ -491,6 +491,16 @@ func scopeNames(res *check.Result, path string, d *document, offset int) []compl
 func (s *server) members(d *document, recv syntax.Span, dot int) []completionItem {
 	l := &nameList{rank: "1"}
 	res, path, ok := s.checkedBefore(d, dot)
+	if closers := unclosed(d.text, dot); !ok && closers != "" {
+		// `print(x.` doesn't parse even without the `.`: close what the line
+		// left open, after the name being typed.
+		end := dot + 1
+		for end < len(d.text) && isIdentByte(d.text[end]) {
+			end++
+		}
+		text := slices.Concat(d.text[:end], []byte(closers), d.text[end:])
+		res, path, ok = s.checkedBefore(newDocument(d.uri, d.version, text), dot)
+	}
 	if !ok {
 		return []completionItem{}
 	}
@@ -547,6 +557,29 @@ func (s *server) members(d *document, recv syntax.Span, dot int) []completionIte
 		return []completionItem{}
 	}
 	return l.items
+}
+
+// unclosed returns what closes the parentheses and brackets that the line
+// before offset opens and leaves open, innermost first: ")" for `print(x`,
+// "])" for `f([a`.
+func unclosed(src []byte, offset int) string {
+	start := bytes.LastIndexByte(src[:offset], '\n') + 1
+	tokens, _ := syntax.Lex(src[start:offset])
+	var open []byte
+	for _, t := range tokens {
+		switch t.Kind {
+		case syntax.LParen:
+			open = append(open, ')')
+		case syntax.LBracket:
+			open = append(open, ']')
+		case syntax.RParen, syntax.RBracket:
+			if len(open) > 0 {
+				open = open[:len(open)-1]
+			}
+		}
+	}
+	slices.Reverse(open)
+	return string(open)
 }
 
 // typeOf is the declaration of the type of the expression before the `.` at
