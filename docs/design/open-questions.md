@@ -150,3 +150,23 @@ title: "Open questions"
     clumsily: the parameter is `Option(Provider) = None` so that leaving it out means "from the
     model's name". Should a call be able to pass a bare value to such a parameter, or should a
     default be able to say "chosen later" without `Option`?
+32. **Time-travel debugging.** A job's run is deterministic between its `!` steps, which record
+    everything that could differ (the clock, the network, randomness, entity reads, model calls),
+    and tests run on a test clock against recorded fakes. Since checkpoints ([section 15](/reference/language/jobs-and-waiting)) save a
+    run's variables at its statements, any moment of a run can be reached again: restore the
+    nearest checkpoint before it and replay the recorded steps up to it, calling nothing outside.
+    Stepping back is restoring an earlier checkpoint and replaying forward to the step before.
+    That asks for: a run that keeps its history on request (`eye run --history`), since a
+    checkpoint drops the steps before it and the journal compacts; `eye debug RUN` and
+    `eye test --debug` that move a run or a failing test forward and back by statement and step,
+    showing its typed variables (7.1) and the entities as they were; and a Debug Adapter Protocol
+    server, whose stepBack and reverseContinue give editors the same. Which first, and how much
+    history may a run keep? A failing test is the cheapest start, since tests are deterministic
+    already.
+33. **Effects of a function that is only stored.** A lambda or a named function counts its
+    effects where it is written, even when it goes into data whose function type states them, so
+    a function that only builds a record of functions needs their `uses` (`testdata/ir/effects`).
+    Since a function kept in data is held to its type's `uses` ([section 12](/reference/language/effects-and-signatures)), a value that only
+    ever meets such limits could stop counting where it is written, and `eye fmt` would stop
+    writing those effects into signatures. Is the clause worth keeping as a reader's hint, or
+    should it go?

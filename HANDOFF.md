@@ -108,10 +108,7 @@ Runtime and tools:
 
 Checker:
 - A lambda or a named function counts its effects where it is written even when it goes where
-  a function type limits it, as into a record field typed `fn() -> Instant uses {clock}`. So a
-  function that only builds such records needs `uses {clock}` though it runs nothing
-  (`testdata/ir/effects`). Since 2026-10-11 the type's limit is checked, so a value that only
-  ever meets limits could stop counting where it is written. Proposal, not decided.
+  a function type limits it: SPECS open question 33.
 - A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`
   wraps its result in a one-variant type to work around it.
 - `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.

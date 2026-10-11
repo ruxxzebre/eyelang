@@ -76,8 +76,10 @@ decision log records each. `eye` itself stays free of cgo. Still open for the us
 runner hosts compiled code without cgo (compilation.md, section 1), and whether a choice's label
 comes from its `##` comment or its `Show` (open question 15).
 
-Open questions 1–32 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
-`Self` (24) and what `@memory` measures (26) bear on phase 7.
+Open questions 1–33 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
+`Self` (24) and what `@memory` measures (26) bear on phase 7. Time-travel debugging (32) is
+wanted, not yet a task: it builds on the checkpoints of 7.3, and `eye test --debug` on a failing
+test is the first step.
 
 ## Versions
 
