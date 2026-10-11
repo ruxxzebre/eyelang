@@ -135,6 +135,73 @@ func TestIndex(t *testing.T) {
 	}
 }
 
+// TestTypeAt checks that the index gives the type of the expression that
+// ends at an offset, as completion after a `.` needs it.
+func TestTypeAt(t *testing.T) {
+	src := `type User = { name: String, home: Place }
+type Place = { city: String }
+entity Counter(id: String) {
+  state count: Int = 0
+}
+fn f(u: User, xs: List(Int)) {
+  let c = Counter("a")
+  let n = u.name
+  u
+  u.home
+  c
+  n
+  xs
+  xs |> size
+}
+`
+	dir := writeProgram(t, map[string]string{"main.eye": src})
+	path := filepath.Join(dir, "main.eye")
+	res := Check(dir, Options{})
+	for _, d := range res.Diagnostics {
+		t.Fatal(d)
+	}
+	// end returns the offset where the nth (from 1) occurrence of text ends.
+	end := func(text string, nth int) int {
+		at := -1
+		for range nth {
+			at += 1 + strings.Index(src[at+1:], text)
+		}
+		return at + len(text)
+	}
+	name := func(decl any) string {
+		switch d := decl.(type) {
+		case *ir.Type:
+			return d.Name
+		case *ir.Entity:
+			return d.Name
+		case BuiltinType:
+			return d.Name
+		}
+		return "?"
+	}
+	for _, c := range []struct {
+		text string
+		nth  int
+		want string
+	}{
+		{"  u\n", 1, "User"},    // a parameter
+		{"u.home", 1, "Place"},  // a field chain: u.home, not home
+		{"  c\n", 1, "Counter"}, // Ref(Counter) is Counter
+		{"  n\n", 1, "String"},  // a let, typed by inference
+		{"  xs\n", 1, "List"},
+		{"xs |> size", 1, "Int"},
+	} {
+		offset := end(strings.TrimRight(c.text, "\n"), c.nth)
+		decl, ok := res.Index.TypeAt(path, offset)
+		if !ok || name(decl) != c.want {
+			t.Errorf("TypeAt before %q = %v, %v; want %s", c.text, decl, ok, c.want)
+		}
+	}
+	if s, ok := res.Index.TypeText(path, end("  xs |> size", 1)-len("xs |> size"), end("xs |> size", 1)); !ok || s != "Int" {
+		t.Errorf("TypeText(xs |> size) = %q, %v; want Int", s, ok)
+	}
+}
+
 // TestOverlay checks that an unsaved file's text wins over the disk's.
 func TestOverlay(t *testing.T) {
 	dir := writeProgram(t, map[string]string{"main.eye": "fn f() = g()\n"})

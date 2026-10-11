@@ -44,6 +44,12 @@ func (s *server) hover(d *document, p Position) (any, *responseError) {
 		}
 	}
 	text := describe(use.Target, link)
+	if _, local := use.Target.(check.Local); local {
+		// A local variable or parameter: its name and its type, as checked.
+		if t, ok := res.Index.TypeText(path, use.At.Offset, use.At.End); ok {
+			text = hoverText(use.At.Text()+": "+t, "", link)
+		}
+	}
 	if text == "" {
 		return nil, nil
 	}

@@ -208,7 +208,15 @@ func GoFile(rel string) string {
 
 // Index records, for each name in a program's source, what it refers to.
 type Index struct {
-	Uses []Use
+	Uses  []Use
+	types []typed // each checked expression's type, for TypeAt
+}
+
+// typed is an expression's type as checked. Its type variables are bound
+// as checking goes on, so it is read once checking is done.
+type typed struct {
+	at ir.Pos
+	t  typ
 }
 
 // Use is a name in the source and what it refers to.
@@ -248,6 +256,68 @@ func (c *checker) use(at ir.Pos, target any) {
 	if c.index != nil && at.File != nil && target != nil {
 		c.index.Uses = append(c.index.Uses, Use{At: at, Target: target})
 	}
+}
+
+// typed records the type of the expression at at, for tools.
+func (c *checker) typed(at ir.Pos, t typ) {
+	if c.index != nil && at.File != nil && at.End > at.Offset {
+		c.index.types = append(c.index.types, typed{at: at, t: t})
+	}
+}
+
+// TypeAt returns the declaration of the type of the expression whose text
+// ends at offset in the file at path, such as the receiver before a `.`:
+// an *ir.Type, an *ir.Entity (a Ref(E) is E) or a BuiltinType. ok is false
+// when no expression ends there, or its type is unknown or a type variable.
+// Of the expressions that end at offset, the one that starts first counts,
+// so the receiver of `a.b.` is a.b.
+func (ix *Index) TypeAt(path string, offset int) (any, bool) {
+	var best *typed
+	for i := range ix.types {
+		e := &ix.types[i]
+		if e.at.End == offset && e.at.File.Path == path && (best == nil || e.at.Offset < best.at.Offset) {
+			best = e
+		}
+	}
+	if best == nil {
+		return nil, false
+	}
+	return typeDecl(best.t)
+}
+
+// TypeText returns how the type of the expression spanning start to end is
+// written, such as `List(String)`, for hover.
+func (ix *Index) TypeText(path string, start, end int) (string, bool) {
+	for _, e := range ix.types {
+		if e.at.Offset == start && e.at.End == end && e.at.File.Path == path {
+			switch t := prune(e.t).(type) {
+			case tunknown, *tvar:
+				return "", false
+			default:
+				return show(defaultLiteral(t)), true
+			}
+		}
+	}
+	return "", false
+}
+
+// typeDecl is the declaration a type names.
+func typeDecl(t typ) (any, bool) {
+	c, ok := prune(t).(*tcon)
+	if !ok {
+		return nil, false
+	}
+	switch {
+	case c.entity != nil:
+		return c.entity, true
+	case c.name == "Ref" && c.decl == nil && len(c.args) == 1:
+		return typeDecl(c.args[0])
+	case c.decl != nil:
+		return c.decl, true
+	case builtinTypes[c.name]:
+		return BuiltinType{Name: c.name}, true
+	}
+	return nil, false
 }
 
 // readFile reads a source file, from the overlay when it has the file.

@@ -69,6 +69,8 @@ pub fn size(s: Shape) -> Int = match s {
 		"newtype":  at(8, 23), // shapes.Name("none")
 		"keyword":  at(4, 3),  // let
 		"int":      at(2, 44), // -> Int
+		"let":      at(5, 7),  // n in Some(n)
+		"param":    at(3, 8),  // b in b.side
 	}
 	msgs := s.run()
 	get := func(name string) string {
@@ -90,6 +92,8 @@ pub fn size(s: Shape) -> Int = match s {
 		"newtype":  {"pub type Name = | Name(String)", "Names a shape."},
 		"keyword":  {"`let`: Binds a name"},
 		"int":      {"```eye\ntype Int\n```", "A whole number of any size"},
+		"let":      {"```eye\nn: Int\n```"},
+		"param":    {"```eye\nb: Box\n```"},
 	} {
 		got := get(name)
 		for _, w := range want {

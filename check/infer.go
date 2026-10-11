@@ -437,6 +437,7 @@ func (x *fnCheck) finish() {
 // check infers e's type and makes it want, when want is given.
 func (x *fnCheck) check(e ir.Expr, want typ) typ {
 	got := x.infer(e, want)
+	x.c.typed(e.Position(), got)
 	if want == nil || want == discard {
 		return got
 	}
