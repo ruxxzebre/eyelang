@@ -41,9 +41,16 @@ func RunTests(prog *ir.Program, filter string) []TestResult {
 	return results
 }
 
+// newTestStore, when set, gives each test the store it runs on, so the
+// runtime's own tests can run a program's tests on every kind of store.
+var newTestStore func() Store
+
 func runTest(prog *ir.Program, t *ir.Test) (res TestResult) {
 	var log bytes.Buffer
 	in := New(prog, &log, &log)
+	if newTestStore != nil {
+		in.rt.useStore(newTestStore())
+	}
 	in.rt.module = t.Module // only the test's own module's schedules fire
 	start := time.Now()
 	res = TestResult{Name: t.Name, Pos: t.Pos}

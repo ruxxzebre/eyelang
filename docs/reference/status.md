@@ -214,8 +214,7 @@ time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@destru
 | Entity calls commit with the checkpoint | ✓ | ✓ | ✓ | [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L112) |
 | The store written in Eyelang, with a `Store` trait | n/a | ✓ | ✓ | [memory_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/memory_test.go#L13) |
 | The journal store for one machine | n/a | n/a | ✓ | [store_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L16) |
-| The Postgres store (v0.2) | n/a | n/a | — | |
-| `sleep!`, `sleepUntil!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L41), [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L236) |
+| The Postgres store: `eye run --store postgres://…`, one runner per database and schema | n/a | n/a | ✓ | [postgres_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/postgres_test.go), [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go) || `sleep!`, `sleepUntil!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L41), [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L236) |
 | `poll!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L93) |
 | `approval!` | ✓ | ✓ | partial: only tests answer it, with `approve` and `decline`; reaching people is v0.2 | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L186) |
 | `next!`, which misses no event | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L45) |
@@ -329,7 +328,7 @@ Runs column says whether the runtime does what the attribute says.
 | `eye parse` | ✓ The syntax tree, or an S-expression with `--sexp` | [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L58) |
 | `eye check` | ✓ Syntax, names, types, matches, effects and attributes; `--syntax` for syntax alone | [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L193), [classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go) |
 | `eye test` | ✓ `--run` to filter, `-v` to show logs. No `--live` yet | [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L212) |
-| `eye run` and `eye runs` | ✓ The journal in `.eye/journal`, or `--memory`; survives a kill; stops on Ctrl-C | [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go#L40) |
+| `eye run` and `eye runs` | ✓ The journal in `.eye/journal`, a Postgres database with `--store` or `$EYE_STORE`, or `--memory`; survives a kill; stops on Ctrl-C | [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go#L40) |
 | `eye doc` | ✓ The API reference in Markdown from `##` comments; fails on a link that names nothing | [apidoc_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/internal/apidoc/apidoc_test.go#L12) |
 | `eye lsp`: diagnostics, formatting, outline, folding, semantic tokens | ✓ | [server_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/internal/lsp/server_test.go#L136) |
 | `eye lsp`: go to definition and find references, also from the command line | ✓ Into modules, the prelude, the standard library and the Go behind built-ins | [definition_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/internal/lsp/definition_test.go#L15), [main_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/main_test.go#L272) |

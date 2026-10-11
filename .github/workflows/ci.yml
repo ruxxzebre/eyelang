@@ -41,5 +41,17 @@ jobs:
           path: editors/vscode/.vscode-test
           key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package-lock.json') }}
 
+      # The Postgres store's tests run against this database, each in a schema
+      # of its own. EYE_TEST_DOCKER lets the test that stops and pauses a
+      # database start a container of its own for that, from the same image.
+      - name: Start Postgres
+        run: |
+          docker run -d --name eyelang-pg -e POSTGRES_USER=eye -e POSTGRES_PASSWORD=eye -e POSTGRES_DB=eye \
+            -p 55432:5432 postgres:17-alpine
+          for i in $(seq 1 30); do docker exec eyelang-pg pg_isready -h 127.0.0.1 -U eye && break; sleep 1; done
+
       - name: Check
+        env:
+          EYE_TEST_POSTGRES: postgres://eye:eye@localhost:55432/eye?sslmode=disable
+          EYE_TEST_DOCKER: "1"
         run: task check

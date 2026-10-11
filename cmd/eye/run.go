@@ -18,7 +18,15 @@ import (
 // otherwise: .eye/journal in its directory.
 func journalPath(dir string) string { return filepath.Join(dir, ".eye", "journal") }
 
-// runRun implements `eye run [--journal file | --memory] [program-directory] [-- arguments…]`.
+// storeURL is the database --store names, or else $EYE_STORE.
+func storeURL(flagValue string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	return os.Getenv("EYE_STORE")
+}
+
+// runRun implements `eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	var progArgs []string
 	for i, a := range args {
@@ -32,15 +40,32 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	journal := fs.String("journal", "", "the journal that keeps entities, runs and events (default program-directory/.eye/journal)")
 	memory := fs.Bool("memory", false, "keep everything in memory, so nothing survives the process")
+	store := fs.String("store", "", "keep entities, runs and events in this Postgres database, postgres://… (default $EYE_STORE)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye run [--journal file | --memory] [program-directory] [-- arguments…]")
+		fmt.Fprintln(stderr, "usage: eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs main, then keeps the program's jobs going: sleeping runs wake on time,")
 		fmt.Fprintln(stderr, "schedules fire, and a restart carries on where the last run of eye stopped.")
 		fmt.Fprintln(stderr, "It stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.")
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "State is kept in the program's journal, or with --store in a Postgres database,")
+		fmt.Fprintln(stderr, "in the first schema of its search_path: postgres://…/db?search_path=lab gives")
+		fmt.Fprintln(stderr, "a program its own schema. One eye run at a time writes a journal or a schema.")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	url := *store
+	if *journal == "" && !*memory {
+		url = storeURL(url)
+	}
+	if url != "" && (*journal != "" || *memory) || *journal != "" && *memory {
+		fmt.Fprintln(stderr, "eye run keeps its state in one place: give one of --store, --journal and --memory")
+		return exitUsage
+	}
+	if url != "" && !interp.IsPostgres(url) {
+		fmt.Fprintf(stderr, "eye run: --store takes a Postgres address, postgres://user:password@host/database; got %q\n", url)
 		return exitUsage
 	}
 	dir := "."
@@ -64,7 +89,16 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return exitErrors
 	}
 	opts := interp.RunOptions{Args: append([]string{dir}, progArgs...), Stdout: stdout, Stderr: stderr}
-	if !*memory {
+	switch {
+	case url != "":
+		pg, err := interp.OpenPostgres(url)
+		if err != nil {
+			fmt.Fprintf(stderr, "eye run: %v\n", err)
+			return exitErrors
+		}
+		defer pg.Close()
+		opts.Store = pg
+	case !*memory:
 		path := *journal
 		if path == "" {
 			path = journalPath(dir)

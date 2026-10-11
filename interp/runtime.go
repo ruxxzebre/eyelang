@@ -72,15 +72,22 @@ func newRuntime(in *Interp) *runtime {
 	return rt
 }
 
-// useStore makes s the runtime's store. A journal read before the program
-// ran keeps its state in the Go store; it moves to the store written in
-// Eyelang here.
+// useStore makes s the runtime's store. A journal or a Postgres store read
+// before the program ran keeps its state in the Go store; it moves to the
+// store written in Eyelang here.
 func (rt *runtime) useStore(s Store) {
-	if j, ok := s.(*Journal); ok && rt.in.prog.Store != nil {
-		if _, already := j.memory.(*eyeStore); !already {
-			mem := newEyeStore(rt.in)
-			mem.Commit(j.snapshot())
-			j.memory = mem
+	var mem *memory
+	switch d := s.(type) {
+	case *Journal:
+		mem = &d.memory
+	case *Postgres:
+		mem = &d.memory
+	}
+	if mem != nil && rt.in.prog.Store != nil {
+		if _, already := (*mem).(*eyeStore); !already {
+			fresh := newEyeStore(rt.in)
+			fresh.Commit((*mem).snapshot())
+			*mem = fresh
 		}
 	}
 	rt.index = indexStore(s)

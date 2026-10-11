@@ -84,7 +84,9 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	}
 	report()
 	if hasJobs(prog) {
-		in.serve(ctx, report, stderr)
+		if err := in.serve(ctx, report, stderr); err != nil {
+			code = 1
+		}
 	}
 	report()
 	return code
@@ -100,8 +102,9 @@ func hasJobs(prog *ir.Program) bool {
 }
 
 // serve runs the program's jobs on the system clock until nothing is left
-// that can happen, or ctx is done.
-func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) {
+// that can happen, or ctx is done. It returns early, with the error, if the
+// store can take no more commits.
+func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) error {
 	rt := in.rt
 	var pruned time.Time
 	for {
@@ -124,6 +127,12 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) {
 			err = rt.commitErr
 		}
 		var wait time.Duration
+		if ce, ok := err.(*CommitError); ok && ce.Fatal {
+			// The store can't go on from what it holds in memory; a restart
+			// reads it again.
+			fmt.Fprintf(stderr, "eye run: %v\n", err)
+			return err
+		}
 		if err != nil {
 			fmt.Fprintf(stderr, "eye run: %v; trying again in %v\n", err, retryAfter)
 			wait = retryAfter
@@ -132,7 +141,7 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) {
 			s, firing := rt.nextFiring()
 			switch {
 			case run == nil && s == nil:
-				return
+				return nil
 			case run == nil:
 				wait = time.Until(firing)
 			case s == nil || run.WakeAt < firing.UnixNano():
@@ -146,7 +155,7 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return
+			return nil
 		case <-timer.C:
 		}
 		if err != nil {

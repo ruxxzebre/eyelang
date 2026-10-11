@@ -73,29 +73,37 @@ types, exhaustive matches, effects and where waiting calls may appear are checke
 ## eye run {#run}
 
 ```text
-usage: eye run [--journal file | --memory] [program-directory] [-- arguments…]
+usage: eye run [--store url | --journal file | --memory] [program-directory] [-- arguments…]
 
 Runs main, then keeps the program's jobs going: sleeping runs wake on time,
 schedules fire, and a restart carries on where the last run of eye stopped.
 It stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.
+
+State is kept in the program's journal, or with --store in a Postgres database,
+in the first schema of its search_path: postgres://…/db?search_path=lab gives
+a program its own schema. One eye run at a time writes a journal or a schema.
   -journal string
     	the journal that keeps entities, runs and events (default program-directory/.eye/journal)
   -memory
     	keep everything in memory, so nothing survives the process
+  -store string
+    	keep entities, runs and events in this Postgres database, postgres://… (default $EYE_STORE)
 ```
 
 ## eye runs {#runs}
 
 ```text
-usage: eye runs [--journal file] [--json] [program-directory] [run-id]
+usage: eye runs [--store url | --journal file] [--json] [program-directory] [run-id]
 
-Lists the job runs in a program's journal: each run's status, what it waits
-for and until when, and with a run's id, its steps. It reads the journal
-without changing it, so it works while eye run is running.
+Lists the job runs in a program's journal, or its Postgres store: each run's
+status, what it waits for and until when, and with a run's id, its steps. It
+reads without changing anything, so it works while eye run is running.
   -journal string
     	the journal to read (default program-directory/.eye/journal)
   -json
     	print the runs as JSON
+  -store string
+    	read the store in this Postgres database, postgres://… (default $EYE_STORE)
 ```
 
 ## eye test {#test}

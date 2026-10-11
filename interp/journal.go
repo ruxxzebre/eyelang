@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Journal is the store `eye run` uses: the in-memory store, with every
@@ -44,14 +45,21 @@ type journalFile interface {
 	Close() error
 }
 
-// CommitError is a commit the journal couldn't save. Nothing in it took
+// CommitError is a commit the store couldn't save. Nothing in it took
 // effect.
 type CommitError struct {
-	Path string
+	Path string // the journal's path, or the database the store is in
 	Err  error
+	// Fatal says the store can take no more commits until the program
+	// starts again: what it holds in memory may no longer match what it
+	// saved.
+	Fatal bool
 }
 
 func (e *CommitError) Error() string {
+	if strings.HasPrefix(e.Path, "postgres ") {
+		return fmt.Sprintf("can't write the store in %s: %v", e.Path, e.Err)
+	}
 	return fmt.Sprintf("can't write the journal %s: %v", e.Path, e.Err)
 }
 
@@ -104,7 +112,7 @@ func ReadJournal(path string) (Store, error) {
 // it.
 func (j *Journal) Commit(c *Commit) {
 	if j.broken != nil {
-		panic(&CommitError{j.path, j.broken})
+		panic(&CommitError{Path: j.path, Err: j.broken})
 	}
 	line, err := json.Marshal(c)
 	if err != nil {
@@ -118,7 +126,7 @@ func (j *Journal) Commit(c *Commit) {
 		if j.release() {
 			_ = j.compact()
 		}
-		panic(&CommitError{j.path, err})
+		panic(&CommitError{Path: j.path, Err: err})
 	}
 	j.memory.Commit(c)
 	if j.size > compactAtLeast && j.size > compactRatio*j.live {

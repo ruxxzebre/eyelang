@@ -39,8 +39,13 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   `MemoryStore` has the methods a `Store` trait will ask for. It is what tests, the REPL and
   embedders use; on its own it doesn't survive a restart. For one machine, the journal (question 9)
   appends each commit to a file and syncs it before the commit counts, which is what `eye run`
-  uses. The Postgres store survives restarts and serves several runners. Both implement the `Store` trait from the standard library, and programs
-  don't change when the store does.
+  uses by default. The Postgres store (`eye run --store postgres://…`, or `$EYE_STORE`) keeps the
+  same state in a database, so it survives the loss of the machine: each commit is one SQL
+  transaction, written before it counts, and a commit made while the database is down or not
+  answering changes nothing and is tried again, so the runner carries on once the database is back.
+  One runner writes a store at a time, held by an advisory lock; one database holds several
+  programs' stores, one per schema. Both wrap the in-memory store, and programs don't change when
+  the store does.
 - **Calls to other services** carry a key. If the outcome is `Uncertain`, `.reconcile!()` asks the
   owner with the same key until it knows. Nothing is resent automatically.
 - **Waiting constructs** (all library functions, all marked with `!`):
