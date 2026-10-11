@@ -23,6 +23,9 @@ changes it, and set the date below when you check it; `task next -- --check`, pa
 
 Checked: 2026-10-11
 
+Start with [HANDOFF.md](HANDOFF.md): the branch still to merge (`track/runtime-wip`), the
+digest's first runs in the homelab, and findings that have no issue yet.
+
 **Owed by releases already made**
 
 - Phase 5's exit test ran the lab's digest against stand-ins for its services. Nothing written in

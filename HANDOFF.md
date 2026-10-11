@@ -1,0 +1,137 @@
+# Handoff, 2026-10-11
+
+Where the parallel work of 2026-10-11 stopped, and what to pick up first. `task next` and
+ROADMAP.md's "What's next" stay the source of truth for the plan; this file holds what they
+can't: branches in flight, findings that have no issue yet, and the state of the homelab deploy.
+Delete it once its items are done or moved to issues.
+
+dev is at `111a64e`. Every lane that ran today is merged except `track/runtime-wip`.
+
+## Pick up first
+
+1. **Merge `track/runtime-wip` (fa6a105, pushed).** It holds two finished, tested changes that
+   were based on an older dev:
+   - Q16, #64: `fakes(…)` returns a handler whose `calls(op)` lists what the fake answered. It
+     includes the SPECS §17 rule and decision-log row. The digest's `Day.sent` workaround is
+     gone, and the approvals test no longer guesses the question id. The commit says
+     `Closes #64`.
+   - `eye run --fresh`: moves the journal to `JOURNAL.old` and starts empty. It is refused with
+     `--store`, `$EYE_STORE` and `--memory`. A run with nothing to do now says so and names
+     `--fresh`. This is session eyelang-f1's spec, approved by the user.
+
+   To do: rebase onto dev (expect conflicts in the lab README, status.md and `cli.md`), check
+   the change to `check/infer.go` (`calls` in `typeState`, `Handler.calls` in `methodCall`,
+   `fakeCalls`) against generic private functions (e3abeea), add a `check/` unit test for its
+   error message, then `task check`. Known gap: `fakes(…)` still returns the plain `Handler`
+   type, so `clock(…).calls(op)` fails only at run time; a separate `Fakes` type would catch it.
+2. **Run `TestMorningDigestOnPostgres` once Docker answers.** It is phase 5's exit test. Its
+   stand-ins changed today and it couldn't run, because Docker didn't respond.
+3. **Watch the digest's first real run in the homelab** (below), and fix what it shows.
+
+## The digest in the homelab
+
+The Eyelang digest runs in the homelab cluster in shadow mode, beside the TypeScript digest.
+Session eyelang-af did the cluster work in the stacks-homelab repository.
+
+- Settings: `DIGEST_EVENT=digest.ireland.eye`, `DIGEST_TO` set to the operator only, and the
+  store in schema `eyelang` of the platform `digest` database. `AI_PRICES=gpt-5.6-terra=1.25/10`
+  was approved by the user.
+- Two trials ran. The first failed on hard-coded Miniflux category ids. The second sent seven
+  empty sections. Both are fixed on dev (89af4f7):
+  - categories are found by title and created when missing;
+  - all seven sections of the TypeScript digest are ported;
+  - the model is told today's date and the window;
+  - an empty briefing from non-empty input ends as `EmptyBriefing(items: N)`, not "Nothing new".
+- Checked against the real services: the gateway passes `response_format` json_schema strict
+  through to gpt-5.6-terra, and the seven "Digest: …" category titles match.
+- eyelang-af was bumping the pin to dev with these fixes. The first scheduled run is 07:40 Irish
+  time. To see what happened:
+  - `eye runs /program` lists the runs;
+  - `eye runs /program ID STEP` shows one step in full, with a model call's reply and how it was
+    sent;
+  - `--show-replies` prints every reply.
+- **Risk:** in a new pod, network rules take effect a few seconds after the container starts.
+  Contract calls (Miniflux, Notify) retry for about a minute, but `http.get` and `ai.generate`
+  fail at once (`Err(NoAnswer)`, `Err(ProviderError)`). A 07:40 run missed while the pod was down
+  runs right after start, inside that window. Until the runtime retries those calls too, don't
+  restart the pod near 07:40, or delay startup in the pod spec.
+- Phase 5's exit criterion ("the morning digest runs in the lab") closes after one good morning
+  run. Then ROADMAP's "Owed by releases already made" drops that item.
+
+## Findings without an issue yet
+
+Runtime and tools:
+- `http.get` and `ai.generate` should retry an unreachable service the way contract calls do
+  (see the risk above).
+- `ai.generate` has no `reasoning_effort` parameter; the TypeScript digest sends "medium".
+- `eye.toml` can't name extra module roots, so `testdata/lab/deploy/digest` uses symbolic links.
+  This is decided as C.11 (#74).
+- Building a set or map one element at a time is quadratic: `add` on a set and inserting into a
+  map copy the value. The shared-array idea behind constant-time list appends works if lookups
+  also check that the index found is below the value's own length. String building is most of
+  what is left of `plain()`'s 0.47 s. Session eyelang-55 knows this code.
+- In the interpreter, `-x` doesn't call a declared type's `Neg` impl.
+
+Checker:
+- A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`
+  wraps its result in a one-variant type to work around it.
+- `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.
+- A function stored in data whose effects its type doesn't state is still accepted; calling it
+  counts only what the type states. A fix needs effects tracked per lambda.
+- Generic private functions: `double(2.5)` gives two errors where one would do, and calling
+  itself at a bigger type isn't detected.
+- `@allow(nobody)` is unchecked; it belongs to 6.2 (#54).
+- `eye fix` doesn't add the `!` that `publish!` and `start!` now need in jobs; the call sites
+  were changed by hand.
+- `check/resolve_test.go`'s unresolvable list still has `nick` and `nickname`.
+
+Library:
+- No hour-and-minute format for a time of day; the digest takes the first five characters of
+  its text.
+- Fixed-width integer methods (`Int32.from`, `wrappingAdd`, bit operations) are blocked: at run
+  time a fixed-width value is a plain Int, so a method can't tell `Int32` from `Byte`. They need
+  the typed IR (#28) to record each literal's width or each call's resolved impl. `Int32.from(n)`
+  also needs calls on built-in type names.
+- Not built: `fs.lines`, reading a file as bytes, fakes for `process`.
+
+## Next work, in order
+
+This follows ROADMAP's "What's next", with what today changed:
+
+1. Item 1 above (`track/runtime-wip`), then #69 (C.5): `eye fmt` writes each public function's
+   `uses` clause, since the user decided effects are written by the formatter, not by hand.
+   Spec first: a decision-log row "Effects written by the formatter". Then:
+   - formatting a program directory runs the checker and fills `uses` from the inferred effects,
+     with names sorted; a single file stays syntax-only;
+   - `eye check`'s "doesn't list" message says to run `eye fmt`;
+   - whether this is the default or behind `--signatures` is still to decide;
+   - run `FUZZTIME=60s FUZZWORKERS=2 task fuzz` at that checkpoint, since it touches `syntax/`.
+2. C.8 (#71): approvals answered by id, and only by the person asked. This is the lab's main
+   security gap, and it comes before the homelab relies on approvals.
+3. C.11 (#74), module roots, and 6.2 (#54), `@port` and `@allow`. `pub` and `opaque` are now
+   enforced, so 6.2 is unblocked.
+4. Phase 6's exit test: 6.6 (#58), Notify generated from its contract, and 6.8 (#60), the
+   `agents` module, which needs 6.7 (#59), model `tools:`.
+5. 7.1 (#28), the typed IR, and 7.3 (#76), saved frames, both pulled into v0.3.
+
+## How today ran
+
+- Several sessions shared the laptop, and the disk filled once (ENOSPC). Keep to two or three
+  lanes, use targeted tests while iterating, and run one full `task check` at a time. Don't run
+  `task fuzz` while the disk is tight. When the shared Go cache breaks, a private `GOCACHE` in
+  the scratchpad works.
+- eyelang-20 merged into dev in the main checkout. It rebased lanes onto one another, ran the full
+  check, and fast-forwarded. A lane whose branch was rebased by the merger continues with
+  `git rebase --onto dev OLD_TIP`.
+- Decided today, and recorded in SPECS.md's decision log:
+  - every proposal in [docs/internals/proposals.md](docs/internals/proposals.md);
+  - the C back end, with the `zig cc` that `eye` ships;
+  - string positions are `Offset`s;
+  - effect names (`publish Bus.pinged`, `secret "name"`);
+  - a step's result must be saveable;
+  - private functions are generic;
+  - `with` binds a fake handler (on `track/runtime-wip`).
+
+  Decided by the user but not yet in SPECS: the formatter writes `uses` clauses (#69).
+- Closed today: #62 (`extern type` replaces `Handle`) and #68 (`NonZero` divisors). #72 was
+  closed by its commit.
