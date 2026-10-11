@@ -10,6 +10,7 @@ import (
 
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"eyelang/ir"
 )
@@ -352,20 +353,24 @@ type StepInfo struct {
 }
 
 // Spent is what model calls spent: their tokens, those of the prompts and
-// of the replies, and their price in US dollars. Steps recorded before
-// 2026-10-11 have only the tokens in all.
+// of the replies, and their price in US dollars; and which models were
+// asked, with the bytes of the prompts sent and of the replies. Steps
+// recorded before 2026-10-11 have only the tokens in all.
 type Spent struct {
 	Tokens    int64   `json:"tokens"`
 	TokensIn  int64   `json:"tokensIn,omitempty"`
 	TokensOut int64   `json:"tokensOut,omitempty"`
 	USD       float64 `json:"usd"`
+	Model     string  `json:"model,omitempty"`
+	Sent      int64   `json:"sent,omitempty"`
+	Received  int64   `json:"received,omitempty"`
 }
 
 func spentInfo(s spend) *Spent {
 	if s == (spend{}) {
 		return nil
 	}
-	return &Spent{Tokens: s.Tokens, TokensIn: s.In, TokensOut: s.Out, USD: s.USD}
+	return &Spent{Tokens: s.Tokens, TokensIn: s.In, TokensOut: s.Out, USD: s.USD, Model: s.Model, Sent: s.Sent, Received: s.Received}
 }
 
 // String shows what was spent: 12000 tokens in, 900 out, $0.0525.
@@ -375,6 +380,21 @@ func (s *Spent) String() string {
 		text = fmt.Sprintf("%d tokens in, %d out", s.TokensIn, s.TokensOut)
 	}
 	return text + fmt.Sprintf(", $%.4f", s.USD)
+}
+
+// Detail shows a step's model calls: the model, what they spent, and the
+// bytes of prompt sent and of reply received.
+//
+//	gpt-5.6-terra: 12000 tokens in, 900 out, $0.0525; sent 41.2 KiB, received 3.0 KiB
+func (s *Spent) Detail() string {
+	text := s.String()
+	if s.Model != "" {
+		text = s.Model + ": " + text
+	}
+	if s.Sent+s.Received > 0 {
+		text += "; sent " + bytesText(s.Sent) + ", received " + bytesText(s.Received)
+	}
+	return text
 }
 
 // Runs describes every run the store holds, oldest first.
@@ -531,25 +551,99 @@ func FormatRuns(w io.Writer, runs []RunInfo, steps bool, now time.Time) {
 			continue
 		}
 		for i, s := range r.Steps {
-			step := fmt.Sprintf("    %d. %s", i+1, s.Call)
-			switch s.Status {
-			case "sleeping":
-				step += ", sleeping until " + clockTime(*s.Until, now)
-			case "waiting":
-				step += ", waiting until " + clockTime(*s.Until, now)
-			default:
-				if s.Until != nil {
-					step += ", slept until " + clockTime(*s.Until, now)
-				} else if s.Value != "()" {
-					step += " → " + s.Value
-				}
-			}
-			if s.Spent != nil {
-				step += "  [" + s.Spent.String() + "]"
-			}
-			fmt.Fprintln(w, step)
+			FormatStep(w, i+1, s, now)
 		}
 	}
+}
+
+// FormatStep writes step n of a run as `eye runs` lists it.
+func FormatStep(w io.Writer, n int, s StepInfo, now time.Time) {
+	step := fmt.Sprintf("    %d. %s", n, s.Call)
+	switch s.Status {
+	case "sleeping":
+		step += ", sleeping until " + clockTime(*s.Until, now)
+	case "waiting":
+		step += ", waiting until " + clockTime(*s.Until, now)
+	default:
+		if s.Until != nil {
+			step += ", slept until " + clockTime(*s.Until, now)
+		} else if s.Value != "()" {
+			step += " → " + s.Value
+		}
+	}
+	if s.Spent != nil {
+		step += "  [" + s.Spent.Detail() + "]"
+	}
+	fmt.Fprintln(w, step)
+}
+
+// replyLimit is how much of a step's value `eye runs DIR ID STEP` shows.
+const replyLimit = 16 << 10
+
+// StepValue is the whole value step n (counting from 1) of run id returned,
+// for `eye runs DIR ID STEP`, up to replyLimit bytes: for a model call, its
+// reply as the program read it. A reply that didn't match the schema it was
+// asked for says so first, with the problems, and then shows the reply as
+// the model wrote it.
+func StepValue(prog *ir.Program, store Store, id int64, n int) (string, error) {
+	data, ok := store.Run(id)
+	if !ok {
+		return "", fmt.Errorf("there is no run %d", id)
+	}
+	r := decodeRun(data)
+	switch {
+	case r.Summarized:
+		return "", fmt.Errorf("run %d keeps only a summary: its steps were dropped", id)
+	case n < 1 || n > len(r.Log):
+		steps := fmt.Sprintf("%d steps", len(r.Log))
+		if len(r.Log) == 1 {
+			steps = "1 step"
+		}
+		return "", fmt.Errorf("run %d has %s, so it has no step %d", id, steps, n)
+	case r.Log[n-1].Timer || r.Log[n-1].Event != "":
+		return "", fmt.Errorf("step %d of run %d waits, and returns no value", n, id)
+	}
+	in := New(prog, io.Discard, io.Discard)
+	in.rt.useStore(store)
+	var v Value
+	func() {
+		defer func() {
+			if recover() != nil {
+				v = nil
+			}
+		}()
+		v = in.decode(r.Log[n-1].Value, ir.Pos{})
+	}()
+	if v == nil {
+		return "", fmt.Errorf("step %d of run %d can't be read by this version of the program", n, id)
+	}
+	if e, ok := isVariant(v, "Err"); ok {
+		if m, ok := isVariant(e.Vals[0], "Malformed"); ok && len(m.Vals) == 2 {
+			reply, _ := m.Vals[0].(string)
+			var problems []string
+			if l, ok := m.Vals[1].(*List); ok {
+				for _, p := range l.Elems {
+					problems = append(problems, fmt.Sprint(p))
+				}
+			}
+			return "The model's reply didn't match the schema it was asked for: " + strings.Join(problems, "; ") +
+				"\nIts reply, as it wrote it:\n" + clip(reply, replyLimit), nil
+		}
+	}
+	return clip(showValue(v), replyLimit), nil
+}
+
+// clip cuts text to at most limit bytes, on a character's boundary, and
+// says how much it left out.
+func clip(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + fmt.Sprintf("… (%s more)", bytesText(int64(len(text)-cut)))
 }
 
 // FormatJournal writes the summary line of `eye runs`: the journal's size on

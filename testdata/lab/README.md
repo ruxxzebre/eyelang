@@ -255,6 +255,7 @@ At 07:40 Irish time, the run starts. From the pod:
 ```sh
 eye runs /program            # every run: job, status, result or fault
 eye runs /program 2          # one run's steps, by its number
+eye runs /program 2 9        # one step's whole result, such as the model's reply
 ```
 
 `eye runs` reads `EYE_STORE` too, without changing anything, while `eye run`
@@ -268,10 +269,16 @@ runs. A good morning shows:
 `eye runs /program 2` lists the write run's steps: `miniflux.me`, the pages
 (`http.get`, `flaresolverr.request`; a page that couldn't be read shows
 `Err(…)` and is listed under "Sources not read" in the briefing), three
-`miniflux.entries`, `ai.generate` and `Day(…).keep`. The `ai.generate` step, and
-the run's line, end with what the model call spent:
-`[30000 tokens in, 3000 out, $0.1650]`; `eye runs --json` gives it as
-`spent`. What a bad morning shows, and what to do:
+`miniflux.entries`, `ai.generate` and `Day(…).keep`. The `ai.generate` step
+ends with the model, what it spent, and the bytes of prompt sent and of
+reply received: `[gpt-5.6-terra: 30000 tokens in, 3000 out, $0.1650; sent
+41.2 KiB, received 3.0 KiB]`, and the run's line with what the run spent
+in all; `eye runs --json` gives it as `spent`. To see what the model
+replied, give the step's number too: `eye runs /program 2 9` shows the
+reply as the program read it, up to 16 KiB. A reply that didn't match the
+briefing's schema, even after being sent back once, says so, with the
+problems, and shows the reply as the model wrote it. What a bad morning
+shows, and what to do:
 
 | `eye runs` shows | Meaning | Do |
 |---|---|---|

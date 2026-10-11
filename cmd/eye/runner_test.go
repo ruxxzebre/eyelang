@@ -158,3 +158,34 @@ pub fn main() {
 		}
 	}
 }
+
+// eye runs DIR ID STEP shows a step's whole result.
+func TestRunsShowsAStep(t *testing.T) {
+	dir := program(t, map[string]string{"main.eye": `
+job stamp() -> String {
+  let at = now!()
+  "stamped at {at}"
+}
+
+pub fn main() {
+  stamp.start(key: "once")
+}
+`})
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"run", dir}, &stdout, &stderr); code != 0 {
+		t.Fatalf("eye run: exit %d: %s", code, stderr.String())
+	}
+	stdout.Reset()
+	if code := run([]string{"runs", dir, "1", "1"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("eye runs: exit %d: %s", code, stderr.String())
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 3 || !strings.HasPrefix(lines[0], "#1 stamp()  done: ") || !strings.HasPrefix(lines[1], "    1. now → ") ||
+		!strings.HasSuffix(lines[1], lines[2]) {
+		t.Errorf("eye runs DIR 1 1 shows:\n%s", stdout.String())
+	}
+	stderr.Reset()
+	if code := run([]string{"runs", dir, "1", "2"}, &stdout, &stderr); code == 0 || !strings.Contains(stderr.String(), "run 1 has 1 step, so it has no step 2") {
+		t.Errorf("eye runs DIR 1 2: exit %d: %s", code, stderr.String())
+	}
+}

@@ -97,11 +97,13 @@ a program its own schema. One eye run at a time writes a journal or a schema.
 ## eye runs {#runs}
 
 ```text
-usage: eye runs [--store url | --journal file] [--json] [program-directory] [run-id]
+usage: eye runs [--store url | --journal file] [--json] [program-directory] [run-id [step]]
 
 Lists the job runs in a program's journal, or its Postgres store: each run's
-status, what it waits for and until when, and with a run's id, its steps. It
-reads without changing anything, so it works while eye run is running.
+status, what it waits for and until when, and with a run's id, its steps, with
+what each model call spent. With a step's number too, it shows that step's
+whole result, such as a model's reply. It reads without changing anything, so
+it works while eye run is running.
   -journal string
     	the journal to read (default program-directory/.eye/journal)
   -json
