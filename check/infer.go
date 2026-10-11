@@ -50,6 +50,8 @@ type typeState struct {
 	// its function was checked, and divisions of such types.
 	deferred  []requirement
 	divisions []division
+	// calls are the record types of fakes.calls(op), one per operation.
+	calls map[*ir.Op]*ir.Type
 }
 
 type zoneLit struct {
@@ -1228,6 +1230,8 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return tUnit
 		case r.decl == nil && r.entity == nil && (r.name == "TaskGroup" || r.name == "Sender" || r.name == "Receiver"):
 			return x.channelMethod(r, e)
+		case r.decl == nil && r.name == "Handler" && e.Name == "calls":
+			return x.fakeCalls(e)
 		case e.Name == "reconcile" && r.decl != nil:
 			c.useName(e, method("reconcile"))
 			x.inferArgs(e.Args)
@@ -1364,6 +1368,41 @@ func (x *fnCheck) channelMethod(r *tcon, e *ir.MethodCall) typ {
 	methods := map[string]string{"TaskGroup": "spawn", "Sender": "put and close", "Receiver": "take, and a for loop reads it"}
 	x.inferArgs(e.Args)
 	return c.unknownf(e.Pos, "%s has no method %s; its methods are %s", show(r), e.Name, methods[r.name])
+}
+
+// fakeCalls checks fakes.calls(notify.send): the calls a test's fake
+// answered for one operation, each a record of the call's arguments, with
+// defaults filled in, and its key (SPECS.md §17).
+func (x *fnCheck) fakeCalls(e *ir.MethodCall) typ {
+	c := x.c
+	c.useName(e, method("calls"))
+	var op *ir.Op
+	if len(e.Args) == 1 && e.Args[0].Name == "" {
+		if r, ok := e.Args[0].Value.(*ir.Ref); ok {
+			op, _ = r.Decl.(*ir.Op)
+		}
+	}
+	if op == nil {
+		x.inferArgs(e.Args)
+		return c.unknownf(e.Pos, "calls takes an operation of a contract the fakes answer for, as calls(notify.send)")
+	}
+	if c.ts.calls == nil {
+		c.ts.calls = map[*ir.Op]*ir.Type{}
+	}
+	d := c.ts.calls[op]
+	if d == nil {
+		name := "Call(" + op.Contract.Module.Name + "." + op.Name + ")"
+		rec := &ir.TypeExpr{Name: "record"}
+		for _, p := range op.Params {
+			rec.Fields, rec.Args = append(rec.Fields, p.Name), append(rec.Args, p.Type)
+		}
+		if op.Key {
+			rec.Fields, rec.Args = append(rec.Fields, "key"), append(rec.Args, &ir.TypeExpr{Name: "Key"})
+		}
+		d = &ir.Type{Name: name, Module: op.Contract.Module, Fields: rec.Fields, Alias: rec, Pos: op.Pos}
+		c.ts.calls[op] = d
+	}
+	return con("List", &tcon{name: d.Name, decl: d})
 }
 
 // entityCall reports an entity call in a job that isn't a durable step.
