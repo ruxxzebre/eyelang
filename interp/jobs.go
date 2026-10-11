@@ -289,10 +289,25 @@ func (in *Interp) waitStep(run *jobRun, name, call string, within ir.Duration) *
 	return &run.Log[len(run.Log)-1]
 }
 
-// approvalEvent is the event that answers approval requests. Until approvals
-// reach people (SPECS.md open question 17), tests answer them with approve
-// and decline.
-const approvalEvent = "approval"
+// approvalEvent is the event that answers approval requests: approvals.answered,
+// the standard approvals module's event, whether or not the program imports
+// it. Tests publish it with approve and decline, and `eye approve` through
+// the runner's inbox.
+const approvalEvent = "approvals.answered"
+
+// approvalsEvent returns an event of the standard approvals module, if the
+// program imports it and so can hear it: requested, which a run publishes
+// when it starts waiting for an approval, or answered.
+func (in *Interp) approvalsEvent(name string) *ir.Event {
+	for _, m := range in.prog.Modules {
+		if m.Path == "approvals" && m.Dir == "" {
+			if c := m.Contracts["Approvals"]; c != nil {
+				return c.Events[name]
+			}
+		}
+	}
+	return nil
+}
 
 // approval asks a person to approve what, and waits for the answer:
 // Approved(approval), Declined, or Expired once within runs out.
@@ -313,7 +328,7 @@ func (in *Interp) approval(run *jobRun, args []argVal, at ir.Pos) Value {
 			return nil, false
 		}
 		text, _ := answer.get("what")
-		if s, _ := text.(string); !strings.Contains(what, s) {
+		if s, _ := text.(string); s == "" || !strings.Contains(what, s) {
 			return nil, false
 		}
 		if approved, _ := answer.get("approved"); approved == true {
@@ -331,7 +346,17 @@ func (in *Interp) approval(run *jobRun, args []argVal, at ir.Pos) Value {
 		}
 		return in.resolveWait(run, s, match, expired, at)
 	}
-	return in.resolveWait(run, in.waitStep(run, approvalEvent, "approval: "+what, within), match, expired, at)
+	s := in.waitStep(run, approvalEvent, "approval: "+what, within)
+	if e := in.approvalsEvent("requested"); e != nil {
+		// The id names the run and the step, so a run that replays this
+		// step after a restart publishes nothing new: the event's key was
+		// seen.
+		in.rt.publish(e, &Record{
+			Names: []string{"id", "what", "from", "until"},
+			Vals:  []Value{fmt.Sprintf("%d-%d", run.ID, len(run.Log)-1), what, show(named["from"]), time.Unix(0, s.WakeAt).UTC()},
+		})
+	}
+	return in.resolveWait(run, s, match, expired, at)
 }
 
 // resolveWait ends a waiting step with what match makes of the first event

@@ -97,7 +97,7 @@ func TestRunSurvivesTheDatabaseGoingAway(t *testing.T) {
 	retryAfter, pgTimeout = 300*time.Millisecond, 2*time.Second
 
 	for _, c := range []struct{ name, down, up string }{
-		{"restart", "stop", "start"}, // the connection breaks
+		{"restart", "stop", "start"},  // the connection breaks
 		{"pause", "pause", "unpause"}, // the database stops answering
 	} {
 		t.Run(c.name, func(t *testing.T) {

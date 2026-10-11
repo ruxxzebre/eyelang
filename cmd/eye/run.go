@@ -88,7 +88,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		}
 		return exitErrors
 	}
-	opts := interp.RunOptions{Args: append([]string{dir}, progArgs...), Stdout: stdout, Stderr: stderr}
+	opts := interp.RunOptions{Args: append([]string{dir}, progArgs...), Stdout: stdout, Stderr: stderr, Inbox: inboxPath(dir)}
 	switch {
 	case url != "":
 		pg, err := interp.OpenPostgres(url)

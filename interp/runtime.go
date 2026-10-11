@@ -308,6 +308,11 @@ func (rt *runtime) publish(e *ir.Event, v Value) {
 // answer records a person's answer to an approval request and wakes the runs
 // waiting for one.
 func (rt *runtime) answer(v *Record) {
+	if e := rt.in.approvalsEvent("answered"); e != nil {
+		// The program imports approvals, so jobs may start on an answer.
+		rt.publish(e, v)
+		return
+	}
 	rt.record(&Commit{}, approvalEvent, rt.in.encode(v, ir.Pos{}))
 	rt.wake(approvalEvent)
 	rt.drain()

@@ -21,6 +21,9 @@ type RunOptions struct {
 	// Store keeps entities, runs and events; nil keeps them in memory, so
 	// nothing survives the process.
 	Store Store
+	// Inbox is a directory of answers to approvals, which `eye approve` and
+	// `eye decline` write and the runner publishes; "" reads none.
+	Inbox string
 }
 
 // Run runs a program as `eye run` does. main runs first, if the program has
@@ -84,7 +87,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	}
 	report()
 	if hasJobs(prog) {
-		if err := in.serve(ctx, report, stderr); err != nil {
+		if err := in.serve(ctx, report, stderr, opts.Inbox); err != nil {
 			code = 1
 		}
 	}
@@ -102,9 +105,10 @@ func hasJobs(prog *ir.Program) bool {
 }
 
 // serve runs the program's jobs on the system clock until nothing is left
-// that can happen, or ctx is done. It returns early, with the error, if the
-// store can take no more commits.
-func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) error {
+// that can happen, or ctx is done, and publishes the answers that reach
+// inbox, if it has one. It returns early, with the error, if the store can
+// take no more commits.
+func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, inbox string) error {
 	rt := in.rt
 	var pruned time.Time
 	for {
@@ -115,6 +119,9 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) er
 			if rt.now.Sub(pruned) >= time.Hour {
 				rt.prune()
 				pruned = rt.now
+			}
+			if inbox != "" {
+				rt.readInbox(inbox, func(msg string) { fmt.Fprintf(stderr, "eye run: %s\n", msg) })
 			}
 			rt.catchUp()
 			report()
@@ -150,6 +157,9 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer) er
 				wait = time.Until(firing)
 			}
 			wait = min(wait, time.Until(pruned.Add(time.Hour)))
+			if inbox != "" {
+				wait = min(wait, inboxEvery)
+			}
 		}
 		timer := time.NewTimer(max(wait, 0))
 		select {
@@ -291,9 +301,11 @@ type RunInfo struct {
 	Args   []string   `json:"args"`
 	WakeAt *time.Time `json:"wakeAt,omitempty"` // while sleeping
 	Waits  string     `json:"waits,omitempty"`  // what a sleeping run waits for
-	Steps  []StepInfo `json:"steps"`
-	Result string     `json:"result,omitempty"`
-	Fault  string     `json:"fault,omitempty"`
+	// Approval is the text of the approval! a sleeping run waits for.
+	Approval string     `json:"approval,omitempty"`
+	Steps    []StepInfo `json:"steps"`
+	Result   string     `json:"result,omitempty"`
+	Fault    string     `json:"fault,omitempty"`
 	// StepCount is how many steps the run took, also once only a summary
 	// is kept; Size is how many bytes the store keeps for it.
 	StepCount  int        `json:"stepCount"`
@@ -380,7 +392,8 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 		case r.WaitEvent == approvalEvent:
 			info.Waits = "a person's answer"
 			if n := len(r.Log); n > 0 {
-				info.Waits += " to " + strings.TrimPrefix(r.Log[n-1].Call, "approval: ")
+				info.Approval = strings.TrimPrefix(r.Log[n-1].Call, "approval: ")
+				info.Waits += " to " + info.Approval
 			}
 		case r.WaitEvent != "":
 			info.Waits = "the event " + r.WaitEvent

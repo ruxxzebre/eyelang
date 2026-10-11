@@ -953,6 +953,29 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 - **`next!` misses nothing.** It counts every matching event published since the run's previous
   step, so an answer that comes while the run is still sending its question, or sleeping, is found.
   `poll!` keeps only its outcome, so a long poll doesn't grow the run's history.
+- **Approvals reach people through the program.** When a run starts waiting at `approval!`, the
+  runtime publishes `approvals.requested`, an event of the standard `approvals` module, with the
+  request's `id`, `what`, `from` and `until`. A program that imports `approvals` routes it with a
+  job of its own, through Notify's buttons or anything else, and answers with
+  `approvals.answered.publish!({ what, approved, by })`. An answer goes to every waiting approval
+  whose text contains its `what`. `eye approve` and `eye decline` answer from the command line,
+  through the inbox of the program's `eye run`; tests answer with `approve(…)` and `decline(…)`.
+
+  ```eye
+  import approvals
+
+  @on(event(approvals.requested))
+  job ask(r: approvals.Request) {
+    let left = r.until - now!()
+    let asked = notify.ask!(to: operator, text: r.what, choices: [yes, no], within: left,
+      key: "approval-{r.id}").reconcile!()
+    let Asking(question) = asked else { return }
+    let Some(press) = next!(notify.answered, where: fn a: a.question == question, within: left) else {
+      return
+    }
+    approvals.answered.publish!({ what: r.what, approved: press.choice == yes.id, by: "{press.by}" })
+  }
+  ```
 - **A run's outcome** is `Outcome(a) = Completed(a) | Failed(Fault)`, from the prelude. A fault
   (`DeadlinePassed`, `OverBudget`, `OutOfMemory`, `Unavailable`, `Unreachable`, `Killed`) can't be
   caught where it happens, so code that must report one starts the work as a child run and joins
@@ -1630,8 +1653,16 @@ operator. All binary operators associate to the left except `??`, which associat
 16. **What a fake received.** A test can't see which calls a fake answered, so the lab's digest
     records the keys it sent with in an entity to make sending testable. Should a test be able to
     ask `fakes(notify).sent(…)`, or fail when a recording has exchanges no call used?
-17. **Where approvals go.** Tests answer `approval!` with `approve(…)` and `decline(…)`. How does a
-    deployment say where requests go and who may answer (the lab would use Notify's buttons)?
+17. **Where approvals go:** decided on 2026-10-11: through the program. A run that waits at
+    `approval!` publishes `approvals.requested`; the program routes it with a job of its own (the
+    lab's `approving` module asks the operator on Notify) and answers with `approvals.answered`,
+    which `eye approve`, `eye decline` and tests also publish (section 15). Still open:
+    - Who may answer is not checked: an answer counts whoever gives it, and `from:` only tells the
+      program whom to ask. Should an answer whose `by` isn't `from` be refused?
+    - An answer matches by text, so two runs asking the same thing are answered together. Should
+      an answer name its request's `id` instead, with text only for people at a command line?
+    - An `Approval` can't be read: the checker now refuses `ok.by`, though the runtime knows who
+      approved and what. Should `Approval` have `what` and `by` fields, for audit logs?
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
 19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and

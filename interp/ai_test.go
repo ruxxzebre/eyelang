@@ -344,7 +344,6 @@ job ask() -> Result(Answer, ai.AiError) {
 	}
 }
 
-
 func TestRecordedUsageCountsInTests(t *testing.T) {
 	prog := load(t, `
 import ai

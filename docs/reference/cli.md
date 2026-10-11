@@ -16,6 +16,8 @@ title: The eye command
 | [`eye check`](#check) | report errors in a program: syntax, names, types and effects |
 | [`eye run`](#run) | run a program: main, then its jobs, kept in a journal across restarts |
 | [`eye runs`](#runs) | list a program's job runs: status, what each waits for, and steps |
+| [`eye approve`](#approve) | approve what a run of eye run waits for at approval! |
+| [`eye decline`](#decline) | decline what a run of eye run waits for at approval! |
 | [`eye test`](#test) | run the test blocks of a program |
 | [`eye repl`](#repl) | start an interactive session: expressions, declarations and jobs |
 | [`eye lsp`](#lsp) | run the language server for editors |
@@ -104,6 +106,34 @@ reads without changing anything, so it works while eye run is running.
     	print the runs as JSON
   -store string
     	read the store in this Postgres database, postgres://… (default $EYE_STORE)
+```
+
+## eye approve {#approve}
+
+```text
+usage: eye approve [--by name] [--journal file] [program-directory] text
+
+Answers, with approve, every approval! a run of the program waits for whose text
+contains text. The program's eye run picks the answer up within a second, and
+publishes it as approvals.answered. eye runs shows what each run waits for.
+  -by string
+    	who answers, as the approval's Approval records it (default $USER)
+  -journal string
+    	the journal to look for waiting approvals in (default program-directory/.eye/journal)
+```
+
+## eye decline {#decline}
+
+```text
+usage: eye decline [--by name] [--journal file] [program-directory] text
+
+Answers, with decline, every approval! a run of the program waits for whose text
+contains text. The program's eye run picks the answer up within a second, and
+publishes it as approvals.answered. eye runs shows what each run waits for.
+  -by string
+    	who answers, as the approval's Approval records it (default $USER)
+  -journal string
+    	the journal to look for waiting approvals in (default program-directory/.eye/journal)
 ```
 
 ## eye test {#test}

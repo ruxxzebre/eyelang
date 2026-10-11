@@ -37,7 +37,7 @@ func TestMigrations(t *testing.T) {
 	save("ann", 1, "nickname", " Ann ")
 	save("bo", 2, "nick", "Bo")
 	save("cy", 3, "name", "Cy", "devices", newSet(nil)) // saved before joined was added
-	save("old", 0, "nickname", "Old")                    // saved before rows had versions: version 1
+	save("old", 0, "nickname", "Old")                   // saved before rows had versions: version 1
 	if err := in.rt.checkVersions(); err != nil {
 		t.Fatal(err)
 	}

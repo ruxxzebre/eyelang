@@ -70,8 +70,16 @@ title: "Open questions"
 16. **What a fake received.** A test can't see which calls a fake answered, so the lab's digest
     records the keys it sent with in an entity to make sending testable. Should a test be able to
     ask `fakes(notify).sent(…)`, or fail when a recording has exchanges no call used?
-17. **Where approvals go.** Tests answer `approval!` with `approve(…)` and `decline(…)`. How does a
-    deployment say where requests go and who may answer (the lab would use Notify's buttons)?
+17. **Where approvals go:** decided on 2026-10-11: through the program. A run that waits at
+    `approval!` publishes `approvals.requested`; the program routes it with a job of its own (the
+    lab's `approving` module asks the operator on Notify) and answers with `approvals.answered`,
+    which `eye approve`, `eye decline` and tests also publish ([section 15](/reference/language/jobs-and-waiting)). Still open:
+    - Who may answer is not checked: an answer counts whoever gives it, and `from:` only tells the
+      program whom to ask. Should an answer whose `by` isn't `from` be refused?
+    - An answer matches by text, so two runs asking the same thing are answered together. Should
+      an answer name its request's `id` instead, with text only for people at a command line?
+    - An `Approval` can't be read: the checker now refuses `ok.by`, though the runtime knows who
+      approved and what. Should `Approval` have `what` and `by` fields, for audit logs?
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
 19. **Which actions are effects?** Calling a service, waiting, touching entities, the clock and

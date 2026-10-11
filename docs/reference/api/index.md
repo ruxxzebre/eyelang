@@ -16,4 +16,5 @@ Every public declaration of the standard library, with its signature and documen
 | [Built-in functions](./std/builtins) | Output, tests, time, collections, strings and numbers |
 | [runtime.store](./runtime/store) | The in-memory store: everything a running program keeps, as one immutable value. |
 | [ai](./std/ai) | Typed calls to language models. |
+| [approvals](./std/approvals) | Approvals that reach people. |
 | [http](./std/http) | Requests to any URL, for services that have no contract, such as web pages. |

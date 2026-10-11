@@ -38,6 +38,8 @@ func init() {
 		{name: "check", summary: "report errors in a program: syntax, names, types and effects", run: runCheck, phase: 1, issue: 43},
 		{name: "run", summary: "run a program: main, then its jobs, kept in a journal across restarts", run: runRun, phase: 3, issue: 31},
 		{name: "runs", summary: "list a program's job runs: status, what each waits for, and steps", run: runRuns, phase: 4, issue: 34},
+		{name: "approve", summary: "approve what a run of eye run waits for at approval!", run: runApprove, phase: 5, issue: 51},
+		{name: "decline", summary: "decline what a run of eye run waits for at approval!", run: runDecline, phase: 5, issue: 51},
 		{name: "test", summary: "run the test blocks of a program", run: runTest, phase: 3, issue: 31},
 		{name: "repl", summary: "start an interactive session: expressions, declarations and jobs", run: runREPL, phase: 3, issue: 31},
 		{name: "lsp", summary: "run the language server for editors", run: runLSP, phase: 1, issue: 43},

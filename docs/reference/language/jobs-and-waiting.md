@@ -64,6 +64,29 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 - **`next!` misses nothing.** It counts every matching event published since the run's previous
   step, so an answer that comes while the run is still sending its question, or sleeping, is found.
   `poll!` keeps only its outcome, so a long poll doesn't grow the run's history.
+- **Approvals reach people through the program.** When a run starts waiting at `approval!`, the
+  runtime publishes `approvals.requested`, an event of the standard `approvals` module, with the
+  request's `id`, `what`, `from` and `until`. A program that imports `approvals` routes it with a
+  job of its own, through Notify's buttons or anything else, and answers with
+  `approvals.answered.publish!({ what, approved, by })`. An answer goes to every waiting approval
+  whose text contains its `what`. `eye approve` and `eye decline` answer from the command line,
+  through the inbox of the program's `eye run`; tests answer with `approve(…)` and `decline(…)`.
+
+  ```eye
+  import approvals
+
+  @on(event(approvals.requested))
+  job ask(r: approvals.Request) {
+    let left = r.until - now!()
+    let asked = notify.ask!(to: operator, text: r.what, choices: [yes, no], within: left,
+      key: "approval-{r.id}").reconcile!()
+    let Asking(question) = asked else { return }
+    let Some(press) = next!(notify.answered, where: fn a: a.question == question, within: left) else {
+      return
+    }
+    approvals.answered.publish!({ what: r.what, approved: press.choice == yes.id, by: "{press.by}" })
+  }
+  ```
 - **A run's outcome** is `Outcome(a) = Completed(a) | Failed(Fault)`, from the prelude. A fault
   (`DeadlinePassed`, `OverBudget`, `OutOfMemory`, `Unavailable`, `Unreachable`, `Killed`) can't be
   caught where it happens, so code that must report one starts the work as a child run and joins

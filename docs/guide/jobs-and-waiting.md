@@ -119,6 +119,23 @@ what they are given:
 
 <<< ./code/jobs-and-waiting/main.eye#test-prune
 
+Outside tests, a request reaches a person through the program. When a run starts waiting, the
+runtime publishes `approvals.requested`; a job of the program sends it on, say as a question with
+two buttons, and publishes `approvals.answered` with the answer:
+
+```eye
+import approvals
+
+@on(event(approvals.requested))
+job ask(r: approvals.Request) {
+  # send r.what to whoever r.from names, wait for their answer, then:
+  approvals.answered.publish!({ what: r.what, approved: true, by: "ann" })
+}
+```
+
+From a shell, `eye approve` and `eye decline` answer a run of `eye run` in the same directory:
+`eye approve . "delete 3 backups"`. `eye runs` shows what each run waits for.
+
 `poll!` is for services that can only be asked:
 
 ```eye
@@ -243,7 +260,7 @@ public function that waits says `uses {wait}` in its signature, and is called wi
 ::: info Not yet
 `reserve!`, `lock!`, and `all!` and `first!` for joining several runs are designed but not built;
 join child runs one after another, as `nightly` does. `@memory` and `@priority` are checked but
-not enforced; `@budget` is (see [AI calls](/guide/ai-calls#budgets)). `approval!` is answered only by tests for now. See
+not enforced; `@budget` is (see [AI calls](/guide/ai-calls#budgets)). See
 [What runs today](/reference/status#jobs-and-waiting).
 :::
 
