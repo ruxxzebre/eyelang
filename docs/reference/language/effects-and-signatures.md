@@ -52,7 +52,11 @@ A private function's effects are inferred and never need writing.
   In a function's return type, the `uses` after a function type belongs to that function type.
 
 **`!` in jobs.** Inside a job, every call with an outside effect (`net`, `fs`, `process`, `clock`,
-`random`, `ffi` and the rest) is a `!` call: it runs once and its result is recorded, so a resumed run
-never repeats it and sees the same values. Entity calls are `!` calls too (`w.read!()`,
-`w.markAsleep!()`): each commits in the same transaction as its checkpoint ([section 15](/reference/language/jobs-and-waiting)). Calls that
-only compute are ordinary. Outside jobs the same functions are called without `!` ([section 13](/reference/language/programs-and-concurrency)).
+`random`, `env`, `ffi`, `secret` and `entity`) is a `!` call: it runs once and its result is
+recorded, so a resumed run never repeats it and sees the same values. That holds for a function of
+the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without `!` is
+an error, `in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)`. Entity
+calls are `!` calls too (`w.read!()`, `w.markAsleep!()`): each commits in the same transaction as
+its checkpoint ([section 15](/reference/language/jobs-and-waiting)). Calls that only compute are ordinary, and `!` on one is an error.
+Outside jobs the same functions are called without `!` ([section 13](/reference/language/programs-and-concurrency)). Printing and logging are not
+steps (open question 22).

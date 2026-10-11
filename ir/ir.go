@@ -192,6 +192,9 @@ type Func struct {
 	Uses    []string
 	HasUses bool
 	Extern  bool
+	// Waits is set by the checker when calling it may pause: its body has a
+	// `!` step, or calls a function that waits.
+	Waits bool
 	// Bounds are the requirements on its type variables, from `where` and
 	// from traits used as parameter types.
 	Bounds []Bound

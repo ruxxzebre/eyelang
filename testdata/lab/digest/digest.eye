@@ -114,7 +114,7 @@ job write(day: Date) -> Result(Article, DigestError) {
   }
   let news = gather!(since: now!() - 24 h)
   let briefing: Briefing = ai.generate!(
-    model: env.get("DIGEST_MODEL") ?? "gpt-5.6-terra",
+    model: env.get!("DIGEST_MODEL") ?? "gpt-5.6-terra",
     system: prompt,
     prompt: news.sections |> toJson,
   ).mapErr(WriteFailed)?

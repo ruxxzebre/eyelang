@@ -84,3 +84,14 @@ title: "Open questions"
     which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.
 21. **`Handle(name)` and `extern type`:** both name what foreign code owns, and `extern type` is
     checked as a type of its own. Should `Handle` go?
+22. **Printing in jobs.** `print` has the effect `stdio`, which by [section 12](/reference/language/effects-and-signatures)'s rule would make it
+    a `!` step in a job, yet `print!("…")` reads oddly and `log.info` isn't an effect at all. Today
+    neither is a step, and the interpreter keeps a replayed run quiet so that output isn't
+    repeated (`TestReplayDoesntRepeatOutput`). Should output stay outside the rule, with the
+    runtime keeping replays quiet, or should `print` lose `stdio` in jobs, or should logging
+    become an effect (question 19)?
+23. **Where `!` goes on a helper.** Writing `fn stamp() = now()` and calling `stamp!()` makes the
+    whole helper one recorded step; a helper that itself has `!` steps is called with `!` too, but
+    then its steps are recorded one by one. The same mark means "record this call" in one case and
+    "this call contains steps" in the other. Is one mark for both right, since either way the
+    caller sees a point where the run may stop and resume, or should the difference show?

@@ -193,3 +193,28 @@ func TestAmbiguousVariants(t *testing.T) {
 		t.Errorf("diagnostics: %v", diags)
 	}
 }
+
+// TestContractCallThroughModule checks that a contract operation called
+// through its module, as notify.send is, is a durable step in a job.
+func TestContractCallThroughModule(t *testing.T) {
+	dir := writeProgram(t, map[string]string{
+		"eye.toml": "",
+		"mail/mail.eye": `contract Mail {
+  command send(to: String) -> Result((), String)
+}
+`,
+		"main.eye": `import mail
+
+job j() { mail.send("me") }
+`,
+	})
+	res := Check(dir, Options{})
+	want := "main.eye:3:11: in a job, a call to another service is a durable step: write send!(…)"
+	var got []string
+	for _, d := range res.Diagnostics {
+		got = append(got, d.String())
+	}
+	if len(got) != 1 || !strings.HasSuffix(got[0], want) {
+		t.Errorf("got %q, want one ending %q", got, want)
+	}
+}

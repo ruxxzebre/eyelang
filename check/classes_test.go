@@ -71,6 +71,8 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§12", "a durable step without !", "durable steps in jobs need !"},
 	{"§12", "a waiting function called without !", "a waiting function is called with !"},
 	{"§12", "an entity call in a job without !", "entity calls in jobs are durable steps"},
+	{"§12", "an outside call in a job without !, or ! on a pure call", "outside calls in jobs are durable steps"},
+	{"§13", "a durable step in a task in a job", "a task in a job only computes"},
 	{"§20", "with outside a test", "with only in tests"},
 	{"§13", "a job started from main without a key", "main starts a job once, by key"},
 	{"§14", "a change to an entity's identity", "state can change in entity methods, the identity can't"},

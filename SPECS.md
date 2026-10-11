@@ -708,10 +708,14 @@ A private function's effects are inferred and never need writing.
   In a function's return type, the `uses` after a function type belongs to that function type.
 
 **`!` in jobs.** Inside a job, every call with an outside effect (`net`, `fs`, `process`, `clock`,
-`random`, `ffi` and the rest) is a `!` call: it runs once and its result is recorded, so a resumed run
-never repeats it and sees the same values. Entity calls are `!` calls too (`w.read!()`,
-`w.markAsleep!()`): each commits in the same transaction as its checkpoint (section 15). Calls that
-only compute are ordinary. Outside jobs the same functions are called without `!` (section 13).
+`random`, `env`, `ffi`, `secret` and `entity`) is a `!` call: it runs once and its result is
+recorded, so a resumed run never repeats it and sees the same values. That holds for a function of
+the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without `!` is
+an error, `in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)`. Entity
+calls are `!` calls too (`w.read!()`, `w.markAsleep!()`): each commits in the same transaction as
+its checkpoint (section 15). Calls that only compute are ordinary, and `!` on one is an error.
+Outside jobs the same functions are called without `!` (section 13). Printing and logging are not
+steps (open question 22).
 
 ## 13. Programs and concurrency
 
@@ -801,9 +805,9 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
 
   Channels aren't durable and can't be live across a `!`; jobs talk through entities and events.
 - **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
-  `first!`. `parallelMap` is allowed in a job only with a pure function, since its steps aren't
-  recorded; for now the runtime enforces it, failing a task that takes a `!` step, and the checker
-  doesn't yet.
+  `first!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
+  since its steps couldn't be recorded in order: a `!` step in it, or a call that would need one,
+  is an error.
 
 ## 14. Entities
 
@@ -1602,3 +1606,14 @@ operator. All binary operators associate to the left except `??`, which associat
     which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.
 21. **`Handle(name)` and `extern type`:** both name what foreign code owns, and `extern type` is
     checked as a type of its own. Should `Handle` go?
+22. **Printing in jobs.** `print` has the effect `stdio`, which by section 12's rule would make it
+    a `!` step in a job, yet `print!("…")` reads oddly and `log.info` isn't an effect at all. Today
+    neither is a step, and the interpreter keeps a replayed run quiet so that output isn't
+    repeated (`TestReplayDoesntRepeatOutput`). Should output stay outside the rule, with the
+    runtime keeping replays quiet, or should `print` lose `stdio` in jobs, or should logging
+    become an effect (question 19)?
+23. **Where `!` goes on a helper.** Writing `fn stamp() = now()` and calling `stamp!()` makes the
+    whole helper one recorded step; a helper that itself has `!` steps is called with `!` too, but
+    then its steps are recorded one by one. The same mark means "record this call" in one case and
+    "this call contains steps" in the other. Is one mark for both right, since either way the
+    caller sees a point where the run may stop and resume, or should the difference show?

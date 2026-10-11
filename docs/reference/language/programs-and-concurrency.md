@@ -92,6 +92,6 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
 
   Channels aren't durable and can't be live across a `!`; jobs talk through entities and events.
 - **In jobs**, concurrent durable steps are child runs (`digest.start(day)`) joined with `all!` or
-  `first!`. `parallelMap` is allowed in a job only with a pure function, since its steps aren't
-  recorded; for now the runtime enforces it, failing a task that takes a `!` step, and the checker
-  doesn't yet.
+  `first!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
+  since its steps couldn't be recorded in order: a `!` step in it, or a call that would need one,
+  is an error.

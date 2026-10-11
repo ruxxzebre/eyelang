@@ -42,11 +42,15 @@ func (c *checker) checkEffects() {
 		}
 	}
 	c.checkMigrationEffects(all)
+	for f, set := range all {
+		f.Waits = set["wait"]
+	}
 	for _, m := range c.prog.Modules {
 		for _, f := range c.bodiesOf(m) {
 			c.checkWaitingCalls(f, all)
 		}
 		for _, j := range m.Jobs {
+			c.checkSteps(j.Func, all)
 			c.checkSave(j)
 		}
 	}
@@ -173,6 +177,123 @@ func (c *checker) checkWaitingCalls(f *ir.Func, all map[*ir.Func]map[string]bool
 		}
 		return true
 	})
+}
+
+// stepBuiltins are the built-in functions that are durable steps in a job:
+// those that wait, and those that read the world outside the program. The
+// lowerer reports sleep without `!` already, with its own message.
+var stepBuiltins = map[string]string{
+	"sleep":      "wait",
+	"sleepUntil": "wait",
+	"poll":       "wait",
+	"next":       "wait",
+	"approval":   "wait",
+	"now":        "clock",
+	"env.get":    "env",
+}
+
+// taskBuiltins are the built-in functions that run the functions given to
+// them as tasks.
+var taskBuiltins = map[string]bool{"parallelMap": true, "both": true, "race": true, "timeout": true}
+
+// outside reports the first effect in a set that reaches outside the
+// program, which in a job makes a call a durable step (SPECS.md §12):
+// another service, the clock, randomness, the environment, files, other
+// processes, foreign code and entities. Standard output and waiting aren't
+// among them: waiting is reported on its own, and printing is open question 22.
+func outside(effects map[string]bool) string {
+	var found []string
+	for e := range effects {
+		kind, _, _ := strings.Cut(e, " ")
+		switch kind {
+		case "net", "clock", "random", "env", "fs", "process", "ffi", "entity", "secret":
+			found = append(found, e)
+		}
+	}
+	if len(found) == 0 {
+		return ""
+	}
+	sort.Strings(found)
+	return found[0]
+}
+
+// effectsOf is what calling g does: what its uses clause states, if it has
+// one, or else what its body was found to do.
+func effectsOf(g *ir.Func, all map[*ir.Func]map[string]bool) map[string]bool {
+	if !g.HasUses {
+		return all[g]
+	}
+	set := map[string]bool{}
+	for _, u := range g.Uses {
+		set[u] = true
+	}
+	return set
+}
+
+// checkSteps holds a job to SPECS.md §12: every call with an outside effect
+// is a `!` step, a call that neither waits nor reaches outside isn't one, and
+// a task the job starts (parallelMap, both, race, timeout) only computes,
+// since its steps couldn't be recorded in order.
+func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
+	var visit func(e ir.Expr, waiting, task bool) bool
+	inTask := func(e ir.Expr) {
+		walk(e, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, true) })
+	}
+	visit = func(e ir.Expr, waiting, task bool) bool {
+		if w, ok := e.(*ir.Waiting); ok && task {
+			c.typeErrorf(w.Pos, "a task in a job can only compute, since its steps couldn't be recorded: start a child run for this step instead")
+			return false
+		}
+		call, ok := e.(*ir.Call)
+		if !ok {
+			return true
+		}
+		r, ok := call.Func.(*ir.Ref)
+		if !ok {
+			return true
+		}
+		var name, effect string
+		step := false
+		switch d := r.Decl.(type) {
+		case ir.Builtin:
+			name = d.Name
+			effect, step = stepBuiltins[d.Name]
+			if taskBuiltins[d.Name] {
+				for _, a := range call.Args {
+					if _, ok := a.Value.(*ir.Lambda); ok {
+						inTask(a.Value)
+					} else {
+						walk(a.Value, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, task) })
+					}
+				}
+				return false
+			}
+		case *ir.Func:
+			name = d.Name
+			if d.Module != nil && d.Module != job.Module && d.Receiver == nil {
+				// As it is written: http.get, not get.
+				name = d.Module.Name + "." + d.Name
+			}
+			set := effectsOf(d, all)
+			if set["wait"] {
+				effect, step = "wait", true
+			} else if effect = outside(set); effect != "" {
+				step = true
+			}
+		default:
+			return true // contract operations and entities are checked as they are lowered
+		}
+		switch {
+		case task && step:
+			c.typeErrorf(call.Pos, "a task in a job can only compute, and %s uses %s: start a child run for this step instead", name, effect)
+		case !waiting && step && effect != "wait":
+			c.typeErrorf(call.Pos, "in a job, %s uses %s, so calling it is a durable step: write %s!(…)", name, effect, name)
+		case waiting && !step:
+			c.typeErrorf(call.Pos, "%s neither waits nor reaches outside the program, so it isn't a durable step: write %s(…) without !", name, name)
+		}
+		return true
+	}
+	walk(job.Body, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, false) })
 }
 
 // walk calls visit for e and, if visit returns true, everything in it.

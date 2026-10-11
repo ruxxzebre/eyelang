@@ -28,8 +28,9 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		args := in.evalArgs(f, c.Args)
 		switch fn := callee.(type) {
 		case *Closure:
-			if fn.Fn.Host != "" {
-				// A host function (ai.generate, http.get) is a step: its
+			if fn.Fn.Host != "" || !fn.Fn.Waits {
+				// A host function (ai.generate, http.get), or a function
+				// that reaches outside without waiting, is a step: its
 				// result is recorded, so a resumed run doesn't call it again.
 				if v, ok := in.replay(run, w.Pos); ok {
 					return v

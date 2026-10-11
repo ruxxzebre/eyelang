@@ -103,3 +103,26 @@ test "poll! gives up when its time runs out" {
   advance(1 h)
   expect(Feed("dead").polls == 11)
 }
+
+# A function that reads the clock without waiting is one step when a job
+# calls it with `!`: a resumed run sees the time it saw the first time.
+fn stamp() -> Instant = now()
+
+entity Stamps(id: String) {
+  state seen: List(Instant) = []
+
+  pub fn add(at: Instant) { seen += [at] }
+}
+
+job stamped() {
+  let at = stamp!()
+  sleep!(10 min)
+  Stamps("s").add!(at)
+}
+
+test "a step that reads the clock is recorded once" {
+  let start = now()
+  stamped.start()
+  advance(20 min)
+  expect(Stamps("s").seen == [start])
+}

@@ -168,6 +168,35 @@ job j(id: String) {
 		}},
 		{"a waiting function is called with !", `fn helper() { sleep!(1 min) }
 job j() { helper() }`, []string{"2:11: helper waits, so calling it is a durable step: write helper!(…)"}},
+		{"outside calls in jobs are durable steps", `fn stamp() -> Instant = now()
+fn double(n: Int) -> Int = n * 2
+job j() {
+  let a = now()
+  let b = env.get("HOME")
+  let c = stamp()
+  let d = double!(2)
+  let e = [1] |> size!()
+  let f = now!()
+  let g = stamp!()
+}`, []string{
+			"4:11: in a job, now uses clock, so calling it is a durable step: write now!(…)",
+			"5:11: in a job, env.get uses env, so calling it is a durable step: write env.get!(…)",
+			"6:11: in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)",
+			"7:11: double neither waits nor reaches outside the program, so it isn't a durable step: write double(…) without !",
+			"8:18: size neither waits nor reaches outside the program, so it isn't a durable step: write size(…) without !",
+		}},
+		{"a task in a job only computes", `fn stamp() -> Instant = now()
+job j() -> List(Int) {
+  let a = [1, 2] |> parallelMap(fn n {
+    sleep!(1 min)
+    n
+  })
+  let b = [1, 2] |> parallelMap(fn n: stamp())
+  [1, 2] |> parallelMap(fn n: n * 2)
+}`, []string{
+			"4:5: a task in a job can only compute, since its steps couldn't be recorded: start a child run for this step instead",
+			"7:39: a task in a job can only compute, and stamp uses clock: start a child run for this step instead",
+		}},
 		{"a public function states its effects", `pub fn stamp() -> Instant = now()
 pub fn stated() -> Instant uses {clock} = now()
 pub fn partly() -> Instant uses {stdio} = now()`, []string{

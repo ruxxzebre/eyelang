@@ -841,6 +841,7 @@ func (l *lowerer) callee(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir
 		name := l.text(fnNode.ChildByField(syntax.FieldField))
 		if decl := l.qualified(recvNode, name); decl != nil {
 			l.c.use(l.pos(fnNode.ChildByField(syntax.FieldField)), decl)
+			l.checkDurable(n, decl, waiting)
 			return &ir.Call{At: at, Func: &ir.Ref{At: l.at(fnNode), Decl: decl}, Args: args}
 		}
 		mc := &ir.MethodCall{At: at, Recv: l.expr(recvNode), Name: name, Args: args, RecvPlace: l.quietPlace(recvNode)}
