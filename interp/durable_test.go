@@ -3,17 +3,13 @@ package interp
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"net"
-	"os"
-	"os/exec"
 	goruntime "runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"eyelang/internal/pgtest"
 )
 
 // lockedBuffer is a buffer that Run writes to while a test reads it.
@@ -34,57 +30,21 @@ func (b *lockedBuffer) String() string {
 	return b.b.String()
 }
 
-// waitFor polls cond until it holds, or fails the test after limit.
+// waitFor, docker and ownPostgres are pgtest's, under the names these tests
+// use.
 func waitFor(t *testing.T, limit time.Duration, what string, cond func() bool) {
 	t.Helper()
-	for deadline := time.Now().Add(limit); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if cond() {
-			return
-		}
-	}
-	t.Fatalf("timed out waiting until %s", what)
+	pgtest.WaitFor(t, limit, what, cond)
 }
 
-// docker runs a docker command and returns what it printed.
 func docker(t *testing.T, args ...string) string {
 	t.Helper()
-	out, err := exec.Command("docker", args...).CombinedOutput()
-	if err != nil {
-		t.Fatalf("docker %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-	return strings.TrimSpace(string(out))
+	return pgtest.Docker(t, args...)
 }
 
-// ownPostgres starts a Postgres container for this test alone, which it may
-// stop and pause without disturbing other tests, and returns the database's
-// address and the container. It needs EYE_TEST_DOCKER=1.
 func ownPostgres(t *testing.T) (url, container string) {
 	t.Helper()
-	if os.Getenv("EYE_TEST_DOCKER") != "1" {
-		t.Skip("set EYE_TEST_DOCKER=1 to let tests start a Postgres container of their own")
-	}
-	// A fixed port, so that it stays the same when the container restarts.
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	container = docker(t, "run", "-d", "-e", "POSTGRES_USER=eye", "-e", "POSTGRES_PASSWORD=eye",
-		"-e", "POSTGRES_DB=eye", "-p", fmt.Sprintf("127.0.0.1:%d:5432", port), "postgres:17-alpine")
-	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", container).Run() })
-	url = fmt.Sprintf("postgres://eye:eye@127.0.0.1:%d/eye?sslmode=disable", port)
-	// The image starts a server without TCP to set itself up, then the real
-	// one: the database is ready when a connection over TCP works.
-	waitFor(t, 60*time.Second, "the container's database is ready", func() bool {
-		conn, err := pgx.Connect(context.Background(), url)
-		if err != nil {
-			return false
-		}
-		conn.Close(context.Background())
-		return true
-	})
-	return url, container
+	return pgtest.Own(t)
 }
 
 // A job runs once and finishes when the database goes away in the middle of

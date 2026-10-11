@@ -58,7 +58,8 @@ type CommitError struct {
 
 func (e *CommitError) Error() string {
 	if strings.HasPrefix(e.Path, "postgres ") {
-		return fmt.Sprintf("can't write the store in %s: %v", e.Path, e.Err)
+		// A reconnect's error already names the store.
+		return fmt.Sprintf("can't write the store in %s: %s", e.Path, strings.TrimPrefix(e.Err.Error(), e.Path+": "))
 	}
 	return fmt.Sprintf("can't write the journal %s: %v", e.Path, e.Err)
 }

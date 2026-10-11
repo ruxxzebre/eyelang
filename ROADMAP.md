@@ -1,9 +1,9 @@
 # Eyelang 2 roadmap
 
-**Status, 2026-10-11:** v0.1.0 is released (phases 0–4; tag `v0.1.0`, 2026-10-10). Work goes on
-toward v0.2 (phase 5), whose tasks are listed below; parts of phases 5 and 6 were built early
-(journal store, contracts over HTTP, model calls). Development and releases happen on `dev`; `main`
-stays at Eyelang 1 until that changes.
+**Status, 2026-10-11:** v0.2.0 is released (phase 5; tag `v0.2.0`), after v0.1.0 (phases 0–4,
+2026-10-10). Next is v0.3 (phase 6), whose tasks are broken down next; parts of it were built early
+(contracts over HTTP, contracts served in Eyelang). Development and releases happen on `dev`;
+`main` stays at Eyelang 1 until that changes.
 
 What runs today, feature by feature: [docs/reference/status.md](docs/reference/status.md).
 
@@ -108,6 +108,18 @@ written in Eyelang, with entity migrations. Moved to v0.2, where model calls and
 arrive: enforcing `@memory`, `@priority` and `@budget` at run time (they are checked already), and
 `approval!` reaching people (tests answer it).
 
+**v0.2.0, 2026-10-11.** Phase 5 is done. The Postgres store (`eye run --store postgres://…`) keeps
+runs through restarts of the runner and the database; `dyn Trait` is a type of its own; task groups
+with `spawn` and bounded channels; model calls pick their provider and keep `@budget`; `@memory`,
+`@priority` and `reserve!` are enforced; `approval!` reaches people through `approvals.requested`,
+and `eye approve` answers; every outside call in a job is a `!` step. The exit test runs the lab's
+morning digest under `eye run` on Postgres against stand-ins for its services, kills the runner
+while the model writes and stops the database while Notify is sent the briefing, and the digest
+goes out once; the same program runs on the journal and in memory (`cmd/eye`,
+`TestMorningDigestOnPostgres`). Deploying the digest to the homelab itself is not part of the
+release. Left for later: several runners on one database, typed function types in signatures,
+`lock!`, `all!` and `first!`, and the open questions 22–31 the phase raised.
+
 ## Phases
 
 ### Phase 0: Clean slate — [#1](https://github.com/ruxxzebre/eyelang/issues/1) · v0.1
@@ -201,7 +213,7 @@ state is serialised to bytes and restored at each checkpoint.
 Order: 4.2 first, then 4.1 and 4.3 together. 4.4 needs 4.3. 4.5 needs 4.1 and 4.3. 4.6 needs 4.1.
 4.7 comes last.
 
-### Phase 5: Durable stores — [#6](https://github.com/ruxxzebre/eyelang/issues/6) · v0.2
+### Phase 5: Durable stores — [#6](https://github.com/ruxxzebre/eyelang/issues/6) · v0.2 release
 
 Done when the morning digest runs in the lab as an Eyelang job on the Postgres store, survives
 restarts of the runner and the database, and costs only the runner's memory while it waits; and the
