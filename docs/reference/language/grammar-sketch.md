@@ -6,7 +6,7 @@ title: "Grammar sketch"
 
 # Grammar sketch
 
-A readable summary of [`tree-sitter-eyelang/grammar.js`](https://github.com/ruxxzebre/eyelang/blob/main/tree-sitter-eyelang/grammar.js), which is
+A readable summary of [`tree-sitter-eyelang/grammar.js`](https://github.com/ruxxzebre/eyelang/blob/dev/tree-sitter-eyelang/grammar.js), which is
 the definition. `sep` is `;` or a newline that ends a statement ([section 4](/reference/language/lexical-structure)); `{` marked *block* is
 the brace that opens a block. Lists in `( )`, `[ ]` and literal braces allow a trailing comma.
 Every `eye` example in this document is a whole file or the statements of a function body, and CI

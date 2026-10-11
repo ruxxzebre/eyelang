@@ -8,7 +8,7 @@ Eyelang has no exceptions. A function that can fail says so in its return type, 
 and the caller decides what to do with the failure. This page reads a quantity typed by a
 customer, and takes an order from the shop's stock.
 
-The program is [`docs/tutorial/code/errors/main.eye`](https://github.com/ruxxzebre/eyelang/blob/main/docs/tutorial/code/errors/main.eye).
+The program is [`docs/tutorial/code/errors/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/errors/main.eye).
 
 ## Result
 

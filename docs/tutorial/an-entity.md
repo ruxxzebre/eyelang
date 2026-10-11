@@ -9,7 +9,7 @@ Real programs keep state: stock on a shelf, a user's settings, the phase of a ga
 Eyelang, shared state lives in **entities**. An entity has an identity, state that only it can
 change, and methods that change it one transaction at a time.
 
-The program is [`docs/tutorial/code/an-entity/main.eye`](https://github.com/ruxxzebre/eyelang/blob/main/docs/tutorial/code/an-entity/main.eye).
+The program is [`docs/tutorial/code/an-entity/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/an-entity/main.eye).
 
 ## A shelf
 

@@ -8,7 +8,7 @@ This page covers the everyday core: functions, `let`, strings, lists, pipes, clo
 tests that check them. The examples price a shopping basket. Prices are whole cents, an `Int`, so
 no rounding gets in the way.
 
-The program is [`docs/tutorial/code/values-and-functions/main.eye`](https://github.com/ruxxzebre/eyelang/blob/main/docs/tutorial/code/values-and-functions/main.eye).
+The program is [`docs/tutorial/code/values-and-functions/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/values-and-functions/main.eye).
 
 ## Functions
 

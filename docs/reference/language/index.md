@@ -14,7 +14,7 @@ many entities (users, devices, game worlds, apps) and jobs that run briefly and 
 minutes, hours or days. It is not a configuration DSL: every feature below is an ordinary language
 construct that also works outside that domain.
 
-Each page is one section of the language's specification, [SPECS.md](https://github.com/ruxxzebre/eyelang/blob/main/SPECS.md), which is where the rules are written and changed.
+Each page is one section of the language's specification, [SPECS.md](https://github.com/ruxxzebre/eyelang/blob/dev/SPECS.md), which is where the rules are written and changed.
 
 - [A tour](/reference/language/a-tour)
 - [Lexical structure](/reference/language/lexical-structure)

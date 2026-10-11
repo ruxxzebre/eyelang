@@ -4,6 +4,8 @@
 phases 5 and 6 are built early (journal store, contracts over HTTP, model calls). Development and
 releases happen on `dev`; `main` stays at Eyelang 1 until that changes.
 
+What runs today, feature by feature: [docs/reference/status.md](docs/reference/status.md).
+
 What gets built, in what order, and how we know each part is done. The language itself is defined
 in [SPECS.md](SPECS.md).
 

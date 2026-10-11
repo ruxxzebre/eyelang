@@ -33,7 +33,7 @@ A `##` block documents the declaration, member, field or variant right below it:
 A blank line or a plain `#` comment between a doc comment and the code detaches it, so what a doc
 comment documents is always the code it touches.
 
-The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/tree/main/docs/guide/code/doc-comments)
+The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/tree/dev/docs/guide/code/doc-comments)
 that the test suite checks and runs.
 
 ## Write the first sentence as the summary

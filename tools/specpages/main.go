@@ -13,7 +13,7 @@ import (
 	"eyelang/internal/specdoc"
 )
 
-const repo = "https://github.com/ruxxzebre/eyelang/blob/main/"
+const repo = "https://github.com/ruxxzebre/eyelang/blob/dev/"
 
 func main() {
 	spec, err := os.ReadFile("SPECS.md")

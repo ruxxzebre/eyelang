@@ -29,7 +29,7 @@ Each page takes five to ten minutes to read and builds on the one before it.
 ## How the pages work
 
 Each page has one program behind it, in
-[`docs/tutorial/code/`](https://github.com/ruxxzebre/eyelang/tree/main/docs/tutorial/code), one
+[`docs/tutorial/code/`](https://github.com/ruxxzebre/eyelang/tree/dev/docs/tutorial/code), one
 directory per page. The code you see on a page is taken straight from that program, and its `test`
 blocks check everything the page says. The test suite runs every one of them, so the examples
 always work with the current `eye`.

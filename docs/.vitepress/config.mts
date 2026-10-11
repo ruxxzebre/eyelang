@@ -101,11 +101,12 @@ export default defineConfig({
       // Generated pages are edited at their source. VitePress runs this in the
       // browser, so it can't use anything from the rest of this file.
       pattern: ({ filePath }) => {
+        // Eyelang 2 lives on dev until main takes it (ROADMAP.md).
         const repo = 'https://github.com/ruxxzebre/eyelang'
-        if (/^(reference\/language|design)\//.test(filePath)) return `${repo}/blob/main/SPECS.md`
-        if (filePath.startsWith('reference/api/')) return `${repo}/tree/main/check`
-        if (filePath === 'reference/cli.md') return `${repo}/tree/main/cmd/eye`
-        return `${repo}/edit/main/docs/${filePath}`
+        if (/^(reference\/language|design)\//.test(filePath)) return `${repo}/blob/dev/SPECS.md`
+        if (filePath.startsWith('reference/api/')) return `${repo}/tree/dev/check`
+        if (filePath === 'reference/cli.md') return `${repo}/tree/dev/cmd/eye`
+        return `${repo}/edit/dev/docs/${filePath}`
       },
       text: 'Edit this page',
     },

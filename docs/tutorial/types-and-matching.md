@@ -8,7 +8,7 @@ This page defines types of your own: records, which hold several named values, a
 which are one of several cases. `match` takes them apart, and the compiler checks that you handled
 every case. The examples are tasks on a to-do list.
 
-The program is [`docs/tutorial/code/types-and-matching/main.eye`](https://github.com/ruxxzebre/eyelang/blob/main/docs/tutorial/code/types-and-matching/main.eye).
+The program is [`docs/tutorial/code/types-and-matching/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/types-and-matching/main.eye).
 
 ## Records
 

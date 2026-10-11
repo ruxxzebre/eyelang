@@ -8,7 +8,7 @@ title: "Goals"
 
 - **Good programs are the point.** A feature earns its place by the programs written with it:
   correct, fast, lean on memory, well organised and easy to change. The obvious way to write
-  something should be the right way. [CLAUDE.md](https://github.com/ruxxzebre/eyelang/blob/main/CLAUDE.md) turns this into a guide for decisions.
+  something should be the right way. [CLAUDE.md](https://github.com/ruxxzebre/eyelang/blob/dev/CLAUDE.md) turns this into a guide for decisions.
 - **Concise and pleasant.** Little ceremony, inference inside bodies, one obvious way to do each
   thing, and errors, formatting and editor support that ship with every feature.
 - **A good general language first.** Values with no shared mutation, variants with exhaustive

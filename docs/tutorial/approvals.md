@@ -18,7 +18,7 @@ changes are atomic, that a retry can't do something twice, that every failure is
 that a wait of three days survives a restart.
 
 The program is in
-[`docs/tutorial/code/approvals`](https://github.com/ruxxzebre/eyelang/tree/main/docs/tutorial/code/approvals).
+[`docs/tutorial/code/approvals`](https://github.com/ruxxzebre/eyelang/tree/dev/docs/tutorial/code/approvals).
 Its tests check everything this page says. Run them from the repository's root:
 
 ```sh
@@ -331,6 +331,6 @@ no way in, and the review waits out its three days. The tests above publish answ
   `Critical` risk deny a request at once, without asking, and add a test with a recorded model
   reply for it.
 - Read the lab's workloads in
-  [`testdata/lab`](https://github.com/ruxxzebre/eyelang/tree/main/testdata/lab), the real
+  [`testdata/lab`](https://github.com/ruxxzebre/eyelang/tree/dev/testdata/lab), the real
   programs this one is modelled on: a morning news digest, train reminders, and NetBird access.
 - See [the `eye` command](/reference/cli) for `eye run`, `eye runs` and `eye test` in full.

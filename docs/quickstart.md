@@ -137,7 +137,7 @@ highlighting, errors as you type, formatting on save, an outline, folding and go
 **Other editors.** `eye lsp` is a language server that talks over standard input and output.
 Point any LSP client at the command `eye lsp` for `.eye` files. Editors that use tree-sitter
 (Neovim, Helix, Zed) can also use the grammar and queries in
-[tree-sitter-eyelang](https://github.com/ruxxzebre/eyelang/tree/main/tree-sitter-eyelang).
+[tree-sitter-eyelang](https://github.com/ruxxzebre/eyelang/tree/dev/tree-sitter-eyelang).
 
 ## Next
 

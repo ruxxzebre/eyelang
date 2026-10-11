@@ -11,7 +11,7 @@ for as long as it needs, holds no memory while it waits, and carries on after a 
 This page gives the shelf from the [previous page](/tutorial/an-entity) a rule: a hold on stock
 lasts fifteen minutes. If the order isn't paid for by then, the stock goes back on the shelf.
 
-The program is [`docs/tutorial/code/a-job-that-waits/main.eye`](https://github.com/ruxxzebre/eyelang/blob/main/docs/tutorial/code/a-job-that-waits/main.eye).
+The program is [`docs/tutorial/code/a-job-that-waits/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/a-job-that-waits/main.eye).
 
 ## The job
 

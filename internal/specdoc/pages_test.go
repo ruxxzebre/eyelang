@@ -16,7 +16,7 @@ func TestPagesUpToDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, sidebar := Pages(spec, "https://github.com/ruxxzebre/eyelang/blob/main/")
+	pages, sidebar := Pages(spec, "https://github.com/ruxxzebre/eyelang/blob/dev/")
 	want := map[string]bool{}
 	for _, p := range pages {
 		path := filepath.Join("../../docs", p.Path)
