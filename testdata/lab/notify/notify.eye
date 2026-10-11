@@ -42,7 +42,7 @@ pub type Asked =
 pub type Answered = { question: QuestionId, choice: String, by: UserId, at: Instant }
 
 @port(3001)
-@allow(digest, trains, access)
+@allow(digest, trains, access, approving)
 @http(names: snake)
 @auth(bearer: "notify-token")
 contract Notify {
