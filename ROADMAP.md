@@ -37,8 +37,8 @@ Checked: 2026-10-11
   --signatures`, 10,000 waiting tasks, the spec's examples through the checker).
 - The decisions of 2026-10-11 ([docs/internals/proposals.md](docs/internals/proposals.md), all
   accepted) change code that v0.2 shipped: approvals answered by id and only by the person asked
-  (C.8, #71, the lab's main security gap, so before the homelab relies on approvals), `!` on
-  publishing and starting child runs (C.9, #72), a job changed under a paused run faulting
+  (C.8, #71, the lab's main security gap, so before the homelab relies on approvals), a job
+  changed under a paused run faulting
   instead of replaying wrong values (C.10, #73), and module roots in `eye.toml` (C.11, #74),
   which lets the digest's deploy drop its symbolic links.
 - Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
@@ -323,7 +323,7 @@ each names the closed issue it continues.
 | C.6 10,000 waiting tasks within a memory budget (from 3.5) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
 | C.7 Every SPECS.md example passes the checker (phase 2's exit test) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
 | C.8 Approvals answered by id, and only by the person asked | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
-| C.9 `!` on publishing and starting child runs; every effect inferred | [#72](https://github.com/ruxxzebre/eyelang/issues/72) |
+| C.9 `!` on publishing and starting child runs; every effect inferred (done) | [#72](https://github.com/ruxxzebre/eyelang/issues/72) |
 | C.10 A job changed under a paused run faults instead of replaying | [#73](https://github.com/ruxxzebre/eyelang/issues/73) |
 | C.11 Module roots in `eye.toml` | [#74](https://github.com/ruxxzebre/eyelang/issues/74) |
 
@@ -380,7 +380,8 @@ What each task is, until its issue holds it:
   **Done when:** tests show two runs asking the same thing answered one by one, an answer by
   someone other than `from` refused while the run keeps waiting, an ambiguous `eye approve` and
   test `approve(…)` refused, and `ok.by` read in a job; the lab's tests pass.
-- **C.9 Every recorded step marked (#52, 5.8, and #26, 2.6; open questions 19 and 22).** The
+- **C.9 Every recorded step marked (#52, 5.8, and #26, 2.6; open questions 19 and 22).** Done
+  on 2026-10-11, except `eye fix`: the call sites that needed `start!` were changed by hand. The
   checker infers `publish T`, `consume T`, `secret S` and `ffi`, so a public function that
   publishes, reads a secret or calls an extern must list it in `uses`; in a job it requires
   `publish!`, `start!` on a child run and `!` on an extern call, and refuses `!` on them
