@@ -12,6 +12,7 @@ Every public declaration of the standard library, with its signature and documen
 | Module | |
 |---|---|
 | [Prelude](./std/prelude) | What every module sees without importing it: `Option`, `Result`, and the types that runs of jobs and calls to other services give back. |
+| [Built-in types](./std/types) | Numbers, text, time, sizes and collections |
 | [Built-in functions](./std/builtins) | Output, tests, time, collections, strings and numbers |
 | [runtime.store](./runtime/store) | The in-memory store: everything a running program keeps, as one immutable value. |
 | [ai](./std/ai) | Typed calls to language models. |

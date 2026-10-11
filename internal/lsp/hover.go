@@ -65,6 +65,11 @@ func describe(target any, link func(string) (string, bool)) string {
 		}
 		return ""
 	case check.BuiltinType:
+		for _, b := range ir.BuiltinTypeDocs {
+			if b.Name == t.Name {
+				return hoverText(b.Signature, b.Doc, link)
+			}
+		}
 		return hoverText("type "+t.Name, "A type built into the language.", link)
 	case check.Local:
 		return "" // its type isn't recorded yet

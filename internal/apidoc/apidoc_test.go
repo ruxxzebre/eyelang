@@ -71,6 +71,7 @@ pub entity Board(id: String) {
 		"### area {#area}\n\n```eye\npub fn area(s: Shape) -> Float\n```\n\nThe area of a [`Shape`](./main#Shape)",
 		"[`Square`](./main#Shape-Square) is exact;\n[`Circle`](./main#Shape-Circle)",
 		"[`filter`](./std/builtins#filter), [`Option`](./std/prelude#Option), [`ai.generate`](./std/ai#generate)",
+		"as a [`Float`](./std/types#Float) would hold it",
 		"Broken: [Nowhere].",
 		"- <span id=\"Board-shapes\"></span>`state shapes: List(Shape) = []`: Everything added so far.",
 		"#### Board.add {#Board-add}\n\n```eye\npub fn add(s: Shape)\n```\n\nAdds a shape to the board.",
@@ -82,6 +83,9 @@ pub entity Board(id: String) {
 	if strings.Contains(main, "helper") || strings.Contains(main, "ordinary comment") {
 		t.Errorf("main.md documents private or undocumented things:\n%s", main)
 	}
+	if !strings.Contains(byPath["std/types.md"], "## Duration {#Duration}") {
+		t.Errorf("the built-in types page lacks Duration:\n%s", byPath["std/types.md"])
+	}
 	if !strings.Contains(byPath["std/prelude.md"], "### Option(a)") || !strings.Contains(byPath["std/builtins.md"], "### filter") {
 		t.Error("the standard library pages are missing")
 	}
@@ -89,7 +93,7 @@ pub entity Board(id: String) {
 	for _, p := range problems {
 		got = append(got, p.Decl+": "+p.Link)
 	}
-	if want := "Point: Point.at|Point: Origin|area: Float|area: Nowhere"; strings.Join(got, "|") != want {
+	if want := "Point: Point.at|Point: Origin|area: Nowhere"; strings.Join(got, "|") != want {
 		t.Errorf("problems = %q, want %q", strings.Join(got, "|"), want)
 	}
 	if !strings.Contains(byPath["index.md"], "[main](./main) | Shapes and what they cover.") {

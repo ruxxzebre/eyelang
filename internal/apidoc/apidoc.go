@@ -45,7 +45,7 @@ func (p Problem) String() string {
 // Pages documents the standard library and, if prog has modules of its own,
 // each of them. Problems lists the links in doc comments that name nothing.
 func Pages(prog *ir.Program) ([]Page, []Problem) {
-	pages := []Page{prelude(prog.Prelude), builtins()}
+	pages := []Page{prelude(prog.Prelude), builtinTypes(), builtins()}
 	for _, m := range prog.Modules {
 		if m == prog.Prelude {
 			continue
@@ -124,6 +124,25 @@ func builtins() Page {
 		p.names[d.Name] = id
 		p.decls = append(p.decls, decl{name: d.Name, doc: d.Doc})
 		fmt.Fprintf(&b, "### %s {#%s}\n\n```eye\n%s\n```\n\n%s\n\n", d.Name, id, d.Signature, d.Doc)
+	}
+	p.Content = b.String()
+	return p
+}
+
+func builtinTypes() Page {
+	p := Page{Path: "std/types.md", Title: "Built-in types", Summary: "Numbers, text, time, sizes and collections"}
+	p.module = "types"
+	p.names = map[string]string{}
+	var b strings.Builder
+	b.WriteString(frontmatter(p.Title))
+	b.WriteString("# Built-in types\n\n")
+	b.WriteString("Types every module can name without importing anything. Their values and operations are ")
+	b.WriteString("built into the language; the functions that work on them are the [built-in functions](./builtins).\n\n")
+	for _, d := range ir.BuiltinTypeDocs {
+		id := anchor(d.Name)
+		p.names[d.Name] = id
+		p.decls = append(p.decls, decl{name: d.Name, doc: d.Doc})
+		fmt.Fprintf(&b, "## %s {#%s}\n\n```eye\n%s\n```\n\n%s\n\n", d.Name, id, d.Signature, d.Doc)
 	}
 	p.Content = b.String()
 	return p
@@ -358,7 +377,7 @@ var docLink = regexp.MustCompile(`\[([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)\]`)
 // link turns `[Name]` in doc comments into links to the page and heading of
 // the declaration it names, and reports the ones that name nothing. A name is
 // looked up in the page's own module, then the prelude, then the built-in
-// functions; `[module.Name]` names a declaration of another module.
+// types and functions; `[module.Name]` names a declaration of another module.
 func link(pages []Page) []Problem {
 	byModule := map[string]*Page{}
 	for i := range pages {
@@ -379,7 +398,7 @@ func link(pages []Page) []Problem {
 			}
 			return filepath.ToSlash(rel) + "#" + id, true
 		}
-		for _, p := range []*Page{from, byModule["prelude"], byModule["builtins"]} {
+		for _, p := range []*Page{from, byModule["prelude"], byModule["types"], byModule["builtins"]} {
 			if t, ok := try(p, name); ok {
 				return t, true
 			}
