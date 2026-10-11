@@ -1,0 +1,4 @@
+{
+  "contract": "Sms",
+  "exchanges": [{ "op": "text", "result": { "kind": "Queued", "id": "sm-1" } }]
+}

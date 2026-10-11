@@ -1,0 +1,4 @@
+{
+  "contract": "Sms",
+  "exchanges": [{ "op": "text", "result": { "kind": "Uncertain", "key": "text-1" } }]
+}

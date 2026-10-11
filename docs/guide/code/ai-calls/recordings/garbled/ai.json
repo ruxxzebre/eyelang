@@ -1,0 +1,23 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    {
+      "op": "generate",
+      "result": {
+        "category": "Shipping",
+        "urgency": { "kind": "Normal" },
+        "summary": "The customer asks where their parcel is.",
+        "draft": null
+      }
+    },
+    {
+      "op": "generate",
+      "result": {
+        "category": "Shipping",
+        "urgency": { "kind": "Normal" },
+        "summary": "The customer asks where their parcel is.",
+        "draft": null
+      }
+    }
+  ]
+}

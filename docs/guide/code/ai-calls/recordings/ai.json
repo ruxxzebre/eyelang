@@ -1,0 +1,14 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    {
+      "op": "generate",
+      "result": {
+        "category": "Billing",
+        "urgency": { "kind": "Urgent", "reason": "the customer is losing money" },
+        "summary": "The customer was charged twice for order 1182 and wants one charge back.",
+        "draft": null
+      }
+    }
+  ]
+}

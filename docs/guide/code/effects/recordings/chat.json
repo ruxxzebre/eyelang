@@ -1,0 +1,4 @@
+{
+  "contract": "Chat",
+  "exchanges": [{ "op": "post", "key": "late-2026-10-14", "result": { "kind": "Posted", "id": "msg-1" } }]
+}

@@ -1,0 +1,233 @@
+---
+title: Testing with time and recordings
+---
+
+# Testing with time and recordings
+
+Programs that keep state and wait are hard to test in most languages. The test has to wait for
+real time to pass, or mock the clock in every place that reads it. It talks to real services, or to
+mocks that drift from what the services do. It shares a database with other tests, and fails when
+they run in a different order. Such tests are slow, and they fail now and then for no reason.
+
+Eyelang tests don't have these problems, by design: each test gets its own empty store, a clock
+that moves only when the test says so, and recorded answers in place of other services. A test of
+three days of waiting runs in a millisecond, and gives the same result every time.
+
+The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/tree/dev/docs/guide/code/testing)
+that the test suite checks and runs: a morning digest, sent through a chat service at 07:30.
+
+## Test blocks
+
+A `test` block is a declaration, next to the code it tests. It has a name and a body, and
+`expect(condition)` fails it:
+
+<<< ./code/testing/format/format.eye#headline
+
+`eye test` runs every test in the program, the tests of the modules it imports from its own
+directory included:
+
+```sh
+eye test docs/guide/code/testing
+```
+
+```text
+ok    format: a headline names the day and counts the items (11µs)
+ok    the digest goes out at 07:30 (268µs)
+ok    each test starts with an empty store (2µs)
+ok    a lost reply is settled by asking Notify, not by sending again (125µs)
+ok    a refused digest keeps the items for tomorrow (81µs)
+ok    a run that passes its deadline ends as an outcome (146µs)
+6 tests passed (633µs)
+```
+
+A test from another module has the module's name in front, here `format:`. When a comparison
+fails, `expect` shows the value it got, and a failing test shows what it logged. Here two
+expectations were changed to be wrong:
+
+```text
+ok    format: a headline names the day and counts the items (154µs)
+FAIL  the digest goes out at 07:30 (1.914ms)
+      main.eye:46:3: expected Inbox("ann").sent == ["m-9"], but Inbox("ann").sent is ["m-1"]
+
+ok    each test starts with an empty store (3µs)
+ok    a lost reply is settled by asking Notify, not by sending again (121µs)
+FAIL  a refused digest keeps the items for tomorrow (84µs)
+      main.eye:73:3: expected Inbox("ann").items == [], but Inbox("ann").items is ["Bin day moved"]
+
+      warn: Notify refused the digest for 2026-10-14: no chat for ann
+ok    a run that passes its deadline ends as an outcome (498µs)
+2 of 6 tests failed
+```
+
+`eye test` exits with status 1 when a test fails, so CI can run it as it is.
+
+- `--run text` runs only the tests whose names contain the text:
+
+  ```text
+  $ eye test --run lost
+  ok    a lost reply is settled by asking Notify, not by sending again (242µs)
+  1 tests passed (242µs)
+  ```
+
+- `-v` shows what passing tests logged, too:
+
+  ```text
+  $ eye test -v --run refused
+  ok    a refused digest keeps the items for tomorrow (217µs)
+        warn: Notify refused the digest for 2026-10-14: no chat for ann
+  1 tests passed (217µs)
+  ```
+
+## A fresh store for each test
+
+Each test starts with an empty, in-memory store: no entities, no runs, no events. What one test
+writes, the next can't see, so tests can run in any order and don't need set-up or clean-up code:
+
+<<< ./code/testing/main.eye#test-fresh
+
+The test before this one sent a digest and changed `Inbox("ann")`. Here it is new again. Since an
+[entity](/guide/entities) exists from its first use, a test creates the state it needs by calling
+methods, as a user of the program would.
+
+## Time
+
+The program sends a digest every morning:
+
+<<< ./code/testing/main.eye#inbox
+
+<<< ./code/testing/main.eye#digest
+
+In a test, the clock starts at 2026-01-01 00:00 UTC, or at the time `with clock(...)` gives, and
+moves only when the test calls `advance(...)`:
+
+<<< ./code/testing/main.eye#test-digest
+
+- `with clock(...)` and `with fakes(...)` apply to the rest of the block. `with` works only in
+  tests.
+- `advance(89 min)` moves the clock to 07:29, and nothing has fired yet. `advance(1 min)` reaches
+  07:30. The schedule fires, the run sends the digest, and all of it finishes before `advance`
+  returns, so the next line sees the result.
+- Each run that wakes on the way runs in the order of its wake time, and so does each schedule that
+  fires, if its job is in the test's own module.
+- A run started by a call, from a method or a test, goes as soon as the call returns, until it
+  finishes or waits.
+
+So a test reads like the story it checks, and a day passes in a line.
+
+## Other services: fakes and recordings
+
+The digest calls Notify, which is another service, described by a contract:
+
+<<< ./code/testing/notify/notify.eye#contract
+
+In a test, `with fakes(notify, from: "recordings/")` answers Notify's calls from
+`recordings/notify.json`, a file of real exchanges:
+
+<<< ./code/testing/recordings/notify.json
+
+- A recording is a JSON file per contract module, named after the module, with the contract's name
+  and a list of exchanges.
+- Each exchange names an operation, the key the call was made with, and the result, in the same
+  JSON shape the service uses: a variant is an object with a `"kind"`.
+- A call is answered by the exchange with its operation and key. A call without a key gets the
+  first exchange for its operation.
+- `{ "kind": "Uncertain", "key": "…" }` records a command whose reply was lost.
+
+The second exchange is such a lost reply. The test for it checks that the program settles it by
+asking `sent` with the same key, and doesn't send the digest twice:
+
+<<< ./code/testing/main.eye#test-lost
+
+The fourth exchange is a refusal, and its test checks that the items wait for the next day:
+
+<<< ./code/testing/main.eye#test-refused
+
+Recordings are checked against the contract when the test loads them, so they can't drift from it
+unnoticed. A result that the contract's types don't allow fails the test:
+
+```text
+FAIL  a refused digest keeps the items for tomorrow (101µs)
+      main.eye:68:3: recordings/notify.json: exchange 4 (send): Delivery has no kind "Rejected"
+```
+
+A call that no exchange answers fails the test, and so does a call to a service the test has no
+fakes for. A test never reaches the network by accident:
+
+```text
+main.eye:31:9: job digest: recordings/notify.json has no exchange for notify.send with key "digest-2026-10-15"
+main.eye:31:9: job digest: notify.send calls another service; replay recordings with `with fakes(notify, from: "…")`, or say how it goes over HTTP with @http
+```
+
+Model calls are faked the same way: `with fakes(ai, from: "recordings/")` reads
+`recordings/ai.json`, whose exchanges are the replies, used in order. See [AI calls](/guide/ai-calls).
+
+### Making a recording
+
+Write a recording from what the real service answered: a reply you saw in its logs, or one you got
+by calling it with `curl`. Keep one directory per situation when tests need different answers to
+the same call, and name it in `from:`, as the tutorial's
+[approvals](/tutorial/approvals) program does for a model that fails.
+
+## Outcomes, approvals and events
+
+A run that stops on a bug fails its test: `unreachable`, a fake with no answer, a recording that
+doesn't fit. The failure says where the run stopped, as the messages above do.
+
+A run that ends as an outcome the program declared doesn't fail the test. A run past its
+`@deadline` ends as `Failed(DeadlinePassed)`, which is part of how the program behaves. To check
+it, have a job join the run and keep the outcome:
+
+<<< ./code/testing/main.eye#deadline
+
+<<< ./code/testing/main.eye#test-deadline
+
+Two more things stand in for the world outside:
+
+- **People:** `approve(text)` and `decline(text)` answer the `approval!` whose text contains the
+  given text. See [Jobs and waiting](/guide/jobs-and-waiting#ways-to-wait).
+- **Events:** `contract.event.publish(...)` stands in for another service sending an event, and
+  the runs it starts or wakes go before it returns. See
+  [Views, events and schedules](/guide/views-events-schedules#events).
+
+## Why tests can't flake
+
+A flaky test passes or fails depending on something it doesn't control. Eyelang tests control all
+of it:
+
+| Source of flakiness | In an Eyelang test |
+|---|---|
+| Real time passing | The clock moves only with `advance`, and starts where `clock(...)` says |
+| The host's time zone | Zones are named in the code, never taken from the machine |
+| A slow or down service | Calls are answered from recordings; a missing one fails the test |
+| A model's different answer each time | Model replies are recorded too |
+| State left by another test | Each test has its own empty store |
+| Runs and tasks in a different order | On the test clock, runs wake in order of their wake time, and tasks take turns |
+
+The same test gives the same result on every run, on any machine.
+
+## Mistakes this prevents
+
+| The bug | Why it can't happen |
+|---|---|
+| A test that sleeps, and is slow | There is no real time in a test; `advance` jumps |
+| A mock that agrees with the code but not with the service | Fakes are real exchanges, checked against the contract |
+| A test that calls production | A call with no recorded answer fails |
+| Test-only switches left in the program | `with` works only in tests: `with applies a test handler, such as clock(…) or fakes(…), and works only in tests` |
+| Tests that pass alone and fail together | Each test has its own store |
+
+::: info Not yet
+There is no recorder yet: you write recordings by hand. `eye test --live`, which runs model-backed
+tests against real models, and `with memory(...)` are designed but not built. A test can't join a
+run itself, so a job joins it, as `refresh` does. See [What runs today](/reference/status#time-secrets-tests).
+:::
+
+## See also
+
+- [Time, secrets, tests](/reference/language/time-secrets-tests) in the reference: the rules for
+  clocks, fakes and outcomes in tests.
+- [The eye command](/reference/cli#test): `eye test` and its options.
+- [Talking to other services](/guide/contracts): contracts, keys and `Uncertain`.
+- [Jobs and waiting](/guide/jobs-and-waiting) and [Entities](/guide/entities): what the tests
+  above exercise.
+- [Built-in functions](/reference/api/std/builtins#tests): `expect`, `advance`, `clock`, `approve`,
+  `decline` and `fakes`.

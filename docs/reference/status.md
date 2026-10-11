@@ -165,7 +165,7 @@ run time, the checks that come from contracts (`@port`, `@allow`, `@fresh`, `@de
 | `secret S`, `publish T`, `consume T`, `ffi` | ✓ | — (not inferred; open question 19) | n/a | |
 | `fs`, `process`, `random` | ✓ | — | — (no `fs` or `process` module, no `random()`) | |
 | Function types kept in data state their effects | ✓ | partial: a function kept in a field can be called, but its effects aren't checked | ✓ | |
-| In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | ✓ | ✓ | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L59), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L158) |
+| In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | partial: entity calls, `sleep` and waiting functions are checked; contract calls, `now()`, `env.get` and `ai.generate` without `!` are not | ✓ | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L59), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L158) |
 
 ## [Programs and concurrency](/reference/language/programs-and-concurrency)
 

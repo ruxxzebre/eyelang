@@ -1,0 +1,25 @@
+{
+  "contract": "Payments",
+  "exchanges": [
+    {
+      "op": "charge",
+      "key": "invoice-i-1",
+      "result": { "kind": "Charged", "id": "ch-1", "at": "2026-10-12T09:30:00Z" }
+    },
+    {
+      "op": "charge",
+      "key": "invoice-i-2",
+      "result": { "kind": "Declined", "reason": "insufficient funds" }
+    },
+    { "op": "charge", "key": "invoice-i-3", "result": { "kind": "Uncertain", "key": "invoice-i-3" } },
+    {
+      "op": "chargeFor",
+      "key": "invoice-i-3",
+      "result": { "kind": "Charged", "id": "ch-3", "at": "2026-10-12T09:31:00Z" }
+    },
+    {
+      "op": "balance",
+      "result": { "kind": "Err", "value": { "kind": "BadStatus", "code": 503, "body": "down for maintenance" } }
+    }
+  ]
+}
