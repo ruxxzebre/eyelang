@@ -468,6 +468,19 @@ trait Box(a) {
 			"5:30: self is any type that implements Named, so it has only the methods of Named, and nick isn't one",
 			"10:25: expected a, found Int",
 		}},
+		{"a built-in that takes a function is checked against its declaration", `job j() {
+  let ok = poll!(every: 1 min, within: 2 h, fn { 1 })
+  let late = poll!(every: 1 min, inside: 2 h, within: 3 h, check: fn { true })
+}
+fn t() -> Bool = timeout(1 min, fn { 1 }) == Some("x")
+fn m(r: Result(Int, String)) -> Result(Int, Int) = r.mapErr(fn e: e)
+fn b() -> (Int, Int) = both(fn { 1 }, fn { "two" })`, []string{
+			"2:50: expected Bool, found Int",
+			"3:42: poll has no parameter inside",
+			"5:46: expected Option(Int), found Option(String)",
+			"6:52: expected Result(Int, Int), found Result(Int, String)",
+			"7:24: expected (Int, Int), found (Int, String)",
+		}},
 		{"a function has none of the derived traits", `fn show(f: fn() -> Int) = print(f)
 fn same(f: fn() -> Int, g: fn() -> Int) -> Bool = f == g
 job j(f: fn() -> Int) {}

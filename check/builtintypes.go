@@ -121,45 +121,6 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	case "fakes":
 		b.name("from", tString)
 		return tHandler
-	case "poll":
-		b.name("every", tDuration)
-		b.name("within", tDuration)
-		b.arg(0, fn(tBool))
-		return tBool
-	case "reserve":
-		t := c.fresh()
-		b.arg(0, tSize)
-		b.arg(1, fn(t))
-		return t
-	case "both":
-		l, r := c.fresh(), c.fresh()
-		b.arg(0, fn(l))
-		b.arg(1, fn(r))
-		return &ttuple{elems: []typ{l, r}}
-	case "race":
-		t := c.fresh()
-		b.arg(0, list(fn(t)))
-		return t
-	case "timeout":
-		t := c.fresh()
-		b.arg(0, tDuration)
-		b.arg(1, fn(t))
-		return option(t)
-	case "taskGroup":
-		t := c.fresh()
-		b.arg(0, fn(t, con("TaskGroup")))
-		return t
-	case "next":
-		event := c.fresh()
-		b.arg(0, con("Event", event))
-		b.name("where", fn(tBool, event))
-		b.name("within", tDuration)
-		return option(event)
-	case "mapErr":
-		ok, e, f := c.fresh(), c.fresh(), c.fresh()
-		b.arg(0, result(ok, e))
-		b.arg(1, fn(f, e))
-		return result(ok, f)
 	case "channel":
 		a := c.fresh()
 		if b.name("capacity", tInt) == nil {

@@ -442,7 +442,7 @@ func writeType(b *strings.Builder, t typ, names map[*tvar]string) {
 		b.WriteString(")")
 	case *tvar:
 		switch {
-		case x.name != "":
+		case x.name != "" && (x.rigid || x.lit == litNone):
 			b.WriteString(x.name)
 		case x.lit == litString:
 			b.WriteString("String")
