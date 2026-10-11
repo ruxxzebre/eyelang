@@ -45,8 +45,9 @@ Checked: 2026-10-11
 
 **Ahead, in order**
 
-1. The gaps in the core that phase 7 and self-hosting need closed: function types in signatures
-   aren't typed, and a private function's inferred type isn't generic. Then the rest of the
+1. The gaps in the core that phase 7 and self-hosting need closed: a function type in a signature
+   has its shape checked but not its effects, and a private function's inferred type isn't
+   generic. Then the rest of the
    checker's partial rows in status.md (`NonZero`, `opaque`, effects that aren't inferred).
 2. The digest in the homelab, closing phase 5's exit criterion.
 3. Phase 6 (v0.3): its tasks are written out below the phase (6.2 to 6.9, beside 6.1, #42).
