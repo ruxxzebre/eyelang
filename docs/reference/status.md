@@ -299,7 +299,7 @@ Runs column says whether the runtime does what the attribute says.
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| `ai.generate!`, with the schema taken from the type expected | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L243), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L376) |
+| `ai.generate!`, with the schema taken from the type expected | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L243), [maps, tuples, times](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go#L381), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L376) |
 | Only types with `Schema` can be asked for | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L249) |
 | A reply is checked, asked for once more, then `Err(Malformed(…))` | n/a | n/a | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L243) |
 | Providers: Anthropic, OpenAI and a gateway, by `provider:` or by the model's name | ✓ | ✓ | ✓ | [ai_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go) |

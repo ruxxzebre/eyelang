@@ -1465,7 +1465,9 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   the JSON shape of section 17: a record becomes an object with every field required (`Option`
   fields may be null), a type whose variants have no fields an enum of strings, and any other
   variant a tagged union, `{"kind": "Breaking", "reason": "…"}`; `##` doc comments become
-  descriptions. A type that holds a `Secret`, a value of a program's `extern type` or a function
+  descriptions. Providers' strict schemas name every property of an object, so a model is asked
+  for a map as a list of `{"key": …, "value": …}` entries and for a tuple as an object with
+  fields `value1`, `value2`, …; reading a reply takes either shape. A type that holds a `Secret`, a value of a program's `extern type` or a function
   has no `Schema`, so it can't be asked for.
 - **The expected type picks the schema.** `ai.generate` returns `Result(a, AiError) where a:
   Schema`, so the type comes from where the result goes: here, the job's return type. When nothing

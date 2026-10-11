@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -24,6 +25,11 @@ import (
 //     object;
 //   - an Instant is an RFC 3339 string, a Date "2026-10-12", a time of day
 //     "07:40", a Duration a number of milliseconds and a Size of bytes.
+//
+// Providers' strict schemas name every property of an object and have no
+// fixed-length arrays, so a model is asked for a map as a list of
+// {"key": …, "value": …} entries and for a tuple as an object with fields
+// value1, value2, …. Reading takes either shape.
 //
 // With snake set, names are snake_case on the wire: field dedupeKey is
 // dedupe_key, and variant Normal is "normal".
@@ -262,6 +268,40 @@ func (in *Interp) decodeWire(x any, t *ir.TypeExpr, snake bool, env typeEnv, pat
 			}
 		}
 		return fail("a date such as 2026-10-12")
+	case "Time":
+		if s, ok := x.(string); ok && timeOfDayRE.MatchString(s) {
+			for _, layout := range []string{"15:04", "15:04:05"} {
+				if d, err := time.Parse(layout, s); err == nil {
+					return ir.TimeOfDay{Hour: d.Hour(), Minute: d.Minute(), Second: d.Second()}, nil
+				}
+			}
+		}
+		return fail("a time of day such as 14:30")
+	case "tuple":
+		// An array, as toWire writes it, or an object with fields value1,
+		// value2, …, as schemaOf asks a model for it.
+		vals := make([]Value, len(t.Args))
+		xs, isArray := x.([]any)
+		obj, isObject := x.(map[string]any)
+		if (!isArray || len(xs) != len(vals)) && !isObject {
+			return fail(fmt.Sprintf("an array of %d values", len(vals)))
+		}
+		for i := range vals {
+			raw, name := any(nil), fmt.Sprintf("value%d", i+1)
+			if isArray {
+				raw = xs[i]
+			} else if r, present := obj[name]; present {
+				raw = r
+			} else {
+				return nil, fmt.Errorf("%s: missing field %s", joinPath(path, name), name)
+			}
+			v, err := in.decodeWire(raw, arg(i), snake, env, fmt.Sprintf("%s[%d]", path, i))
+			if err != nil {
+				return nil, err
+			}
+			vals[i] = v
+		}
+		return &Tuple{Elems: vals}, nil
 	case "()":
 		if x == nil {
 			return ir.Unit{}, nil
@@ -285,6 +325,9 @@ func (in *Interp) decodeWire(x any, t *ir.TypeExpr, snake bool, env typeEnv, pat
 		}
 		return &List{Elems: vals}, nil
 	case "Map":
+		if entries, ok := x.([]any); ok {
+			return in.decodeEntries(entries, arg(0), arg(1), snake, env, path)
+		}
 		obj, ok := x.(map[string]any)
 		if !ok {
 			return fail("an object")
@@ -329,6 +372,48 @@ func (in *Interp) decodeWire(x any, t *ir.TypeExpr, snake bool, env typeEnv, pat
 		return rec, nil
 	}
 	return fail(t.Name)
+}
+
+// timeOfDayPattern is how a model writes a Time: 14:30 or 14:30:15.
+const timeOfDayPattern = `^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$`
+
+var timeOfDayRE = regexp.MustCompile(timeOfDayPattern)
+
+// decodeEntries reads a map written as a list of entries: pairs, as toWire
+// writes a map whose keys aren't strings, or objects with a key and a value,
+// as schemaOf asks a model for a map.
+func (in *Interp) decodeEntries(entries []any, keyType, valType *ir.TypeExpr, snake bool, env typeEnv, path string) (Value, error) {
+	m := &Map{}
+	for i, e := range entries {
+		at := fmt.Sprintf("%s[%d]", path, i)
+		var rawKey, rawVal any
+		switch x := e.(type) {
+		case []any:
+			if len(x) != 2 {
+				return nil, fmt.Errorf("%s: expected a key and a value, found %s", at, describeJSON(e))
+			}
+			rawKey, rawVal = x[0], x[1]
+		case map[string]any:
+			k, hasKey := x["key"]
+			v, hasVal := x["value"]
+			if !hasKey || !hasVal {
+				return nil, fmt.Errorf("%s: expected an object with a key and a value, found %s", at, describeJSON(e))
+			}
+			rawKey, rawVal = k, v
+		default:
+			return nil, fmt.Errorf("%s: expected an entry with a key and a value, found %s", at, describeJSON(e))
+		}
+		key, err := in.decodeWire(rawKey, keyType, snake, env, joinPath(at, "key"))
+		if err != nil {
+			return nil, err
+		}
+		val, err := in.decodeWire(rawVal, valType, snake, env, joinPath(at, "value"))
+		if err != nil {
+			return nil, err
+		}
+		m = m.with(key, val)
+	}
+	return m, nil
 }
 
 func joinPath(path, field string) string {
@@ -438,8 +523,10 @@ func (in *Interp) schemaOf(t *ir.TypeExpr, env typeEnv, seen map[*ir.Type]bool) 
 	switch t.Name {
 	case "String", "Key", "Zone":
 		return map[string]any{"type": "string"}, nil
-	case "Int", "Duration":
+	case "Int", "Duration", "Size":
 		return map[string]any{"type": "integer"}, nil
+	case "Time":
+		return map[string]any{"type": "string", "pattern": timeOfDayPattern}, nil
 	case "Float":
 		return map[string]any{"type": "number"}, nil
 	case "Bool":
@@ -457,10 +544,29 @@ func (in *Interp) schemaOf(t *ir.TypeExpr, env typeEnv, seen map[*ir.Type]bool) 
 			return nil, err
 		}
 		return map[string]any{"type": "array", "items": items}, nil
+	case "Map":
+		// Providers' strict schemas name every property of an object, so a
+		// map is asked for as a list of entries.
+		if len(t.Args) != 2 {
+			return nil, fmt.Errorf("Map needs its key and value types")
+		}
+		entry, err := in.objectSchema([]string{"key", "value"}, t.Args, nil, env, seen)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"type": "array", "items": entry}, nil
+	case "tuple":
+		// A tuple is an object with fields value1, value2, …, as a variant's
+		// positional fields are.
+		names := make([]string, len(t.Args))
+		for i := range names {
+			names[i] = fmt.Sprintf("value%d", i+1)
+		}
+		return in.objectSchema(names, t.Args, nil, env, seen)
 	case "record":
 		return in.objectSchema(t.Fields, t.Args, nil, env, seen)
 	}
-	return nil, fmt.Errorf("%s has no schema: a model can be asked for records, variants, lists, strings, numbers, booleans and dates", t.Name)
+	return nil, fmt.Errorf("%s has no schema: a model can be asked for records, variants, tuples, lists, sets, maps, strings, numbers, booleans, dates and times", t.Name)
 }
 
 func (in *Interp) declSchema(d *ir.Type, env typeEnv, seen map[*ir.Type]bool) (map[string]any, error) {

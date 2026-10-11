@@ -375,3 +375,76 @@ job twice() -> Result(Answer, ai.AiError) {
 		t.Errorf("%d recorded replies left, want 1", len(in.rt.aiReplies))
 	}
 }
+
+// TestGenerateAsksForMapsTuplesAndTimes asks for maps, tuples, times of day
+// and sizes, and reads recorded replies back as them.
+func TestGenerateAsksForMapsTuplesAndTimes(t *testing.T) {
+	prog := load(t, `
+import ai
+
+type Plan = { counts: Map(String, Int), pair: (String, Int), at: Time, size: Size }
+
+job counts() -> Result(Map(String, Int), ai.AiError) {
+  ai.generate!(model: "m", prompt: "count")
+}
+
+job pair() -> Result((String, Int), ai.AiError) {
+  ai.generate!(model: "m", prompt: "pair")
+}
+
+job when() -> Result(Time, ai.AiError) {
+  ai.generate!(model: "m", prompt: "when")
+}
+
+job plan() -> Result(Plan, ai.AiError) {
+  ai.generate!(model: "m", prompt: "plan")
+}
+`)
+	for _, c := range []struct{ job, reply, want string }{
+		{"counts", `{"value": [{"key": "a", "value": 1}, {"key": "b", "value": 2}]}`, `Completed(Ok({ "a": 1, "b": 2 }))`},
+		{"pair", `{"value1": "a", "value2": 1}`, `Completed(Ok(("a", 1)))`},
+		{"when", `{"value": "14:30"}`, `Completed(Ok(14:30))`},
+		{"plan", `{"counts": [{"key": "x", "value": 3}], "pair": {"value1": "b", "value2": 2}, "at": "07:05:09", "size": 1024}`,
+			`Completed(Ok({ counts: { "x": 3 }, pair: ("b", 2), at: 07:05:09, size: 1 KiB }))`},
+	} {
+		path := filepath.Join(t.TempDir(), "ai.json")
+		rec, _ := json.Marshal(map[string]any{"contract": "ai", "exchanges": []any{
+			map[string]any{"op": "generate", "result": json.RawMessage(c.reply)}}})
+		if err := os.WriteFile(path, rec, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		in := New(prog, io.Discard, io.Discard)
+		in.rt.aiReplies = in.loadReplies(path, ir.Pos{})
+		if got := runJob(t, in, c.job); got != c.want {
+			t.Errorf("%s = %s, want %s", c.job, got, c.want)
+		}
+	}
+	// What a provider is asked for: every object names its properties, as
+	// strict schemas need.
+	noGateway(t)
+	api := &standIn{replies: []map[string]any{chatReply(`{"counts": [], "pair": {"value1": "c", "value2": 0}, "at": "23:59", "size": 0}`, "stop", 10, 5)}}
+	t.Setenv("OPENAI_URL", api.serve(t).URL)
+	prog = load(t, `
+import ai
+
+type Plan = { counts: Map(String, Int), pair: (String, Int), at: Time, size: Size }
+
+job plan() -> Result(Plan, ai.AiError) {
+  ai.generate!(model: "gpt-5.5", prompt: "plan")
+}
+`)
+	if got := runJob(t, New(prog, io.Discard, io.Discard), "plan"); got != `Completed(Ok({ counts: {}, pair: ("c", 0), at: 23:59, size: 0 B }))` {
+		t.Errorf("plan = %s", got)
+	}
+	schema, _ := json.Marshal(api.requests[0]["response_format"].(map[string]any)["json_schema"].(map[string]any)["schema"].(map[string]any)["properties"])
+	for _, want := range []string{
+		`"counts":{"items":{"additionalProperties":false,"properties":{"key":{"type":"string"},"value":{"type":"integer"}},"required":["key","value"],"type":"object"},"type":"array"}`,
+		`"pair":{"additionalProperties":false,"properties":{"value1":{"type":"string"},"value2":{"type":"integer"}},"required":["value1","value2"],"type":"object"}`,
+		`"at":{"pattern":`,
+		`"size":{"type":"integer"}`,
+	} {
+		if !strings.Contains(string(schema), want) {
+			t.Errorf("the schema's properties are %s, without %s", schema, want)
+		}
+	}
+}
