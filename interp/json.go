@@ -425,7 +425,11 @@ func joinPath(path, field string) string {
 
 func (in *Interp) decodeDecl(x any, d *ir.Type, env typeEnv, snake bool, path string) (Value, error) {
 	if d.Alias != nil && len(d.Variants) == 0 {
-		return in.decodeWire(x, d.Alias, snake, env, path)
+		v, err := in.decodeWire(x, d.Alias, snake, env, path)
+		if r, ok := v.(*Record); ok && d.Alias.Name == "record" {
+			r.Type = d
+		}
+		return v, err
 	}
 	switch {
 	case in.isOption(d):

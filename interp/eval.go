@@ -20,6 +20,7 @@ type Interp struct {
 	initing  map[*ir.Global]bool
 	builtins map[string]*BuiltinFn
 	variants map[string]*ir.Variant // by qualified name, for decoding
+	types    map[string]*ir.Type    // record types by qualified name, for decoding
 	entities map[string]*ir.Entity
 	jobs     map[string]*ir.Job
 	rt       *runtime
@@ -41,11 +42,12 @@ func New(prog *ir.Program, out, log io.Writer) *Interp {
 	in := &Interp{
 		prog: prog, out: out, log: log,
 		globals: map[*ir.Global]Value{}, initing: map[*ir.Global]bool{},
-		variants: map[string]*ir.Variant{}, entities: map[string]*ir.Entity{}, jobs: map[string]*ir.Job{},
+		variants: map[string]*ir.Variant{}, types: map[string]*ir.Type{}, entities: map[string]*ir.Entity{}, jobs: map[string]*ir.Job{},
 	}
 	in.builtins = builtinTable()
 	for _, m := range prog.Modules {
 		for _, t := range m.Types {
+			in.types[typeName(t)] = t
 			for _, v := range t.Variants {
 				in.variants[variantName(v)] = v
 			}
@@ -401,7 +403,7 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 		}
 		return c
 	case *ir.Record:
-		r := &Record{}
+		r := &Record{Type: x.Type}
 		for i, n := range x.Names {
 			r.Names = append(r.Names, n)
 			r.Vals = append(r.Vals, in.eval(f, x.Values[i]))
@@ -409,7 +411,7 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 		if x.Type != nil && x.Type.Alias != nil && len(x.Type.Alias.Fields) == len(r.Names) {
 			// Fields in the order the type declares them, which is the order
 			// a derived Ord compares them in.
-			sorted := &Record{}
+			sorted := &Record{Type: x.Type}
 			for _, name := range x.Type.Alias.Fields {
 				if v, ok := r.get(name); ok {
 					sorted.Names = append(sorted.Names, name)

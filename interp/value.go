@@ -77,6 +77,10 @@ type (
 	Record struct {
 		Names []string
 		Vals  []Value
+		// Type is the record's declared type, which its operators and Show
+		// come from; nil for a record of no declared type, as an entity's
+		// snapshot or a fake's call.
+		Type *ir.Type
 	}
 	Variant struct {
 		V    *ir.Variant
@@ -290,7 +294,7 @@ func (r *Record) get(name string) (Value, bool) {
 
 // with returns a copy of r with the field set.
 func (r *Record) with(name string, v Value) *Record {
-	out := &Record{Names: append([]string(nil), r.Names...), Vals: append([]Value(nil), r.Vals...)}
+	out := &Record{Names: append([]string(nil), r.Names...), Vals: append([]Value(nil), r.Vals...), Type: r.Type}
 	for i, n := range out.Names {
 		if n == name {
 			out.Vals[i] = v
@@ -535,6 +539,15 @@ func writeSorted(b *strings.Builder, keys []string) {
 		b.WriteString(",")
 	}
 	b.WriteString("}")
+}
+
+// typeName is a declared type's name qualified by its module's path, as it
+// is saved.
+func typeName(t *ir.Type) string {
+	if t.Module == nil {
+		return t.Name
+	}
+	return t.Module.Path + "." + t.Name
 }
 
 func variantName(v *ir.Variant) string {

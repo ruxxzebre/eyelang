@@ -471,7 +471,11 @@ func (in *Interp) fromAny(x any, t *ir.TypeExpr) (Value, error) {
 
 func (in *Interp) fromDecl(x any, d *ir.Type, args []*ir.TypeExpr) (Value, error) {
 	if d.Alias != nil && len(d.Variants) == 0 {
-		return in.fromAny(x, d.Alias)
+		v, err := in.fromAny(x, d.Alias)
+		if r, ok := v.(*Record); ok && d.Alias.Name == "record" {
+			r.Type = d
+		}
+		return v, err
 	}
 	// Type variables in the fields take the type's arguments.
 	sub := func(t *ir.TypeExpr) *ir.TypeExpr {

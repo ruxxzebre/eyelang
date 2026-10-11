@@ -11,12 +11,17 @@ var opMethods = map[string]struct{ trait, method string }{
 	"+": {"Add", "add"}, "-": {"Sub", "sub"}, "*": {"Mul", "mul"}, "/": {"Div", "div"}, "%": {"Rem", "rem"},
 }
 
-// typeOf finds the declared type of a record or a variant.
+// typeOf finds the declared type of a record or a variant. A record knows
+// its type, except one read from a value saved before records kept theirs:
+// that one is found by its fields.
 func (in *Interp) typeOf(v Value) *ir.Type {
 	switch x := v.(type) {
 	case *Variant:
 		return x.V.Type
 	case *Record:
+		if x.Type != nil {
+			return x.Type
+		}
 		for _, m := range in.prog.Modules {
 			for _, t := range m.Types {
 				if len(t.Fields) != len(x.Names) || len(t.Fields) == 0 {

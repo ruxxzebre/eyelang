@@ -56,6 +56,13 @@ impl Show for Money {
   fn show(self) -> String = "€{self.cents / 100}.{self.cents % 100}"
 }
 
+## A price in pence: the same fields as Money, shown its own way.
+type Pence = { cents: Int }
+
+impl Show for Pence {
+  fn show(self) -> String = "{self.cents}p"
+}
+
 ## Turns anything around that has a minus.
 fn opposite(x: a) -> a where a: Neg(a) = -x
 
@@ -93,6 +100,14 @@ test "operators are traits" {
 test "an impl's show replaces the derived form" {
   let price: Money = { cents: 1250 }
   expect("{price}" == "€12.50")
+}
+
+test "a record shows through its own type, not another with the same fields" {
+  let price: Money = { cents: 1250 }
+  let small: Pence = { cents: 40 }
+  expect("{price} and {small}" == "€12.50 and 40p")
+  let more = { small with cents: 45 }
+  expect("{more}" == "45p")
 }
 
 test "Ord is derived: variants as declared, records part by part" {

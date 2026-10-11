@@ -92,7 +92,14 @@ func (in *Interp) writeValue(b *bytes.Buffer, v Value, at ir.Pos) {
 		in.writeValues(b, x.Keys, at)
 		in.writeValues(b, x.Vals, at)
 	case *Record:
-		b.WriteByte('R')
+		// A record of a declared type is saved with its type's name, so it
+		// keeps its Show and operators when it is read back.
+		if x.Type != nil {
+			b.WriteByte('N')
+			putString(b, typeName(x.Type))
+		} else {
+			b.WriteByte('R')
+		}
 		putUvarint(b, uint64(len(x.Names)))
 		for i, n := range x.Names {
 			putString(b, n)
@@ -235,9 +242,14 @@ func (in *Interp) readValue(r *bytes.Reader, at ir.Pos) Value {
 		keys := in.readValues(r, at)
 		vals := in.readValues(r, at)
 		return newMap(keys, vals)
-	case 'R':
-		n, _ := binary.ReadUvarint(r)
+	case 'R', 'N':
 		rec := &Record{}
+		if tag == 'N' {
+			// A type the program no longer declares leaves the record
+			// without one; its fields are still read.
+			rec.Type = in.types[in.readString(r, at)]
+		}
+		n, _ := binary.ReadUvarint(r)
 		for i := uint64(0); i < n; i++ {
 			rec.Names = append(rec.Names, in.readString(r, at))
 			rec.Vals = append(rec.Vals, in.readValue(r, at))
