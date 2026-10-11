@@ -3,13 +3,28 @@
   "exchanges": [
     {
       "op": "get",
-      "key": "https://www.irishimmigration.ie/",
+      "key": "https://www.gov.ie/en/department-of-justice-home-affairs-and-migration/campaigns/ukraine-updates-en/",
       "result": {
         "kind": "Ok",
         "value": {
           "status": 200,
-          "headers": { "content-type": "text/html" },
+          "headers": {
+            "content-type": "text/html"
+          },
           "body": "<html><nav>Menu</nav><main><h1>Temporary protection</h1><p>Permission for beneficiaries of temporary protection is extended to 4 March 2027. You don't need to apply: your current permission letter stays valid until then, and the Department will write to everyone registered.</p></main></html>"
+        }
+      }
+    },
+    {
+      "op": "get",
+      "result": {
+        "kind": "Ok",
+        "value": {
+          "status": 200,
+          "headers": {
+            "content-type": "text/html"
+          },
+          "body": "<html><main><h1>News</h1><p>Nothing on this page changed in the last day, and nothing new is planned for the coming week. Nothing on this page changed in the last day, and nothing new is planned for the coming week. Nothing on this page changed in the last day, and nothing new is planned for the coming week. </p></main></html>"
         }
       }
     }

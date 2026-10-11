@@ -210,6 +210,15 @@ func labServices(t *testing.T) *lab {
 		switch {
 		case r.URL.Path == "/v1/me":
 			_, _ = io.WriteString(w, `{"id": 1, "username": "digest"}`)
+		case r.URL.Path == "/v1/categories":
+			_, _ = io.WriteString(w, `[{"id": 4, "title": "Digest: Temporary protection"}, {"id": 5, "title": "Digest: Immigration"},
+				{"id": 6, "title": "Digest: Ireland"}, {"id": 7, "title": "Digest: Dublin"}, {"id": 8, "title": "Digest: Dublin events"},
+				{"id": 9, "title": "Digest: Money and housing"}, {"id": 10, "title": "Digest: Transport and weather"}]`)
+		case r.URL.Path == "/v1/feeds" && r.Method == "GET":
+			_, _ = io.WriteString(w, `[]`)
+		case r.URL.Path == "/v1/feeds":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `{"feed_id": 1}`)
 		case strings.HasSuffix(r.URL.Path, "/entries"):
 			_, _ = io.WriteString(w, `{"total": 1, "entries": [{"id": 9, "title": "Rent cap extended",
 				"url": "https://rte.ie/rent", "published_at": "2026-10-12T05:00:00Z",
@@ -269,6 +278,9 @@ func labServices(t *testing.T) *lab {
 		"FLARESOLVERR_URL": flare, "AI_URL": gateway + "/v1", "AI_KEY": "ai-secret",
 		"DIGEST_MODEL": "test-model", "AI_PRICES": "test-model=1/4",
 		"NOTIFY_URL": notify, "NOTIFY_TOKEN": "notify-secret",
+		// eye run reads the pages without a proxy through these, which
+		// refuse every request: the test reads no website.
+		"HTTP_PROXY": proxy, "HTTPS_PROXY": proxy,
 	} {
 		t.Setenv(k, v)
 	}

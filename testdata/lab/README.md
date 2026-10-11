@@ -67,10 +67,16 @@ digest's jobs and no others, and runs its tests.
 
 Its jobs:
 
-- `digest.morning`, at 07:40 Irish time, starts `digest.write` (read Miniflux
-  and two pages, ask the model; at most $0.50 and 7 hours) and sends the
+- `digest.morning`, at 07:40 Irish time, starts `digest.write` and sends the
   briefing to Notify's `/v1/send` with the key `ireland-YYYY-MM-DD`, or a
   failure notice with `ireland-YYYY-MM-DD-failed`.
+- `digest.write` has the seven sections of the TypeScript digest's
+  `sources.json`, in its order. It finds each section's Miniflux category by
+  its exact title (`Digest: Temporary protection`, `Digest: Immigration`, …),
+  makes one that is missing, and subscribes the section's listed feeds that
+  Miniflux doesn't have, as the TypeScript digest does; it never removes or
+  moves a feed. Then it reads each category's entries of the last 24 hours
+  and the sections' 18 pages, and asks the model: at most $0.50 and 7 hours.
 - `digest.command` answers `/digest` from Telegram updates. Nothing in this
   program receives Telegram updates, so it never runs: `/digest` stays with
   the TypeScript automation. (It would also need Notify's identity check,
@@ -211,8 +217,10 @@ dropped):
 | `ai-key` | The gateway's key | `inbox-suggest`, key `token` (mounted as `gateway-key` today; the name here must be `ai-key`) |
 
 The pod needs to reach Miniflux, FlareSolverr, the VPN's proxy, CLIProxyAPI,
-Notify's port 8080 and Postgres; the write job reads no page directly, only
-through the proxy and FlareSolverr.
+Notify's port 8080 and Postgres, and public HTTPS: 14 of the pages are read
+directly, as the TypeScript digest reads them. The Miniflux key needs to
+create categories and subscribe feeds; any key of the user whose categories
+these are can. A key of another user would make new, empty categories.
 
 ### Running beside the TypeScript digest
 
@@ -261,10 +269,12 @@ runs. A good morning shows:
 #2 digest.write(2026-10-12)  done: Ok({ day: 2026-10-12, title: "Ireland & Dublin — Monday 12 October", document: …  [10 steps, 1.8 KiB]
 ```
 
-`eye runs /program 2` lists the write run's steps: `miniflux.me`, the pages
-(`http.get`, `flaresolverr.request`; a page that couldn't be read shows
-`Err(…)` and is listed under "Sources not read" in the briefing), three
-`miniflux.entries`, `ai.generate` and `Day(…).keep`. It doesn't show what
+`eye runs /program 2` lists the write run's steps: `miniflux.me`,
+`miniflux.categories`, `miniflux.feeds`, a `miniflux.createCategory` or
+`miniflux.subscribe` for each category or feed it added, then for each section
+`miniflux.entries` and its pages (`http.get`, `flaresolverr.request`; a page
+that couldn't be read shows `Err(…)` and is listed under "Sources not read" in
+the briefing), and last `ai.generate` and `Day(…).keep`. It doesn't show what
 the model call spent yet. What a bad morning shows, and what to do:
 
 | `eye runs` shows | Meaning | Do |
@@ -273,6 +283,7 @@ the model call spent yet. What a bad morning shows, and what to do:
 | write `failed: … set MINIFLUX_URL …` (or another service's) | A variable is missing | Set it, the same way |
 | morning `done: Err(NoReaders)` | Notify queued it for nobody | Subscribe someone to the event in Notify |
 | morning `done: Err(NotSent(…))` | Notify refused it | Check the token and that the event is in its scope |
+| write `failed: … miniflux.… was refused with status 400 …` | Miniflux refused a call: the key, or a category or feed it won't take | The reply is in the fault |
 | morning `done: Err(MinifluxAway)` | Miniflux stayed paused for six hours | Nothing: readers got "Ireland digest not sent" |
 | morning `sleeping` | Waiting for the write run, which waits for Miniflux while it is paused | Nothing |
 

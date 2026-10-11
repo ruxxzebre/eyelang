@@ -3,6 +3,7 @@ package interp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -44,10 +45,14 @@ func digestDefaultModel(t *testing.T) string {
 
 // digestServices are stand-ins for the services the digest calls.
 type digestServices struct {
-	mu    sync.Mutex
-	asks  int              // how many times the model was asked
-	sends []map[string]any // the bodies Notify was sent
-	keys  []string         // and their idempotency keys
+	mu       sync.Mutex
+	asks     int              // how many times the model was asked
+	requests []map[string]any // and what it was sent
+	briefing string           // what it answers, if not one story
+	sends    []map[string]any // the bodies Notify was sent
+	keys     []string         // and their idempotency keys
+
+	miniflux *minifluxStandIn
 }
 
 func (s *digestServices) asked() int { s.mu.Lock(); defer s.mu.Unlock(); return s.asks }
@@ -62,16 +67,8 @@ func digestStandIns(t *testing.T) *digestServices {
 		t.Cleanup(s.Close)
 		return s.URL
 	}
-	miniflux := serve(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/v1/me":
-			_, _ = io.WriteString(w, `{"id": 1, "username": "digest"}`)
-		case strings.HasSuffix(r.URL.Path, "/entries"):
-			_, _ = io.WriteString(w, `{"total": 0, "entries": []}`)
-		default:
-			http.NotFound(w, r)
-		}
-	})
+	lab.miniflux = newMiniflux(productionCategories())
+	miniflux := serve(lab.miniflux.serve)
 	proxy := serve(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no route", http.StatusBadGateway)
 	})
@@ -80,13 +77,18 @@ func digestStandIns(t *testing.T) *digestServices {
 			"status": 200, "response": "<html>Culture Night</html>"}}`)
 	})
 	gateway := serve(func(w http.ResponseWriter, r *http.Request) {
+		var asked map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&asked)
 		lab.mu.Lock()
 		lab.asks++
+		lab.requests = append(lab.requests, asked)
+		briefing := lab.briefing
 		lab.mu.Unlock()
-		briefing := `{"highlights": [], "sections": [
-			{"heading": "Temporary protection", "stories": []},
-			{"heading": "Dublin", "stories": []},
-			{"heading": "Coming up in Dublin", "stories": []}]}`
+		if briefing == "" {
+			briefing = `{"highlights": ["Story 6"], "sections": [
+				{"heading": "Ireland", "stories": [{"headline": "Story 6", "text": "What happened.", "action": null,
+					"sources": [{"title": "Feed 6", "url": "https://news.example/6"}]}]}]}`
+		}
 		reply, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{
 			"finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": briefing}}},
 			"usage": map[string]any{"prompt_tokens": 30000, "completion_tokens": 3000}})
@@ -131,6 +133,7 @@ func runDigestJob(t *testing.T, dir, job string) (*Interp, *jobRun) {
 		t.Fatal(d)
 	}
 	in := New(prog, io.Discard, io.Discard)
+	offline(in)
 	dublin, _ := time.LoadLocation("Europe/Dublin")
 	in.rt.now = time.Date(2026, 10, 12, 7, 40, 0, 0, dublin)
 	digest := moduleByPath(t, prog, "digest")
@@ -479,5 +482,230 @@ func TestStoreURLForCloudNativePG(t *testing.T) {
 	if cfg.RuntimeParams["search_path"] != "lab" || cfg.TLSConfig == nil || cfg.ConnectTimeout != 5*time.Second ||
 		cfg.Database != "app" || cfg.User != "app" || cfg.Port != 5432 {
 		t.Errorf("parsed as %+v", cfg)
+	}
+}
+
+// minifluxStandIn answers as the lab's Miniflux does: the categories it has,
+// a new one on POST, the feeds it has and new subscriptions, and a
+// category's entries only for a category it has. Any other id is refused
+// with 400, as the real one refused the digest's hard-coded ids.
+type minifluxStandIn struct {
+	mu         sync.Mutex
+	categories map[int]string
+	next       int
+	created    []string         // the titles of the categories made, in order
+	subscribed []map[string]any // the bodies of POST /v1/feeds
+	read       []int            // the categories whose entries were asked for
+	// loseCreate makes the reply to the next POST /v1/categories go missing:
+	// after the category is made, or, if arrived is false, before.
+	loseCreate, arrived bool
+	refuseCreate        bool // POST /v1/categories answers 400
+}
+
+// productionCategories are the categories of the homelab's Miniflux on
+// 2026-10-11: the TypeScript digest made those with "Digest: " titles.
+func productionCategories() map[int]string {
+	return map[int]string{
+		1: "All", 4: "Digest: Temporary protection", 5: "Digest: Immigration", 6: "Digest: Ireland",
+		7: "Digest: Dublin", 8: "Digest: Dublin events", 9: "Digest: Money and housing",
+		10: "Digest: Transport and weather",
+	}
+}
+
+func newMiniflux(categories map[int]string) *minifluxStandIn {
+	m := &minifluxStandIn{categories: categories, next: 11}
+	return m
+}
+
+func (m *minifluxStandIn) serve(w http.ResponseWriter, r *http.Request) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r.Header.Get("X-Auth-Token") != "mf-key" {
+		http.Error(w, `{"error_message":"Access Unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	switch {
+	case r.URL.Path == "/v1/me":
+		_, _ = io.WriteString(w, `{"id": 1, "username": "digest"}`)
+	case r.URL.Path == "/v1/categories" && r.Method == "GET":
+		var list []map[string]any
+		for id, title := range m.categories {
+			list = append(list, map[string]any{"id": id, "title": title, "user_id": 1, "hide_globally": false})
+		}
+		_ = json.NewEncoder(w).Encode(list)
+	case r.URL.Path == "/v1/categories" && r.Method == "POST":
+		var body struct{ Title string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if m.refuseCreate {
+			http.Error(w, `{"error_message":"The category title is invalid"}`, http.StatusBadRequest)
+			return
+		}
+		lost := m.loseCreate
+		m.loseCreate = false
+		if lost && !m.arrived {
+			hijackClose(w)
+			return
+		}
+		id := m.next
+		m.next++
+		m.categories[id] = body.Title
+		m.created = append(m.created, body.Title)
+		if lost {
+			hijackClose(w)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "title": body.Title, "user_id": 1})
+	case r.URL.Path == "/v1/feeds" && r.Method == "GET":
+		_, _ = io.WriteString(w, `[]`)
+	case r.URL.Path == "/v1/feeds" && r.Method == "POST":
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		m.subscribed = append(m.subscribed, body)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"feed_id": 1}`)
+	case strings.HasPrefix(r.URL.Path, "/v1/categories/") && strings.HasSuffix(r.URL.Path, "/entries"):
+		id, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/categories/"), "/entries"))
+		if _, ok := m.categories[id]; !ok {
+			http.Error(w, `{"error_message":"invalid category ID"}`, http.StatusBadRequest)
+			return
+		}
+		m.read = append(m.read, id)
+		_, _ = fmt.Fprintf(w, `{"total": 1, "entries": [{"id": %d, "title": "Story %d", "url": "https://news.example/%d",
+			"published_at": "2026-10-12T05:00:00Z", "content": "<p>What happened in category %d.</p>", "feed": {"title": "Feed %d"}}]}`, id, id, id, id, id)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// offline answers every http.get with one page, so a test that runs the
+// digest never reads the internet: most of its pages are read directly.
+func offline(in *Interp) {
+	page := "<html><main><p>" + strings.Repeat("Nothing on this page changed in the last day. ", 8) + "</p></main></html>"
+	in.rt.httpFakes = &httpFakes{path: "the test's pages", answers: map[string]Value{
+		"": in.ok(&Record{Names: []string{"status", "headers", "body"}, Vals: []Value{int64(200), newMap(nil, nil), page}}),
+	}}
+}
+
+// hijackClose drops the connection without an answer: a lost reply.
+func hijackClose(w http.ResponseWriter) {
+	conn, _, _ := w.(http.Hijacker).Hijack()
+	conn.Close()
+}
+
+// The digest finds each section's category by its title in Miniflux, as the
+// TypeScript digest does, and reads the entries of those categories: the
+// production ids, which it never names itself.
+func TestDigestFindsItsCategoriesByTitle(t *testing.T) {
+	lab := digestStandIns(t)
+	t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+	_, run := runDigestWrite(t)
+	if run.Status != "done" {
+		t.Fatalf("write is %s (%s)", run.Status, run.Fault)
+	}
+	m := lab.miniflux
+	if fmt.Sprint(m.read) != "[4 5 6 7 8 9 10]" || len(m.created) != 0 {
+		t.Errorf("entries were read for %v and categories made: %v", m.read, m.created)
+	}
+	// Miniflux has none of the feeds here, so each listed one is subscribed,
+	// in its section's category.
+	if len(m.subscribed) != 26 {
+		t.Errorf("%d feeds subscribed, want the 26 the sections list", len(m.subscribed))
+	}
+	for _, b := range m.subscribed {
+		if b["feed_url"] == "https://www.luas.ie/rss.xml" && b["category_id"] != 10.0 {
+			t.Errorf("Luas was subscribed with %v, want category 10", b)
+		}
+	}
+}
+
+// A missing category is made, with the TypeScript digest's title.
+func TestDigestMakesAMissingCategory(t *testing.T) {
+	lab := digestStandIns(t)
+	t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+	delete(lab.miniflux.categories, 6)
+	_, run := runDigestWrite(t)
+	if run.Status != "done" {
+		t.Fatalf("write is %s (%s)", run.Status, run.Fault)
+	}
+	if m := lab.miniflux; fmt.Sprint(m.created) != "[Digest: Ireland]" || fmt.Sprint(m.read) != "[4 5 11 7 8 9 10]" {
+		t.Errorf("made %v, and read %v", m.created, m.read)
+	}
+}
+
+// When Miniflux's answer to making a category is lost, the categories are
+// asked again: a category that arrived isn't made twice, and one that didn't
+// is made again.
+func TestDigestMakesACategoryOnceWhenTheReplyIsLost(t *testing.T) {
+	for _, arrived := range []bool{true, false} {
+		t.Run(fmt.Sprintf("arrived=%v", arrived), func(t *testing.T) {
+			lab := digestStandIns(t)
+			t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+			delete(lab.miniflux.categories, 6)
+			lab.miniflux.loseCreate, lab.miniflux.arrived = true, arrived
+			_, run := runDigestWrite(t)
+			if run.Status != "done" {
+				t.Fatalf("write is %s (%s)", run.Status, run.Fault)
+			}
+			if m := lab.miniflux; fmt.Sprint(m.created) != "[Digest: Ireland]" || fmt.Sprint(m.read) != "[4 5 11 7 8 9 10]" {
+				t.Errorf("made %v, and read %v", m.created, m.read)
+			}
+		})
+	}
+}
+
+// A category Miniflux refuses to make fails the write, and the morning says
+// the digest wasn't sent, with the reason.
+func TestDigestReportsMinifluxRefusingACategory(t *testing.T) {
+	lab := digestStandIns(t)
+	t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+	delete(lab.miniflux.categories, 6)
+	lab.miniflux.refuseCreate = true
+	_, run := runDigestJob(t, "../testdata/lab", "morning")
+	if len(lab.sends) != 1 || lab.keys[0] != "ireland-2026-10-12-failed" ||
+		!strings.Contains(fmt.Sprint(lab.sends[0]["body"]), "miniflux.createCategory was refused with status 400") {
+		t.Errorf("morning is %s; Notify got %v", run.Status, lab.sends)
+	}
+	if lab.asked() != 0 {
+		t.Error("the model was asked although the categories weren't all there")
+	}
+}
+
+// The model is asked as the TypeScript digest asks it: today's date and the
+// window, then the sections in order, each with its brief, its entries and
+// its pages.
+func TestDigestTellsTheModelTodayAndTheWindow(t *testing.T) {
+	lab := digestStandIns(t)
+	t.Setenv("AI_PRICES", digestDefaultModel(t)+"=1/1")
+	_, run := runDigestWrite(t)
+	if run.Status != "done" || len(lab.requests) != 1 {
+		t.Fatalf("write is %s (%s), and asked the model %d times", run.Status, run.Fault, len(lab.requests))
+	}
+	msgs, _ := lab.requests[0]["messages"].([]any)
+	user, _ := msgs[len(msgs)-1].(map[string]any)["content"].(string)
+	var input struct {
+		Today, Window string
+		Sections      []struct {
+			Heading string
+			Items   []map[string]any
+			Pages   []map[string]any
+		}
+	}
+	if err := json.Unmarshal([]byte(user), &input); err != nil {
+		t.Fatalf("the model's input isn't JSON: %v\n%s", err, user)
+	}
+	if input.Today != "Monday 12 October 2026" || input.Window != "11 October 07:40 to 12 October 07:40 Irish time" {
+		t.Errorf("today is %q and the window %q", input.Today, input.Window)
+	}
+	var headings []string
+	items, pages := 0, 0
+	for _, s := range input.Sections {
+		headings = append(headings, s.Heading)
+		items += len(s.Items)
+		pages += len(s.Pages)
+	}
+	want := "Temporary protection (Ukrainians)|Immigration|Ireland|Dublin|Coming up in Dublin|Money & housing|Transport & weather"
+	if strings.Join(headings, "|") != want || items != 7 || pages != 16 {
+		t.Errorf("sections %v with %d items and %d pages, want %s, 7 and 16 (the two read with the browser have almost no text)", headings, items, pages, want)
 	}
 }

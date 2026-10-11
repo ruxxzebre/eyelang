@@ -117,11 +117,12 @@ job write(day: Date) -> Result(Article, DigestError) {
     miniflux.refresh!()
     sleep!(5 min)
   }
-  let news = gather!(since: now!() - 24 h)
+  let until = now!()
+  let news = gather!(since: until - 24 h, until:)
   let briefing: Briefing = ai.generate!(
     model: env.get!("DIGEST_MODEL") ?? "gpt-5.6-terra",
     system: prompt,
-    prompt: news.sections |> toJson,
+    prompt: news.input |> toJson,
   ).mapErr(WriteFailed)?
   let article: Article = {
     day,
@@ -190,9 +191,17 @@ type Section = {
   heading: String,
   ## What belongs in the section, and how many stories.
   brief: String,
-  category: miniflux.CategoryId,
+  ## The title of its Miniflux category, made if it is missing. A feed added
+  ## to that category in Miniflux joins the section.
+  category: String,
+  feeds: List(Source),
   pages: List(Page),
 }
+
+## A feed the digest subscribes the section's category to, if Miniflux
+## doesn't have it. It never removes or moves one, so a feed deleted in
+## Miniflux stays deleted until it is listed again.
+type Source = { name: String, url: String }
 
 type Page = { name: String, url: String, via: web.Route }
 
@@ -209,37 +218,227 @@ type Item = { source: String, title: String, url: String, published: Instant, te
 
 type PageText = { source: String, url: String, text: String }
 
+## What the model is given: today's date, the window items were published
+## in, and the sections in order.
+type Input = { today: String, window: String, sections: List(SectionNews) }
+
 type News = {
-  sections: List(SectionNews),
-  ## A page that couldn't be read is reported, and never stops the digest.
+  input: Input,
+  ## A page or feed that couldn't be read is reported, and never stops the
+  ## digest.
   problems: List(String),
 }
 
+# The sections, their categories, feeds and pages are those of the TypeScript
+# digest's sources.json, in its order.
 let sections: List(Section) = [
   {
-    heading: "Temporary protection",
-    brief: "Changes to the rules, payments and accommodation for people from Ukraine. Every story that matters.",
-    category: miniflux.CategoryId(1),
-    pages: [{ name: "Department of Justice", url: "https://www.irishimmigration.ie/", via: Vpn }],
+    heading: "Temporary protection (Ukrainians)",
+    brief: "Temporary protection for people from Ukraine in Ireland and the EU: permission renewals and expiry, IRP cards, the Temporary Protection Transition Scheme (a Stamp 4 permission) and when it opens, the end of State-contracted accommodation, the Accommodation Recognition Payment, social welfare and payments, travel, and statements by the Irish government, the EU or Ukrainian community organisations. One page lists Immigration Service pages with the time each was last modified: mention a page on temporary protection or Ukraine modified within the window, since that is how rule changes appear. The Ukraine updates page matters only if it says it was updated within the window. Council of the EU and European Commission items on other subjects do not belong here.",
+    category: "Digest: Temporary protection",
+    feeds: [
+      { name: "Immigration Service Delivery", url: "https://www.irishimmigration.ie/feed/" },
+      { name: "European Commission Home Affairs", url: "https://home-affairs.ec.europa.eu/node/2/rss_en" },
+      { name: "Council of the EU", url: "https://www.consilium.europa.eu/en/rss/pressreleases.ashx" },
+      {
+        name: "Google News: temporary protection in Ireland",
+        url: "https://news.google.com/rss/search?q=%22temporary+protection%22+(Ukrainian+OR+Ukrainians)+Ireland+when:7d&hl=en-IE&gl=IE&ceid=IE:en",
+      },
+      { name: "TheJournal: Ukraine", url: "https://www.thejournal.ie/topic/ukraine/feed/" },
+    ],
+    pages: [
+      {
+        name: "Immigration Service pages changed",
+        url: "https://www.irishimmigration.ie/wp-json/wp/v2/pages?orderby=modified&order=desc&per_page=15&_fields=modified,link,title",
+        via: Direct,
+      },
+      {
+        name: "gov.ie: Justice on Ukraine",
+        url: "https://www.gov.ie/en/search/?q=Ukraine&organisation=Department+of+Justice%2C+Home+Affairs+and+Migration",
+        via: Direct,
+      },
+      {
+        name: "gov.ie: Ukraine updates",
+        url: "https://www.gov.ie/en/department-of-justice-home-affairs-and-migration/campaigns/ukraine-updates-en/",
+        via: Direct,
+      },
+      { name: "Irish Refugee Council", url: "https://www.irishrefugeecouncil.ie/media-centre/press-releases/", via: Direct },
+      { name: "Embassy of Ukraine in Ireland", url: "https://ireland.mfa.gov.ua/en/news", via: VpnBrowser },
+    ],
   },
   {
-    heading: "Dublin",
-    brief: "What changes life in the city: transport, housing, services. At most five stories.",
-    category: miniflux.CategoryId(4),
+    heading: "Immigration",
+    brief: "Immigration law and practice in Ireland beyond temporary protection: new laws and bills, visas, residence permissions and stamps, registration and renewals, citizenship and naturalisation (including any change to the years of residence required), employment permits and the critical skills list, processing times and office changes.",
+    category: "Digest: Immigration",
+    feeds: [
+      { name: "Migrant Rights Centre Ireland", url: "https://www.mrci.ie/feed/" },
+      { name: "Immigrant Council of Ireland", url: "https://www.immigrantcouncil.ie/rss.xml" },
+      { name: "TheJournal: immigration", url: "https://www.thejournal.ie/topic/immigration/feed/" },
+      {
+        name: "Google News: Irish immigration",
+        url: "https://news.google.com/rss/search?q=Ireland+(immigration+OR+%22employment+permit%22+OR+citizenship+OR+%22international+protection%22)+when:2d&hl=en-IE&gl=IE&ceid=IE:en",
+      },
+    ],
+    pages: [
+      {
+        name: "gov.ie: Justice press releases",
+        url: "https://www.gov.ie/en/search/?category=Press+Release&organisation=Department+of+Justice%2C+Home+Affairs+and+Migration",
+        via: Direct,
+      },
+      {
+        name: "Employment permits: latest updates",
+        url: "https://enterprise.gov.ie/en/what-we-do/workplace-and-skills/employment-permits/latest-updates/",
+        via: Direct,
+      },
+    ],
+  },
+  {
+    heading: "Ireland",
+    brief: "National news that matters to someone living in Ireland: government decisions, the Budget, taxes and prices, health services, housing policy, strikes, public safety and major national events. The reader wants to keep up with the country, not only with what affects them: give the five to eight most significant stories of the day; even a quiet day has some.",
+    category: "Digest: Ireland",
+    feeds: [
+      { name: "RTÉ News", url: "https://www.rte.ie/feeds/rss/?index=/news/" },
+      { name: "TheJournal", url: "https://www.thejournal.ie/feed/" },
+      { name: "The Irish Times", url: "https://www.irishtimes.com/arc/outboundfeeds/feed-irish-news/?from=0&size=50" },
+      { name: "Irish Independent", url: "https://www.independent.ie/irish-news/rss/" },
+      { name: "Business Post", url: "https://www.businesspost.ie/rss-feed/news/" },
+    ],
     pages: [],
   },
   {
+    heading: "Dublin",
+    brief: "Dublin city and county: council decisions, transport projects, housing, safety, public services, closures and new developments. Give the three to six most significant stories.",
+    category: "Digest: Dublin",
+    feeds: [
+      { name: "DublinLive", url: "https://www.dublinlive.ie/news/dublin-news/?service=rss" },
+      { name: "TheJournal: Dublin", url: "https://www.thejournal.ie/topic/dublin/feed/" },
+      { name: "RTÉ News: Dublin", url: "https://www.rte.ie/feeds/rss/?index=/news/dublin/" },
+      { name: "Dublin Inquirer", url: "https://www.dublininquirer.com/latest/rss/" },
+    ],
+    pages: [{ name: "Dublin City Council news", url: "https://www.dublincity.ie/news", via: Vpn }],
+  },
+  {
     heading: "Coming up in Dublin",
-    brief: "Events from today through the next seven days. At most five.",
-    category: miniflux.CategoryId(5),
-    pages: [{ name: "Dublin City Council events", url: "https://www.dublincity.ie/events", via: VpnBrowser }],
+    brief: "Large events in Dublin from today through the next seven days: stadium and arena concerts, big matches, festivals, marathons and parades, public holidays and what changes on them, and the road closures they bring. Give the day, time and place, and say when one is cancelled or sold out.",
+    category: "Digest: Dublin events",
+    feeds: [{ name: "Dublin Inquirer: things to do", url: "https://www.dublininquirer.com/tag/things-to-do/rss/" }],
+    pages: [
+      { name: "dublin.ie: what's on", url: "https://dublin.ie/whats-on/", via: Direct },
+      { name: "3Arena", url: "https://3arena.ie/search/events/P0/", via: Direct },
+      { name: "Aviva Stadium", url: "https://www.avivastadium.ie/whats-on", via: Direct },
+      { name: "3Olympia Theatre", url: "https://www.3olympia.ie/whats-on", via: Direct },
+    ],
+  },
+  {
+    heading: "Money & housing",
+    brief: "Tax and Revenue, social welfare, the Budget, cost of living and energy bills, renting rules and rents, Residential Tenancies Board decisions, and scams aimed at renters or newcomers.",
+    category: "Digest: Money and housing",
+    feeds: [
+      { name: "Residential Tenancies Board", url: "https://rtb.ie/feed/?post_type=news" },
+      { name: "TheJournal: Budget 2027", url: "https://www.thejournal.ie/topic/budget-2027/feed/" },
+      { name: "TheJournal: housing", url: "https://www.thejournal.ie/topic/housing/feed/" },
+      { name: "TheJournal: cost of living", url: "https://www.thejournal.ie/topic/cost-of-living/feed/" },
+    ],
+    pages: [
+      { name: "Citizens Information: what's new", url: "https://www.citizensinformation.ie/en/whats-new/", via: Direct },
+      {
+        name: "gov.ie: Social Protection press releases",
+        url: "https://www.gov.ie/en/search/?category=Press+Release&organisation=Department+of+Social+Protection",
+        via: Direct,
+      },
+    ],
+  },
+  {
+    heading: "Transport & weather",
+    brief: "Disruption to Dublin Bus, Luas, DART, Irish Rail and roads: strikes, timetable changes and closures; and Met Éireann weather warnings that are orange or red anywhere, or any colour for Dublin. The Luas feed lists disruptions in force; the Met Éireann Dublin page lists warnings in force. Leave out marine warnings.",
+    category: "Digest: Transport and weather",
+    feeds: [
+      { name: "Luas", url: "https://www.luas.ie/rss.xml" },
+      { name: "Met Éireann warnings", url: "https://www.met.ie/warningsxml/rss.xml" },
+      { name: "TheJournal: public transport", url: "https://www.thejournal.ie/topic/public-transport/feed/" },
+    ],
+    pages: [
+      { name: "Met Éireann: Dublin warnings", url: "https://www.met.ie/Open_Data/json/warning_EI07.json", via: Direct },
+      { name: "Irish Rail news", url: "https://www.irishrail.ie/en-ie/news", via: Direct },
+      { name: "Transport for Ireland news", url: "https://www.transportforireland.ie/news/", via: Vpn },
+      { name: "Dublin Bus news", url: "https://www.dublinbus.ie/news", via: VpnBrowser },
+    ],
   },
 ]
 
-fn gather(since: Instant) -> News {
-  var found: List(SectionNews) = []
+# ---------------------------------------------------------------- Miniflux
+
+## The sections' categories, by title, and what went wrong on the way.
+type Categories = { ids: Map(String, miniflux.CategoryId), problems: List(String) }
+
+## Each section's Miniflux category, found by its exact title and made if it
+## is missing, with the section's feeds subscribed where Miniflux doesn't have
+## them, matched by URL. Miniflux may keep the URL a redirect led to, so its
+## refusing a feed that already exists isn't a problem. The problems also
+## list the sections' feeds that Miniflux can't read.
+fn categories() -> Categories {
+  var ids: Map(String, miniflux.CategoryId) = {}
+  for c in miniflux.categories!() {
+    ids = ids |> insert(c.title, c.id)
+  }
+  let subscribed = miniflux.feeds!()
+  var known = subscribed |> map(fn f: f.feedUrl) |> toSet
   var problems: List(String) = []
   for section in sections {
+    let id = match ids |> get(section.category) {
+      Some(id) => id
+      None => made!(section.category)
+    }
+    ids = ids |> insert(section.category, id)
+    for feed in section.feeds {
+      if known |> contains(feed.url) { continue }
+      match miniflux.subscribe!(feedUrl: feed.url, categoryId: id) {
+        Added(_) => known = known |> add(feed.url)
+        NotAdded(error) if error |> contains("already exists") => ()
+        NotAdded(error) => problems += ["{feed.name}: Miniflux could not subscribe ({error})"]
+        Uncertain(_) => problems += ["{feed.name}: Miniflux's answer to subscribing was lost"]
+      }
+    }
+  }
+  let ours = ids |> values |> toSet
+  for f in subscribed {
+    if ours |> contains(f.category.id) && f.parsingErrorCount > 0 {
+      let why = if f.parsingErrorMessage == "" then "unreadable" else f.parsingErrorMessage
+      problems += ["{f.title}: {why |> clip(120)}"]
+    }
+  }
+  { ids, problems }
+}
+
+## A new category's id. When Miniflux's answer is lost, the categories say
+## whether it arrived; only if it didn't is it made again.
+fn made(title: String) -> miniflux.CategoryId =
+  match miniflux.createCategory!(title:) {
+    Uncertain(_) => match miniflux.categories!() |> find(fn c: c.title == title) {
+      Some(c) => c.id
+      None => match miniflux.createCategory!(title:) {
+        Uncertain(_) => unreachable("Miniflux's answer to making the category {title} was lost twice")
+        Created(c) => c.id
+      }
+    }
+    Created(c) => c.id
+  }
+
+fn gather(since: Instant, until: Instant) -> News {
+  let found = categories!()
+  var news: List(SectionNews) = []
+  var problems = found.problems
+  for section in sections {
+    let Some(id) = found.ids |> get(section.category) else {
+      unreachable("no category for {section.heading}")
+    }
+    var seen: Set(String) = {}
+    var items: List(Item) = []
+    for e in miniflux.entries!(id, publishedAfter: since.unix(), limit: 60).entries {
+      if seen |> contains(e.url) { continue }
+      seen = seen |> add(e.url)
+      items += [item(e)]
+    }
     var pages: List(PageText) = []
     for page in section.pages {
       match web.page!(page.url, via: page.via) {
@@ -254,16 +453,18 @@ fn gather(since: Instant) -> News {
         Err(e) => problems += ["{page.name}: {e}"]
       }
     }
-    found += [{
-      heading: section.heading,
-      brief: section.brief,
-      items: miniflux.entries!(section.category, publishedAfter: since.unix(), limit: 60).entries
-      |> map(item),
-      pages,
-    }]
+    news += [{ heading: section.heading, brief: section.brief, items, pages }]
   }
-  { sections: found, problems }
+  let input: Input = {
+    today: until.date(in: dublin).format("%A %d %B %Y"),
+    window: "{irishTime(since)} to {irishTime(until)} Irish time",
+    sections: news,
+  }
+  { input, problems }
 }
+
+## An instant as the window gives it: `12 October 07:40`.
+fn irishTime(at: Instant) -> String = "{at.date(in: dublin).format("%d %B")} {"{at.time(in: dublin)}" |> take(5)}"
 
 fn item(e: miniflux.Entry) -> Item = {
   source: e.feed.title,
@@ -671,8 +872,32 @@ test "the morning reads its sources, has the briefing written, and sends it" {
   expect(article.title == "Ireland & Dublin — Monday 12 October")
   expect(article.document |> contains("- Temporary protection is extended to 4 March 2027"))
   expect(article.document |> contains("**Rent cap extended** Rent pressure zones now run to 2027. [RTÉ](https://www.rte.ie/news/rent)"))
-  # The council's events page needs a browser that didn't get past it.
-  expect(article.document |> contains("- Dublin City Council events: Unsolved(message: \"Challenge not detected\")"))
+  # The Embassy's page needs a browser that didn't get past it.
+  expect(article.document |> contains("- Embassy of Ukraine in Ireland: Unsolved(message: \"Challenge not detected\")"))
+  # Miniflux can't read one of the sections' feeds; a feed in another
+  # category isn't the digest's to report, and a feed refused as existing
+  # isn't a problem.
+  expect(article.document |> contains("- Luas: Get \"https://www.luas.ie/rss.xml\": 503 Service Unavailable"))
+  expect(!(article.document |> contains("Not the digest's")))
+  expect(!(article.document |> contains("could not subscribe")))
+}
+
+test "a section's category is made when Miniflux doesn't have it" {
+  with fakes(notify, flaresolverr, http, ai, from: "recordings/")
+  with fakes(miniflux, from: "recordings/created/")
+  with clock(2026-10-12 06:30 in "UTC")
+  advance(10 min)
+  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+}
+
+test "a feed Miniflux won't subscribe to is reported, and the digest goes on" {
+  with fakes(notify, flaresolverr, http, ai, from: "recordings/")
+  with fakes(miniflux, from: "recordings/refused/")
+  with clock(2026-10-12 06:30 in "UTC")
+  advance(10 min)
+  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+  let Some(article) = Day(2026-10-12).article else { unreachable("the morning wrote no briefing") }
+  expect(article.document |> contains("- Immigration Service Delivery: Miniflux could not subscribe (Unable to find a feed at this URL)"))
 }
 
 test "/digest in a group chat gets silence" {
@@ -685,7 +910,7 @@ test "/digest in a group chat gets silence" {
 
 test "a page that can't be read is reported, not fatal" {
   let news: News = {
-    sections: [],
+    input: { today: "Monday 12 October 2026", window: "", sections: [] },
     problems: ["Dublin City Council events: Blocked"],
   }
   let text = render({ highlights: ["Rent cap extended"], sections: [] }, news)

@@ -1,0 +1,85 @@
+{
+  "contract": "Miniflux",
+  "exchanges": [
+    {
+      "op": "me",
+      "result": {
+        "kind": "Ok",
+        "value": {
+          "id": 1,
+          "username": "digest"
+        }
+      }
+    },
+    {
+      "op": "categories",
+      "result": [
+        {
+          "id": 4,
+          "title": "Digest: Temporary protection"
+        },
+        {
+          "id": 5,
+          "title": "Digest: Immigration"
+        },
+        {
+          "id": 6,
+          "title": "Digest: Ireland"
+        },
+        {
+          "id": 7,
+          "title": "Digest: Dublin"
+        },
+        {
+          "id": 8,
+          "title": "Digest: Dublin events"
+        },
+        {
+          "id": 9,
+          "title": "Digest: Money and housing"
+        },
+        {
+          "id": 10,
+          "title": "Digest: Transport and weather"
+        }
+      ]
+    },
+    {
+      "op": "feeds",
+      "result": []
+    },
+    {
+      "op": "subscribe",
+      "result": {
+        "kind": "NotAdded",
+        "errorMessage": "Unable to find a feed at this URL"
+      }
+    },
+    {
+      "op": "entries",
+      "result": {
+        "total": 2,
+        "entries": [
+          {
+            "title": "Rent cap extended",
+            "url": "https://www.rte.ie/news/rent",
+            "publishedAt": "2026-10-12T05:00:00Z",
+            "content": "<p>The rent pressure zones now run to <b>2027</b>.</p>",
+            "feed": {
+              "title": "RTÉ News"
+            }
+          },
+          {
+            "title": "Rent cap extended",
+            "url": "https://www.rte.ie/news/rent",
+            "publishedAt": "2026-10-12T05:00:00Z",
+            "content": "<p>The same story, from a second feed.</p>",
+            "feed": {
+              "title": "RTÉ News: Dublin"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

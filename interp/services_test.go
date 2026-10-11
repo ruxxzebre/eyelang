@@ -37,6 +37,17 @@ func TestDigestOverHTTP(t *testing.T) {
 		switch {
 		case r.URL.Path == "/v1/me":
 			_, _ = io.WriteString(w, `{"id": 1, "username": "digest"}`)
+		case r.URL.Path == "/v1/categories":
+			var list []map[string]any
+			for id, title := range productionCategories() {
+				list = append(list, map[string]any{"id": id, "title": title})
+			}
+			_ = json.NewEncoder(w).Encode(list)
+		case r.URL.Path == "/v1/feeds" && r.Method == "GET":
+			_, _ = io.WriteString(w, `[]`)
+		case r.URL.Path == "/v1/feeds":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `{"feed_id": 1}`)
 		case strings.HasPrefix(r.URL.Path, "/v1/categories/") && strings.HasSuffix(r.URL.Path, "/entries"):
 			q := r.URL.Query()
 			if q.Get("limit") != "60" || q.Get("published_after") == "" || len(q["status"]) != 2 || q.Get("order") != "published_at" {
@@ -51,8 +62,8 @@ func TestDigestOverHTTP(t *testing.T) {
 	}))
 	defer miniflux.Close()
 
-	// The VPN's proxy can't reach the outside world in a test: the page it is
-	// asked for is reported as unreadable, and the digest goes on.
+	// The VPN's proxy, which FlareSolverr is told to use. Pages read with
+	// http.get get offline's page instead, so the test reads no website.
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no route", http.StatusBadGateway)
 	}))
@@ -122,6 +133,7 @@ func TestDigestOverHTTP(t *testing.T) {
 	}
 	var log bytes.Buffer
 	in := New(prog, &log, &log)
+	offline(in) // the pages read directly
 	dublin, _ := time.LoadLocation("Europe/Dublin")
 	in.rt.now = time.Date(2026, 10, 12, 7, 40, 0, 0, dublin)
 	digest := moduleByPath(t, prog, "digest")
@@ -188,7 +200,7 @@ func TestDigestOverHTTP(t *testing.T) {
 		}
 	}
 	text, _ := sendBodies[1]["body"].(string)
-	for _, want := range []string{"- Rent cap extended to 2027", "## Dublin", "**Rent cap extended**", "[RTÉ](https://rte.ie/rent)", "Department of Justice"} {
+	for _, want := range []string{"- Rent cap extended to 2027", "## Dublin", "**Rent cap extended**", "[RTÉ](https://rte.ie/rent)", "Embassy of Ukraine in Ireland"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the briefing has no %q:\n%s", want, text)
 		}

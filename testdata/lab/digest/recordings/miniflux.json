@@ -1,18 +1,113 @@
 {
   "contract": "Miniflux",
   "exchanges": [
-    { "op": "me", "result": { "kind": "Ok", "value": { "id": 1, "username": "digest" } } },
+    {
+      "op": "me",
+      "result": {
+        "kind": "Ok",
+        "value": {
+          "id": 1,
+          "username": "digest"
+        }
+      }
+    },
+    {
+      "op": "categories",
+      "result": [
+        {
+          "id": 4,
+          "title": "Digest: Temporary protection"
+        },
+        {
+          "id": 5,
+          "title": "Digest: Immigration"
+        },
+        {
+          "id": 6,
+          "title": "Digest: Ireland"
+        },
+        {
+          "id": 7,
+          "title": "Digest: Dublin"
+        },
+        {
+          "id": 8,
+          "title": "Digest: Dublin events"
+        },
+        {
+          "id": 9,
+          "title": "Digest: Money and housing"
+        },
+        {
+          "id": 10,
+          "title": "Digest: Transport and weather"
+        }
+      ]
+    },
+    {
+      "op": "feeds",
+      "result": [
+        {
+          "feedUrl": "https://www.rte.ie/feeds/rss/?index=/news/",
+          "title": "RTÉ News",
+          "category": {
+            "id": 6,
+            "title": "Digest: Ireland"
+          },
+          "parsingErrorCount": 0,
+          "parsingErrorMessage": ""
+        },
+        {
+          "feedUrl": "https://www.luas.ie/rss.xml",
+          "title": "Luas",
+          "category": {
+            "id": 10,
+            "title": "Digest: Transport and weather"
+          },
+          "parsingErrorCount": 3,
+          "parsingErrorMessage": "Get \"https://www.luas.ie/rss.xml\": 503 Service Unavailable"
+        },
+        {
+          "feedUrl": "https://example.com/other.xml",
+          "title": "Not the digest's",
+          "category": {
+            "id": 2,
+            "title": "All"
+          },
+          "parsingErrorCount": 5,
+          "parsingErrorMessage": "gone"
+        }
+      ]
+    },
+    {
+      "op": "subscribe",
+      "result": {
+        "kind": "NotAdded",
+        "errorMessage": "This feed already exists."
+      }
+    },
     {
       "op": "entries",
       "result": {
-        "total": 1,
+        "total": 2,
         "entries": [
           {
             "title": "Rent cap extended",
             "url": "https://www.rte.ie/news/rent",
             "publishedAt": "2026-10-12T05:00:00Z",
             "content": "<p>The rent pressure zones now run to <b>2027</b>.</p>",
-            "feed": { "title": "RTÉ" }
+            "feed": {
+              "title": "RTÉ News"
+            }
+          },
+          {
+            "title": "Rent cap extended",
+            "url": "https://www.rte.ie/news/rent",
+            "publishedAt": "2026-10-12T05:00:00Z",
+            "content": "<p>The same story, from a second feed.</p>",
+            "feed": {
+              "title": "RTÉ News: Dublin"
+            }
           }
         ]
       }
