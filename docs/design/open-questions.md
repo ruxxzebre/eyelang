@@ -89,9 +89,9 @@ title: "Open questions"
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
 19. **Which actions are effects?** Decided on 2026-10-11: every effect in [section 12](/reference/language/effects-and-signatures)'s table is
-    inferred, `publish T`, `consume T`, `secret S` and `ffi` included, and `!` marks every recorded
-    step in a job, so publishing is `publish!` and starting a child run `start!` ([section 12](/reference/language/effects-and-signatures)).
-    Logging is not an effect.
+    inferred, `publish C.event`, `consume C.event`, `secret "name"` and `ffi` included, and `!`
+    marks every recorded step in a job, so publishing is `publish!` and starting a child run
+    `start!` ([section 12](/reference/language/effects-and-signatures)). Logging is not an effect.
 20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
     with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,

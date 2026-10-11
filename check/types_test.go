@@ -376,18 +376,58 @@ test "t" {
 			"2:21: expected (), found Int",
 			"9:8: expected Handler, found Int",
 		}},
+		{"publishing, starting a run, secrets and foreign code are steps and effects", `import svc
+extern fn crc(data: String) -> Int
+job child(n: Int) {}
+job j() {
+  svc.pings.publish({ id: 1, text: "a" })
+  child.start(1)
+  let r = child.start(2).join!()
+  let c = crc("x")
+  let t = secret!("token")
+  svc.pings.publish!({ id: 2, text: "b" })
+  child.start!(3)
+  let m = next!(svc.pings, where: fn p: p.id > 1, within: 1 min)
+  let k = crc!("y")
+}
+pub fn send() = svc.pings.publish({ id: 3, text: "c" })
+pub fn sum(s: String) -> Int = crc(s)
+pub fn key() -> Int {
+  let s = secret("token")
+  1
+}
+pub fn wait() -> Option(svc.Ping) uses {wait} = next!(svc.pings, where: fn p: true, within: 1 min)
+pub fn ok() -> Int uses {publish Svc.pings, ffi, secret "token"} {
+  svc.pings.publish({ id: 3, text: "c" })
+  let s = secret("token")
+  crc("x")
+}
+pub fn some(name: String) uses {secret, publish} {
+  let s = secret(name)
+}`, []string{
+			"5:3: in a job, publishing is a durable step: write publish!(…)",
+			"6:3: in a job, starting a child run is a durable step: write start!(…)",
+			"7:11: in a job, starting a child run is a durable step: write start!(…)",
+			"8:11: in a job, crc uses ffi, so calling it is a durable step: write crc!(…)",
+			"9:11: this durable step's result is recorded, and a Secret can't be saved: use it in a function that returns what can be, and call that with !",
+			"15:1: send uses publish Svc.pings, which its signature doesn't list: add uses {publish Svc.pings}",
+			"16:1: sum uses ffi, which its signature doesn't list: add uses {ffi}",
+			`17:1: key uses secret "token", which its signature doesn't list: add uses {secret "token"}`,
+			"21:1: wait uses consume Svc.pings, which its uses clause doesn't list",
+		}},
 		{"foreign code owns an extern type's values", `extern type Db
 extern fn open(path: String) -> Db
 extern fn close(d: Db)
 job j() {
-  let d = open("x")
+  let d = open!("x")
   sleep!(1 min)
-  close(d)
+  close!(d)
 }
 job k(d: Db) {}
 fn show(d: Db) = print(d)
 fn same(a: Db, b: Db) -> Bool = a == b`, []string{
-			"7:9: d is a Db, which can't be saved, and it is still needed after a waiting call",
+			"5:11: this durable step's result is recorded, and a Db can't be saved: use it in a function that returns what can be, and call that with !",
+			"7:10: d is a Db, which can't be saved, and it is still needed after a waiting call",
 			"9:1: k's argument d is a Db, which can't be saved",
 			"10:24: print needs Show, and Db has no Show: Db is an extern type, whose values foreign code owns, so it has none of Eq, Ord, Show, Hash, Save and Schema",
 			"11:33: comparing with == needs Eq, and Db has no Eq",

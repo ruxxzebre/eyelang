@@ -174,10 +174,10 @@ module.exports = grammar({
 
     uses_clause: $ => seq('uses', '{', commaSep($.effect), '}'),
 
-    // `wait`, `net Llm.complete`, `entity World`, `secret telegramToken`.
+    // `wait`, `net Llm.complete`, `entity World`, `secret "telegram-token"`.
     effect: $ => seq(
       field('kind', $.identifier),
-      optional(field('target', $.path)),
+      optional(field('target', choice($.path, $.string))),
     ),
 
     path: $ => seq($._name, repeat(seq('.', $._name))),

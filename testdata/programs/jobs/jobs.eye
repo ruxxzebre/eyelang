@@ -140,7 +140,7 @@ job child() {
 }
 
 job parent() {
-  child.start()
+  child.start!()
   sleep!(5 min)
   sleep!(5 min)
 }

@@ -19,17 +19,21 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 |---|---|---|
 | `wait` | any `!` call | Compiles the function to a resumable state machine; allowed only in jobs and waiting functions |
 | `net C.op` | calling an operation on contract `C` | Derives network policy, credentials and allowed-caller checks |
-| `publish T`, `consume T` | sending or receiving events | Derives message-queue permissions |
+| `publish C.event`, `consume C.event` | publishing contract `C`'s event (`bus.pinged.publish!(…)`), or waiting for it or starting on it (`next!(bus.pinged)`, `@on(event(bus.pinged))`) | Derives message-queue permissions |
 | `entity E` | reading or changing entities of type `E` | Database grants; includes the type in backups |
-| `secret S` | using secret `S` | Delivers that secret only to code that uses it |
+| `secret "name"` | reading a secret, `secret("telegram-bot-token")` | Delivers that secret only to code that uses it |
 | `clock`, `random` | `now()`, `random.int(1..=6)` | Lets tests replace them |
 | `fs`, `process`, `stdio`, `env` | files, running programs, standard input and output, environment variables | Lets embedders and sandboxes grant them one by one |
 | `ffi` | calling an `extern fn` ([section 18](/reference/language/calling-c-and-go)) | Marks code the compiler can't check |
 
 Every effect in the table is inferred, and a private function's effects never need writing. A
 public function that publishes an event, reads a secret or calls an `extern fn` lists it in
-`uses` as the table names it (`publish T`, `secret S`, `ffi`), as one that calls a service lists
-`net C.op`.
+`uses` as the table names it, as one that calls a service lists `net C.op`:
+`uses {publish Bus.pinged}`, `uses {secret "telegram-bot-token"}`, with the name as passed to
+`secret(…)`, and `uses {ffi}`. A bare kind covers all of its kind: `net` every operation,
+`publish` and `consume` every event, `entity` every entity, and `secret` every secret, which is
+what reading a secret by a name that isn't a literal needs. An `extern fn` that states its own
+`uses`, as `http.get` states `net Http.get`, has those effects instead of `ffi`.
 
 - **Pure means no `uses`.** A public function without a `uses` clause is pure, and the compiler
   holds it to that: if `area` read a file, the error would say `area uses fs, which its signature
@@ -72,6 +76,13 @@ operations, where publishing and starting a job are part of the transaction. **O
 step:** `print` has the effect `stdio`, which public signatures list, but in a job it is written
 without `!` and isn't recorded, and logging (`log.info`) is not an effect at all. Output is for
 people watching a run, not part of what the run computes.
+
+**A step's result is saved.** It is recorded so that a resumed run sees the same value, so it must
+be something that can be saved ([section 15](/reference/language/jobs-and-waiting)). A `Secret`, or a value of an `extern type`, is used
+inside a function that returns what can be saved, and that function is called as one step:
+`checksum!(path)` rather than `open!(path)` followed by more calls on the handle. An error says so:
+`this durable step's result is recorded, and a Secret can't be saved: use it in a function that
+returns what can be, and call that with !`.
 
 ```eye
 import bus

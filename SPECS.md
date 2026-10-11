@@ -122,7 +122,7 @@ construct that also works outside that domain.
 | Built-in docs | **The built-ins are declared in Eyelang**, in `ir/builtin.eye`, with `extern type`, `extern fn` and `##` comments; the checker checks calls against those signatures and takes effects from their `uses`, and the interpreter implements them | Like Go's `builtin` package: an editor goes to a built-in's documented declaration as to any other, and the reference is written in one place, next to the signatures it describes. Since the checker uses them, the docs can't drift from the rules |
 | Doc comments | **`##` comments are Markdown, with a first-sentence summary, `[Name]` links that are checked, and a module doc at the top of a file**. One extractor feeds `eye doc`, the editor's hover and completion, and AI schemas | One source of documentation for people, editors and models. Checked links keep docs from pointing at renamed code, and the summary rule gives every list a short line without a second comment |
 | Answering approvals | **An answer names its request's `id`, and only the person in `from:` may give it.** The runtime refuses any other answer and logs it. Text matches only from the command line and in tests, and is refused when it matches more than one waiting approval. An `Approval` has `what` and `by` fields (section 15) | An `Approval` is the one value that stands for a person's consent, so the obvious routing job must be the safe one: one that forgets to check who pressed the button can't grant it, and an answer can't reach a request it wasn't meant for. From the lab: two runs asking "Restart the router?" were answered by one press (open question 17) |
-| Recorded steps | **`!` marks every recorded step in a job**: every outside effect, every entity call, publishing an event (`bus.pinged.publish!(…)`) and starting a child run (`digest.start!(day)`). The effects of section 12's table are inferred, `publish T`, `consume T`, `secret S` and `ffi` included. Output is not a step: `print` keeps `stdio` for signatures, and logging is not an effect (section 12) | Every point where a run can pause or commit is visible, with no exception to remember; output is a side channel for people, and marking it would put `!` on every log line (open questions 19 and 22) |
+| Recorded steps | **`!` marks every recorded step in a job**: every outside effect, every entity call, publishing an event (`bus.pinged.publish!(…)`) and starting a child run (`digest.start!(day)`). The effects of section 12's table are inferred, `publish C.event`, `consume C.event`, `secret "name"` and `ffi` included. A step's result is recorded, so it must be something that can be saved. Output is not a step: `print` keeps `stdio` for signatures, and logging is not an effect (section 12) | Every point where a run can pause or commit is visible, with no exception to remember; output is a side channel for people, and marking it would put `!` on every log line (open questions 19 and 22) |
 | Foreign values | **`extern type` is the one way to name a value foreign code owns**; `Handle(name)` is gone. A program's `extern type` has no `Save`, `Show`, `Eq`, `Hash` or `Schema`, so it can't be saved, live across a `!`, printed, compared or asked of a model (section 18) | One obvious way, a name the checker tells apart from every other, and the saving rule applied to it: an `extern type` could be held across a `!` while a `Handle` couldn't (open question 21) |
 | Long runs | **A run's saved state is its live variables, not its history.** Jobs resume from saved frames, in the interpreter from v0.3 and in compiled code from v0.4; until then the interpreter replays a run's recorded steps. The language gets no `continue`-as-new | A run that never ends, such as the lab's train watcher, costs the same on its tenth day as on its first, with no new syntax (open question 9) |
 | Job code changes | **A paused run resumes only at a resume point that still exists with the same live variables**: the same function, the same `!`, and the same names and types live there. `eye run` refuses to start otherwise, as it does for entity rows it can't migrate, and names the job and its runs. Until runs have frames, replaying compares each recorded step's call with the call it replays and faults the run on a difference | A code change under a paused run is an error with a message, not a wrong value found later; the old job keeps its name until its runs finish, and the new code takes a new one. Finishing old runs on old code is rejected, since entities migrate forward and old code would read new state (open question 4) |
@@ -731,17 +731,21 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 |---|---|---|
 | `wait` | any `!` call | Compiles the function to a resumable state machine; allowed only in jobs and waiting functions |
 | `net C.op` | calling an operation on contract `C` | Derives network policy, credentials and allowed-caller checks |
-| `publish T`, `consume T` | sending or receiving events | Derives message-queue permissions |
+| `publish C.event`, `consume C.event` | publishing contract `C`'s event (`bus.pinged.publish!(…)`), or waiting for it or starting on it (`next!(bus.pinged)`, `@on(event(bus.pinged))`) | Derives message-queue permissions |
 | `entity E` | reading or changing entities of type `E` | Database grants; includes the type in backups |
-| `secret S` | using secret `S` | Delivers that secret only to code that uses it |
+| `secret "name"` | reading a secret, `secret("telegram-bot-token")` | Delivers that secret only to code that uses it |
 | `clock`, `random` | `now()`, `random.int(1..=6)` | Lets tests replace them |
 | `fs`, `process`, `stdio`, `env` | files, running programs, standard input and output, environment variables | Lets embedders and sandboxes grant them one by one |
 | `ffi` | calling an `extern fn` (section 18) | Marks code the compiler can't check |
 
 Every effect in the table is inferred, and a private function's effects never need writing. A
 public function that publishes an event, reads a secret or calls an `extern fn` lists it in
-`uses` as the table names it (`publish T`, `secret S`, `ffi`), as one that calls a service lists
-`net C.op`.
+`uses` as the table names it, as one that calls a service lists `net C.op`:
+`uses {publish Bus.pinged}`, `uses {secret "telegram-bot-token"}`, with the name as passed to
+`secret(…)`, and `uses {ffi}`. A bare kind covers all of its kind: `net` every operation,
+`publish` and `consume` every event, `entity` every entity, and `secret` every secret, which is
+what reading a secret by a name that isn't a literal needs. An `extern fn` that states its own
+`uses`, as `http.get` states `net Http.get`, has those effects instead of `ffi`.
 
 - **Pure means no `uses`.** A public function without a `uses` clause is pure, and the compiler
   holds it to that: if `area` read a file, the error would say `area uses fs, which its signature
@@ -784,6 +788,13 @@ operations, where publishing and starting a job are part of the transaction. **O
 step:** `print` has the effect `stdio`, which public signatures list, but in a job it is written
 without `!` and isn't recorded, and logging (`log.info`) is not an effect at all. Output is for
 people watching a run, not part of what the run computes.
+
+**A step's result is saved.** It is recorded so that a resumed run sees the same value, so it must
+be something that can be saved (section 15). A `Secret`, or a value of an `extern type`, is used
+inside a function that returns what can be saved, and that function is called as one step:
+`checksum!(path)` rather than `open!(path)` followed by more calls on the handle. An error says so:
+`this durable step's result is recorded, and a Secret can't be saved: use it in a function that
+returns what can be, and call that with !`.
 
 ```eye
 import bus
@@ -1840,9 +1851,9 @@ operator. All binary operators associate to the left except `??`, which associat
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
 19. **Which actions are effects?** Decided on 2026-10-11: every effect in section 12's table is
-    inferred, `publish T`, `consume T`, `secret S` and `ffi` included, and `!` marks every recorded
-    step in a job, so publishing is `publish!` and starting a child run `start!` (section 12).
-    Logging is not an effect.
+    inferred, `publish C.event`, `consume C.event`, `secret "name"` and `ffi` included, and `!`
+    marks every recorded step in a job, so publishing is `publish!` and starting a child run
+    `start!` (section 12). Logging is not an effect.
 20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
     with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
     strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,

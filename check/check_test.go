@@ -127,12 +127,17 @@ contract Shop {
 }
 fn a() uses {nonsense} {}
 fn b() uses {net Nowhere.send, net Shop.sell, net Shop.buy, net} {}
-fn c() uses {entity Ghost, entity Order, clock now} {}`, []string{
+fn c() uses {entity Ghost, entity Order, clock now} {}
+fn d() uses {publish Shop.nothing, consume Nowhere, secret token, entity "x", secret "ok"} {}`, []string{
 			"5:14: nonsense isn't an effect: an effect is clock, consume, entity, env, ffi, fs, net, process, publish, random, secret, stdio or wait",
 			"6:18: net names a contract and its operation, as net Notify.send, and there is no contract Nowhere here",
 			"6:36: contract Shop has no operation sell",
 			"7:21: entity names an entity, and there is no entity Ghost here",
 			"7:48: clock names nothing: write uses {clock}",
+			"8:22: contract Shop has no event nothing",
+			"8:44: consume names a contract's event, as consume Bus.pinged, and there is no contract Nowhere here",
+			`8:60: secret names a secret as secret(…) is passed it, in quotes: secret "telegram-bot-token"`,
+			"8:74: entity names what it touches without quotes, as entity Order",
 		}},
 		{"attributes name what exists", `pub type Sent = | Sent(Int)
 pub type Ping = { id: Int }

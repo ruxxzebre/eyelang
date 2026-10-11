@@ -148,12 +148,12 @@ Outside jobs it blocks; in tests it advances the clock.
 ### secret {#secret}
 
 ```eye
-fn secret(name: String) -> Secret(String)
+fn secret(name: String) -> Secret(String) uses {secret}
 ```
 
 The secret of that name: the environment variable of the name in upper case, with `-` and `.` as
 `_` (`notify-token` is NOTIFY_TOKEN), or the file of that name in the directory $EYE_SECRETS. It
-can't be shown or saved.
+can't be shown or saved. Reading one uses `secret "name"`, and in a job is a step: `secret!(…)`.
 
 ### env.get {#env-get}
 
@@ -276,7 +276,7 @@ run's history.
 ### next {#next}
 
 ```eye
-fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) uses {wait}
+fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) uses {wait, consume}
 ```
 
 In a job, waits for the first event that matches, counting every one published since the run's

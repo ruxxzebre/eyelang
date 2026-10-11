@@ -109,6 +109,54 @@ test "logs once" {
 	}
 }
 
+// TestReplayDoesntStartAChildAgain checks that start! is one recorded step:
+// a run replayed after each sleep gets the child it started the first time.
+func TestReplayDoesntStartAChildAgain(t *testing.T) {
+	prog := load(t, `
+entity Counter(id: Int) {
+  state n: Int = 0
+  pub fn bump() { n += 1 }
+}
+
+job child(id: Int) { Counter(id).bump!() }
+
+job parent() -> Int {
+  let run = child.start!(1)
+  sleep!(1 min)
+  sleep!(1 min)
+  match run.join!() {
+    Completed(_) => 1
+    Failed(_) => 0
+  }
+}
+
+test "starts once" {
+  parent.start()
+  advance(5 min)
+  expect(Counter(1).read().n == 1)
+}
+`)
+	r := RunTests(prog, "")[0]
+	if r.Failure != "" {
+		t.Fatal(r.Failure)
+	}
+
+	// The parent's history holds the start once.
+	in := New(prog, &strings.Builder{}, &strings.Builder{})
+	in.rt.startNow(prog.Root.Jobs["parent"], nil, nil, ir.Pos{})
+	in.rt.advance(ir.Duration(5 * 60e9))
+	data, _ := in.rt.store.Run(1)
+	starts := 0
+	for _, s := range decodeRun(data).Log {
+		if s.Call == "start child" {
+			starts++
+		}
+	}
+	if starts != 1 {
+		t.Errorf("the parent's history holds %d starts of child, want 1", starts)
+	}
+}
+
 func TestRunsAreSavedAsBytes(t *testing.T) {
 	prog := load(t, `
 entity Counter(id: Int) {

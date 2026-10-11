@@ -99,7 +99,7 @@ func (x *fnCheck) builtin(name string, args []ir.Arg, want typ, at ir.Pos) typ {
 // of `x.f(…)`.
 func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, at ir.Pos) typ {
 	c := x.c
-	x.builtinEffects(name)
+	x.builtinEffects(name, args)
 	if fn := c.builtins.funcs[name]; fn != nil {
 		return x.declaredBuiltin(fn, args, first, at)
 	}

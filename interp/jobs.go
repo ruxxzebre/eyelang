@@ -94,6 +94,11 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		if r, ok := recv.(*RunVal); ok && c.Name == "join" {
 			return in.join(run, r, c.Pos)
 		}
+		if j, ok := recv.(*JobVal); ok && c.Name == "start" && in.rt.tx == nil {
+			// startChild replays or records the step itself.
+			pos, named := split(args)
+			return in.startChild(run, j.Job, pos, named, c.Pos)
+		}
 		if v, ok := in.replay(run, w.Pos); ok {
 			return v
 		}

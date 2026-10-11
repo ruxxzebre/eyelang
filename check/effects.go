@@ -46,6 +46,7 @@ func (c *checker) checkEffects() {
 		c.checkImplEffects(m, all)
 	}
 	c.checkMigrationEffects(all)
+	c.checkStepResults(all)
 	for f, set := range all {
 		f.Waits = set["wait"]
 	}
@@ -69,6 +70,18 @@ func (c *checker) allEffects() map[*ir.Func]map[string]bool {
 		all[f] = map[string]bool{}
 		for e := range set {
 			all[f][e] = true
+		}
+	}
+	// A program's extern fn without a uses clause runs foreign code; one
+	// with a clause, as the standard library's are, has what it states.
+	for _, m := range c.prog.Modules {
+		if m.Dir == "" && m != c.prog.Root {
+			continue
+		}
+		for _, f := range m.Funcs {
+			if f.Extern && !f.HasUses {
+				all[f] = map[string]bool{"ffi": true}
+			}
 		}
 	}
 	for changed := true; changed; {
@@ -171,6 +184,12 @@ var effectKinds = map[string]bool{
 	"consume": true,
 }
 
+// effectExample shows how each effect that names something names it.
+var effectExample = map[string]string{
+	"net": "net Notify.send", "entity": "entity Order", "publish": "publish Bus.pinged",
+	"consume": "consume Bus.pinged", "secret": `secret "telegram-bot-token"`,
+}
+
 // checkEffectNames checks a uses clause's effects: each is one SPECS.md §12
 // lists, and the contract, operation or entity it names exists.
 func (c *checker) checkEffectNames(m *module, f *ir.File, d *syntax.Node) {
@@ -196,9 +215,26 @@ func (c *checker) checkEffectNames(m *module, f *ir.File, d *syntax.Node) {
 		case !named:
 			c.errorf(pos(f, target), "%s names nothing: write uses {%s}", kind, kind)
 			continue
+		case kind == "secret":
+			if target.Kind != syntax.String || strings.ContainsAny(text(f, target), `{\`) {
+				c.errorf(pos(f, target), `secret names a secret as secret(…) is passed it, in quotes: secret "telegram-bot-token"`)
+			}
+			continue
+		case target.Kind == syntax.String:
+			c.errorf(pos(f, target), "%s names what it touches without quotes, as %s", kind, effectExample[kind])
+			continue
 		}
 		name := strings.Join(strings.Fields(text(f, target)), "")
 		switch kind {
+		case "publish", "consume":
+			ctName, evName, _ := strings.Cut(name, ".")
+			ct := c.contractIn(m, ctName)
+			switch {
+			case ct == nil:
+				c.errorf(pos(f, target), "%s names a contract's event, as %s, and there is no contract %s here", kind, effectExample[kind], ctName)
+			case evName != "" && ct.Events[evName] == nil:
+				c.errorf(pos(f, target), "contract %s has no event %s", ctName, evName)
+			}
 		case "net":
 			ctName, opName, hasOp := strings.Cut(name, ".")
 			ct := c.contractIn(m, ctName)
@@ -304,14 +340,15 @@ var taskBuiltins = map[string]bool{"parallelMap": true, "both": true, "race": tr
 // outside reports the first effect in a set that reaches outside the
 // program, which in a job makes a call a durable step (SPECS.md §12):
 // another service, the clock, randomness, the environment, files, other
-// processes, foreign code and entities. Standard output and waiting aren't
-// among them: waiting is reported on its own, and printing is open question 22.
+// processes, foreign code, entities, secrets and events. Standard output and
+// waiting aren't among them: waiting is reported on its own, and output is
+// not a step (open question 22).
 func outside(effects map[string]bool) string {
 	var found []string
 	for e := range effects {
 		kind, _, _ := strings.Cut(e, " ")
 		switch kind {
-		case "net", "clock", "random", "env", "fs", "process", "ffi", "entity", "secret":
+		case "net", "clock", "random", "env", "fs", "process", "ffi", "entity", "secret", "publish", "consume":
 			found = append(found, e)
 		}
 	}
@@ -626,6 +663,36 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 // a `!` in a job, where the job's state is saved (SPECS.md §15). Uses are
 // found in source order; a value needed again on a later turn of a loop
 // isn't seen yet.
+// stepResult is a `!` call in a job and the type of what it returns.
+type stepResult struct {
+	job *ir.Func
+	w   *ir.Waiting
+	t   typ
+}
+
+// checkStepResults reports a step whose result can't be saved: a step's
+// result is recorded, so a resumed run sees the same value. A call of a
+// function that itself waits isn't one step, and its result isn't
+// recorded.
+func (c *checker) checkStepResults(all map[*ir.Func]map[string]bool) {
+	for _, s := range c.ts.steps {
+		if call, ok := s.w.Call.(*ir.Call); ok {
+			if r, ok := call.Func.(*ir.Ref); ok {
+				if g, ok := r.Decl.(*ir.Func); ok && effectsOf(g, all)["wait"] {
+					continue
+				}
+			}
+		}
+		reported := false // as a missing Schema, say
+		for _, d := range c.diags {
+			reported = reported || d.Pos == s.w.Pos
+		}
+		if what := c.unsaveable(s.t); what != "" && !reported {
+			c.typeErrorf(s.w.Pos, "this durable step's result is recorded, and a %s can't be saved: use it in a function that returns what can be, and call that with !", what)
+		}
+	}
+}
+
 func (c *checker) checkSave(j *ir.Job) {
 	slots := c.ts.jobSlots[j.Func]
 	if slots == nil {

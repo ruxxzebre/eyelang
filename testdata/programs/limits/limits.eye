@@ -44,7 +44,7 @@ job slow() -> String {
 }
 
 job watcher() -> String {
-  match slow.start().join!() {
+  match slow.start!().join!() {
     Completed(text) => text
     Failed(fault) => "{fault}"
   }
@@ -55,10 +55,10 @@ job report(text: String) {
 }
 
 job waitForSlow() {
-  let outcome = watcher.start().join!()
+  let outcome = watcher.start!().join!()
   match outcome {
-    Completed(text) => report.start(text)
-    Failed(_) => report.start("watcher failed")
+    Completed(text) => report.start!(text)
+    Failed(_) => report.start!("watcher failed")
   }
 }
 

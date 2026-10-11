@@ -88,6 +88,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§12", "a call of a function value whose type states effects the caller doesn't", "calling a function value has the effects its type states"},
 	{"§12", "an impl's method doing more than its trait's states, or a private function more than its uses clause", "effects don't escape through traits or private uses clauses"},
 	{"§12", "an effect that doesn't exist, or names what doesn't", "a uses clause lists effects that exist"},
+	{"§12", "publishing, starting a child run or calling foreign code in a job without !, a step whose result can't be saved, or an unlisted publish, secret, consume or ffi effect", "publishing, starting a run, secrets and foreign code are steps and effects"},
 	{"§12", "effects through a function named as a value, and in a job, its calls that aren't steps", "effects pass through functions named as values"},
 	{"§12", "a waiting call where nothing waits", "waiting calls only in jobs"},
 	{"§12", "a durable step without !", "durable steps in jobs need !"},

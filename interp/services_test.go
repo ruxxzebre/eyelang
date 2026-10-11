@@ -332,7 +332,7 @@ import store
 job fetch() -> store.Item { store.item!("a") }
 
 job outer() -> String {
-  match fetch.start().join!() {
+  match fetch.start!().join!() {
     Completed(item) => item.name
     Failed(fault) => "failed: {fault}"
   }

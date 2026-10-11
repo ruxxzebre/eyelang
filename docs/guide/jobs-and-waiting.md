@@ -151,7 +151,8 @@ A run starts in one of four ways:
 
 - **From an entity method,** as part of its transaction. `set` starts `ring`, and the run begins
   only if `set` commits. See [Entities](/guide/entities#starting-a-job-from-a-method).
-- **From a job,** as a child run: `export.start(t)` below.
+- **From a job,** as a child run: `export.start!(t)` below. The start is a durable step, so a
+  resumed run doesn't start the child again.
 - **From `main` or a test.** In a test, the run goes as soon as the call returns, until it
   finishes or waits.
 - **From a trigger:** `@on(...)` starts a run on a schedule, when an entity enters or leaves a view,

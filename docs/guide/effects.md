@@ -25,15 +25,21 @@ every evening. Its tests run with `eye test docs/guide/code/effects`.
 | `net Chat.post` | Calling operation `post` of contract `Chat` |
 | `net` | Calling a service without a contract: `http.get`, `ai.generate` |
 | `entity Order` | Reading or changing entities of type `Order` |
+| `publish Bus.pinged` | Publishing event `pinged` of contract `Bus`: `bus.pinged.publish(…)` |
+| `consume Bus.pinged` | Waiting for that event: `next!(bus.pinged, …)` |
+| `secret "chat-token"` | Reading a secret: `secret("chat-token")` |
+| `ffi` | Calling an `extern fn` of the program, which runs foreign code |
 | `clock` | `now()` |
 | `stdio` | `print` |
 | `env` | `env.get(…)` |
 
 A broader name covers the narrower ones: `net Chat` covers every operation of `Chat`, and `net`
-covers every call to another service. Prefer the narrow name. `uses {net Chat.post}` tells a reader
-exactly which operation a function can call; `uses {net}` tells them almost nothing.
+covers every call to another service; `publish` covers every event, and `secret` every secret.
+Prefer the narrow name. `uses {net Chat.post}` tells a reader exactly which operation a function
+can call; `uses {net}` tells them almost nothing.
 
-Logging (`log.info` and the rest), publishing events and starting jobs aren't effects.
+Logging (`log.info` and the rest) isn't an effect, and neither is starting a job, although in a job
+starting a child run is a step (see below).
 
 ## Public functions state them
 
@@ -124,8 +130,17 @@ A function that waits is called with `!` too. Call `tellLate` without it and the
 main.eye:86:3: tellLate waits, so calling it is a durable step: write tellLate!(…)
 ```
 
-In a job, an entity call is a step as well (`Order(id).flag!()`): it commits in the same
-transaction as the job's checkpoint.
+In a job, every call that reaches outside the program is a step as well, and is written with `!`:
+a call with an outside effect (`now!()`, `lateOrders!()`, `chat.post!(…)`, an `extern fn`), an
+entity call (`Order(id).flag!()`), which commits in the same transaction as the job's checkpoint,
+publishing an event (`bus.pinged.publish!(…)`) and starting a child run (`digest.start!(day)`).
+Leave the `!` out and the checker says which:
+
+```text
+main.eye:5:3: in a job, publishing is a durable step: write publish!(…)
+```
+
+Output isn't a step: `print` and `log.info` are written without `!` in a job too.
 
 Waiting calls can appear only where waiting makes sense:
 
@@ -143,18 +158,11 @@ that does the waiting instead. A test then moves its clock with
 `advance(…)`, as the program's test does with the evening job. See
 [Jobs and waiting](/guide/jobs-and-waiting).
 
-::: info Not yet
-The checker asks for `!` on calls of waiting functions, on entity calls in jobs, and on `sleep`.
-It doesn't yet ask for it on other calls in a job that have an outside effect, such as `now()`,
-`lateOrders()` or a contract call written as `chat.post(…)`, although the
-[rule](/reference/language/effects-and-signatures) says they are steps too. Write the `!`:
-`lateOrders!()`, `now!()`.
-:::
-
 ## What can't be held across a `!`
 
 A job's state is saved at every `!`, so everything it still needs after a `!` must be something
-that can be saved. A `Secret`, a function or a foreign `Handle` can't:
+that can be saved. A `Secret`, a function or a value of an `extern type`, which foreign code owns,
+can't:
 
 ```text
 main.eye:94:11: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`
@@ -166,8 +174,16 @@ A job's arguments are saved too:
 main.eye:92:1: hold's argument token is a Secret, which can't be saved, and a job's arguments are
 ```
 
-Read a secret where you use it, after the last wait, or better, let a contract's `@auth` send it,
-so the code never holds it at all (see [Talking to other services](/guide/contracts#over-http)).
+A step's result is saved too, so a step can't return one of them. In a job, read a secret, or use
+a foreign value, inside a function that returns what can be saved, and call that function as one
+step:
+
+```text
+main.eye:9:11: this durable step's result is recorded, and a Secret can't be saved: use it in a function that returns what can be, and call that with !
+```
+
+Better still, let a contract's `@auth` send the secret, so the code never holds it at all (see
+[Talking to other services](/guide/contracts#over-http)).
 
 ## Reading effects in review
 
@@ -183,10 +199,8 @@ When you review a change, the effects tell you where to look:
 
 ## Not yet
 
-- `secret S`, `publish T`, `consume T` and `ffi` can be written in `uses`, but they aren't
-  inferred yet (open question 19 in the spec). `fs`, `process` and `random` have no functions yet.
-- A function type kept in data can state its effects (`run: fn(Event) uses {net Notify.send}`),
-  but calling it doesn't check them yet.
+- A function type kept in data states its effects (`run: fn(Event) uses {net Notify.send}`), and
+  calling it has them, but a function that does more can still be stored in it.
 - Editors don't show the inferred effects of private functions yet.
 
 ## See also

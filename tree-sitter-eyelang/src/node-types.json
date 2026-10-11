@@ -696,6 +696,10 @@
           {
             "type": "path",
             "named": true
+          },
+          {
+            "type": "string",
+            "named": true
           }
         ]
       }

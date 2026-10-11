@@ -72,7 +72,7 @@ job greedy() {
 job huge() {}
 
 job watch() {
-  for r in [greedy.start(), huge.start()] {
+  for r in [greedy.start!(), huge.start!()] {
     match r.join!() {
       Completed(_) => Log("watch").add!("completed")
       Failed(fault) => Log("watch").add!("{fault}")

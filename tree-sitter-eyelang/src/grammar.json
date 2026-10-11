@@ -907,8 +907,17 @@
               "type": "FIELD",
               "name": "target",
               "content": {
-                "type": "SYMBOL",
-                "name": "path"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "path"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "string"
+                  }
+                ]
               }
             },
             {

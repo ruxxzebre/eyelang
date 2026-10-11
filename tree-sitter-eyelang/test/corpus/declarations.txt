@@ -106,7 +106,7 @@ Function with effects
 pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
   llm.complete!(prompt(items))
 }
-fn touch(w: Ref(World)) uses {entity World, secret token, publish Delivered, clock} = w
+fn touch(w: Ref(World)) uses {entity World, secret "token", publish Notify.delivered, clock} = w
 
 --------------------------------------------------------------------------------
 
@@ -155,12 +155,13 @@ fn touch(w: Ref(World)) uses {entity World, secret token, publish Delivered, clo
           (type_identifier)))
       (effect
         (identifier)
-        (path
-          (identifier)))
+        (string
+          (string_content)))
       (effect
         (identifier)
         (path
-          (type_identifier)))
+          (type_identifier)
+          (identifier)))
       (effect
         (identifier)))
     (identifier)))

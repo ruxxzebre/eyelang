@@ -111,7 +111,11 @@ func usesOf(f *ir.File, d *syntax.Node) ([]string, bool) {
 	for _, e := range clause.NamedChildren() {
 		kind := text(f, e.ChildByField(syntax.FieldKind))
 		if target := e.ChildByField(syntax.FieldTarget); target != nil {
-			kind += " " + strings.Join(strings.Fields(text(f, target)), "")
+			if target.Kind == syntax.String {
+				kind += " " + text(f, target) // secret "telegram-bot-token"
+			} else {
+				kind += " " + strings.Join(strings.Fields(text(f, target)), "")
+			}
 		}
 		out = append(out, kind)
 	}

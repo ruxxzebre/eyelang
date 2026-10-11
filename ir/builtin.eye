@@ -216,8 +216,8 @@ pub extern fn sleepUntil(at: Instant) uses {wait}
 
 ## The secret of that name: the environment variable of the name in upper case, with `-` and `.` as
 ## `_` (`notify-token` is NOTIFY_TOKEN), or the file of that name in the directory $EYE_SECRETS. It
-## can't be shown or saved.
-pub extern fn secret(name: String) -> Secret(String)
+## can't be shown or saved. Reading one uses `secret "name"`, and in a job is a step: `secret!(…)`.
+pub extern fn secret(name: String) -> Secret(String) uses {secret}
 
 ## The environment variable of that name, if it is set: for configuration that isn't secret, such
 ## as a proxy's address.
@@ -280,7 +280,7 @@ pub extern fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bo
 
 ## In a job, waits for the first event that matches, counting every one published since the run's
 ## previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.
-pub extern fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) uses {wait}
+pub extern fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) uses {wait, consume}
 
 ## In a job, `reserve!(256 MiB, fn { summarise!(items) })` waits until the runner can grant the
 ## memory, holds it while f runs, even across f's own waits, and gives it back when f returns,

@@ -1,6 +1,8 @@
 package check
 
 import (
+	"strconv"
+
 	"eyelang/ir"
 	"eyelang/syntax"
 )
@@ -76,12 +78,45 @@ func (c *checker) loadBuiltins() {
 // builtinEffects adds what calling a built-in does to the function being
 // checked. Waiting isn't among them: outside a job, sleep blocks, and in a
 // job the `!` the call needs says that it waits.
-func (x *fnCheck) builtinEffects(name string) {
+func (x *fnCheck) builtinEffects(name string, args []ir.Arg) {
 	for _, u := range x.c.builtins.uses[name] {
 		if u != "wait" {
-			x.top.effect(u)
+			x.top.effect(namedEffect(u, args))
 		}
 	}
+}
+
+// namedEffect names what a built-in's effect touches, from its first
+// argument where that says: secret("telegram-bot-token") uses
+// secret "telegram-bot-token", and next!(bus.pinged, …) consume Bus.pinged.
+// Otherwise the effect is the bare kind, which covers all of its kind.
+func namedEffect(kind string, args []ir.Arg) string {
+	if len(args) == 0 {
+		return kind
+	}
+	switch kind {
+	case "secret":
+		if l, ok := args[0].Value.(*ir.Lit); ok {
+			if s, ok := l.Value.(string); ok {
+				return kind + " " + strconv.Quote(s)
+			}
+		}
+	case "consume":
+		if ev := eventOf(args[0].Value); ev != nil {
+			return kind + " " + ev.Contract.Name + "." + ev.Name
+		}
+	}
+	return kind
+}
+
+// eventOf is the contract event an expression names, as bus.pinged does.
+func eventOf(e ir.Expr) *ir.Event {
+	if r, ok := e.(*ir.Ref); ok {
+		if ev, ok := r.Decl.(*ir.Event); ok && ev.Contract != nil {
+			return ev
+		}
+	}
+	return nil
 }
 
 // declaredBuiltin checks a call of a built-in against its declaration.

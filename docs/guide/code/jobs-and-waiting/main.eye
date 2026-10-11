@@ -101,7 +101,7 @@ job export(t: Table) -> Int {
 ## once; one that passes its deadline is reported, not lost.
 job nightly(tables: List(Table)) {
   var runs = []
-  for t in tables { runs += [(t.name, export.start(t))] }
+  for t in tables { runs += [(t.name, export.start!(t))] }
   for (name, run) in runs {
     match run.join!() {
       Completed(rows) => Log("nightly").add!("{name}: {rows} rows")

@@ -32,6 +32,7 @@ type typeState struct {
 	effects  map[*ir.Func]map[string]bool // effects each function has itself
 	callees  map[*ir.Func][]*ir.Func      // the functions each calls
 	jobSlots map[*ir.Func][]typ           // slot types of job bodies, for the Save check
+	steps    []stepResult                 // a job's `!` calls and what they return, for the Save check
 	zones    []zoneLit                    // string literals that may be zones
 	option   *ir.Type
 	result   *ir.Type
@@ -83,7 +84,7 @@ type fnCheck struct {
 	env     typeEnv // the function's type variables
 	outer   *fnCheck
 	top     *fnCheck // the outermost function, for effects and pending checks
-	waiting bool     // checking the call a `!` marks
+	waiting ir.Expr  // the call the innermost `!` marks
 	records []pendingRecord
 	matches []pendingMatch
 	lets    []pendingLet
@@ -554,9 +555,12 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 	case *ir.Waiting:
 		x.top.effect("wait")
 		prev := x.waiting
-		x.waiting = true
+		x.waiting = e.Call
 		t := x.check(e.Call, want)
 		x.waiting = prev
+		if x.top.kind == kindJob && x.kind != kindLambda {
+			c.ts.steps = append(c.ts.steps, stepResult{job: x.top.fn, w: e, t: t})
+		}
 		return t
 	case *ir.Field:
 		return x.field(e)
@@ -851,7 +855,7 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 		return tmodule{}
 	case ir.Builtin:
 		if fn := c.builtins.funcs[d.Name]; fn != nil {
-			x.builtinEffects(d.Name)
+			x.builtinEffects(d.Name, nil) // named as a value: the bare kind
 			return c.funcType(fn, nil)
 		}
 		return c.unknownf(e.Pos, "%s can't be passed by name yet, as it takes more than one kind of argument: pass a lambda that calls it, as fn x: %s(x)", d.Name, d.Name)
@@ -1214,6 +1218,12 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return &tcon{name: "Outcome", decl: c.ts.outcome, args: []typ{r.args[0]}}
 		case r.name == "Event" && r.decl == nil && e.Name == "publish":
 			c.useName(e, method("publish"))
+			if ev := eventOf(e.Recv); ev != nil {
+				x.top.effect("publish " + ev.Contract.Name + "." + ev.Name)
+			} else {
+				x.top.effect("publish")
+			}
+			x.stepCall(e, "publishing")
 			x.args(&tfun{params: []fparam{{name: "value", t: r.args[0]}}, ret: tUnit}, e.Args, "publish", e.Pos)
 			return tUnit
 		case r.decl == nil && r.entity == nil && (r.name == "TaskGroup" || r.name == "Sender" || r.name == "Receiver"):
@@ -1253,6 +1263,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		if e.Name == "start" {
 			c.useName(e, method("start"))
 			c.useArgs(e, r.job)
+			x.stepCall(e, "starting a child run")
 			return x.start(r.job, e)
 		}
 	case *tdyn:
@@ -1357,8 +1368,14 @@ func (x *fnCheck) channelMethod(r *tcon, e *ir.MethodCall) typ {
 
 // entityCall reports an entity call in a job that isn't a durable step.
 func (x *fnCheck) entityCall(e *ir.MethodCall) {
-	if x.top.kind == kindJob && x.kind != kindLambda && !x.waiting {
-		x.c.typeErrorf(e.Pos, "in a job, an entity call is a durable step: write %s!(…)", e.Name)
+	x.stepCall(e, "an entity call")
+}
+
+// stepCall reports a recorded step in a job written without `!`: an entity
+// call, publishing an event or starting a child run (SPECS.md §12).
+func (x *fnCheck) stepCall(e *ir.MethodCall, what string) {
+	if x.top.kind == kindJob && x.kind != kindLambda && x.waiting != ir.Expr(e) {
+		x.c.typeErrorf(e.Pos, "in a job, %s is a durable step: write %s!(…)", what, e.Name)
 	}
 }
 

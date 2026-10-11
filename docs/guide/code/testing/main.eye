@@ -84,7 +84,7 @@ job fetch(feed: String) -> Int {
 
 ## Fetches a feed as a child run, and keeps how the run ended.
 job refresh(feed: String) {
-  let outcome = fetch.start(feed).join!()
+  let outcome = fetch.start!(feed).join!()
   Feed(feed).ended!(outcome)
 }
 

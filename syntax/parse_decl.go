@@ -300,6 +300,10 @@ func (p *parser) effect() *Node {
 		return b.done(p)
 	}
 	b.field(FieldKind, p.bump())
+	if p.at(StringStart) {
+		b.field(FieldTarget, p.stringLiteral()) // secret "telegram-token"
+		return b.done(p)
+	}
 	if p.at(Ident) || p.at(TypeIdent) {
 		path := p.start(Path)
 		path.add(p.bump())

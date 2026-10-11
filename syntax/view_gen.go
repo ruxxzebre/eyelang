@@ -242,7 +242,7 @@ func AsEffect(n *Node) (EffectView, bool) {
 // Kind returns the kind child (identifier).
 func (v EffectView) Kind() *Node { return v.Node.ChildByField(FieldKind) }
 
-// Target returns the target child (path), or nil.
+// Target returns the target child (path, string), or nil.
 func (v EffectView) Target() *Node { return v.Node.ChildByField(FieldTarget) }
 
 // EmptyBracesView is a typed view of an empty_braces node.

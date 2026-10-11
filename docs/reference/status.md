@@ -163,11 +163,11 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | `uses` on public functions; none means pure; a private function's uses clause and a trait method's are held too; effect names are checked | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
 | Effects inferred through private functions and callbacks, and functions passed by name | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L261) |
 | `wait`, `net C.op`, `entity E`, `clock`, `stdio`, `env` | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L171) |
-| `secret S`, `publish T`, `consume T`, `ffi` | ✓ | — (not inferred yet; decided, [#72](https://github.com/ruxxzebre/eyelang/issues/72)) | n/a | |
+| `secret "name"`, `publish C.event`, `consume C.event`, `ffi` | ✓ | ✓ (inferred; `consume` from `next!`, not yet from `@on(event(…))`) | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L379) |
 | `fs`, `process`, `random` | ✓ | ✓ | ✓, each test in a directory of its own, with a fixed seed | [programs/system](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/system/system.eye#L29) |
 | Function types in signatures: `f: fn(Int) -> Int` | ✓ | ✓ (a function has none of the derived traits, so it can't be shown, compared or saved) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L406) |
 | Function types kept in data state their effects | ✓ | partial: calling a function value counts the effects its type states; a function whose effects its type doesn't state can still be stored in one | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L272) |
-| In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | partial: publishing (`publish!`), starting a child run (`start!`) and calling an extern aren't required to take `!` yet ([#72](https://github.com/ruxxzebre/eyelang/issues/72)); `!` on a call that only computes is an error, and printing and logging aren't steps | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L158), [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L106) |
+| In a job, every call with an outside effect, and every entity call, takes `!` | ✓ | ✓ (publishing takes `publish!`, starting a child run `start!`, an extern call `!`; a step's result must be saveable; `!` on a call that only computes is an error, and printing and logging aren't steps) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L379), [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L114), [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L106) |
 
 ## [Programs and concurrency](/reference/language/programs-and-concurrency)
 
@@ -291,7 +291,7 @@ Runs column says whether the runtime does what the attribute says.
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| `extern fn` with a signature and no body | ✓ | partial: calling one doesn't add `ffi` | partial: only the standard library's own (`ai.generate`, `http.get`) | [std/http.eye](https://github.com/ruxxzebre/eyelang/blob/dev/check/std/http.eye) |
+| `extern fn` with a signature and no body | ✓ | ✓ (calling a program's own adds `ffi` unless it states its uses) | partial: only the standard library's own (`ai.generate`, `http.get`) | [std/http.eye](https://github.com/ruxxzebre/eyelang/blob/dev/check/std/http.eye) |
 | `@library`: C functions | ✓ | ✓ | — | |
 | `@host`: functions from a Go program that embeds Eyelang | ✓ | ✓ | — (no embedding API yet) | |
 
