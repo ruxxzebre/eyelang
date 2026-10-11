@@ -26,9 +26,13 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
 - for what the prelude or a standard module declares, such as a `Fault` variant like
   `Unavailable`, find references and Go to Implementations also show the lines of the
   interpreter's Go that make it.
+- **hover** on a name shows its signature and its `##` doc comment, the same text `eye doc`
+  publishes, for your own declarations, the prelude, standard modules and built-in types such as
+  `String`. On a keyword or operator it gives a one-line meaning and a link to the section of
+  SPECS.md that defines it. A `[Name]` in a doc comment links to the declaration it names.
 
 Fields and methods resolve once the program type-checks: while it has errors, go-to-definition
-still finds every other name. Hover and completion are coming.
+still finds every other name. Completion is coming.
 
 ## Programs and eye.toml
 
