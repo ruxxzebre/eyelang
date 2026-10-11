@@ -16,7 +16,9 @@ module names the code it is modelled on.
 
 `go test ./interp -run TestLab` checks the program and runs its tests, which
 replay recorded exchanges with the services (`recordings/` next to each
-module). `eye test testdata/lab` does the same from the command line.
+module). `eye test testdata/lab` does the same from the command line. The
+digest's morning runs whole there, its pages and model call included, on
+recordings of Miniflux, FlareSolverr, `http.get`, the model and Notify.
 `go test ./interp -run TestDigestOverHTTP` runs the morning digest against
 stand-ins for Miniflux, the VPN's proxy, FlareSolverr, the model gateway and
 Notify, over HTTP.

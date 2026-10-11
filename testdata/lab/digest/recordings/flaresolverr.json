@@ -1,0 +1,12 @@
+{
+  "contract": "FlareSolverr",
+  "exchanges": [
+    {
+      "op": "request",
+      "result": {
+        "kind": "Ok",
+        "value": { "status": "error", "message": "Challenge not detected", "solution": null }
+      }
+    }
+  ]
+}

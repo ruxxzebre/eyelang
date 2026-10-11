@@ -1,0 +1,36 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    {
+      "result": {
+        "highlights": ["Temporary protection is extended to 4 March 2027"],
+        "sections": [
+          {
+            "heading": "Temporary protection",
+            "stories": [
+              {
+                "headline": "Protection extended to March 2027",
+                "text": "Current permission letters stay valid until 4 March 2027. Nothing to apply for.",
+                "action": null,
+                "sources": [{ "title": "Department of Justice", "url": "https://www.irishimmigration.ie/" }]
+              }
+            ]
+          },
+          {
+            "heading": "Dublin",
+            "stories": [
+              {
+                "headline": "Rent cap extended",
+                "text": "Rent pressure zones now run to 2027.",
+                "action": null,
+                "sources": [{ "title": "RTÉ", "url": "https://www.rte.ie/news/rent" }]
+              }
+            ]
+          },
+          { "heading": "Coming up in Dublin", "stories": [] }
+        ]
+      },
+      "usage": { "input": 9000, "output": 700, "usd": 0.02 }
+    }
+  ]
+}

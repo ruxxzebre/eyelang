@@ -4,7 +4,9 @@
 # new one.
 
 import ai
+import flaresolverr  # the tests fake it and http, which web reads pages with
 import home.{UserId, dublin}
+import http
 import miniflux
 import notify
 import telegram
@@ -646,6 +648,19 @@ test "the morning's briefing goes at 07:40 Irish time, for the Irish day" {
   expect(Day(2026-10-12).sent == {})
   advance(1 min)
   expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+}
+
+test "the morning reads its sources, has the briefing written, and sends it" {
+  with fakes(notify, miniflux, flaresolverr, http, ai, from: "recordings/")
+  with clock(2026-10-12 06:30 in "UTC")  # 07:30 in Dublin
+  advance(10 min)
+  expect(Day(2026-10-12).sent == toSet(["ireland-2026-10-12"]))
+  let Some(article) = Day(2026-10-12).article else { unreachable("the morning wrote no briefing") }
+  expect(article.title == "Ireland & Dublin — Monday 12 October")
+  expect(article.document |> contains("- Temporary protection is extended to 4 March 2027"))
+  expect(article.document |> contains("**Rent cap extended** Rent pressure zones now run to 2027. [RTÉ](https://www.rte.ie/news/rent)"))
+  # The council's events page needs a browser that didn't get past it.
+  expect(article.document |> contains("- Dublin City Council events: Unsolved(message: \"Challenge not detected\")"))
 }
 
 test "/digest in a group chat gets silence" {

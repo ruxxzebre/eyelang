@@ -1,0 +1,17 @@
+{
+  "contract": "http",
+  "exchanges": [
+    {
+      "op": "get",
+      "key": "https://www.irishimmigration.ie/",
+      "result": {
+        "kind": "Ok",
+        "value": {
+          "status": 200,
+          "headers": { "content-type": "text/html" },
+          "body": "<html><nav>Menu</nav><main><h1>Temporary protection</h1><p>Permission for beneficiaries of temporary protection is extended to 4 March 2027. You don't need to apply: your current permission letter stays valid until then, and the Department will write to everyone registered.</p></main></html>"
+        }
+      }
+    }
+  ]
+}
