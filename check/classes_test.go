@@ -28,6 +28,8 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§13", "a module that doesn't exist", "missing module"},
 	{"§13", "a name a module doesn't have", "TestImportsAcrossModules"},
 	{"§9, §13", "a variant two imported modules declare", "TestAmbiguousVariants"},
+	{"§13", "a name, variant or method another module doesn't make pub", "TestModuleBoundaries"},
+	{"§5", "an opaque type's fields or variants used outside its module", "TestModuleBoundaries"},
 	{"§5", "a value of the wrong type", "a value of the wrong type"},
 	{"§5", "an argument of the wrong type", "an argument of the wrong type"},
 	{"§6", "too many, missing or unknown arguments", "arguments: too many, missing, unknown"},

@@ -73,7 +73,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | `Approval`, made only by `approval!` | ✓ | partial: nothing requires one yet | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L186) |
 | `Key`, `Run(a)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | `Handle(name)` | ✓ | partial: it can't be held across a `!` | — (no foreign code yet) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L182) |
-| `opaque` types | ✓ | — (other modules can still read the fields) | ✓ as an ordinary type | [spec-08 example](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/spec-08-methods-and-generics-1.eye) |
+| `opaque` types | ✓ | ✓ (other modules can't read, write, build or match its fields or variants) | ✓ as an ordinary type | [visibility_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/visibility_test.go#L35), [spec-08 example](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/spec-08-methods-and-generics-1.eye) |
 | String literals as `Key` or `Zone` where one is expected | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L145) |
 | Map literals, `(key):` keys, `{ name, age }` shorthand, `{}` | ✓ | ✓ | ✓ | [core: collections](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L156) |
 
@@ -177,7 +177,7 @@ agents and model tools, the checks that come from contracts (`@port`, `@allow`, 
 | A job started from `main` needs a key | ✓ | ✓ | ✓ | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L95), [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go#L75) |
 | `eye runs` lists runs, what they wait for, and their steps | n/a | n/a | ✓ | [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go#L135) |
 | `eye repl` | n/a | ✓ | ✓ | [repl_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/repl/repl_test.go#L41) |
-| Modules as directories; `import a.b` and `import a.b.{Name}` | ✓ | ✓ | ✓ | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L150), [lab](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/lab.eye) |
+| Modules as directories; `import a.b` and `import a.b.{Name}`; other modules use only what is `pub` | ✓ | ✓ | ✓ | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L150), [visibility_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/visibility_test.go#L35), [lab](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/lab.eye) |
 | `eye.toml` marks a program's root | n/a | ✓ | ✓ | [index_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/index_test.go#L151) |
 | `parallelMap`, `both`, `race`, `timeout`, with waits that overlap | ✓ | partial: what a task captures isn't checked | ✓ | [programs/tasks](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tasks/tasks.eye#L18), [tasks_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tasks_test.go#L16) |
 | A task fails, and the call fails with it | ✓ | n/a | ✓ | [tasks_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tasks_test.go#L70) |

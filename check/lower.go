@@ -607,6 +607,7 @@ func (l *lowerer) typeName(n *syntax.Node) ir.Expr {
 	switch d := l.c.lookupType(l.m, name).(type) {
 	case *ir.Variant, *ir.Entity, *ir.Type, *ir.Contract:
 		l.c.use(at.Pos, d)
+		l.visible(n, d, name)
 		return &ir.Ref{At: at, Decl: d}
 	case ambiguous:
 		l.errorf(n, "%s is a variant in more than one imported module; qualify it with the module's name", name)
@@ -839,6 +840,7 @@ func (l *lowerer) callee(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir
 		name := l.text(fnNode.ChildByField(syntax.FieldField))
 		if decl := l.qualified(recvNode, name); decl != nil {
 			l.c.use(l.pos(fnNode.ChildByField(syntax.FieldField)), decl)
+			l.visible(fnNode.ChildByField(syntax.FieldField), decl, name)
 			l.checkDurable(n, decl, waiting)
 			return &ir.Call{At: at, Func: &ir.Ref{At: l.at(fnNode), Decl: decl}, Args: args}
 		}
@@ -909,6 +911,14 @@ func (l *lowerer) checkDurable(n *syntax.Node, decl any, waiting bool) {
 	}
 }
 
+// visible reports a use of another module's declaration that it doesn't
+// make public.
+func (l *lowerer) visible(at *syntax.Node, decl any, name string) {
+	if msg := l.c.privateUse(l.m.mod, decl, name); msg != "" {
+		l.errorf(at, "%s", msg)
+	}
+}
+
 // qualified resolves `module.name` and `Type.name` to a declaration, or
 // returns nil when x.name is a field or method of a value.
 func (l *lowerer) qualified(recv *syntax.Node, name string) any {
@@ -964,6 +974,7 @@ func (l *lowerer) field(n *syntax.Node) ir.Expr {
 	name := l.text(n.ChildByField(syntax.FieldField))
 	if decl := l.qualified(recv, name); decl != nil {
 		l.c.use(l.pos(n.ChildByField(syntax.FieldField)), decl)
+		l.visible(n.ChildByField(syntax.FieldField), decl, name)
 		return &ir.Ref{At: l.at(n), Decl: decl}
 	}
 	f := &ir.Field{At: l.at(n), Value: l.expr(recv), Name: name}
@@ -1072,6 +1083,7 @@ func (l *lowerer) pattern(n *syntax.Node, binds map[string]int) ir.Pattern {
 		switch d := l.c.lookupType(l.m, name).(type) {
 		case *ir.Variant:
 			l.c.use(l.pos(nameNode), d)
+			l.visible(nameNode, d, name)
 			p.Variant = d
 		case ambiguous:
 			// Matched by name: the value decides which variant it is.

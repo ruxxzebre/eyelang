@@ -100,6 +100,8 @@ type checker struct {
 	names   names                   // where names are written, until types resolve them
 	dyns    []dynUse                // each dyn Trait written, checked once traits are known
 	typePos map[*ir.TypeExpr]ir.Pos // where each type as written is
+	public  map[any]bool            // declarations marked pub that have no Pub field of their own
+	opaque  map[*ir.Type]bool       // types declared `pub opaque`
 
 	// builtins are the signatures and effects ir/builtin.eye declares.
 	builtins builtinDecls
@@ -181,6 +183,9 @@ func (c *checker) load(path, dir string) *module {
 
 // parse collects the declarations of a module's files.
 func (c *checker) parse(path, dir string, files []*ir.File) *module {
+	if c.public == nil {
+		c.public, c.opaque = map[any]bool{}, map[*ir.Type]bool{}
+	}
 	name := path
 	if i := strings.LastIndex(path, "."); i >= 0 {
 		name = path[i+1:]
@@ -287,6 +292,10 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 			continue
 		}
 		c.use(pos(f, item), decl)
+		if msg := c.privateUse(m.mod, decl, n); msg != "" {
+			c.errorf(pos(f, item), "%s", msg)
+			continue
+		}
 		if m.types[n] == decl || m.values[n] == decl {
 			continue
 		}
@@ -312,6 +321,19 @@ func (c *checker) define(m *module, f *ir.File, at *syntax.Node, name string, de
 func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 	nameNode := d.ChildByField(syntax.FieldName)
 	c.checkAttributes(f, d)
+	if nameNode != nil && hasToken(f, d, "pub") && d.Kind != syntax.TypeDeclaration {
+		// After the declaration is defined: its entity, job, view, trait or
+		// contract is public. Functions and module-level lets say so
+		// themselves.
+		defer func() {
+			n := text(f, nameNode)
+			for _, space := range []map[string]any{m.types, m.values} {
+				if decl, ok := space[n]; ok {
+					c.public[decl] = true
+				}
+			}
+		}()
+	}
 	switch d.Kind {
 	case syntax.ImportDeclaration, syntax.EOF:
 	case syntax.LetStatement:
@@ -447,6 +469,8 @@ func (c *checker) typeDecl(m *module, f *ir.File, d *syntax.Node) {
 		}
 	}
 	m.mod.Types[t.Name] = t
+	c.public[t] = hasToken(f, d, "pub")
+	c.opaque[t] = hasToken(f, d, "opaque")
 	value := d.ChildByField(syntax.FieldValue)
 	if value.Kind == syntax.VariantList {
 		// A variant's `##` comment sits above its `|`.
@@ -588,6 +612,13 @@ func (c *checker) typeExprAt(m *module, f *ir.File, n *syntax.Node, vars []strin
 		}
 		c.use(pos(f, n.ChildByField(syntax.FieldModule)), imp)
 		c.use(pos(f, n.ChildByField(syntax.FieldName)), c.modules[imp.Path].types[name])
+		target := c.modules[imp.Path].types[name]
+		if v, ok := target.(*ir.Variant); ok {
+			target = v.Type // a newtype named like its variant
+		}
+		if msg := c.privateUse(m.mod, target, name); msg != "" {
+			c.errorf(pos(f, n.ChildByField(syntax.FieldName)), "%s", msg)
+		}
 		switch d := c.modules[imp.Path].types[name].(type) {
 		case *ir.Type:
 			t.Decl = d
@@ -1060,14 +1091,23 @@ func (c *checker) lookupType(m *module, name string) any {
 	if d, ok := c.prelude.types[name]; ok {
 		return d
 	}
-	var found any
+	var found, hidden any
 	for _, imp := range m.imports {
 		if v, ok := imp.types[name].(*ir.Variant); ok {
+			if c.privateUse(m.mod, v, name) != "" {
+				if hidden == nil {
+					hidden = v // where it is used says it is private
+				}
+				continue
+			}
 			if found != nil {
 				return ambiguous{name}
 			}
 			found = v
 		}
+	}
+	if found == nil {
+		return hidden
 	}
 	return found
 }

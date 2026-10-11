@@ -441,6 +441,9 @@ func (x *fnCheck) finish() {
 			}
 			continue
 		}
+		if d, ok := c.opaqueTo(x.fn.Module, rec); ok {
+			c.typeErrorf(r.at, "%s", opaqueMessage(d, "fields"))
+		}
 		x.recordFields(rec, r.names, r.values, r.pos, r.at)
 		if r.e != nil {
 			r.e.Type = rec.decl
@@ -658,6 +661,9 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		rec, ok := isRecord(base)
 		if ok {
 			c.useFields(e, rec, e.Names)
+			if d, opaque := c.opaqueTo(x.top.fn.Module, rec); opaque {
+				c.typeErrorf(e.Base.Position(), "%s", opaqueMessage(d, "fields"))
+			}
 		}
 		if !ok {
 			if _, isVar := prune(base).(*tvar); !isVar {
@@ -1186,6 +1192,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				}
 				if m, ok := s.entity.Methods[e.Name]; ok {
 					c.useMethod(e, m)
+					x.privateMethod(m, e)
 					return x.applyFunc(m, nil, e.Args, s.entity.Name+"."+e.Name, e.Pos)
 				}
 				x.inferArgs(e.Args)
@@ -1213,6 +1220,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		case r.decl != nil:
 			if m, ok := r.decl.Methods[e.Name]; ok && m.HasSelf {
 				c.useMethod(e, m)
+				x.privateMethod(m, e)
 				x.top.callee(m)
 				if m.MutSelf && e.RecvPlace == nil {
 					what := placeText(e.Recv)
@@ -1300,6 +1308,14 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		}
 	}
 	return c.unknownf(e.Pos, "%s has no method %s", show(defaultLiteral(recv)), e.Name)
+}
+
+// privateMethod reports a call of a method another module doesn't make
+// public.
+func (x *fnCheck) privateMethod(m *ir.Func, e *ir.MethodCall) {
+	if msg := x.c.privateUse(x.top.fn.Module, m, e.Name); msg != "" {
+		x.c.typeErrorf(e.Pos, "%s", msg)
+	}
 }
 
 // channelMethod checks group.spawn(f), send.put(x), send.close() and
@@ -1412,6 +1428,9 @@ func (x *fnCheck) field(e *ir.Field) typ {
 				x.top.effect("entity " + s.entity.Name)
 			}
 		}
+		if d, ok := c.opaqueTo(x.top.fn.Module, r); ok {
+			return c.unknownf(e.Pos, "%s", opaqueMessage(d, "field "+e.Name))
+		}
 		if t, ok := c.fieldType(r, e.Name); ok {
 			c.useField(e, r, e.Name)
 			if row := c.ts.rowOf[r.decl]; row != nil && r.decl != nil {
@@ -1494,6 +1513,9 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 	for i, name := range p.Path {
 		if owner := x.c.memberOwner(t, name); owner != nil {
 			x.c.usePlace(p.Pos, i+shift, Member{Of: owner, Name: name})
+		}
+		if d, ok := x.c.opaqueTo(x.top.fn.Module, t); ok {
+			return x.c.unknownf(p.Pos, "%s", opaqueMessage(d, "field "+name))
 		}
 		ft, ok := x.c.fieldType(t, name)
 		if !ok {
@@ -1811,6 +1833,9 @@ func (x *fnCheck) record(e *ir.Record, want typ) typ {
 	values := make([]typ, len(e.Values))
 	pos := make([]ir.Pos, len(e.Values))
 	if rec, ok := isRecord(orNil(want)); ok {
+		if d, ok := c.opaqueTo(x.top.fn.Module, rec); ok {
+			c.typeErrorf(e.Pos, "%s", opaqueMessage(d, "fields"))
+		}
 		for i, v := range e.Values {
 			ft, has := c.fieldType(rec, e.Names[i])
 			if !has {
@@ -1969,6 +1994,9 @@ func (x *fnCheck) bindPattern(p ir.Pattern, t typ, at ir.Pos) ir.Pattern {
 		}
 		return p
 	case ir.PRecord:
+		if d, ok := c.opaqueTo(x.top.fn.Module, t); ok {
+			c.typeErrorf(at, "%s", opaqueMessage(d, "fields"))
+		}
 		for i, name := range p.Names {
 			ft, ok := c.fieldType(t, name)
 			if !ok {
@@ -1997,6 +2025,9 @@ func (x *fnCheck) bindPattern(p ir.Pattern, t typ, at ir.Pos) ir.Pattern {
 func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 	c := x.c
 	k, _ := prune(t).(*tcon)
+	if d, ok := c.opaqueTo(x.top.fn.Module, t); ok {
+		c.typeErrorf(at, "%s", opaqueMessage(d, "variants"))
+	}
 	if k != nil && k.decl != nil {
 		// The variant of the matched type with that name, whichever module
 		// the name was found in.

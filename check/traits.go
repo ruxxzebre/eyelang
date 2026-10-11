@@ -125,6 +125,7 @@ func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
 				continue
 			}
 			impl.Methods[fn.Name] = fn
+			c.public[fn] = true // a trait's method is as public as the trait
 			if t != nil {
 				if _, taken := t.Methods[fn.Name]; !taken {
 					t.Methods[fn.Name] = fn
