@@ -64,9 +64,20 @@ Session eyelang-af did the cluster work in the stacks-homelab repository.
   - an empty briefing from non-empty input ends as `EmptyBriefing(items: N)`, not "Nothing new".
 - Checked against the real services: the gateway passes `response_format` json_schema strict
   through to gpt-5.6-terra, and the seven "Digest: …" category titles match.
-- eyelang-af was bumping the pin to dev with these fixes. The first scheduled run is 07:40 Irish
-  time. To see what happened:
-  - `eye runs /program` lists the runs;
+- Deployed: eyelang 89af4f7, at stacks-homelab a0ab0b12f (CI 4423 passed). The pod
+  `digest/eyelang-digest-5b498d48d4` is healthy with no restarts. `AI_PRICES`, internet egress
+  (the pod label `https`) and the README are rolled out. Its startup line names the store
+  (`…/digest schema eyelang`), 384 MiB and the next morning run, 2026-10-12 07:40 Europe/Dublin.
+  The startup database retry worked live: DNS was refused for the first seconds, then it
+  connected.
+- A third trial at 14:54 (a one-off pod with an in-memory store) sent a real 6.8 KB digest to the
+  operator only: a strike highlight, 5 Ireland items, 1 under Money and housing. Its direct pages
+  all failed, because that trial pod lacked the egress label; the deployed pod has it. Two sources
+  fail for the TypeScript digest too: the Immigrant Council of Ireland feed ("unable to detect
+  feed format"), and the Embassy page, blocked by Cloudflare.
+- To see what happened at 07:40: `eye runs /program` lists the runs, and `eye runs /program ID`
+  lists a run's steps. On the deployed 89af4f7, values are cut to 100 characters. From 111a64e
+  on, two more commands help:
   - `eye runs /program ID STEP` shows one step in full, with a model call's reply and how it was
     sent;
   - `--show-replies` prints every reply.
@@ -75,8 +86,20 @@ Session eyelang-af did the cluster work in the stacks-homelab repository.
   fail at once (`Err(NoAnswer)`, `Err(ProviderError)`). A 07:40 run missed while the pod was down
   runs right after start, inside that window. Until the runtime retries those calls too, don't
   restart the pod near 07:40, or delay startup in the pod spec.
+  eyelang-af doesn't push to the stacks repository between 06:30 and 08:30 Irish time, so the
+  Deployment doesn't change near the run.
+- After the first 07:40 run (2026-10-12), check three things:
+  - `eye runs /program` shows the morning run as `Ok(Accepted(…))`;
+  - the direct pages were read;
+  - the Telegram message arrived.
+
+  Then move the pin to the latest dev, which adds the model-call details in `eye runs` (111a64e).
 - Phase 5's exit criterion ("the morning digest runs in the lab") closes after one good morning
   run. Then ROADMAP's "Owed by releases already made" drops that item.
+- Replacing the TypeScript digest, instead of running beside it, is the user's decision.
+- **Digest fix owed:** a "Sources not read" line wraps its error twice and escapes it, as in
+  `NoAnswer(reason: "NoAnswer(reason: \"Get …\")")`. It should read like
+  "<source>: <host> refused the connection".
 
 ## Findings without an issue yet
 
