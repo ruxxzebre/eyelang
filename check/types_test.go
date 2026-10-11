@@ -416,6 +416,31 @@ fn nothing() -> Int = run(fn: 1)`, []string{
 			"4:23: expected Int, found (a, b)",
 			"8:23: expected Int, found ()",
 		}},
+		{"every type has only its own fields and methods", `type U = { n: String }
+fn m(u: U, p: (Int, Int), d: Duration) {
+  let a = "abc".nosuchmethod()
+  let c = p.first
+  let e = 5[0]
+  let f = d.nosuch()
+  let g = u.n.size
+  for x in 3 { print(x) }
+}
+fn untyped(u) = u.name
+fn inline(r: { a: Int }) -> Int = r.a
+contract Local {
+  query ping(n: Int) -> Int
+}
+fn contract(s: Local) = 1`, []string{
+			"3:11: String has no method nosuchmethod",
+			"4:11: (Int, Int) has no field first: take a tuple apart with a pattern",
+			"5:11: Int can't be indexed",
+			"6:11: Duration has no method nosuch",
+			"7:11: String has no field size",
+			"8:12: Int isn't a collection that for can walk",
+			"10:17: the type of u isn't known here, so its field name can't be found: write its type where it is declared",
+			"11:14: a record type is written in a type declaration",
+			"15:16: Local isn't a type",
+		}},
 		{"a trait's default method sees self as the trait", `trait Named {
   fn name(self) -> String
   fn greet(self) -> String = "hi {self.name()}"

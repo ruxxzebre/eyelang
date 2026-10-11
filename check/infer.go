@@ -19,10 +19,9 @@ import (
 // type. Parameters and results a private function leaves out are inferred
 // from its body and its calls; they are the same at every call.
 //
-// A few things the spec doesn't yet say enough about are approximated and
-// say so where they are: function types kept in data, inline record types,
-// `dyn`, traits beyond the operators the built-in types have, and NonZero
-// divisors, which are their number type.
+// A few things are approximated and say so where they are: the effects a
+// function type states, and NonZero divisors, which are their number type.
+// What can't be typed is reported, never left quietly unknown (unknownf).
 
 // typeState is what type checking keeps across functions.
 type typeState struct {
@@ -42,6 +41,10 @@ type typeState struct {
 	// bounds holds the traits a function's own type variables have, from
 	// its `where` clause.
 	bounds map[*tvar][]cbound
+	// The rows of entities' older versions, which migrations read, and the
+	// types of their fields (migrations.go).
+	rows      map[*ir.Entity]map[int]*tcon
+	rowFields map[*ir.Type]map[string]typ
 }
 
 type zoneLit struct {
@@ -131,6 +134,7 @@ func (c *checker) checkTypes() {
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
 		bounds: map[*tvar][]cbound{},
+		rows:   map[*ir.Entity]map[int]*tcon{}, rowFields: map[*ir.Type]map[string]typ{},
 	}
 	c.fillImplMethods()
 	c.checkDyns()
@@ -168,6 +172,8 @@ func (c *checker) checkTypes() {
 				}
 			}
 			for _, mg := range e.Migrations {
+				// A migration takes the row as it was stored at its version.
+				c.ts.params[mg.Func] = []typ{c.rowType(e, mg.From)}
 				bodies = append(bodies, body{fn: mg.Func, kind: kindGlobal, want: c.migrationResult(e, mg)})
 			}
 		}
@@ -513,10 +519,10 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		if e.Slot < len(x.slots) {
 			return x.slots[e.Slot]
 		}
-		return unknown
+		return c.unknownf(e.Pos, "internal error: %s has no slot", e.Name)
 	case *ir.Self:
 		if x.self == nil {
-			return unknown
+			return c.unknownf(e.Pos, "internal error: self has no type here")
 		}
 		return x.self
 	case *ir.SelfField:
@@ -525,7 +531,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 				return t
 			}
 		}
-		return unknown
+		return c.unknownf(e.Pos, "internal error: %s isn't a state field here", e.Name)
 	case *ir.Ref:
 		return x.ref(e)
 	case *ir.Call:
@@ -712,7 +718,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.check(e.Value, nil)
 		return tUnit
 	}
-	return unknown
+	return c.unknownf(e.Position(), "internal error: the checker doesn't know the expression %T", e)
 }
 
 // endless reports whether e is `while true` without a `break`.
@@ -740,9 +746,11 @@ func breaks(body ir.Expr) bool {
 	return found
 }
 
+// orNil is what is expected, or discard when nothing is: a type that is
+// none of the shapes callers look for.
 func orNil(t typ) typ {
-	if t == nil || t == discard {
-		return unknown
+	if t == nil {
+		return discard
 	}
 	return t
 }
@@ -777,7 +785,7 @@ func (x *fnCheck) literal(e *ir.Lit, want typ) typ {
 		}
 		return tInstant
 	}
-	return unknown
+	return x.c.unknownf(e.Pos, "internal error: the checker doesn't know the literal %T", e.Value)
 }
 
 // checkZones checks the string literals that became zones against the
@@ -809,21 +817,28 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 		if d.Entity != nil {
 			return con("List", &tcon{name: d.Entity.Name, entity: d.Entity})
 		}
+		return c.unknownf(e.Pos, "internal error: view %s has no entity", d.Name)
 	case *ir.Op:
 		return c.opType(d)
 	case *ir.Event:
 		return con("Event", c.fromExpr(d.Type, typeEnv{}, false))
 	case *ir.Module:
 		return tmodule{}
+	case ir.Builtin:
+		if fn := c.builtins.funcs[d.Name]; fn != nil {
+			x.builtinEffects(d.Name)
+			return c.funcType(fn, nil)
+		}
+		return c.unknownf(e.Pos, "%s can't be passed by name yet, as it takes more than one kind of argument: pass a lambda that calls it, as fn x: %s(x)", d.Name, d.Name)
 	}
-	return unknown
+	return c.unknownf(e.Pos, "%s isn't a value", e.Pos.Text())
 }
 
 // variantType is a variant as a value: the value, for one without fields,
 // or its constructor.
 func (c *checker) variantType(v *ir.Variant) typ {
 	if v.Type == nil {
-		return unknown
+		return c.unknownf(ir.Pos{}, "internal error: variant %s has no type", v.Name)
 	}
 	t, env := c.declType(v.Type)
 	if len(v.Fields) == 0 {
@@ -892,9 +907,11 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 			x.top.calls = append(x.top.calls, pendingCall{e, t})
 			return t
 		case *ir.Entity:
-			id := unknown
+			var id typ
 			if d.ID != nil {
 				id = c.fromExpr(d.ID.Type, typeEnv{}, false)
+			} else {
+				id = c.unknownf(e.Pos, "internal error: entity %s has no identity", d.Name)
 			}
 			x.args(&tfun{params: []fparam{{name: "id", t: id}}, ret: tUnit}, e.Args, d.Name, e.Pos)
 			return con("Ref", &tcon{name: d.Name, entity: d})
@@ -948,7 +965,8 @@ func (x *fnCheck) apply(callee typ, args []ir.Arg, want typ, name string, at ir.
 		return f.ret
 	case *tvar:
 		if f.rigid {
-			break
+			x.inferArgs(args)
+			return x.c.unknownf(at, "%s is a %s, which may be any type, so it can't be called: give it a function type, as fn(…) -> …", name, f.name)
 		}
 		fn := &tfun{ret: x.c.fresh()}
 		for _, a := range args {
@@ -957,13 +975,11 @@ func (x *fnCheck) apply(callee typ, args []ir.Arg, want typ, name string, at ir.
 		x.c.unify(f, fn)
 		return fn.ret
 	case tunknown:
-	default:
-		x.c.typeErrorf(at, "%s isn't a function; it is %s", name, show(callee))
 		x.inferArgs(args)
-		return unknown
+		return f
 	}
 	x.inferArgs(args)
-	return unknown
+	return x.c.unknownf(at, "%s isn't a function; it is %s", name, show(callee))
 }
 
 func (x *fnCheck) inferArgs(args []ir.Arg) {
@@ -1155,9 +1171,8 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 					c.useMethod(e, m)
 					return x.applyFunc(m, nil, e.Args, s.entity.Name+"."+e.Name, e.Pos)
 				}
-				c.typeErrorf(e.Pos, "%s has no method %s", s.entity.Name, e.Name)
 				x.inferArgs(e.Args)
-				return unknown
+				return c.unknownf(e.Pos, "%s has no method %s", s.entity.Name, e.Name)
 			}
 		case r.name == "Run" && r.decl == nil && e.Name == "join":
 			c.useName(e, method("join"))
@@ -1218,9 +1233,8 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return x.applyFunc(m, env, e.Args, r.trait.Name+"."+e.Name, e.Pos)
 		}
 		if !isBuiltin(e.Name) {
-			c.typeErrorf(e.Pos, "%s has no method %s: a dyn value has only the methods of its trait", show(recv), e.Name)
 			x.inferArgs(e.Args)
-			return unknown
+			return c.unknownf(e.Pos, "%s has no method %s: a dyn value has only the methods of its trait", show(recv), e.Name)
 		}
 	case *tvar:
 		if r.rigid {
@@ -1238,15 +1252,12 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 				}
 			}
 			if !isBuiltin(e.Name) {
+				x.inferArgs(e.Args)
 				if r.name == "Self" && len(c.ts.bounds[r]) == 1 {
 					tr := c.ts.bounds[r][0].trait
-					c.typeErrorf(e.Pos, "self is any type that implements %s, so it has only the methods of %s, and %s isn't one", tr.Name, tr.Name, e.Name)
-					x.inferArgs(e.Args)
-					return unknown
+					return c.unknownf(e.Pos, "self is any type that implements %s, so it has only the methods of %s, and %s isn't one", tr.Name, tr.Name, e.Name)
 				}
-				c.typeErrorf(e.Pos, "%s may be any type, so it has no method %s: require a trait that has one, as `where %s: Trait`", r.name, e.Name, r.name)
-				x.inferArgs(e.Args)
-				return unknown
+				return c.unknownf(e.Pos, "%s may be any type, so it has no method %s: require a trait that has one, as `where %s: Trait`", r.name, e.Name, r.name)
 			}
 		}
 	}
@@ -1258,14 +1269,20 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	}
 	if isBuiltin(e.Name) {
 		c.useName(e, ir.Builtin{Name: e.Name})
+		c.useArgs(e, ir.Builtin{Name: e.Name})
 		args := append([]ir.Arg{{Value: e.Recv}}, e.Args...)
 		return x.builtinWith(e.Name, args, recv, want, e.Pos)
 	}
-	if r, ok := prune(recv).(*tcon); ok && (r.decl != nil || r.entity != nil) {
-		c.typeErrorf(e.Pos, "%s has no method %s", show(recv), e.Name)
-	}
 	x.inferArgs(e.Args)
-	return unknown
+	switch r := defaultLiteral(recv).(type) {
+	case tunknown:
+		return r
+	case *tvar:
+		if !r.rigid {
+			return c.unknownf(e.Pos, "the type of %s isn't known here, so its method %s can't be found: write its type where it is declared", e.Recv.Position().Text(), e.Name)
+		}
+	}
+	return c.unknownf(e.Pos, "%s has no method %s", show(defaultLiteral(recv)), e.Name)
 }
 
 // channelMethod checks group.spawn(f), send.put(x), send.close() and
@@ -1288,9 +1305,8 @@ func (x *fnCheck) channelMethod(r *tcon, e *ir.MethodCall) typ {
 		return sig(&tcon{name: "Option", decl: c.ts.option, args: []typ{r.args[0]}})
 	}
 	methods := map[string]string{"TaskGroup": "spawn", "Sender": "put and close", "Receiver": "take, and a for loop reads it"}
-	c.typeErrorf(e.Pos, "%s has no method %s; its methods are %s", show(r), e.Name, methods[r.name])
 	x.inferArgs(e.Args)
-	return unknown
+	return c.unknownf(e.Pos, "%s has no method %s; its methods are %s", show(r), e.Name, methods[r.name])
 }
 
 // entityCall reports an entity call in a job that isn't a durable step.
@@ -1349,6 +1365,8 @@ func (x *fnCheck) timeMethod(r *tcon, e *ir.MethodCall) (typ, bool) {
 		return sig(tDate, in)
 	case r.name == "Instant" && e.Name == "time":
 		return sig(tTime, in)
+	case r.name == "Instant" && e.Name == "unix":
+		return sig(tInt)
 	case r.name == "Time" && e.Name == "next":
 		return sig(tInstant, in, fparam{name: "after", t: tInstant})
 	case r.name == "Date" && e.Name == "at":
@@ -1364,7 +1382,7 @@ func (x *fnCheck) timeMethod(r *tcon, e *ir.MethodCall) (typ, bool) {
 func (x *fnCheck) field(e *ir.Field) typ {
 	c := x.c
 	recv := x.check(e.Value, nil)
-	switch r := prune(recv).(type) {
+	switch r := defaultLiteral(recv).(type) {
 	case *tentity:
 		if e.Name == "all" {
 			c.useName(e, GoText{File: "check/infer.go", Text: `e.Name == "all"`})
@@ -1381,13 +1399,18 @@ func (x *fnCheck) field(e *ir.Field) typ {
 			c.useField(e, r, e.Name)
 			return t
 		}
-		if r.decl != nil || r.entity != nil || builtinTypes[r.name] {
-			c.typeErrorf(e.Pos, "%s has no field %s", show(r), e.Name)
-		}
 	case *tdyn:
-		c.typeErrorf(e.Pos, "%s has no field %s: a dyn value has only the methods of its trait", show(r), e.Name)
+		return c.unknownf(e.Pos, "%s has no field %s: a dyn value has only the methods of its trait", show(r), e.Name)
+	case *ttuple:
+		return c.unknownf(e.Pos, "%s has no field %s: take a tuple apart with a pattern, as `let (a, b) = pair`", show(r), e.Name)
+	case tunknown:
+		return r
+	case *tvar:
+		if !r.rigid {
+			return c.unknownf(e.Pos, "the type of %s isn't known here, so its field %s can't be found: write its type where it is declared", e.Value.Position().Text(), e.Name)
+		}
 	}
-	return unknown
+	return c.unknownf(e.Pos, "%s has no field %s", show(defaultLiteral(recv)), e.Name)
 }
 
 func (x *fnCheck) index(e *ir.Index) typ {
@@ -1398,7 +1421,7 @@ func (x *fnCheck) index(e *ir.Index) typ {
 		return coll
 	}
 	option := func(t typ) typ { return &tcon{name: "Option", decl: c.ts.option, args: []typ{t}} }
-	switch r := prune(coll).(type) {
+	switch r := defaultLiteral(coll).(type) {
 	case *tcon:
 		if r.decl == nil {
 			switch r.name {
@@ -1413,9 +1436,17 @@ func (x *fnCheck) index(e *ir.Index) typ {
 				return option(con("Byte"))
 			}
 		}
+	case tunknown:
+		x.check(e.Index, nil)
+		return option(r)
+	case *tvar:
+		if !r.rigid {
+			x.check(e.Index, nil)
+			return c.unknownf(e.Pos, "the type of %s isn't known here, so it can't be indexed: write its type where it is declared", e.Value.Position().Text())
+		}
 	}
 	x.check(e.Index, nil)
-	return option(c.fresh())
+	return c.unknownf(e.Pos, "%s can't be indexed: xs[i] takes an element of a List or Bytes, and m[key] a value of a Map", show(defaultLiteral(coll)))
 }
 
 // placeType is the type of what an assignment changes.
@@ -1429,7 +1460,7 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 			shift = 1
 			st, ok := x.c.stateType(x.entity, p.Path[0])
 			if !ok {
-				return unknown
+				return x.c.unknownf(p.Pos, "%s has no state %s", x.entity.Name, p.Path[0])
 			}
 			t = st
 			p.Path = p.Path[1:]
@@ -1438,7 +1469,7 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 		t = x.slots[p.Slot]
 	}
 	if t == nil {
-		return unknown
+		return x.c.unknownf(p.Pos, "internal error: what this assigns to has no type")
 	}
 	for i, name := range p.Path {
 		if owner := x.c.memberOwner(t, name); owner != nil {
@@ -1446,10 +1477,15 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 		}
 		ft, ok := x.c.fieldType(t, name)
 		if !ok {
-			if r, isCon := prune(t).(*tcon); isCon && (r.decl != nil || r.entity != nil) {
-				x.c.typeErrorf(p.Pos, "%s has no field %s", show(t), name)
+			switch r := prune(t).(type) {
+			case tunknown:
+				return r
+			case *tvar:
+				if !r.rigid {
+					return x.c.unknownf(p.Pos, "the type of what this assigns to isn't known here, so its field %s can't be found: write its type where it is declared", name)
+				}
 			}
-			return unknown
+			return x.c.unknownf(p.Pos, "%s has no field %s", show(t), name)
 		}
 		t = ft
 	}
@@ -1506,9 +1542,7 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 	}
 	ln, rn := name(lt), name(rt)
 	same := func(result typ) typ {
-		if !x.expect(at, l, r) {
-			return unknown
-		}
+		x.expect(at, l, r) // on a mismatch, the result is still what the left says
 		return result
 	}
 	if k, ok := lt.(*tcon); ok && (k.decl != nil || k.entity != nil) {
@@ -1517,8 +1551,7 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 			x.expect(at, rhs, r)
 			return out
 		}
-		c.typeErrorf(at, "%s has no %s: implement %s for it, as `impl %s(%s, %s) for %s`", show(lt), op, opTrait(op), opTrait(op), show(lt), show(lt), show(lt))
-		return unknown
+		return c.unknownf(at, "%s has no %s: implement %s for it, as `impl %s(%s, %s) for %s`", show(lt), op, opTrait(op), opTrait(op), show(lt), show(lt), show(lt))
 	}
 	switch {
 	case ln == "Int" || rn == "Int" && ln == "":
@@ -1566,21 +1599,19 @@ func (x *fnCheck) arith(op string, l, r typ, at ir.Pos) typ {
 					return b.args[1]
 				}
 			}
-			c.typeErrorf(at, "%s %s … needs %s: %s, and %s may be any type: require it, as `where %s: %s(%s, %s)`", v.name, op, v.name, opTrait(op), v.name, v.name, opTrait(op), v.name, v.name)
-			return unknown
+			return c.unknownf(at, "%s %s … needs %s: %s, and %s may be any type: require it, as `where %s: %s(%s, %s)`", v.name, op, v.name, opTrait(op), v.name, v.name, opTrait(op), v.name, v.name)
 		}
 		if _, rvar := rt.(*tvar); !rvar && rn != "" {
 			return same(r)
 		}
 		return same(l)
 	case tunknown:
-		return unknown
+		return v
 	}
 	if _, ok := rt.(tunknown); ok {
-		return unknown
+		return rt
 	}
-	c.typeErrorf(at, "%s %s %s isn't defined", show(lt), op, show(rt))
-	return unknown
+	return c.unknownf(at, "%s %s %s isn't defined", show(lt), op, show(rt))
 }
 
 func opTrait(op string) string {
@@ -1770,26 +1801,33 @@ func (x *fnCheck) record(e *ir.Record, want typ) typ {
 		e.Type = rec.decl
 		return rec
 	}
+	if row, ok := prune(orNil(want)).(*tcon); ok && row.decl != nil && c.ts.rowFields[row.decl] != nil {
+		// A migration's row for the next version has the fields it gives.
+		for i, v := range e.Values {
+			ft, _ := c.rowField(row.decl, e.Names[i])
+			x.check(v, ft)
+		}
+		return row
+	}
 	for i, v := range e.Values {
 		values[i] = x.check(v, nil)
 		pos[i] = v.Position()
 	}
-	switch w := prune(orNil(want)).(type) {
+	if want == nil || want == discard {
+		v := c.fresh()
+		x.top.records = append(x.top.records, pendingRecord{t: v, at: e.Pos, names: e.Names, values: values, pos: pos, e: e})
+		return v
+	}
+	switch w := prune(want).(type) {
 	case *tvar:
 		if !w.rigid {
 			x.top.records = append(x.top.records, pendingRecord{t: w, at: e.Pos, names: e.Names, values: values, pos: pos, e: e})
 			return w
 		}
 	case tunknown:
-		if want == nil || want == discard {
-			v := c.fresh()
-			x.top.records = append(x.top.records, pendingRecord{t: v, at: e.Pos, names: e.Names, values: values, pos: pos, e: e})
-			return v
-		}
-		return unknown
+		return w
 	}
-	c.typeErrorf(e.Pos, "expected %s, found a record", show(want))
-	return unknown
+	return c.unknownf(e.Pos, "expected %s, found a record", show(want))
 }
 
 // recordFields checks a record literal's fields against its type.
@@ -1818,7 +1856,7 @@ func (x *fnCheck) recordFields(rec *tcon, names []string, values []typ, pos []ir
 
 // elemOf is the type of what `for` takes from a collection.
 func (x *fnCheck) elemOf(t typ, at ir.Pos) typ {
-	switch r := prune(t).(type) {
+	switch r := defaultLiteral(t).(type) {
 	case *tcon:
 		if r.decl == nil && r.entity == nil {
 			switch r.name {
@@ -1832,14 +1870,17 @@ func (x *fnCheck) elemOf(t typ, at ir.Pos) typ {
 				return con("Byte")
 			}
 		}
-		x.c.typeErrorf(at, "%s isn't a collection that for can walk", show(t))
-		return unknown
 	case *tvar:
 		if r.lit == litString {
 			return tChar
 		}
+		if !r.rigid {
+			return x.c.unknownf(at, "the type of what for walks isn't known here: write its type where it is declared")
+		}
+	case tunknown:
+		return r
 	}
-	return x.c.fresh()
+	return x.c.unknownf(at, "%s isn't a collection that for can walk", show(t))
 }
 
 // ---------------------------------------------------------------- patterns
@@ -1907,10 +1948,18 @@ func (x *fnCheck) bindPattern(p ir.Pattern, t typ, at ir.Pos) ir.Pattern {
 		for i, name := range p.Names {
 			ft, ok := c.fieldType(t, name)
 			if !ok {
-				if k, isCon := prune(t).(*tcon); isCon && (k.decl != nil || k.entity != nil) {
-					c.typeErrorf(at, "%s has no field %s", show(t), name)
+				switch k := prune(t).(type) {
+				case tunknown:
+					ft = k
+				case *tvar:
+					if !k.rigid {
+						ft = c.unknownf(at, "the type of what this pattern matches isn't known here, so its field %s can't be found: write its type where it is declared", name)
+						break
+					}
+					ft = c.unknownf(at, "%s has no field %s", show(t), name)
+				default:
+					ft = c.unknownf(at, "%s has no field %s", show(t), name)
 				}
-				ft = unknown
 			}
 			p.Pats[i] = x.bindPattern(p.Pats[i], ft, at)
 		}
@@ -1937,14 +1986,13 @@ func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 			p.Variant, found = c.ts.uncert, true
 		}
 		if !found {
-			c.typeErrorf(at, "%s isn't a variant of %s, the type of what is matched", p.Variant.Name, show(t))
-			x.bindAnyArgs(&p, at)
+			x.bindAnyArgs(&p, c.unknownf(at, "%s isn't a variant of %s, the type of what is matched", p.Variant.Name, show(t)), at)
 			return p
 		}
 	}
 	v := p.Variant
 	if v.Type == nil {
-		x.bindAnyArgs(&p, at)
+		x.bindAnyArgs(&p, c.unknownf(at, "internal error: variant %s has no type", v.Name), at)
 		return p
 	}
 	var env typeEnv
@@ -1959,22 +2007,21 @@ func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 	}
 	next := 0
 	for i, sub := range p.Args {
-		ft := unknown
+		var ft typ
 		if p.Names[i] != "" {
-			ok := false
 			for _, f := range v.Fields {
 				if f.Name == p.Names[i] {
-					ft, ok = c.fromExpr(f.Type, env, false), true
+					ft = c.fromExpr(f.Type, env, false)
 				}
 			}
-			if !ok {
-				c.typeErrorf(at, "%s has no field %s", v.Name, p.Names[i])
+			if ft == nil {
+				ft = c.unknownf(at, "%s has no field %s", v.Name, p.Names[i])
 			}
 		} else {
 			if next < len(v.Fields) {
 				ft = c.fromExpr(v.Fields[next].Type, env, false)
 			} else {
-				c.typeErrorf(at, "%s holds %d values, and the pattern gives more", v.Name, len(v.Fields))
+				ft = c.unknownf(at, "%s holds %d values, and the pattern gives more", v.Name, len(v.Fields))
 			}
 			next++
 		}
@@ -1986,9 +2033,11 @@ func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 	return p
 }
 
-func (x *fnCheck) bindAnyArgs(p *ir.PVariant, at ir.Pos) {
+// bindAnyArgs binds a variant pattern's arguments to t, the unknown type
+// of an error already reported.
+func (x *fnCheck) bindAnyArgs(p *ir.PVariant, t typ, at ir.Pos) {
 	for i := range p.Args {
-		p.Args[i] = x.bindPattern(p.Args[i], unknown, at)
+		p.Args[i] = x.bindPattern(p.Args[i], t, at)
 	}
 }
 

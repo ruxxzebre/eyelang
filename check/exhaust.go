@@ -158,7 +158,7 @@ func (c *checker) columnType(t typ, rows [][]ir.Pattern) typ {
 		case ir.PTuple:
 			elems := make([]typ, len(p.Pats))
 			for i := range elems {
-				elems[i] = unknown
+				elems[i] = c.fresh() // the rows decide
 			}
 			return &ttuple{elems: elems}
 		}
@@ -229,7 +229,7 @@ func (c *checker) constructors(t typ, rows [][]ir.Pattern) ([]ctor, bool) {
 			for _, n := range names {
 				ft, ok := c.fieldType(x, n)
 				if !ok {
-					ft = unknown
+					ft = c.fresh() // reported where the pattern is bound
 				}
 				k.fields = append(k.fields, ft)
 			}
@@ -340,7 +340,7 @@ func (c *checker) listColumn(t typ, rows [][]ir.Pattern) (typ, bool) {
 	}
 	for _, r := range rows {
 		if _, ok := r[0].(ir.PList); ok {
-			return unknown, true
+			return c.fresh(), true
 		}
 	}
 	return nil, false

@@ -94,11 +94,12 @@ type checker struct {
 	diags   []Diagnostic
 	ts      *typeState
 	nextVar int
-	overlay map[string][]byte // unsaved files, by path
-	index   *Index            // nil unless a tool asked for it
-	all     bool              // load every module below root, for tools
-	names   names             // where names are written, until types resolve them
-	dyns    []dynUse          // each dyn Trait written, checked once traits are known
+	overlay map[string][]byte       // unsaved files, by path
+	index   *Index                  // nil unless a tool asked for it
+	all     bool                    // load every module below root, for tools
+	names   names                   // where names are written, until types resolve them
+	dyns    []dynUse                // each dyn Trait written, checked once traits are known
+	typePos map[*ir.TypeExpr]ir.Pos // where each type as written is
 
 	// builtins are the signatures and effects ir/builtin.eye declares.
 	builtins builtinDecls
@@ -121,8 +122,16 @@ type module struct {
 	loading bool
 }
 
+// errorf reports a problem at pos, once: a type written once and used at
+// many calls is reported where it is written, not at each call.
 func (c *checker) errorf(pos ir.Pos, format string, args ...any) {
-	c.diags = append(c.diags, Diagnostic{Pos: pos, Message: fmt.Sprintf(format, args...)})
+	d := Diagnostic{Pos: pos, Message: fmt.Sprintf(format, args...)}
+	for _, old := range c.diags {
+		if old == d {
+			return
+		}
+	}
+	c.diags = append(c.diags, d)
 }
 
 func parseFile(path string, src []byte) *ir.File {
@@ -513,11 +522,23 @@ var builtinTypes = map[string]bool{
 	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true, "Handler": true,
 }
 
-// typeExpr resolves a type as written.
+// typeExpr resolves a type as written, and keeps where it is written for
+// the type checker's messages.
 func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string) *ir.TypeExpr {
 	if n == nil {
 		return nil
 	}
+	t := c.typeExprAt(m, f, n, vars)
+	if c.typePos == nil {
+		c.typePos = map[*ir.TypeExpr]ir.Pos{}
+	}
+	if _, ok := c.typePos[t]; !ok {
+		c.typePos[t] = pos(f, n)
+	}
+	return t
+}
+
+func (c *checker) typeExprAt(m *module, f *ir.File, n *syntax.Node, vars []string) *ir.TypeExpr {
 	switch n.Kind {
 	case syntax.TypeIdent:
 		name := text(f, n)

@@ -12,9 +12,10 @@ import (
 //
 // A type is a constructor applied to arguments (Int, List(a), a declared
 // type, an entity's snapshot), a function, a tuple, a type variable, or
-// unknown. Unknown is what the checker uses where the spec doesn't yet say
-// enough to type something (an inline record type):
-// it agrees with every type, so it never causes an error.
+// unknown. Unknown is the type of what an error was reported about: it
+// agrees with every type, so that one error doesn't bring others. Only
+// unknownf makes one, and it reports the error, so a program that checks
+// has no unknown type in it (TestUnknownHasOneMaker).
 type typ interface{ isType() }
 
 type (
@@ -99,7 +100,12 @@ const (
 	litInt
 )
 
-var unknown typ = tunknown{}
+// unknownf reports why something can't be typed and returns unknown. It is
+// the only way to make an unknown type.
+func (c *checker) unknownf(at ir.Pos, format string, args ...any) typ {
+	c.typeErrorf(at, format, args...)
+	return tunknown{}
+}
 
 func con(name string, args ...typ) *tcon { return &tcon{name: name, args: args} }
 
@@ -466,8 +472,9 @@ type typeEnv map[string]typ
 // rigid is set (a function's own type variables, inside its body).
 func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 	if t == nil {
-		return unknown
+		return c.unknownf(ir.Pos{}, "internal error: a type that isn't written was asked for")
 	}
+	at := c.typePos[t]
 	args := func() []typ {
 		out := make([]typ, len(t.Args))
 		for i, a := range t.Args {
@@ -511,7 +518,7 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 			}
 			return d
 		}
-		return unknown // reported where it is written
+		return c.unknownf(at, "dyn takes a trait: write dyn and a trait, such as dyn Show")
 	case "fn":
 		f := &tfun{ret: tUnit}
 		for _, a := range t.Args {
@@ -521,8 +528,10 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 			f.ret = c.fromExpr(t.Result, env, rigid)
 		}
 		return f
-	case "record", "?":
-		return unknown // not typed yet: inline record types
+	case "record":
+		return c.unknownf(at, "a record type is written in a type declaration, as `type Name = { … }`, and used by its name")
+	case "?":
+		return c.unknownf(at, "internal error: the checker doesn't know this kind of type")
 	case "NonZero":
 		// A NonZero divisor is approximated by its number type.
 		if len(t.Args) == 1 {
@@ -540,12 +549,15 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 		return v
 	}
 	if t.Name == "" {
-		return unknown
+		return c.unknownf(at, "internal error: a type without a name")
 	}
 	if builtinTypes[t.Name] {
 		return con(t.Name, args()...)
 	}
-	return unknown // a contract's name, or a name already reported as undefined
+	if t.Trait != nil {
+		return c.unknownf(at, "%s is a trait, and a trait is a type only where a parameter's type is written, as `x: %s`; elsewhere write dyn %s", t.Name, t.Name, t.Name)
+	}
+	return c.unknownf(at, "%s isn't a type: a contract's operations take and return the types it names", t.Name)
 }
 
 // declArgs returns the environment of a declared type's parameters for one
@@ -588,6 +600,8 @@ func (c *checker) fieldType(t typ, name string) (typ, bool) {
 			}
 		case x.name == "Range" && x.decl == nil && len(x.args) == 1 && (name == "start" || name == "end"):
 			return x.args[0], true
+		case x.decl != nil && c.ts != nil && c.ts.rowFields[x.decl] != nil:
+			return c.rowField(x.decl, name)
 		case x.decl != nil && x.decl.Alias != nil:
 			rec := x.decl.Alias
 			for i, f := range rec.Fields {
