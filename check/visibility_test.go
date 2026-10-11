@@ -58,6 +58,12 @@ fn g(i: lib.Id) -> String = match i { Id(s) => s }`, []string{
 			"2:20: Id is a variant of Id, which module lib declares opaque: other modules make and match its values only through its functions",
 			"3:39: Id is a variant of Id, which module lib declares opaque",
 		}},
+		{"the prelude's opaque Offset", `fn a() -> Offset = Offset(3)
+fn b(o: Offset) -> Int = match o { Offset(n) => n }
+fn ok(s: String) -> Bool = s.indexOf("x") == s.indexOf("y")`, []string{
+			"1:20: Offset is a variant of Offset, which the prelude declares opaque: other modules make and match its values only through its functions",
+			"2:36: Offset is a variant of Offset, which the prelude declares opaque",
+		}},
 		{"an opaque type's fields and private methods", `import lib
 fn d() -> lib.Box = { inner: 2 }
 fn e(x: lib.Box) -> Int = x.inner + x.peek() + x.get()

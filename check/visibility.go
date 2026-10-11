@@ -64,12 +64,21 @@ func (c *checker) privateUse(from *ir.Module, decl any, name string) string {
 		return ""
 	}
 	if v, ok := decl.(*ir.Variant); ok && v.Type != nil && c.opaque[v.Type] {
-		return fmt.Sprintf("%s is a variant of %s, which module %s declares opaque: other modules make and match its values only through its functions", name, v.Type.Name, owner.Name)
+		return fmt.Sprintf("%s is a variant of %s, which %s declares opaque: other modules make and match its values only through its functions", name, v.Type.Name, c.moduleName(owner))
 	}
 	if c.isPub(decl) {
 		return ""
 	}
-	return fmt.Sprintf("%s is private to module %s: declare it pub there to use it here", name, owner.Name)
+	return fmt.Sprintf("%s is private to %s: declare it pub there to use it here", name, c.moduleName(owner))
+}
+
+// moduleName names a module in a message: `module lab.notify`, or the
+// prelude, which every module has without importing it.
+func (c *checker) moduleName(m *ir.Module) string {
+	if m == c.prelude.mod {
+		return "the prelude"
+	}
+	return "module " + m.Name
 }
 
 // opaqueTo reports whether t is a type whose fields and variants module
@@ -83,6 +92,6 @@ func (c *checker) opaqueTo(from *ir.Module, t typ) (*ir.Type, bool) {
 }
 
 // opaqueMessage says that a type's insides are hidden from this module.
-func opaqueMessage(d *ir.Type, what string) string {
-	return fmt.Sprintf("%s is opaque outside module %s, so its %s can't be used here: use its functions and methods", d.Name, d.Module.Name, what)
+func (c *checker) opaqueMessage(d *ir.Type, what string) string {
+	return fmt.Sprintf("%s is opaque outside %s, so its %s can't be used here: use its functions and methods", d.Name, c.moduleName(d.Module), what)
 }

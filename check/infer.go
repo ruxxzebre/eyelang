@@ -448,7 +448,7 @@ func (x *fnCheck) finish() {
 			continue
 		}
 		if d, ok := c.opaqueTo(x.fn.Module, rec); ok {
-			c.typeErrorf(r.at, "%s", opaqueMessage(d, "fields"))
+			c.typeErrorf(r.at, "%s", c.opaqueMessage(d, "fields"))
 		}
 		x.recordFields(rec, r.names, r.values, r.pos, r.at)
 		if r.e != nil {
@@ -664,7 +664,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		if ok {
 			c.useFields(e, rec, e.Names)
 			if d, opaque := c.opaqueTo(x.top.fn.Module, rec); opaque {
-				c.typeErrorf(e.Base.Position(), "%s", opaqueMessage(d, "fields"))
+				c.typeErrorf(e.Base.Position(), "%s", c.opaqueMessage(d, "fields"))
 			}
 		}
 		if !ok {
@@ -1442,7 +1442,7 @@ func (x *fnCheck) field(e *ir.Field) typ {
 			}
 		}
 		if d, ok := c.opaqueTo(x.top.fn.Module, r); ok {
-			return c.unknownf(e.Pos, "%s", opaqueMessage(d, "field "+e.Name))
+			return c.unknownf(e.Pos, "%s", c.opaqueMessage(d, "field "+e.Name))
 		}
 		if t, ok := c.fieldType(r, e.Name); ok {
 			c.useField(e, r, e.Name)
@@ -1528,7 +1528,7 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 			x.c.usePlace(p.Pos, i+shift, Member{Of: owner, Name: name})
 		}
 		if d, ok := x.c.opaqueTo(x.top.fn.Module, t); ok {
-			return x.c.unknownf(p.Pos, "%s", opaqueMessage(d, "field "+name))
+			return x.c.unknownf(p.Pos, "%s", x.c.opaqueMessage(d, "field "+name))
 		}
 		ft, ok := x.c.fieldType(t, name)
 		if !ok {
@@ -1605,6 +1605,9 @@ func (x *fnCheck) arith(op string, l, r typ, rhs ir.Expr, at ir.Pos) typ {
 		if rhs, out, found := x.opImpl(k, op, r); found {
 			x.expect(at, rhs, r)
 			return out
+		}
+		if k.decl != nil && k.decl.Module != x.top.fn.Module {
+			return c.unknownf(at, "%s %s %s isn't defined: %s doesn't implement %s(%s, …)", show(lt), op, show(defaultLiteral(r)), show(lt), opTrait(op), show(defaultLiteral(r)))
 		}
 		return c.unknownf(at, "%s has no %s: implement %s for it, as `impl %s(%s, %s) for %s`", show(lt), op, opTrait(op), opTrait(op), show(lt), show(lt), show(lt))
 	}
@@ -1940,7 +1943,7 @@ func (x *fnCheck) record(e *ir.Record, want typ) typ {
 	pos := make([]ir.Pos, len(e.Values))
 	if rec, ok := isRecord(orNil(want)); ok {
 		if d, ok := c.opaqueTo(x.top.fn.Module, rec); ok {
-			c.typeErrorf(e.Pos, "%s", opaqueMessage(d, "fields"))
+			c.typeErrorf(e.Pos, "%s", c.opaqueMessage(d, "fields"))
 		}
 		for i, v := range e.Values {
 			ft, has := c.fieldType(rec, e.Names[i])
@@ -2101,7 +2104,7 @@ func (x *fnCheck) bindPattern(p ir.Pattern, t typ, at ir.Pos) ir.Pattern {
 		return p
 	case ir.PRecord:
 		if d, ok := c.opaqueTo(x.top.fn.Module, t); ok {
-			c.typeErrorf(at, "%s", opaqueMessage(d, "fields"))
+			c.typeErrorf(at, "%s", c.opaqueMessage(d, "fields"))
 		}
 		for i, name := range p.Names {
 			ft, ok := c.fieldType(t, name)
@@ -2132,7 +2135,7 @@ func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 	c := x.c
 	k, _ := prune(t).(*tcon)
 	if d, ok := c.opaqueTo(x.top.fn.Module, t); ok {
-		c.typeErrorf(at, "%s", opaqueMessage(d, "variants"))
+		c.typeErrorf(at, "%s", c.opaqueMessage(d, "variants"))
 	}
 	if k != nil && k.decl != nil {
 		// The variant of the matched type with that name, whichever module

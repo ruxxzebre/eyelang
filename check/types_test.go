@@ -350,7 +350,8 @@ fn f(x: t) -> t = -x
 fn g(x: t) -> t where t: Neg(t) = -x
 fn h(s: Set(Int)) = s + s
 fn k() = abs("x")
-fn ok(n: Int, d: Duration, f: Float) -> (Int, Duration, Float) = (-n, abs(-d), -f + -1.0)`, []string{
+fn ok(n: Int, d: Duration, f: Float) -> (Int, Duration, Float) = (-n, abs(-d), -f + -1.0)
+fn l(s: String) = s.end() + 1`, []string{
 			"2:10: -Bool isn't defined: only numbers and durations have a minus sign",
 			"3:10: -Option(Int) isn't defined: Option(Int) doesn't implement Neg",
 			"4:10: String - String isn't defined",
@@ -359,6 +360,7 @@ fn ok(n: Int, d: Duration, f: Float) -> (Int, Duration, Float) = (-n, abs(-d), -
 			"7:19: -t needs t: Neg, and t may be any type: require it, as `where t: Neg(t)`",
 			"9:21: Set(Int) + Set(Int) isn't defined",
 			"10:10: abs needs t: Neg(String), and t is String here, which has no Neg",
+			"12:19: Offset + Int isn't defined: Offset doesn't implement Add(Int, …)",
 		}},
 		{"return gives the function's type, and with a handler", `fn a(n: Int) {
   if n > 1 { return 5 }
