@@ -44,4 +44,198 @@ the part after the slash.
 
 Secrets (`MINIFLUX_KEY`, `NOTIFY_TOKEN`, `AI_KEY`) can also be files named
 `miniflux-key`, `notify-token` and `ai-key` in the directory `$EYE_SECRETS`,
-which is how Kubernetes mounts them.
+which is how Kubernetes mounts them. A variable, when set, wins over a file.
+
+## Deploying the digest
+
+This runs the morning digest in the homelab's Kubernetes cluster on the
+Postgres store. Notify stays the TypeScript app; the digest calls it over
+HTTP, as the TypeScript digest does.
+
+### What runs
+
+`eye run` runs every job of every module a program imports, so it never runs
+`testdata/lab` itself: that would start the notifier, the train reminders and
+the NetBird sync, which act on the real Telegram, trains and NetBird.
+`deploy/digest/` is the digest alone: a program whose own module only imports
+`digest`, and whose module directories (`digest`, `home`, `notify`,
+`telegram`, `miniflux`, `web`, `flaresolverr`) are links to the lab's.
+`go test ./interp -run TestDigestDeployProgram` checks that it has the
+digest's jobs and no others, and runs its tests.
+
+Its jobs:
+
+- `digest.morning`, at 07:40 Irish time, starts `digest.write` (read Miniflux
+  and two pages, ask the model; at most $0.50 and 7 hours) and sends the
+  briefing to Notify's `/v1/send` with the key `ireland-YYYY-MM-DD`, or a
+  failure notice with `ireland-YYYY-MM-DD-failed`.
+- `digest.command` answers `/digest` from Telegram updates. Nothing in this
+  program receives Telegram updates, so it never runs: `/digest` stays with
+  the TypeScript automation. (It would also need Notify's identity check,
+  which the contract doesn't say how to reach over HTTP yet.)
+
+A schedule counts from the program's first start: started after 07:40, the
+first digest is the next morning's.
+
+### The image
+
+1. Build `eye` from the same eyelang commit as the program, for Linux:
+
+   ```sh
+   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o eye ./cmd/eye
+   ```
+
+   This needs Go 1.25. The binary is static and carries its time zones, so a
+   `distroless/static` or `scratch` base is enough. Once the parser moves to
+   tree-sitter, the build needs cgo and a C compiler (`CGO_ENABLED=1`, with
+   `zig cc` or gcc for the target); `eye run` itself doesn't change.
+2. Copy the program, following its links:
+
+   ```sh
+   cp -RL testdata/lab/deploy/digest /program
+   ```
+
+   A Dockerfile's `COPY` keeps links as links, so copy with `cp -RL` into the
+   build context first. The image holds `/eye` (or `/usr/local/bin/eye`) and
+   `/program`, the `.eye` sources and the recordings; nothing else.
+3. Check it in the build: `eye check /program && eye test /program`.
+
+### The command
+
+```sh
+eye run --memory-limit 384MiB /program
+```
+
+with `EYE_STORE` set to the database (below), or `--store postgres://…`
+instead of `EYE_STORE`. It runs until SIGTERM, which stops it cleanly; a
+restart carries on where it stopped, and a run killed in the middle of a step
+does that step again. `--memory-limit` is needed in a container: without it
+the runner takes the node's memory from `/proc/meminfo`, not the pod's limit.
+It must be at least the write job's `@memory(256 MiB)`, or the write run
+fails as `OutOfMemory`; give the pod a limit above it, such as 512Mi.
+
+Run one replica, with `strategy: Recreate`: the store allows one `eye run` per
+database and schema, through an advisory lock, and a second one exits with
+"… is in use by another eye run".
+
+### The store
+
+The store is CloudNativePG's database for the app. `EYE_STORE` is the `uri`
+from the app's secret (`postgres-app`), with the schema added:
+
+```sh
+EYE_STORE=postgresql://app:…@postgres-rw.NAMESPACE.svc.cluster.local:5432/app?search_path=lab
+```
+
+- `postgres://` and `postgresql://` are both taken. Any libpq parameter
+  works beside `search_path` (`sslmode=require`, `connect_timeout=5`; pgx
+  reads them). Without `sslmode`, the connection tries TLS and falls back to
+  plain, which CloudNativePG's default TLS satisfies. In a pod spec, build the
+  variable from the secret with `$(DATABASE_URL)?search_path=lab`, after
+  `DATABASE_URL` is defined from the secret's `uri`.
+- The tables (`eye_store`, `eye_rows`, `eye_runs`, `eye_events`, `eye_meta`)
+  are made on the first start, in the first schema of the search path. The
+  schema is not made: create it once, as the app user (who owns the database
+  and so may), `CREATE SCHEMA lab;`, or leave out `search_path` and use
+  `public`, which the database owner owns on Postgres 15 and later.
+- The user needs to create tables in that schema and read and write them,
+  and calls `pg_try_advisory_lock`, which every user may. The app user has
+  all of this; nothing needs a superuser.
+- A database that restarts or goes away doesn't stop the runner: a commit
+  that can't be written is tried again, and `eye run` says "trying again".
+
+### The filesystem
+
+On the Postgres store `eye run` writes nothing to disk: no journal, cache,
+lock file or temporary file, and nothing in `$HOME` (`go test ./interp -run
+TestRunOnAStoreWritesNoFiles`). It reads `/program`, the secrets, and
+`/program/.eye/inbox` if it exists, for `eye approve`'s answers, which the
+digest doesn't use. A read-only root filesystem without a writable `/tmp` is
+fine.
+
+### The environment
+
+| Variable | Value in the cluster |
+|---|---|
+| `EYE_STORE` | `$(DATABASE_URL)?search_path=lab`, as above |
+| `EYE_SECRETS` | `/secrets`, the mounted secrets below |
+| `MINIFLUX_URL` | `http://miniflux.miniflux.svc.cluster.local:8080` |
+| `FLARESOLVERR_URL` | `http://flaresolverr.flaresolverr.svc.cluster.local:8191`, without the `/v1` the TypeScript digest's address has: the contract adds it |
+| `VPN_PROXY_URL` | `http://vpn-proxy.vpn-proxy.svc.cluster.local:8888` |
+| `AI_URL` | `http://cliproxyapi.cliproxyapi.svc.cluster.local:8317/v1`, the gateway's base: the runtime adds `/chat/completions` |
+| `NOTIFY_URL` | `http://notify.messaging.svc.cluster.local:8080`, where `/v1/send` is |
+| `DIGEST_MODEL` | optional; `gpt-5.6-terra` without it |
+| `AI_PRICES` | `gpt-5.6-terra=IN/OUT`, the model's price per million tokens: required (see above) |
+| `DIGEST_EVENT` | optional; `digest.ireland` without it. See "Running beside the TypeScript digest" |
+
+The addresses are the ones the TypeScript digest's deployment
+(`clusters/mainframe/infrastructure/automation/deployment.yaml`) uses today.
+
+Secrets, as files in `$EYE_SECRETS`, one value each (a trailing newline is
+dropped):
+
+| File | What it holds | From the secret the TypeScript digest mounts |
+|---|---|---|
+| `miniflux-key` | Miniflux's API key | `digest-miniflux`, key `api-key` |
+| `notify-token` | Notify's bearer token for the digest (`TOKEN_DIGEST`, service `digest`) | `notify-digest-token`, key `TOKEN_DIGEST` |
+| `ai-key` | The gateway's key | `inbox-suggest`, key `token` (mounted as `gateway-key` today; the name here must be `ai-key`) |
+
+The pod needs to reach Miniflux, FlareSolverr, the VPN's proxy, CLIProxyAPI,
+Notify's port 8080 and Postgres; the write job reads no page directly, only
+through the proxy and FlareSolverr.
+
+### Running beside the TypeScript digest
+
+While the TypeScript digest still sends, the two can run side by side with
+`DIGEST_EVENT=digest.ireland.eye`:
+
+- The digest sends on that event, so it reaches only the people who receive
+  it. In Notify, subscribe the operator alone to `digest.ireland.eye`
+  (`TOKEN_DIGEST` may send any `digest.*` event). Someone subscribed to
+  `digest.*` or `*` gets it too.
+- Its keys start with the event (`digest.ireland.eye:ireland-YYYY-MM-DD`).
+  Notify drops a key it has seen from the same caller in the last six hours,
+  and both digests send as `digest` with the key `ireland-YYYY-MM-DD`, so
+  without that the second to send would be dropped.
+
+To switch over, stop the TypeScript digest's schedule and remove
+`DIGEST_EVENT`. Notify then drops the morning's second send by its key, if
+both send that day.
+
+### After the first morning
+
+At 07:40 Irish time, the run starts. From the pod:
+
+```sh
+eye runs /program            # every run: job, status, result or fault
+eye runs /program 2          # one run's steps, by its number
+```
+
+`eye runs` reads `EYE_STORE` too, without changing anything, while `eye run`
+runs. A good morning shows:
+
+```
+#1 digest.morning(2026-10-12)  done: Ok(Accepted(id: "m-…", deliveries: 1, deduped: false))  [7 steps, 1.4 KiB]
+#2 digest.write(2026-10-12)  done: Ok({ day: 2026-10-12, title: "Ireland & Dublin — Monday 12 October", document: …  [10 steps, 1.8 KiB]
+```
+
+`eye runs /program 2` lists the write run's steps: `miniflux.me`, the pages
+(`http.get`, `flaresolverr.request`; a page that couldn't be read shows
+`Err(…)` and is listed under "Sources not read" in the briefing), three
+`miniflux.entries`, `ai.generate` and `Day(…).keep`. It doesn't show what
+the model call spent yet. What a bad morning shows, and what to do:
+
+| `eye runs` shows | Meaning | Do |
+|---|---|---|
+| write `failed: … the price of gpt-5.6-terra isn't known …`, morning `done: Err(Faulted(…))` | `AI_PRICES` is missing | Set it; the next morning's run uses it |
+| write `failed: … set MINIFLUX_URL …` (or another service's) | A variable is missing | Set it, the same way |
+| morning `done: Err(NoReaders)` | Notify queued it for nobody | Subscribe someone to the event in Notify |
+| morning `done: Err(NotSent(…))` | Notify refused it | Check the token and that the event is in its scope |
+| morning `done: Err(MinifluxAway)` | Miniflux stayed paused for six hours | Nothing: readers got "Ireland digest not sent" |
+| morning `sleeping` | Waiting for the write run, which waits for Miniflux while it is paused | Nothing |
+
+Each failed morning also sends "Ireland digest not sent" on the event, with
+the reason.
+
+`eye run`'s log (the pod's output) also says when a run fails, and "trying
+again" while the database is away.

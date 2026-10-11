@@ -1,12 +1,15 @@
 package interp
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -17,6 +20,8 @@ import (
 
 	"eyelang/check"
 	"eyelang/ir"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // The lab's operations: what deploying its programs depends on.
@@ -313,6 +318,36 @@ func opCallers(prog *ir.Program) map[*ir.Contract]map[string]bool {
 	return found
 }
 
+// The program deployed is the digest alone: testdata/lab/deploy/digest
+// checks, its tests pass, and of the lab's jobs it has only the digest's,
+// so the notifier, the reminders and the NetBird sync don't run beside it.
+func TestDigestDeployProgram(t *testing.T) {
+	dir := "../testdata/lab/deploy/digest"
+	prog, diags := check.Program(dir)
+	for _, d := range diags {
+		t.Fatal(d)
+	}
+	var jobs []string
+	for _, m := range prog.Modules {
+		for name := range m.Jobs {
+			jobs = append(jobs, m.Path+"."+name)
+		}
+	}
+	sort.Strings(jobs)
+	if got := strings.Join(jobs, " "); got != "digest.command digest.morning digest.write" {
+		t.Errorf("the deployed program has the jobs %s, want the digest's alone", got)
+	}
+	results := RunTests(prog, "")
+	if len(results) == 0 {
+		t.Error("the deployed program runs none of the digest's tests")
+	}
+	for _, r := range results {
+		if r.Failure != "" {
+			t.Errorf("%s: %s", r.Name, r.Failure)
+		}
+	}
+}
+
 // DIGEST_EVENT sends the digest on an event of its own, with keys of its
 // own, so a shadow run beside the TypeScript digest reaches only those who
 // receive that event, and Notify doesn't drop it as a repeat of the other
@@ -330,7 +365,7 @@ func TestDigestShadowChannel(t *testing.T) {
 			if c.setting != "" {
 				t.Setenv("DIGEST_EVENT", c.setting)
 			}
-			in, run := runDigestJob(t, "../testdata/lab", "morning")
+			in, run := runDigestJob(t, "../testdata/lab/deploy/digest", "morning")
 			if run.Status != "done" {
 				t.Fatalf("morning is %s (%s)", run.Status, run.Fault)
 			}
@@ -344,5 +379,58 @@ func TestDigestShadowChannel(t *testing.T) {
 				t.Errorf("Notify got event %v with key %v (header %s), want %s with %s", b["event"], b["dedupe_key"], lab.keys[0], c.event, c.key)
 			}
 		})
+	}
+}
+
+// eye run on a database writes nothing to the program's directory or to
+// $HOME: a pod can run it on a read-only root filesystem. (It reads
+// DIR/.eye/inbox, for answers to approvals, if that exists.)
+func TestRunOnAStoreWritesNoFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("TMPDIR", t.TempDir())
+	dir := t.TempDir() + "/digest"
+	if out, err := exec.Command("cp", "-RL", "../testdata/lab/deploy/digest", dir).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	before := listFiles(t, dir) + listFiles(t, home) + listFiles(t, os.Getenv("TMPDIR"))
+	prog, diags := check.Program(dir)
+	for _, d := range diags {
+		t.Fatal(d)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	var out strings.Builder
+	Run(ctx, prog, RunOptions{Stdout: &out, Stderr: &out, Inbox: dir + "/.eye/inbox"})
+	if after := listFiles(t, dir) + listFiles(t, home) + listFiles(t, os.Getenv("TMPDIR")); after != before {
+		t.Errorf("eye run wrote files:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
+func listFiles(t *testing.T, dir string) string {
+	t.Helper()
+	var b strings.Builder
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		b.WriteString(path + "\n")
+		return nil
+	})
+	return b.String()
+}
+
+// The store takes CloudNativePG's address as the app's secret gives it, with
+// the schema added as search_path, and the usual libpq parameters: the lab's
+// README says so.
+func TestStoreURLForCloudNativePG(t *testing.T) {
+	url := "postgresql://app:secret@postgres-rw.digest.svc.cluster.local:5432/app?search_path=lab&sslmode=require&connect_timeout=5"
+	if !IsPostgres(url) {
+		t.Fatalf("%s isn't taken as a Postgres address", url)
+	}
+	cfg, err := pgx.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RuntimeParams["search_path"] != "lab" || cfg.TLSConfig == nil || cfg.ConnectTimeout != 5*time.Second ||
+		cfg.Database != "app" || cfg.User != "app" || cfg.Port != 5432 {
+		t.Errorf("parsed as %+v", cfg)
 	}
 }
