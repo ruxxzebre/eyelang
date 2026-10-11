@@ -58,6 +58,7 @@ func (c *checker) program(path string) (*ir.Program, []Diagnostic) {
 	prelude := c.parse("prelude", "", []*ir.File{parseFile("<prelude>", preludeSrc)})
 	c.prog.Prelude = prelude.mod
 	c.prelude = prelude
+	c.loadBuiltins()
 	c.prog.Store = c.parse("runtime.store", "", []*ir.File{parseFile("<runtime store>", storeSrc)}).mod
 	root := c.load(path, filepath.Join(append([]string{c.root}, strings.Split(path, ".")...)...))
 	if root == nil {
@@ -98,6 +99,9 @@ type checker struct {
 	all     bool              // load every module below root, for tools
 	names   names             // where names are written, until types resolve them
 	dyns    []dynUse          // each dyn Trait written, checked once traits are known
+
+	// builtins are the signatures and effects ir/builtin.eye declares.
+	builtins builtinDecls
 }
 
 // dynUse is a `dyn Trait` as written.
@@ -506,7 +510,7 @@ var builtinTypes = map[string]bool{
 	"Date": true, "Time": true, "Duration": true, "Zone": true, "Schedule": true, "Size": true,
 	"List": true, "Map": true, "Set": true, "Iter": true, "Ref": true, "Run": true, "Key": true,
 	"Secret": true, "Approval": true, "Version": true, "Problem": true, "Handle": true, "Range": true,
-	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true,
+	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true, "Handler": true,
 }
 
 // typeExpr resolves a type as written.

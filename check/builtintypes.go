@@ -4,9 +4,11 @@ import (
 	"eyelang/ir"
 )
 
-// The built-in functions' types. Collection functions work on several kinds
-// of collection (SPECS.md §8 calls them functions over a collection), which
-// one signature can't say until traits are checked, so each has a rule here.
+// The types of the built-in functions one signature can't describe yet
+// (goRules): collection functions work on several kinds of collection
+// (SPECS.md §8 calls them functions over a collection), which one signature
+// can't say until traits are checked, so each has a rule here. Every other
+// built-in is checked against its declaration in ir/builtin.eye.
 
 func isBuiltin(name string) bool {
 	for _, b := range ir.Builtins {
@@ -88,10 +90,16 @@ func (x *fnCheck) builtin(name string, args []ir.Arg, want typ, at ir.Pos) typ {
 	return x.builtinWith(name, args, nil, want, at)
 }
 
-// builtinWith checks a call of a built-in function. first, when set, is the
-// type of the first argument, already checked: the receiver of `x.f(…)`.
+// builtinWith checks a call of a built-in function: against its declaration
+// in ir/builtin.eye, or by its rule here when it is one of goRules. first,
+// when set, is the type of the first argument, already checked: the receiver
+// of `x.f(…)`.
 func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, at ir.Pos) typ {
 	c := x.c
+	x.builtinEffects(name)
+	if fn := c.builtins.funcs[name]; fn != nil {
+		return x.declaredBuiltin(fn, args, first, at)
+	}
 	b := x.newBuiltinArgs(args, first)
 	defer b.rest()
 	option := func(t typ) typ { return &tcon{name: "Option", decl: c.ts.option, args: []typ{t}} }
@@ -106,47 +114,13 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	list := func(t typ) typ { return con("List", t) }
 	switch name {
 	case "print", "log.debug", "log.info", "log.warn", "log.error":
-		if name == "print" {
-			x.top.effect("stdio")
-		}
 		for i := range b.pos {
 			x.requireNamed(b.arg(i, nil), "Show", b.pos[i].Value.Position(), name)
 		}
 		return tUnit
-	case "unreachable":
-		b.arg(0, tString)
-		return c.fresh()
-	case "expect":
-		b.arg(0, tBool)
-		return tUnit
-	case "advance":
-		b.arg(0, tDuration)
-		return tUnit
-	case "clock":
-		b.arg(0, tInstant)
-		return tHandler
 	case "fakes":
 		b.name("from", tString)
 		return tHandler
-	case "approve", "decline":
-		b.arg(0, tString)
-		return tUnit
-	case "sleep":
-		b.arg(0, tDuration)
-		return tUnit
-	case "sleepUntil":
-		b.arg(0, tInstant)
-		return tUnit
-	case "daily", "weekdays":
-		b.arg(0, con("Time"))
-		b.name("in", tZone)
-		return con("Schedule")
-	case "every":
-		b.arg(0, tDuration)
-		return con("Schedule")
-	case "now":
-		x.top.effect("clock")
-		return tInstant
 	case "poll":
 		b.name("every", tDuration)
 		b.name("within", tDuration)
@@ -170,70 +144,23 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		t := c.fresh()
 		b.arg(0, fn(t, con("TaskGroup")))
 		return t
-	case "channel":
-		a := c.fresh()
-		if b.name("capacity", tInt) == nil {
-			c.typeErrorf(at, "channel needs a capacity: how many values it holds before a put waits, as channel(capacity: 64)")
-		}
-		return &ttuple{elems: []typ{con("Sender", a), con("Receiver", a)}}
 	case "next":
 		event := c.fresh()
 		b.arg(0, con("Event", event))
 		b.name("where", fn(tBool, event))
 		b.name("within", tDuration)
 		return option(event)
-	case "approval":
-		b.arg(0, tString)
-		b.name("within", tDuration)
-		return &tcon{name: "Decision", decl: c.ts.decision}
-	case "toJson":
-		b.arg(0, nil)
-		return tString
-	case "lines", "split":
-		b.arg(0, tString)
-		b.arg(1, tString)
-		return list(tString)
-	case "startsWith":
-		b.arg(0, tString)
-		b.arg(1, tString)
-		return tBool
-	case "trim", "lower", "upper":
-		b.arg(0, tString)
-		return tString
-	case "env.get":
-		x.top.effect("env")
-		b.arg(0, tString)
-		return option(tString)
-	case "secret":
-		b.arg(0, tString)
-		return con("Secret", tString)
-	case "parseInt":
-		b.arg(0, tString)
-		return result(tInt, tString)
-	case "nonzero":
-		b.arg(0, tInt)
-		return option(tInt)
-	case "min", "max":
-		t := b.arg(0, nil)
-		if t == nil {
-			return c.fresh()
-		}
-		b.arg(1, t)
-		x.requireNamed(t, "Ord", at, name)
-		return t
-	case "abs":
-		if t := b.arg(0, nil); t != nil {
-			return t
-		}
-		return c.fresh()
-	case "isOk", "isErr":
-		b.arg(0, result(c.fresh(), c.fresh()))
-		return tBool
 	case "mapErr":
 		ok, e, f := c.fresh(), c.fresh(), c.fresh()
 		b.arg(0, result(ok, e))
 		b.arg(1, fn(f, e))
 		return result(ok, f)
+	case "channel":
+		a := c.fresh()
+		if b.name("capacity", tInt) == nil {
+			c.typeErrorf(at, "channel needs a capacity: how many values it holds before a put waits, as channel(capacity: 64)")
+		}
+		return &ttuple{elems: []typ{con("Sender", a), con("Receiver", a)}}
 	}
 
 	// Collection functions: the first argument says which kind.

@@ -117,7 +117,7 @@ construct that also works outside that domain.
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
 | Metaprogramming | **No user-defined macros before v1.0.** `entity`, `job`, `contract` and `view` are built in, each lowered by its own compiler pass. Deriving is limited to the built-in traits; rare code generation goes through a build step (`eye generate`) | Fixed constructs give clearer errors and are easier for agents to work with; a macro system would delay v0.1; separate passes keep the option open |
 | Program root | **`eye.toml` marks the directory a program starts from**; a file belongs to the nearest one above it, else to its own directory | Tools given one file, such as an editor jumping to a definition, must find the modules it imports: `lab/digest/digest.eye` imports `lab/home`. A marker file says so once, and it is the file that packages (open question 5) need anyway |
-| Built-in docs | **The built-ins are declared in Eyelang**, in `ir/builtin.eye`, with `extern type`, `extern fn` and `##` comments; the interpreter implements them | Like Go's `builtin` package: an editor goes to a built-in's documented declaration as to any other, and the reference is written in one place, next to the signatures it describes |
+| Built-in docs | **The built-ins are declared in Eyelang**, in `ir/builtin.eye`, with `extern type`, `extern fn` and `##` comments; the checker checks calls against those signatures and takes effects from their `uses`, and the interpreter implements them | Like Go's `builtin` package: an editor goes to a built-in's documented declaration as to any other, and the reference is written in one place, next to the signatures it describes. Since the checker uses them, the docs can't drift from the rules |
 | Doc comments | **`##` comments are Markdown, with a first-sentence summary, `[Name]` links that are checked, and a module doc at the top of a file**. One extractor feeds `eye doc`, the editor's hover and completion, and AI schemas | One source of documentation for people, editors and models. Checked links keep docs from pointing at renamed code, and the summary rule gives every list a short line without a second comment |
 
 ## 3. A tour
@@ -1198,8 +1198,13 @@ extern fn open(path: String) -> Result(Db, String)
   them: they are keywords.
 - **eye's own built-ins are declared the same way**, in `ir/builtin.eye`: an `extern type` for each
   built-in type, such as `Int` and `List(a)`, and an `extern fn` for each built-in function, each
-  with its `##` documentation. Programs never import it; tools read it, so hover, Go to
-  Declaration and `eye doc` show the built-ins as they show any declaration.
+  with its `##` documentation. Programs never import it. The checker checks a call of a built-in
+  against its declaration as against any function's, and its `uses` clause gives the call's
+  effects: `now() -> Instant uses {clock}`, and `uses {wait}` for those that wait, such as `sleep`.
+  Tools read it too, so hover, Go to Declaration and `eye doc` show the built-ins as they show any
+  declaration. Built-ins one signature can't describe yet, such as the collection functions,
+  which take any kind of collection, and `print`, which takes any number of values, keep a rule
+  in the checker, and their declarations document them.
 
 ## 19. AI models and agents
 

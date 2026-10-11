@@ -38,5 +38,10 @@ extern fn open(path: String) -> Result(Db, String)
   them: they are keywords.
 - **eye's own built-ins are declared the same way**, in `ir/builtin.eye`: an `extern type` for each
   built-in type, such as `Int` and `List(a)`, and an `extern fn` for each built-in function, each
-  with its `##` documentation. Programs never import it; tools read it, so hover, Go to
-  Declaration and `eye doc` show the built-ins as they show any declaration.
+  with its `##` documentation. Programs never import it. The checker checks a call of a built-in
+  against its declaration as against any function's, and its `uses` clause gives the call's
+  effects: `now() -> Instant uses {clock}`, and `uses {wait}` for those that wait, such as `sleep`.
+  Tools read it too, so hover, Go to Declaration and `eye doc` show the built-ins as they show any
+  declaration. Built-ins one signature can't describe yet, such as the collection functions,
+  which take any kind of collection, and `print`, which takes any number of values, keep a rule
+  in the checker, and their declarations document them.

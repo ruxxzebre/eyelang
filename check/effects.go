@@ -179,19 +179,6 @@ func (c *checker) checkWaitingCalls(f *ir.Func, all map[*ir.Func]map[string]bool
 	})
 }
 
-// stepBuiltins are the built-in functions that are durable steps in a job:
-// those that wait, and those that read the world outside the program. The
-// lowerer reports sleep without `!` already, with its own message.
-var stepBuiltins = map[string]string{
-	"sleep":      "wait",
-	"sleepUntil": "wait",
-	"poll":       "wait",
-	"next":       "wait",
-	"approval":   "wait",
-	"now":        "clock",
-	"env.get":    "env",
-}
-
 // taskBuiltins are the built-in functions that run the functions given to
 // them as tasks. taskGroup runs its function as the group's first task, so
 // the functions it spawns are inside one too.
@@ -258,7 +245,10 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 		switch d := r.Decl.(type) {
 		case ir.Builtin:
 			name = d.Name
-			effect, step = stepBuiltins[d.Name]
+			// A built-in's uses clause in ir/builtin.eye says whether it
+			// waits or reaches outside. The lowerer reports sleep without
+			// `!` already, with its own message.
+			effect, step = c.builtinStep(d.Name)
 			if taskBuiltins[d.Name] {
 				for _, a := range call.Args {
 					if _, ok := a.Value.(*ir.Lambda); ok {

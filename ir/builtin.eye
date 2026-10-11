@@ -1,8 +1,13 @@
 # The built-ins: the types and functions every module has without importing
 # anything. The interpreter implements them; this file declares them, with
-# their documentation, so that tools show them as they show any declaration:
-# hover, Go to Declaration and `eye doc` read it. Programs never import it,
-# and eye never compiles it into one (SPECS.md section 18).
+# their documentation. The checker checks each call against its declaration,
+# and its `uses` clause gives the call's effects; `uses {wait}` makes it a
+# durable step in a job. Tools read it too: hover, Go to Declaration and
+# `eye doc`. Programs never import it (SPECS.md section 18).
+#
+# The functions one signature can't describe yet, such as the collection
+# functions, are checked by rules in check/builtintypes.go (goRules in
+# check/builtindecls.go); their declarations here document them.
 #
 # A line `# == Group` starts a group of the reference. An `@host("log.info")`
 # names a function of a built-in module.
@@ -151,11 +156,11 @@ pub extern type View
 ## Writes the values, shown as string interpolation shows them and separated by spaces, and a line
 ## break to standard output. It takes any number of values, written as separate arguments:
 ## `print("took", d)`.
-pub extern fn print(values: List(a))
+pub extern fn print(values: List(a)) uses {stdio}
 
 ## Stops the program, or the job's run, as a fault: `Failed(Unreachable(why))`. It is for states
 ## the code has already ruled out, never for failures that can happen.
-pub extern fn unreachable(why: String)
+pub extern fn unreachable(why: String) -> a
 
 ## Logs a line at debug level. A job that resumes doesn't log again what it logged before its last
 ## step.
@@ -208,11 +213,11 @@ pub extern fn fakes(modules: List(Module), from: String) -> Handler
 ## In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes
 ## when the time comes, even after a restart. Outside jobs, `sleep` blocks; in tests it advances
 ## the clock.
-pub extern fn sleep(for: Duration)
+pub extern fn sleep(for: Duration) uses {wait}
 
 ## In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until that time comes.
 ## Outside jobs it blocks; in tests it advances the clock.
-pub extern fn sleepUntil(at: Instant)
+pub extern fn sleepUntil(at: Instant) uses {wait}
 
 # == Configuration
 
@@ -224,7 +229,7 @@ pub extern fn secret(name: String) -> Secret(String)
 ## The environment variable of that name, if it is set: for configuration that isn't secret, such
 ## as a proxy's address.
 @host("env.get")
-pub extern fn get(name: String) -> Option(String)
+pub extern fn get(name: String) -> Option(String) uses {env}
 
 # == Time
 
@@ -242,7 +247,7 @@ pub extern fn every(interval: Duration) -> Schedule
 
 ## The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run
 ## sees the same time.
-pub extern fn now() -> Instant
+pub extern fn now() -> Instant uses {clock}
 
 # == Concurrency
 
@@ -278,15 +283,15 @@ pub extern fn channel(capacity: Int) -> (Sender(a), Receiver(a))
 ## interval until it returns true, and returns false if `within` runs out first. For a service that
 ## can't send an event when it is ready. Only the outcome is kept, so a long poll doesn't grow the
 ## run's history.
-pub extern fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool
+pub extern fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool uses {wait}
 
 ## In a job, waits for the first event that matches, counting every one published since the run's
 ## previous step, so an answer that comes quickly isn't missed. `None` when `within` runs out.
-pub extern fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a)
+pub extern fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) uses {wait}
 
 ## In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined`
 ## or `Expired`. Only this can make an `Approval`.
-pub extern fn approval(what: String, from: who, within: Duration) -> Decision
+pub extern fn approval(what: String, from: who, within: Duration) -> Decision uses {wait}
 
 # == Collections
 

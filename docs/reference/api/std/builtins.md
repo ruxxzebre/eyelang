@@ -14,7 +14,7 @@ Functions every module can call without importing anything. Collection functions
 ### print {#print}
 
 ```eye
-fn print(values: List(a))
+fn print(values: List(a)) uses {stdio}
 ```
 
 Writes the values, shown as string interpolation shows them and separated by spaces, and a line
@@ -24,7 +24,7 @@ break to standard output. It takes any number of values, written as separate arg
 ### unreachable {#unreachable}
 
 ```eye
-fn unreachable(why: String)
+fn unreachable(why: String) -> a
 ```
 
 Stops the program, or the job's run, as a fault: `Failed(Unreachable(why))`. It is for states
@@ -127,7 +127,7 @@ It takes any number of contract modules, written as separate arguments.
 ### sleep {#sleep}
 
 ```eye
-fn sleep(for: Duration)
+fn sleep(for: Duration) uses {wait}
 ```
 
 In a job, `sleep!(20 min)` is a durable step: the run waits without holding memory, and resumes
@@ -137,7 +137,7 @@ the clock.
 ### sleepUntil {#sleepUntil}
 
 ```eye
-fn sleepUntil(at: Instant)
+fn sleepUntil(at: Instant) uses {wait}
 ```
 
 In a job, `sleepUntil!(08:00 in dublin)` waits, without holding memory, until that time comes.
@@ -158,7 +158,7 @@ can't be shown or saved.
 ### env.get {#env-get}
 
 ```eye
-fn env.get(name: String) -> Option(String)
+fn env.get(name: String) -> Option(String) uses {env}
 ```
 
 The environment variable of that name, if it is set: for configuration that isn't secret, such
@@ -196,7 +196,7 @@ At every multiple of the interval since midnight UTC: `@on(every(15 min))` fires
 ### now {#now}
 
 ```eye
-fn now() -> Instant
+fn now() -> Instant uses {clock}
 ```
 
 The current time: the test's clock in tests. In a job, `now!()` records it, so a resumed run
@@ -265,7 +265,7 @@ entities and events.
 ### poll {#poll}
 
 ```eye
-fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool
+fn poll(every: Duration, within: Duration, check: fn() -> Bool) -> Bool uses {wait}
 ```
 
 In a job, `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` calls check every
@@ -276,7 +276,7 @@ run's history.
 ### next {#next}
 
 ```eye
-fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a)
+fn next(event: Event(a), where: fn(a) -> Bool, within: Duration) -> Option(a) uses {wait}
 ```
 
 In a job, waits for the first event that matches, counting every one published since the run's
@@ -285,7 +285,7 @@ previous step, so an answer that comes quickly isn't missed. `None` when `within
 ### approval {#approval}
 
 ```eye
-fn approval(what: String, from: who, within: Duration) -> Decision
+fn approval(what: String, from: who, within: Duration) -> Decision uses {wait}
 ```
 
 In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined`
