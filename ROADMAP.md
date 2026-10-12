@@ -50,16 +50,18 @@ yet.
 
 **Ahead, in order**
 
-1. The core gaps that self-hosting and phase 7 need (G.1 to G.6, under the phases): fixed-width
-   integers (#84), character literals as `Byte`s (#85) and lazy `iter` (#86). G.4 to G.6 are
-   done: `Type.f()` through another module, and two checker bugs, a type alias naming itself
-   and an `impl` for an entity that did nothing.
+1. The core gaps that self-hosting and phase 7 need (G.1 to G.6, under the phases): lazy `iter`
+   (#86) is left. Fixed-width integers, character literals as `Byte`s, `Type.f()` through another
+   module and two checker bugs are done. The spec review of 2026-10-12
+   ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)) adds four
+   correctness bugs to fix first: entity methods reaching outside, unrecorded reads in jobs,
+   re-entrant entity calls losing a write, and effects missing at the boundary.
 2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
-3. Phase 6 (v0.3): 6.2, 6.3 and 6.10 to 6.13 are done; 6.1 and 6.4 to 6.9 are open, each with
-   its issue. The user chose plain Kubernetes NetworkPolicy, with pods labelled `eyelang.module`, for
-   6.5. Since 6.13, `eye run` serves a contract over HTTP on its `@port`, which 6.4's round trip
+3. Phase 6 (v0.3): 6.2, 6.3, 6.5 and 6.10 to 6.13 are done; 6.1, 6.4 and 6.6 to 6.9 are
+   open, each with its issue. `eye gen policy` (6.5) writes plain Kubernetes NetworkPolicy, with
+   pods labelled `eyelang.module`; the homelab names the namespace with `--namespace`. Since 6.13, `eye run` serves a contract over HTTP on its `@port`, which 6.4's round trip
    and the online playground (open question 34) build on. The phase's exit test is 6.6 (Notify,
    with the user, in the homelab repository) and 6.8 (agents, after 6.7).
 4. Self-hosting's early start (#82): S.1 (#83), an Eyelang lexer as a test program, checked by
