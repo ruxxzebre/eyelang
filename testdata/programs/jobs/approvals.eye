@@ -1,4 +1,7 @@
-# A run waits at approval! until a person answers or its time runs out.
+# A run waits at approval! until the person asked answers or its time runs
+# out. An answer names its request's id, and counts only from that person.
+
+import approvals
 
 entity Ask(id: String) {
   state outcome: String = "waiting"
@@ -35,11 +38,49 @@ job askUntilAnswered(id: String) {
   }
 }
 
-test "an approval waits until someone approves" {
+## The requests published, in order, as a routing job would see them.
+entity Requests(name: String) {
+  state ids: List(String) = []
+  state from: List(String) = []
+
+  pub fn add(r: approvals.Request) {
+    ids += [r.id]
+    from += [r.from]
+  }
+}
+
+@on(event(approvals.requested))
+job heard(r: approvals.Request) {
+  Requests("all").add!(r)
+}
+
+## Writes down what was approved and by whom, as an audit log would.
+entity Audit(name: String) {
+  state lines: List(String) = []
+
+  pub fn add(line: String) { lines += [line] }
+}
+
+job retire(name: String) {
+  match approval!("Retire {name}?", from: "operator", within: 1 h) {
+    Approved(ok) => Audit("log").add!("{ok.by} approved: {ok.what}")
+    Declined | Expired => Audit("log").add!("kept {name}")
+  }
+}
+
+test "an approval waits until the person asked approves" {
   ask.start("router")
   advance(30 min)
   expect(Ask("router").outcome == "waiting")
+  approve("Restart router?")
+  expect(Ask("router").outcome == "approved")
+}
+
+test "an answer from someone other than the person asked is refused, and the run keeps waiting" {
+  ask.start("router")
   approve("Restart router?", by: "ann")
+  expect(Ask("router").outcome == "waiting")
+  approve("Restart router?", by: "operator")
   expect(Ask("router").outcome == "approved")
 }
 
@@ -57,27 +98,45 @@ test "an approval nobody answers is Expired once its time is up, not before" {
   expect(Ask("router").outcome == "expired")
 }
 
+test "a request names whom it asks, as text" {
+  ask.start("router")
+  expect(Requests("all").from == ["operator"])
+}
+
 test "an answer after the approval expired changes nothing" {
   ask.start("router")
   advance(2 h)
-  approve("Restart router")
+  let [id] = Requests("all").ids else { unreachable("asked once") }
+  approvals.answered.publish({ id, approved: true, by: "operator" })
   expect(Ask("router").outcome == "expired")
 }
 
-test "an answer given before a run asks doesn't answer it" {
-  approve("Restart router")
-  ask.start("router")
-  expect(Ask("router").outcome == "waiting")
-  advance(1 h)
-  expect(Ask("router").outcome == "expired")
-}
-
-test "an answer goes only to approvals whose text contains it" {
+test "an answer goes only to the approval whose text contains it" {
   ask.start("router")
   ask.start("switch")
   approve("Restart switch")
   expect(Ask("switch").outcome == "approved")
   expect(Ask("router").outcome == "waiting")
+}
+
+test "two runs that ask the same thing are answered one by one, by id" {
+  ask.start("router")
+  ask.start("router")
+  let [first, second] = Requests("all").ids else { unreachable("asked twice") }
+  expect(first != second)
+  approvals.answered.publish({ id: second, approved: false, by: "operator" })
+  expect(Ask("router").outcome == "declined")
+  approvals.answered.publish({ id: first, approved: true, by: "operator" })
+  expect(Ask("router").outcome == "approved")
+}
+
+test "an answer by id from someone else is refused" {
+  ask.start("router")
+  let [id] = Requests("all").ids else { unreachable("asked once") }
+  approvals.answered.publish({ id, approved: true, by: "ann" })
+  expect(Ask("router").outcome == "waiting")
+  approvals.answered.publish({ id, approved: false, by: "operator" })
+  expect(Ask("router").outcome == "declined")
 }
 
 test "a run that asks again after Expired waits for the new approval" {
@@ -88,4 +147,10 @@ test "a run that asks again after Expired waits for the new approval" {
   expect(Ask("keys").times == 2)
   approve("Rotate keys")
   expect(Ask("keys").outcome == "approved" && Ask("keys").times == 2)
+}
+
+test "an Approval says what was approved and by whom" {
+  retire.start("printer")
+  approve("Retire printer?")
+  expect(Audit("log").lines == ["operator approved: Retire printer?"])
 }

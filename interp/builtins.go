@@ -499,11 +499,25 @@ func builtinTable() map[string]*BuiltinFn {
 			if !ok {
 				in.faultf(at, "%s takes text from what was asked: %s(\"delete 3 backups\")", name, name)
 			}
-			by, ok := named["by"]
-			if !ok {
-				by = "test"
+			waiting := in.rt.approvalsWith(what)
+			switch len(waiting) {
+			case 0:
+				in.faultf(at, "%s(%q): no run waits for an approval whose text contains %q", name, what, what)
+			case 1:
+			default:
+				var list []string
+				for _, a := range waiting {
+					list = append(list, fmt.Sprintf("%q (run #%d of %s)", a.what, a.run, a.job))
+				}
+				in.faultf(at, "%s(%q) matches %d waiting approvals, so it answers none: %s; give text that only one of them contains", name, what, len(waiting), strings.Join(list, ", "))
 			}
-			in.rt.answer(&Record{Names: []string{"what", "approved", "by"}, Vals: []Value{what, approved, by}})
+			a := waiting[0]
+			// Without by:, the person asked answers.
+			by := a.from
+			if v, ok := named["by"]; ok {
+				by = in.display(v)
+			}
+			in.rt.answer(a.id, approved, by)
 			return ir.Unit{}
 		})
 	}

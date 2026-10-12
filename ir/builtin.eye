@@ -105,7 +105,8 @@ pub extern type Key
 pub extern type Secret(a)
 
 ## A person's approval, which only `approval!(…)` gives: ending an entity, or a `@destructive`
-## command, needs one.
+## command, needs one. `ok.what` is the text that was approved and `ok.by` who approved it, the
+## `from:` of `approval!` as text, for audit logs.
 pub extern type Approval
 
 ## The version of something another service keeps, which a `@fresh` command checks is still
@@ -191,11 +192,14 @@ pub extern fn advance(by: Duration)
 ## test's clock starts at 2026-01-01 00:00 UTC.
 pub extern fn clock(at: Instant) -> Handler
 
-## In a test, approves the request a job is waiting for in `approval!(…)` whose text contains what.
-pub extern fn approve(what: String, by: who = "test")
+## In a test, approves the one request a job is waiting for in `approval!(…)` whose text contains
+## what, and fails the test when none or several do. The answer comes from by, or without it from
+## the person asked; an answer from anyone else is refused, and the run keeps waiting.
+pub extern fn approve(what: String, by: who = "the person asked")
 
-## In a test, declines the request a job is waiting for in `approval!(…)` whose text contains what.
-pub extern fn decline(what: String, by: who = "test")
+## In a test, declines the one request a job is waiting for in `approval!(…)` whose text contains
+## what, as `approve` approves it.
+pub extern fn decline(what: String, by: who = "the person asked")
 
 ## Used as `with fakes(notify, from: "receipts/")`: calls to the contract modules replay the
 ## exchanges recorded in `receipts/notify.json`, checked against the contract's types.

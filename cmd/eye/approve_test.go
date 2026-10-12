@@ -52,7 +52,13 @@ pub fn main() {
 		t.Fatalf("the run never waited for its approval; eye run said:\n%s", out)
 	}
 
-	if code := run([]string{"approve", "--by", "ann", dir, "router"}, &stdout, &stderr); code != 0 {
+	// Only the person asked may answer.
+	if code := run([]string{"approve", "--by", "ann", dir, "router"}, &stdout, &stderr); code != exitErrors ||
+		!strings.Contains(stderr.String(), "the approval 1-0 asks operator, and only they may answer it, not ann") {
+		t.Errorf("approve by ann: exit %d, %s", code, stderr.String())
+	}
+	stderr.Reset()
+	if code := run([]string{"approve", dir, "router"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("eye approve: exit %d, %s", code, stderr.String())
 	}
 	if want := "approved run 1 (restart): Restart the router?"; !strings.Contains(stdout.String(), want) {
@@ -135,6 +141,22 @@ pub fn main() {
 	if deadline == nil || time.Until(*deadline) < 59*time.Minute {
 		t.Errorf("the router's approval waits until %v, want about an hour from now", deadline)
 	}
+	// Text both approvals contain answers neither, and lists them with
+	// their ids.
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"approve", dir, "Restart the"}, &stdout, &stderr); code != exitErrors {
+		t.Errorf("approve with text both contain: exit %d, %s", code, stderr.String())
+	}
+	for _, want := range []string{
+		`2 approvals contain "Restart the", and an answer goes to one; answer it with eye approve --id ID:`,
+		rs[`"router"`].ApprovalID + "  run 1 (restart): Restart the router?",
+		rs[`"printer"`].ApprovalID + "  run 2 (restart): Restart the printer?",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("approve with text both contain said %q, want %q", stderr.String(), want)
+		}
+	}
+	routerID := rs[`"router"`].ApprovalID
 	until("the printer's approval expiring", func(rs map[string]interp.RunInfo) bool {
 		return rs[`"printer"`].Status == "done" && rs[`"printer"`].Result == `"nobody answered"`
 	}, out)
@@ -155,8 +177,9 @@ pub fn main() {
 		t.Errorf("after the restart: %+v, want the router's run waiting until %v and no new run", rs, deadline)
 	}
 
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"decline", dir, "router"}, &stdout, &stderr); code != 0 {
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"decline", "--id", routerID, dir}, &stdout, &stderr); code != 0 {
 		t.Fatalf("eye decline: exit %d, %s", code, stderr.String())
 	}
 	if want := "declined run 1 (restart): Restart the router?"; !strings.Contains(stdout.String(), want) {

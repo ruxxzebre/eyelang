@@ -65,7 +65,7 @@ test "setting a reminder twice starts one run" {
 ## Deletes old backups, but only if a person says yes within a day.
 job prune(old: Int) {
   match approval!("delete {old} old backups", from: "operator", within: 1 day) {
-    Approved(_) => Log("backups").add!("deleted {old}")
+    Approved(ok) => Log("backups").add!("deleted {old}, approved by {ok.by}")
     Declined => Log("backups").add!("kept {old}: declined")
     Expired => Log("backups").add!("kept {old}: nobody answered")
   }
@@ -76,8 +76,10 @@ job prune(old: Int) {
 test "a person approves the clean-up" {
   prune.start(3)
   expect(Log("backups").lines == [])
+  approve("delete 3 old backups", by: "someone else")
+  expect(Log("backups").lines == [])  # only the person asked may answer
   approve("delete 3 old backups")
-  expect(Log("backups").lines == ["deleted 3"])
+  expect(Log("backups").lines == ["deleted 3, approved by operator"])
 }
 
 test "nobody answers, so nothing is deleted" {

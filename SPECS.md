@@ -1175,12 +1175,16 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     the same thing are answered one by one.
   - **Only the person asked may answer.** `by` must be the request's `from`, both as text; the
     runtime refuses any other answer, logs it, and the run keeps waiting. A routing job that
-    forgets to check who pressed a button therefore can't grant consent.
+    forgets to check who pressed a button therefore can't grant consent. The check trusts the
+    `by` it is given: events have no `@allow`, so any module of the program can publish
+    `approvals.answered` with `by: r.from` and grant consent without a person. It guards against
+    a press by the wrong person, not against the program's own code (open question 35).
   - **People at a command line, and tests, answer by text.** `eye approve TEXT` and
     `eye decline TEXT` answer through the inbox of the program's `eye run` the one waiting
-    approval whose text contains `TEXT`; when several do, they answer none and list them with
-    their ids, and `eye approve --id ID` answers one. Tests answer with `approve(…)` and
-    `decline(…)`, which fail the test when their text matches more than one waiting approval.
+    approval whose text contains `TEXT`, as the person it asks; when several do, they answer none
+    and list them with their ids, and `eye approve --id ID` answers one. Tests answer with
+    `approve(…)` and `decline(…)`, as the person asked unless `by:` names someone else; they fail
+    the test when their text matches no waiting approval, or more than one.
   - **An `Approval` says what was approved and by whom**: `ok.what` and `ok.by`, for audit logs.
     It is still made only by `approval!`.
 
@@ -1847,8 +1851,8 @@ way runs before `advance` goes on, and so does each schedule that fires, if its 
 test's own module (a test of the reminders doesn't start the NetBird sync). Jobs started by a call run as soon as the call returns, until
 they finish or wait, and so do runs that an event a test publishes starts or wakes:
 `notify.answered.publish(answer)` stands in for a person pressing a button, and
-`approve("delete 3 backups")` or `decline(…)` answers the `approval!` whose text contains it, and
-fails the test when several do.
+`approve("delete 3 backups")` or `decline(…)` answers, as the person asked, the `approval!` whose
+text contains it, and fails the test when none or several do.
 `expect(cond)` fails the test, and for a comparison shows the value it got:
 `expected w.phase == Asleep, but w.phase is Running`. A run that stops on a bug (`unreachable`, a
 fake with no recorded answer) fails the test too; one that ends as an outcome the program
@@ -2147,7 +2151,10 @@ operator. All binary operators associate to the left except `??`, which associat
     which `eye approve`, `eye decline` and tests also publish (section 15). And decided on
     2026-10-11: an answer names its request's `id`, and an answer whose `by` isn't the request's
     `from` is refused; text matches only from the command line and in tests, and is refused when
-    it matches more than one waiting approval; an `Approval` has `what` and `by` fields.
+    it matches more than one waiting approval; an `Approval` has `what` and `by` fields. Built on
+    2026-10-12, where tests and the command line also refuse text that matches no waiting
+    approval, and answer as the person asked when they name no one. Who may publish an answer
+    at all is question 35.
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
 19. **Which actions are effects?** Decided on 2026-10-11: every effect in section 12's table is
@@ -2249,3 +2256,12 @@ operator. All binary operators associate to the left except `??`, which associat
     `eye run`s on real ports, which works since 2026-10-12, when `eye run` started serving a
     program's `impl Contract` on its port (section 17). Is the playground worth building before
     v1.0, and should it share its examples with the docs site and the tour?
+35. **Who may publish an event.** `@allow` names the modules that may call a contract's
+    commands and queries, but any module may publish any of its events. For
+    `approvals.answered` that matters: the runtime checks that `by` is the request's `from`
+    (section 15), but a module that writes `by: r.from` itself grants consent with no person
+    involved. One way: `@allow(approving)` on an event, checked like a command's, so only the
+    module that hears people may answer, and `eye approve` and tests stay outside it as the
+    runtime's own. The standard `approvals` module can't name the program's modules, so the
+    program would need a place to say it, such as `eye.toml` or an attribute on the routing job
+    (`@answers(approvals)`). Is a guard on publishing worth a new rule, and where does it go?

@@ -850,6 +850,13 @@ func (in *Interp) field(v Value, name string, at ir.Pos) Value {
 		case name == "end" && x.End != nil:
 			return x.End
 		}
+	case *ApprovalVal:
+		switch name {
+		case "what":
+			return x.What
+		case "by":
+			return x.By
+		}
 	}
 	in.faultf(at, "%s has no field %s", kindName(v), name)
 	return nil

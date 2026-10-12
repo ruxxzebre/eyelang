@@ -246,7 +246,8 @@ type Approval
 ```
 
 A person's approval, which only `approval!(…)` gives: ending an entity, or a `@destructive`
-command, needs one.
+command, needs one. `ok.what` is the text that was approved and `ok.by` who approved it, the
+`from:` of `approval!` as text, for audit logs.
 
 ## Version {#Version}
 

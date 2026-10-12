@@ -165,13 +165,17 @@ it works while eye run is running.
 ## eye approve {#approve}
 
 ```text
-usage: eye approve [--by name] [--journal file] [program-directory] text
+usage: eye approve [--id ID] [--by name] [--journal file] [program-directory] [text]
 
-Answers, with approve, every approval! a run of the program waits for whose text
-contains text. The program's eye run picks the answer up within a second, and
-publishes it as approvals.answered. eye runs shows what each run waits for.
+Answers, with approve, the one approval! a run of the program waits for whose
+text contains text, or whose id is ID. When several contain text, it answers
+none and lists them with their ids. The program's eye run picks the answer up
+within a second, and publishes it as approvals.answered. eye runs shows what
+each run waits for.
   -by string
-    	who answers, as the approval's Approval records it (default $USER)
+    	who answers; only the person the approval asks may (default that person)
+  -id string
+    	the id of the approval to answer, as eye runs and an ambiguous eye approve show it
   -journal string
     	the journal to look for waiting approvals in (default program-directory/.eye/journal)
 ```
@@ -179,13 +183,17 @@ publishes it as approvals.answered. eye runs shows what each run waits for.
 ## eye decline {#decline}
 
 ```text
-usage: eye decline [--by name] [--journal file] [program-directory] text
+usage: eye decline [--id ID] [--by name] [--journal file] [program-directory] [text]
 
-Answers, with decline, every approval! a run of the program waits for whose text
-contains text. The program's eye run picks the answer up within a second, and
-publishes it as approvals.answered. eye runs shows what each run waits for.
+Answers, with decline, the one approval! a run of the program waits for whose
+text contains text, or whose id is ID. When several contain text, it answers
+none and lists them with their ids. The program's eye run picks the answer up
+within a second, and publishes it as approvals.answered. eye runs shows what
+each run waits for.
   -by string
-    	who answers, as the approval's Approval records it (default $USER)
+    	who answers; only the person the approval asks may (default that person)
+  -id string
+    	the id of the approval to answer, as eye runs and an ambiguous eye decline show it
   -journal string
     	the journal to look for waiting approvals in (default program-directory/.eye/journal)
 ```

@@ -2,6 +2,7 @@ package interp
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -370,42 +371,138 @@ func (in *Interp) approval(run *jobRun, args []argVal, at ir.Pos) Value {
 	if !ok1 || !ok2 {
 		in.faultf(at, "approval!(what, from: person, within: duration) takes what to approve and how long to wait")
 	}
+	// from and an answer's by are compared as text, as interpolation shows
+	// them: the routing job writes by as "{press.by}".
+	from := in.display(named["from"])
 	pre := in.prog.Prelude.Variants
+	expired := &Variant{V: pre["Expired"]}
+	var s *step
+	if run.cursor < len(run.Log) {
+		s = &run.Log[run.cursor]
+		if s.Event == "" {
+			run.cursor++
+			return in.decode(s.Value, at)
+		}
+	} else {
+		s = in.waitStep(run, approvalEvent, "approval: "+what, within)
+		s.Request, s.From = requestID(run, len(run.Log)-1), from
+		if e := in.approvalsEvent("requested"); e != nil {
+			// The id names the run and the step, so a run that replays this
+			// step after a restart publishes nothing new: the event's key was
+			// seen.
+			in.rt.publish(e, &Record{
+				Names: []string{"id", "what", "from", "until"},
+				Vals:  []Value{s.Request, what, from, time.Unix(0, s.WakeAt).UTC()},
+			})
+		}
+	}
+	id := s.Request
+	if id == "" {
+		id = requestID(run, run.cursor) // a step saved before ids were kept
+	}
+	// An answer counts when it names this request and comes from the person
+	// asked. One from anyone else was logged when it was published (see
+	// checkAnswer), and the run keeps waiting.
 	match := func(v Value) (Value, bool) {
 		answer, ok := v.(*Record)
 		if !ok {
 			return nil, false
 		}
-		text, _ := answer.get("what")
-		if s, _ := text.(string); s == "" || !strings.Contains(what, s) {
+		if got, _ := answer.get("id"); got != id {
+			return nil, false
+		}
+		if by, _ := answer.get("by"); by != from {
 			return nil, false
 		}
 		if approved, _ := answer.get("approved"); approved == true {
-			by, _ := answer.get("by")
-			return &Variant{V: pre["Approved"], Vals: []Value{&ApprovalVal{What: what, By: show(by)}}}, true
+			return &Variant{V: pre["Approved"], Vals: []Value{&ApprovalVal{What: what, By: from}}}, true
 		}
 		return &Variant{V: pre["Declined"]}, true
 	}
-	expired := &Variant{V: pre["Expired"]}
-	if run.cursor < len(run.Log) {
-		s := &run.Log[run.cursor]
-		if s.Event == "" {
-			run.cursor++
-			return in.decode(s.Value, at)
-		}
-		return in.resolveWait(run, s, match, expired, at)
-	}
-	s := in.waitStep(run, approvalEvent, "approval: "+what, within)
-	if e := in.approvalsEvent("requested"); e != nil {
-		// The id names the run and the step, so a run that replays this
-		// step after a restart publishes nothing new: the event's key was
-		// seen.
-		in.rt.publish(e, &Record{
-			Names: []string{"id", "what", "from", "until"},
-			Vals:  []Value{fmt.Sprintf("%d-%d", run.ID, run.taken()-1), what, show(named["from"]), time.Unix(0, s.WakeAt).UTC()},
-		})
-	}
 	return in.resolveWait(run, s, match, expired, at)
+}
+
+// requestID is the id of the approval request that run's step i makes: the
+// run and the step, counting those a checkpoint dropped.
+func requestID(run *jobRun, i int) string {
+	if run.Checkpoint != nil {
+		i += run.Checkpoint.Steps
+	}
+	return fmt.Sprintf("%d-%d", run.ID, i)
+}
+
+// asked is an approval request a run waits for: its id, what it asks, and
+// whom, as text (empty for a request saved before 2026-10-12).
+type asked struct {
+	run            int64
+	job            string
+	id, what, from string
+}
+
+// askedBy returns the request run waits for at approval!, if it waits for
+// one. A waiting step is the last of the run's steps.
+func askedBy(run *jobRun) (asked, bool) {
+	n := len(run.Log)
+	if (run.Status != "sleeping" && run.Status != "ready") || n == 0 || run.Log[n-1].Event != approvalEvent {
+		return asked{}, false
+	}
+	s := run.Log[n-1]
+	a := asked{run: run.ID, job: strings.TrimPrefix(run.Job, "."), id: s.Request, what: strings.TrimPrefix(s.Call, "approval: "), from: s.From}
+	if a.id == "" {
+		a.id = requestID(run, n-1)
+	}
+	return a, true
+}
+
+// waitingApprovals returns the approval requests the program's runs wait
+// for, oldest run first.
+func (rt *runtime) waitingApprovals() []asked {
+	ids := make([]int64, 0, len(rt.index.open))
+	for id := range rt.index.open {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	var out []asked
+	for _, id := range ids {
+		data, ok := rt.store.Run(id)
+		if !ok {
+			continue
+		}
+		if a, ok := askedBy(decodeRun(data)); ok {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// approvalsWith returns the waiting approval requests whose text contains
+// text, as `eye approve TEXT` and approve(TEXT) in tests find them.
+func (rt *runtime) approvalsWith(text string) []asked {
+	var out []asked
+	for _, a := range rt.waitingApprovals() {
+		if strings.Contains(a.what, text) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// checkAnswer logs an answer that the request it names refuses, because it
+// comes from someone other than the person asked. It is called once, when
+// the answer is published, rather than each time the run looks at it.
+func (rt *runtime) checkAnswer(v Value) {
+	answer, ok := v.(*Record)
+	if !ok {
+		return
+	}
+	id, _ := answer.get("id")
+	by, _ := answer.get("by")
+	for _, a := range rt.waitingApprovals() {
+		if a.id == id && a.from != "" && by != a.from {
+			fmt.Fprintf(rt.in.log, "refused an answer to approval %s (%q, run #%d of %s) by %s: only %s, whom it asks, may answer it; the run keeps waiting\n",
+				a.id, a.what, a.run, a.job, show(by), a.from)
+		}
+	}
 }
 
 // resolveWait ends a waiting step with what match makes of the first event

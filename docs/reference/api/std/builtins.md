@@ -99,18 +99,21 @@ test's clock starts at 2026-01-01 00:00 UTC.
 ### approve {#approve}
 
 ```eye
-fn approve(what: String, by: who = "test")
+fn approve(what: String, by: who = "the person asked")
 ```
 
-In a test, approves the request a job is waiting for in `approval!(…)` whose text contains what.
+In a test, approves the one request a job is waiting for in `approval!(…)` whose text contains
+what, and fails the test when none or several do. The answer comes from by, or without it from
+the person asked; an answer from anyone else is refused, and the run keeps waiting.
 
 ### decline {#decline}
 
 ```eye
-fn decline(what: String, by: who = "test")
+fn decline(what: String, by: who = "the person asked")
 ```
 
-In a test, declines the request a job is waiting for in `approval!(…)` whose text contains what.
+In a test, declines the one request a job is waiting for in `approval!(…)` whose text contains
+what, as `approve` approves it.
 
 ### fakes {#fakes}
 

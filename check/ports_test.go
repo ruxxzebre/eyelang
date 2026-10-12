@@ -187,7 +187,7 @@ func TestLabAllowNeedsApproving(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := relDiagnostics(dir)
-	want := "approving/approving.eye:18:10: module approving may not call send, an operation of Notify: its @allow lists only digest, trains and access; add approving there to call it from here"
+	want := "approving/approving.eye:27:22: module approving may not call ask, an operation of Notify: its @allow lists only digest, trains and access; add approving there to call it from here"
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("without approving in Notify's @allow, the lab gives:\n%s\nwant:\n%s", strings.Join(got, "\n"), want)
 	}

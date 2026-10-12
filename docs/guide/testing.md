@@ -183,8 +183,10 @@ it, have a job join the run and keep the outcome:
 
 Two more things stand in for the world outside:
 
-- **People:** `approve(text)` and `decline(text)` answer the `approval!` whose text contains the
-  given text. See [Jobs and waiting](/guide/jobs-and-waiting#ways-to-wait).
+- **People:** `approve(text)` and `decline(text)` answer the one `approval!` whose text contains
+  the given text, as the person it asks; `by:` answers as someone else, whose answer is refused.
+  They fail the test when no waiting approval, or more than one, contains the text. See
+  [Jobs and waiting](/guide/jobs-and-waiting#ways-to-wait).
 - **Events:** `contract.event.publish(...)` stands in for another service sending an event, and
   the runs it starts or wakes go before it returns. See
   [Views, events and schedules](/guide/views-events-schedules#events).

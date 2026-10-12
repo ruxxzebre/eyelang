@@ -114,35 +114,49 @@ clean-up asks a person before it deletes anything:
 
 `approval!` returns a `Decision`, and the `match` must handle all three: `Approved`, `Declined`
 and `Expired`. A day with no answer is a case the code decides on, not an exception or a run that
-waits forever. In tests, `approve(...)` and `decline(...)` answer the request whose text contains
-what they are given:
+waits forever. `Approved` holds an `Approval`, whose `what` and `by` say what was approved and by
+whom, for a log.
+
+Only the person in `from:` may answer: an answer from anyone else is refused and logged, and the
+run keeps waiting. In tests, `approve(...)` and `decline(...)` answer the one request whose text
+contains what they are given, as the person asked unless `by:` says otherwise. They fail the test
+when no request's text, or more than one, contains it:
 
 <<< ./code/jobs-and-waiting/main.eye#test-prune
 
 Outside tests, a request reaches a person through the program. When a run starts waiting, the
-runtime publishes `approvals.requested`, and a job of the program tells the person what is asked
-and until when:
+runtime publishes `approvals.requested`, with the request's `id`, `what`, `from` and `until`. A
+job of the program asks the person, and publishes their answer as `approvals.answered`, naming
+the request by its `id`:
 
 ```eye
 import approvals
 
 @on(event(approvals.requested))
 job ask(r: approvals.Request) {
-  # tell whoever r.from names what r.what asks, and to answer before r.until
-  # with eye approve or eye decline
+  let left = r.until - now!()
+  let asked = notify.ask!(to: operator, text: r.what, choices: [yes, no], within: left,
+    key: "approval-{r.id}").reconcile!()
+  let Asking(question) = asked else { return }
+  let Some(press) = next!(notify.answered, where: fn a: a.question == question, within: left) else {
+    return
+  }
+  approvals.answered.publish!({ id: r.id, approved: press.choice == yes.id, by: "{press.by}" })
 }
 ```
 
-The person answers from a shell where the program runs: `eye approve` and `eye decline` answer a
-run of `eye run` in that directory, as in `eye approve . "delete 3 backups"`. `eye runs` shows what
-each run waits for, and until when. A run waiting for an approval survives a restart of `eye run`,
-with the same deadline.
+The job doesn't check who pressed the button: the runtime compares `by` with the request's `from`,
+both as text, and refuses an answer from anyone else. And since the answer names its request, two
+runs that ask the same thing are answered one by one. The check guards against a press by the
+wrong person; it can't tell a real press from code that writes `by: r.from` itself, so publish
+`approvals.answered` only from the job that hears the person.
 
-For now, answer only with `eye approve` and `eye decline`. A program can publish
-`approvals.answered` itself, from a button press say, but such an answer goes to every waiting
-approval whose text contains it, whoever pressed. Answers that name their request and count only
-from the person asked are planned
-([#71](https://github.com/ruxxzebre/eyelang/issues/71)).
+A person can also answer from a shell where the program runs: `eye approve` and `eye decline`
+answer a run of `eye run` in that directory, as in `eye approve . "delete 3 backups"`. When more
+than one waiting approval contains the text, they answer none and list the approvals with their
+ids; `eye approve --id ID .` answers one. `eye runs` shows what each run waits for, its id, and
+until when. A run waiting for an approval survives a restart of `eye run`, with the same deadline
+and id.
 
 `poll!` is for services that can only be asked:
 

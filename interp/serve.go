@@ -360,8 +360,12 @@ type RunInfo struct {
 	Args   []string   `json:"args"`
 	WakeAt *time.Time `json:"wakeAt,omitempty"` // while sleeping
 	Waits  string     `json:"waits,omitempty"`  // what a sleeping run waits for
-	// Approval is the text of the approval! a sleeping run waits for.
-	Approval string `json:"approval,omitempty"`
+	// Approval is the text of the approval! a sleeping run waits for,
+	// ApprovalID the id an answer names it by, and ApprovalFrom whom it
+	// asks, as text (empty for a request saved before 2026-10-12).
+	Approval     string `json:"approval,omitempty"`
+	ApprovalID   string `json:"approvalId,omitempty"`
+	ApprovalFrom string `json:"approvalFrom,omitempty"`
 	// Holds is the memory the run has reserved with reserve!.
 	Holds  string     `json:"holds,omitempty"`
 	Steps  []StepInfo `json:"steps"`
@@ -520,9 +524,9 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 		switch {
 		case r.WaitEvent == approvalEvent:
 			info.Waits = "a person's answer"
-			if n := len(r.Log); n > 0 {
-				info.Approval = strings.TrimPrefix(r.Log[n-1].Call, "approval: ")
-				info.Waits += " to " + info.Approval
+			if a, ok := askedBy(r); ok {
+				info.Approval, info.ApprovalID, info.ApprovalFrom = a.what, a.id, a.from
+				info.Waits += " to " + a.what + " (approval " + a.id + ")"
 			}
 		case r.WaitEvent == memoryEvent:
 			info.Waits = "memory"

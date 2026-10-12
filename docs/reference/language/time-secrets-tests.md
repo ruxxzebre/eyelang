@@ -76,8 +76,8 @@ way runs before `advance` goes on, and so does each schedule that fires, if its 
 test's own module (a test of the reminders doesn't start the NetBird sync). Jobs started by a call run as soon as the call returns, until
 they finish or wait, and so do runs that an event a test publishes starts or wakes:
 `notify.answered.publish(answer)` stands in for a person pressing a button, and
-`approve("delete 3 backups")` or `decline(…)` answers the `approval!` whose text contains it, and
-fails the test when several do.
+`approve("delete 3 backups")` or `decline(…)` answers, as the person asked, the `approval!` whose
+text contains it, and fails the test when none or several do.
 `expect(cond)` fails the test, and for a comparison shows the value it got:
 `expected w.phase == Asleep, but w.phase is Running`. A run that stops on a bug (`unreachable`, a
 fake with no recorded answer) fails the test too; one that ends as an outcome the program

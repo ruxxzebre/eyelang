@@ -330,7 +330,7 @@ each names the closed issue it continues.
 | C.5 `eye fmt` writes public functions' `uses` clauses (from 2.6) (done) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
 | C.6 10,000 waiting tasks within a memory budget (from 3.5) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
 | C.7 Every SPECS.md example passes the checker (phase 2's exit test) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
-| C.8 Approvals answered by id, and only by the person asked | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
+| C.8 Approvals answered by id, and only by the person asked (done) | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
 | C.9 `!` on publishing and starting child runs; every effect inferred (done) | [#72](https://github.com/ruxxzebre/eyelang/issues/72) |
 | C.10 A job changed under a paused run faults instead of replaying (done) | [#73](https://github.com/ruxxzebre/eyelang/issues/73) |
 | C.11 Module roots in `eye.toml` (done) | [#74](https://github.com/ruxxzebre/eyelang/issues/74) |
@@ -401,6 +401,11 @@ What each task is, until its issue holds it:
   **Done when:** tests show two runs asking the same thing answered one by one, an answer by
   someone other than `from` refused while the run keeps waiting, an ambiguous `eye approve` and
   test `approve(…)` refused, and `ok.by` read in a job; the lab's tests pass.
+  Done on 2026-10-12: answers match by id and count only from `from:`, and a refused one is
+  logged once; `eye approve` and test `approve(…)` refuse text that no waiting approval or
+  several contain, and answer as the person asked; `eye approve --id ID` answers one, and
+  `eye runs` shows each approval's id. The lab's `approving` asks on Notify with buttons again.
+  Any module may still publish an answer with `by: r.from` (open question 35).
 - **C.9 Every recorded step marked (#52, 5.8, and #26, 2.6; open questions 19 and 22).** Done
   on 2026-10-11, except `eye fix`: the call sites that needed `start!` were changed by hand. The
   checker infers `publish T`, `consume T`, `secret S` and `ffi`, so a public function that

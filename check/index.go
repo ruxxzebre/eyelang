@@ -756,6 +756,10 @@ func (c *checker) usePlace(p ir.Pos, i int, target any) {
 func (c *checker) useField(e ir.Expr, t typ, name string) {
 	if owner := c.memberOwner(t, name); owner != nil {
 		c.useName(e, Member{Of: owner, Name: name})
+	} else if x, ok := prune(t).(*tcon); ok && x.name == "Approval" && x.decl == nil {
+		// ok.what and ok.by lead to Approval's declaration, which says
+		// what they hold.
+		c.useName(e, BuiltinType{Name: "Approval"})
 	}
 }
 

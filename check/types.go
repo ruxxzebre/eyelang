@@ -677,6 +677,8 @@ func (c *checker) fieldType(t typ, name string) (typ, bool) {
 			}
 		case x.name == "Range" && x.decl == nil && len(x.args) == 1 && (name == "start" || name == "end"):
 			return x.args[0], true
+		case x.name == "Approval" && x.decl == nil && (name == "what" || name == "by"):
+			return tString, true
 		case x.decl != nil && c.ts != nil && c.ts.rowOf[x.decl] != nil:
 			return c.rowField(x.decl, name)
 		case x.decl != nil && x.decl.Alias != nil:

@@ -95,12 +95,16 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     the same thing are answered one by one.
   - **Only the person asked may answer.** `by` must be the request's `from`, both as text; the
     runtime refuses any other answer, logs it, and the run keeps waiting. A routing job that
-    forgets to check who pressed a button therefore can't grant consent.
+    forgets to check who pressed a button therefore can't grant consent. The check trusts the
+    `by` it is given: events have no `@allow`, so any module of the program can publish
+    `approvals.answered` with `by: r.from` and grant consent without a person. It guards against
+    a press by the wrong person, not against the program's own code (open question 35).
   - **People at a command line, and tests, answer by text.** `eye approve TEXT` and
     `eye decline TEXT` answer through the inbox of the program's `eye run` the one waiting
-    approval whose text contains `TEXT`; when several do, they answer none and list them with
-    their ids, and `eye approve --id ID` answers one. Tests answer with `approve(…)` and
-    `decline(…)`, which fail the test when their text matches more than one waiting approval.
+    approval whose text contains `TEXT`, as the person it asks; when several do, they answer none
+    and list them with their ids, and `eye approve --id ID` answers one. Tests answer with
+    `approve(…)` and `decline(…)`, as the person asked unless `by:` names someone else; they fail
+    the test when their text matches no waiting approval, or more than one.
   - **An `Approval` says what was approved and by whom**: `ok.what` and `ok.by`, for audit logs.
     It is still made only by `approval!`.
 

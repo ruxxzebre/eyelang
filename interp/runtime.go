@@ -324,15 +324,17 @@ func (rt *runtime) publish(e *ir.Event, v Value) {
 	rt.drain()
 }
 
-// answer records a person's answer to an approval request and wakes the runs
-// waiting for one.
-func (rt *runtime) answer(v *Record) {
+// answer records a person's answer to the approval request id and wakes the
+// run waiting for it. by is who answered, as text.
+func (rt *runtime) answer(id string, approved bool, by string) {
+	v := &Record{Names: []string{"id", "approved", "by"}, Vals: []Value{id, approved, by}}
 	if e := rt.in.approvalsEvent("answered"); e != nil {
 		// The program imports approvals, so jobs may start on an answer.
 		rt.publish(e, v)
 		return
 	}
 	rt.record(&Commit{}, approvalEvent, rt.in.encode(v, ir.Pos{}))
+	rt.checkAnswer(v)
 	rt.wake(approvalEvent)
 	rt.drain()
 }
@@ -397,6 +399,9 @@ func (rt *runtime) deliver(e *ir.Event, v Value) {
 	rt.record(c, name, rt.in.encode(v, ir.Pos{}))
 	if seen != "" {
 		rt.seen[seen] = true
+	}
+	if name == approvalEvent {
+		rt.checkAnswer(v)
 	}
 	rt.queue = append(rt.queue, started...)
 	rt.wake(name)
@@ -573,6 +578,10 @@ type step struct {
 	Seq    int64  `json:",omitempty"`
 	Event  string `json:",omitempty"` // next! is waiting for this event
 	Since  int64  `json:",omitempty"` // and looks at events after this one
+	// While approval! waits: the request's id, which an answer names, and
+	// whom it asks, as text. Steps saved before 2026-10-12 have neither.
+	Request string `json:",omitempty"`
+	From    string `json:",omitempty"`
 	// What the step's model calls spent, which counts against @budget
 	// again when the run is replayed: all their tokens, those of the
 	// prompts and of the replies (not kept by runtimes before 2026-10-11),

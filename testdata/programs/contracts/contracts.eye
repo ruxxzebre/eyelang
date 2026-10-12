@@ -117,7 +117,7 @@ test "a destructive command runs with the approval a person gave" {
   Rack("c").put("crate")
   demolish.start("c")
   expect(!Rack("c").gone)
-  approve("Burn shelf c", by: "ann")
+  approve("Burn shelf c")
   expect(Rack("c").gone && Log("c").lines == ["burned 1"])
 }
 
