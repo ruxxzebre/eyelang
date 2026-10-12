@@ -467,8 +467,9 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.9 A call tree that comes back to an entity shares its transaction's state | [#92](https://github.com/ruxxzebre/eyelang/issues/92) |
 | G.10 Effects at the boundary: entity methods, jobs, starting jobs, and calls that wait | [#93](https://github.com/ruxxzebre/eyelang/issues/93) |
 | G.11 One sweep of SPECS.md: stale text, unrecorded rules, contradictions, open questions, glossary | [#94](https://github.com/ruxxzebre/eyelang/issues/94) |
+| G.12 A `Result` or a command's outcome can't be dropped silently | [#95](https://github.com/ruxxzebre/eyelang/issues/95) |
 
-G.7 to G.11 come from the spec review of 2026-10-12 (docs/internals/reviews). Each issue says
+G.7 to G.12 come from the spec review of 2026-10-12 (docs/internals/reviews). Each issue says
 what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
 self-hosted lexer; G.1 before 7.4 too.
 

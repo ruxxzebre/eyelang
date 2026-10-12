@@ -32,6 +32,12 @@ which is being built now; the worker was told.
 Each of these changes what ordinary programs look like, so it goes to the owner first. The
 recommendation is given; nothing is built until the owner agrees.
 
+**Decided by the owner on 2026-10-12:** 1 (results and outcomes can't be dropped silently: task
+G.12, #95) and 5 (the waits are named `allDone!` and `firstDone!`, built by C.2). The owner also
+confirmed C.8's choices: text that matches no waiting approval is refused, an answer with no
+`by` comes from the person asked, and who may publish an event is open question 35. Decisions
+2, 3, 4 and 6 are still open.
+
 1. **Results and outcomes can't be dropped silently** (finding 7). Recommend yes: a statement
    whose value is a `Result` or a command's outcome must be used, matched or discarded with
    `let _ = …`. It is the easy-but-wrong program "How to decide" item 1 is about, and the tour
