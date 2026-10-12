@@ -57,17 +57,19 @@ yet.
    entity calls losing a write, G.9; effects missing at the boundary, G.10), then the owner's
    decisions (results must be used, G.12; a callback may read a `var`, G.13; a lambda's record
    literal typed from context, G.14; any function callable as a method, G.15).
-2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
+2. Runtime at scale (R.1 to R.7, under the phases): the six slowdowns the performance analysis
+   of 2026-10-12 measured, and waiting runs' records leaving RAM. Before 7.5.
+3. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
-3. Phase 6 (v0.3): 6.2, 6.3, 6.5 and 6.10 to 6.13 are done; 6.1, 6.4 and 6.6 to 6.9 are
+4. Phase 6 (v0.3): 6.2, 6.3, 6.5 and 6.10 to 6.13 are done; 6.1, 6.4 and 6.6 to 6.9 are
    open, each with its issue. `eye gen policy` (6.5) writes plain Kubernetes NetworkPolicy, with
    pods labelled `eyelang.module`; the homelab names the namespace with `--namespace`. Since 6.13, `eye run` serves a contract over HTTP on its `@port`, which 6.4's round trip
    and the online playground (open question 34) build on. The phase's exit test is 6.6 (Notify,
    with the user, in the homelab repository) and 6.8 (agents, after 6.7).
-4. Self-hosting's early start (#82): S.1 (#83), an Eyelang lexer as a test program, checked by
+5. Self-hosting's early start (#82): S.1 (#83), an Eyelang lexer as a test program, checked by
    the conformance suite. Not begun; it needs G.1, G.2 and G.4.
-5. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2) and checkpoints in
+6. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2) and checkpoints in
    the interpreter (7.3) are done. Next is the C back end (7.4), then reference counting (7.5);
    the runner hosting compiled programs (7.6) waits on the user's choice of how it loads them
    without cgo. The design is [docs/internals/compilation.md](docs/internals/compilation.md).
@@ -496,6 +498,26 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 G.7 to G.16 come from the spec review of 2026-10-12 (docs/internals/reviews). Each issue says
 what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
 self-hosted lexer; G.1 before 7.4 too.
+
+### Runtime at scale: slowdowns that grow with the input
+
+From the performance analysis of 2026-10-12 (docs/internals/reviews): the interpreter's constant
+speed is fine for programs that mostly wait, but these turn ordinary programs from milliseconds
+into seconds or minutes, and most of them live in the Go runner and the store, which v0.4 keeps.
+They come before 7.5. Like the carry-overs, they have no phase issue.
+
+| Task | Issue |
+|---|---|
+| R.1 Exhaustiveness uses the default matrix when no row tests a column | [#101](https://github.com/ruxxzebre/eyelang/issues/101) |
+| R.2 Waking waiting runs is O(log n): a timer heap, an index by event, no event copy per commit | [#102](https://github.com/ruxxzebre/eyelang/issues/102) |
+| R.3 Replacing a map key's value and writing an entity are O(log n) | [#103](https://github.com/ruxxzebre/eyelang/issues/103) |
+| R.4 Building a string with `+=` is amortised O(1) | [#104](https://github.com/ruxxzebre/eyelang/issues/104) |
+| R.5 The journal: raw JSON records, the trail out of every commit, grouped commits | [#105](https://github.com/ruxxzebre/eyelang/issues/105) |
+| R.6 The interpreter's call path: 2–3× on calls and records | [#106](https://github.com/ruxxzebre/eyelang/issues/106) |
+| R.7 A waiting run's record leaves RAM | [#107](https://github.com/ruxxzebre/eyelang/issues/107) |
+
+R.1 and R.2 were prototyped by the analysis with large measured wins. R.7 comes after R.2 and
+R.5. Each issue says what it is and when it is done.
 
 ### Phase 6: Contracts — [#7](https://github.com/ruxxzebre/eyelang/issues/7) · v0.3
 
