@@ -49,14 +49,14 @@ yet.
 
 **Ahead, in order**
 
-1. The core gaps (G.1 to G.17, under the phases). G.1 to G.6, lazy `iter` (G.3), the sweep of
-   SPECS.md (G.11) and `average`/`div` (G.16) are done; G.17 is a checker bug found since. Left
-   from the spec review of 2026-10-12
-   ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)): four correctness
-   bugs first (entity methods reaching outside, G.7; unrecorded reads in jobs, G.8; re-entrant
-   entity calls losing a write, G.9; effects missing at the boundary, G.10), then the owner's
-   decisions (results must be used, G.12; a callback may read a `var`, G.13; a lambda's record
-   literal typed from context, G.14; any function callable as a method, G.15).
+1. The core gaps (G.1 to G.17, under the phases). Done: G.1 to G.11 and G.16, among them the
+   four correctness bugs the spec review of 2026-10-12 found
+   ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)): entity methods
+   stay inside the program (G.7), jobs read entities only in recorded steps (G.8), re-entrant
+   entity calls share one state (G.9), and effects show at the boundary (G.10). Left: the
+   owner's decisions of 2026-10-12 (results must be used, G.12; a callback may read a `var`,
+   G.13; a lambda's record literal typed from context, G.14; any function callable as a method,
+   G.15) and a checker bug (G.17).
 2. Runtime at scale (R.1 to R.7, under the phases): the six slowdowns the performance analysis
    of 2026-10-12 measured, and waiting runs' records leaving RAM. Before 7.5.
 3. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
