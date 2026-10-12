@@ -58,7 +58,7 @@ Words this document uses in one sense, and names that mean different things in d
 | transaction | What runs all or nothing: an entity method's call tree, a served operation, or a job's step that calls an entity. Jobs it starts and events it publishes happen only if it commits (section 14). |
 | key | An idempotency key, a `Key`: what tells one command, job start or event from a repeat of it, so the same key never does the work twice (`key:` on a call, `@key` on an operation or event). A map's keys are ordinary values. |
 | version | A snapshot's `version` is a `Version` that counts the transactions that changed the entity, and is what a `@fresh` command's `basedOn` takes (sections 14 and 17). `@version(N)` numbers the shape of an entity's stored state, for migrations. A state field can't be named `version`. |
-| handler | What `with` applies to the rest of a test's block: `fakes(…)`, `clock(…)`, of the built-in type `Handler` (section 20). A program may declare its own `Handler`, as section 12's example does; in its module the name is the program's. |
+| handler | What `with` applies to the rest of a test's block: `clock(…)`, of the built-in type `Handler`, and `fakes(…)`, of the built-in type `Fakes`, which also lists the calls it answered (section 20). A program may declare its own `Handler`, as section 12's example does; in its module the name is the program's. |
 | outcome | A run's `Outcome`, `Completed(value)` or `Failed(fault)` (section 15); a command's outcome is the variant its result is (section 17). |
 | fault | What ends a run that code can't catch, such as `DeadlinePassed` or `Unreachable` (section 15). An `Err` is a value, not a fault. |
 | method | What `x.f(a)` calls: a method of `x`'s type, from its `impl`, an entity's or a trait's; else a field of `x` that holds a function; else a function in scope whose first parameter takes `x`, as `f(x, a)` (section 8). |
@@ -2191,8 +2191,9 @@ type Delivery =
   A command's lost reply is recorded as `{ "kind": "Uncertain", "key": "…" }`. Recordings written
   before this shape was settled, with a variant as its name's only key (`{ "Accepted": {…} }`), are
   still read.
-- **A test sees what a fake received.** `fakes(…)` is a value: a test that wants to look names
-  it, applies it with `with`, and asks it with `calls(op)`. That lists every call of the operation
+- **A test sees what a fake received.** `fakes(…)` is a value of the type `Fakes`: a test that
+  wants to look names it, applies it with `with`, and asks it with `calls(op)`. Only a `Fakes`
+  has `calls`: `clock(…)` is a plain `Handler`, so `c.calls(op)` on it is a check error. That lists every call of the operation
   the fakes answered, oldest first, each a record of the call's arguments with their defaults
   filled in, and `key` last for a command with `@key`. A reconcile that asks a query, or sends a
   command again, adds a call too. So a test checks what a program sent without the program

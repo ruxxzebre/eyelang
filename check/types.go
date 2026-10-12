@@ -178,6 +178,7 @@ var (
 	tKey      = con("Key")
 	tVersion  = con("Version")
 	tHandler  = con("Handler")
+	tFakes    = con("Fakes")
 )
 
 // prune follows bound type variables to the type they stand for.

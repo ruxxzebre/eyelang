@@ -791,7 +791,7 @@ func runtimeMethod(recv ir.Ty, name string) (string, any) {
 			return "event." + name, nil
 		case r.Name == "Run" && r.Decl == nil:
 			return "run." + name, nil
-		case r.Name == "Handler":
+		case r.Name == "Fakes":
 			return "fakes." + name, nil
 		case r.Name == "TaskGroup" || r.Name == "Sender" || r.Name == "Receiver":
 			return "task." + name, nil

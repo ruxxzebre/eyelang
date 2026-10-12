@@ -686,7 +686,7 @@ var builtinTypes = map[string]bool{
 	"Date": true, "Time": true, "Duration": true, "Zone": true, "Schedule": true, "Size": true,
 	"List": true, "Map": true, "Set": true, "Iter": true, "Ref": true, "Run": true, "Key": true,
 	"Secret": true, "Approval": true, "Version": true, "Range": true,
-	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true, "Handler": true,
+	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true, "Handler": true, "Fakes": true,
 }
 
 // brokenType records that t names a declaration skipped for a syntax error.

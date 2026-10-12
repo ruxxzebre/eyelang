@@ -136,8 +136,12 @@ pub extern type Receiver(a)
 ## where it makes sense. It stands for those here; programs write the collection's own type.
 pub extern type Collection(a)
 
-## What `with` applies in a test, such as `clock(…)` or `fakes(…)`.
+## What `with` applies in a test, such as `clock(…)`.
 pub extern type Handler
+
+## What `fakes(…)` gives: `with` applies it, as a Handler, and `calls` lists the calls it
+## answered.
+pub extern type Fakes
 
 ## A module named as a value, as `fakes(notify, from: …)` takes it.
 pub extern type Module
@@ -208,7 +212,7 @@ pub extern fn decline(what: String, by: who = "the person asked")
 ## It takes any number of contract modules, written as separate arguments. Named first, as
 ## `let sent = fakes(notify, from: …)` and `with sent`, it lists the calls it answered:
 ## `sent.calls(notify.send)`, each a record of the call's arguments and its key.
-pub extern fn fakes(modules: List(Module), from: String) -> Handler
+pub extern fn fakes(modules: List(Module), from: String) -> Fakes
 
 # == Time
 

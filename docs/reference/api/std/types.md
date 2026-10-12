@@ -312,7 +312,16 @@ where it makes sense. It stands for those here; programs write the collection's 
 type Handler
 ```
 
-What `with` applies in a test, such as `clock(…)` or `fakes(…)`.
+What `with` applies in a test, such as `clock(…)`.
+
+## Fakes {#Fakes}
+
+```eye
+type Fakes
+```
+
+What `fakes(…)` gives: `with` applies it, as a Handler, and `calls` lists the calls it
+answered.
 
 ## Module {#Module}
 

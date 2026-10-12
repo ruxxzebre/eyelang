@@ -869,7 +869,7 @@ fn digestCommand(chat: Int, from: Int) -> telegram.Update = {
 }
 
 ## The keys Notify was sent briefings with.
-fn keys(sent: Handler) -> List(Key) = sent.calls(notify.send) |> map(fn c: c.key)
+fn keys(sent: Fakes) -> List(Key) = sent.calls(notify.send) |> map(fn c: c.key)
 
 test "/digest sends today's briefing again without writing it" {
   let sent = fakes(notify, from: "recordings/")

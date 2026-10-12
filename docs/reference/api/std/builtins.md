@@ -118,7 +118,7 @@ what, as `approve` approves it.
 ### fakes {#fakes}
 
 ```eye
-fn fakes(modules: List(Module), from: String) -> Handler
+fn fakes(modules: List(Module), from: String) -> Fakes
 ```
 
 Used as `with fakes(notify, from: "receipts/")`: calls to the contract modules replay the

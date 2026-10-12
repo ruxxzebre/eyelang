@@ -326,8 +326,9 @@ type Delivery =
   A command's lost reply is recorded as `{ "kind": "Uncertain", "key": "…" }`. Recordings written
   before this shape was settled, with a variant as its name's only key (`{ "Accepted": {…} }`), are
   still read.
-- **A test sees what a fake received.** `fakes(…)` is a value: a test that wants to look names
-  it, applies it with `with`, and asks it with `calls(op)`. That lists every call of the operation
+- **A test sees what a fake received.** `fakes(…)` is a value of the type `Fakes`: a test that
+  wants to look names it, applies it with `with`, and asks it with `calls(op)`. Only a `Fakes`
+  has `calls`: `clock(…)` is a plain `Handler`, so `c.calls(op)` on it is a check error. That lists every call of the operation
   the fakes answered, oldest first, each a record of the call's arguments with their defaults
   filled in, and `key` last for a command with `@key`. A reconcile that asks a query, or sends a
   command again, adds a call too. So a test checks what a program sent without the program

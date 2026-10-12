@@ -1001,7 +1001,11 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.check(e.Or, inner)
 		return inner
 	case *ir.With:
-		x.check(e.Value, tHandler) // clock(…) or fakes(…)
+		// clock(…), or fakes(…), which is a Handler with calls of its own.
+		t := x.check(e.Value, nil)
+		if k, ok := prune(t).(*tcon); !ok || k.decl != nil || k.name != "Fakes" {
+			x.expect(e.Value.Position(), tHandler, t)
+		}
 		return tUnit
 	}
 	return c.unknownf(e.Position(), "internal error: the checker doesn't know the expression %T", e)
@@ -1773,8 +1777,11 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return tUnit
 		case r.decl == nil && r.entity == nil && (r.name == "TaskGroup" || r.name == "Sender" || r.name == "Receiver"):
 			return x.channelMethod(r, e)
-		case r.decl == nil && r.name == "Handler" && e.Name == "calls":
+		case r.decl == nil && r.name == "Fakes" && e.Name == "calls":
 			return x.fakeCalls(e)
+		case r.decl == nil && r.name == "Handler" && e.Name == "calls":
+			x.inferArgs(e.Args)
+			return c.unknownf(e.Pos, "this Handler, such as clock(…), keeps no calls: only fakes(…) lists the calls it answered")
 		case e.Name == "reconcile" && r.decl != nil:
 			c.useName(e, method("reconcile"))
 			x.inferArgs(e.Args)

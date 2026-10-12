@@ -348,7 +348,7 @@ Runs column says whether the runtime does what the attribute says.
 | `env.get(name)` | ✓ | ✓ | ✓ | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L16) |
 | `test` blocks, including those of imported modules | ✓ | ✓ | ✓ | [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L44) |
 | `with clock(…)`, `advance(…)`, `with fakes(…)` | ✓ | ✓ | ✓ | [programs/schedules](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/schedules/schedules.eye#L35), [lab trains](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/trains/trains.eye#L200) |
-| `let sent = fakes(…)`, `with sent`, and `sent.calls(op)`: the calls a fake answered, as records of their arguments and key | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L54), [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye) |
+| `let sent = fakes(…)`, `with sent`, and `sent.calls(op)`: the calls a fake answered, as records of their arguments and key; `fakes(…)` is a `Fakes`, and `calls` on another handler is a check error | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L54), [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye) |
 | `with memory(…)` | ✓ | — (undefined) | — | |
 | `with` only in tests | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L108) |
 | Published events start and wake runs in tests; `approve` and `decline` | ✓ | ✓ | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L180) |

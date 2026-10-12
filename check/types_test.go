@@ -302,6 +302,19 @@ pub job heard(p: svc.Ping) {
 job quiet(p: svc.Ping) {
   log.info("{p.id}")
 }`, []string{"2:1: heard uses consume Svc.pings, which its signature doesn't list: run eye fmt, or add uses {consume Svc.pings}"}},
+		{"only fakes list the calls they answered", `import svc
+test "t" {
+  let sent = fakes(svc, from: "recordings/")
+  with sent
+  let c = clock(2026-10-12 09:00 in "UTC")
+  with c
+  expect(sent.calls(svc.send) == [])
+  let _ = c.calls(svc.send)
+  with 3
+}`, []string{
+			"8:11: this Handler, such as clock(…), keeps no calls: only fakes(…) lists the calls it answered",
+			"9:8: expected Handler, found Int",
+		}},
 		{"reconcile needs a @reconcile query", `import svc
 job j(text: String) {
   let r = svc.raw!(text).reconcile!()

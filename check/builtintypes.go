@@ -185,7 +185,7 @@ func (x *fnCheck) ruleType(name string, b *builtinArgs, at ir.Pos) typ {
 		return tUnit
 	case "fakes":
 		b.name("from", tString)
-		return tHandler
+		return tFakes
 	case "channel":
 		a := c.fresh()
 		if b.name("capacity", tInt) == nil {

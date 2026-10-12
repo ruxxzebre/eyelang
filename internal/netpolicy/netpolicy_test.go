@@ -92,7 +92,7 @@ func TestPolicies(t *testing.T) {
 		{"tests and a fake's calls don't count", map[string]string{
 			"notify/notify.eye": strings.Replace(notifyModule, "@allow(digest)", "", 1),
 			"digest/digest.eye": `import notify
-fn seen(sent: Handler) -> Int = sent.calls(notify.identity) |> size
+fn seen(sent: Fakes) -> Int = sent.calls(notify.identity) |> size
 test "a test calls it" {
   expect(notify.identity(notify.UserId("a")) == None)
 }

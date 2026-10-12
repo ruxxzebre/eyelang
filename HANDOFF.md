@@ -139,8 +139,6 @@ Runtime and tools:
 - A faulted run stays failed, and nothing restarts it (docs/guide/running.md, "Not yet"). It
   needs a command, such as `eye runs --retry ID`, and a decision first: whether the retried run
   replays the steps it recorded before the fault.
-- `fakes(…)` returns the plain `Handler` type, so `clock(…).calls(op)` fails only at run time; a
-  separate `Fakes` type would catch it.
 - The tutorial and guide writers hit about 20 checker and interpreter bugs on 2026-10-11, most
   passing `eye check` and failing at run time. Session eyelang-15 holds the list; some are fixed.
   It should become issues or tests.
