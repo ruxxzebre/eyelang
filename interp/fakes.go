@@ -190,8 +190,17 @@ func (h *fakesHandler) apply(in *Interp, at ir.Pos) {
 	}
 }
 
+// readFile reads a recording, from the files held in memory when they have
+// it.
+func (in *Interp) readFile(path string) ([]byte, error) {
+	if data, ok := in.files[filepath.Clean(path)]; ok {
+		return data, nil
+	}
+	return os.ReadFile(path)
+}
+
 func (in *Interp) loadFakes(path string, ct *ir.Contract) (*fakeSet, error) {
-	data, err := os.ReadFile(path)
+	data, err := in.readFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("no recordings for %s: %v", ct.Name, err)
 	}
@@ -255,7 +264,7 @@ func (in *Interp) recorded(raw json.RawMessage, t *ir.TypeExpr) (Value, error) {
 // "exchanges" list whose results are the replies, each the value asked for,
 // used in order.
 func (in *Interp) loadReplies(path string, at ir.Pos) []recordedReply {
-	data, err := os.ReadFile(path)
+	data, err := in.readFile(path)
 	if err != nil {
 		in.faultf(at, "no recordings for ai: %v", err)
 	}

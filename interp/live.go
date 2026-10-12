@@ -37,6 +37,10 @@ type TestOptions struct {
 	// Crossings counts, for each test, what would cross between compiled
 	// code and the runner (TestResult.Crossings).
 	Crossings bool
+	// Files holds the text of the recordings the fakes read, by path, in
+	// place of the disk's: those of a program held in memory, as in the
+	// online playground.
+	Files map[string][]byte
 }
 
 // Recorded is a recording file --record wrote, and how many exchanges the

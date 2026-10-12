@@ -73,6 +73,7 @@ func runTest(prog *ir.Program, t *ir.Test, opts TestOptions, rec *recorder) (res
 	var log bytes.Buffer
 	in := New(prog, &log, &log)
 	in.hosts = opts.Hosts
+	in.files = opts.Files
 	if newTestStore != nil {
 		in.rt.useStore(newTestStore())
 	}

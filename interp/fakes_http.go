@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"eyelang/ir"
 )
@@ -34,7 +33,7 @@ type httpFakes struct {
 // loadHTTPFakes reads the recorded answers to http.get at path, each checked
 // against http.get's result type.
 func (in *Interp) loadHTTPFakes(path string, at ir.Pos) *httpFakes {
-	data, err := os.ReadFile(path)
+	data, err := in.readFile(path)
 	if err != nil {
 		in.faultf(at, "no recordings for http: %v", err)
 	}

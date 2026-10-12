@@ -36,6 +36,25 @@ type RunOptions struct {
 	// Crossings, when set, counts what would cross between compiled code
 	// and the runner, by run (crossings.go).
 	Crossings *Crossings
+	// Files holds the text of the recordings the fakes read, by path, in
+	// place of the disk's, as TestOptions.Files does.
+	Files map[string][]byte
+	// Virtual, when set, runs the program on a clock that skips ahead
+	// instead of waiting, as the online playground does: nothing listens on
+	// a port, and once main has run, sleeping runs wake and schedules fire
+	// at once, in time order, until nothing is left or a limit is reached.
+	Virtual *VirtualClock
+}
+
+// VirtualClock is the clock of a run that doesn't wait for real time.
+type VirtualClock struct {
+	// Start is when the clock starts; zero is the system clock's now.
+	Start time.Time
+	// Until is how far the clock may move from Start, and Wakes how many
+	// runs may wake and schedules fire; Run stops at whichever comes first.
+	// Zero means a day and a thousand.
+	Until time.Duration
+	Wakes int
 }
 
 // Run runs a program as `eye run` does. main runs first, if the program has
@@ -49,13 +68,17 @@ type RunOptions struct {
 // returned an Err or faulted, or a job's run faulted.
 func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in := New(prog, opts.Stdout, opts.Stderr)
+	in.files = opts.Files
 	if c := opts.Crossings; c != nil {
 		c.enter("the runner")
 		in.rt.crossings = c
 		in.rt.countBuiltins(in.builtins)
 	}
-	in.rt.real = true
+	in.rt.real = opts.Virtual == nil
 	in.rt.now = time.Now()
+	if v := opts.Virtual; v != nil && !v.Start.IsZero() {
+		in.rt.now = v.Start
+	}
 	in.rt.memLimit = opts.MemoryLimit
 	memory := memoryText(in.rt.memLimit)
 	if in.rt.memLimit == 0 {
@@ -108,6 +131,12 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in.rt.restore()
 	runsBefore := in.rt.nextRun
 	served := servedContracts(prog)
+	if opts.Virtual != nil && len(served) > 0 {
+		for _, s := range served {
+			fmt.Fprintf(stderr, "eye run: %s isn't served: a run on a virtual clock listens on no port\n", contractName(s))
+		}
+		served = nil
+	}
 	keepGoing := hasJobs(prog) || len(served) > 0
 	if keepGoing {
 		program := ""
@@ -160,13 +189,58 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	if hasJobs(prog) && len(served) == 0 && in.rt.nextRun == runsBefore {
 		in.rt.nothingToDo(stderr, opts.Store)
 	}
-	if keepGoing {
+	switch {
+	case keepGoing && opts.Virtual != nil:
+		in.rt.runVirtual(*opts.Virtual, report, stderr)
+	case keepGoing:
 		if err := in.serve(ctx, report, stderr, opts.Inbox, len(served) > 0); err != nil {
 			code = 1
 		}
 	}
 	report()
 	return code
+}
+
+// runVirtual is Run's loop on a virtual clock: it wakes sleeping runs and
+// fires schedules in time order without waiting, until nothing is left, the
+// clock has moved v.Until, or v.Wakes have happened. It says where it stopped
+// when something was still to come.
+func (rt *runtime) runVirtual(v VirtualClock, report func(), stderr io.Writer) {
+	until, wakes := v.Until, v.Wakes
+	if until <= 0 {
+		until = 24 * time.Hour
+	}
+	if wakes <= 0 {
+		wakes = 1000
+	}
+	start := rt.now
+	target := start.Add(until)
+	rt.schedules() // schedules count from the clock as it was before it moved
+	rt.drain()
+	report()
+	n := 0
+	for ; n < wakes && rt.wakeNext(target); n++ {
+		report()
+	}
+	_, wakeAt, sleeping := rt.index.firstToWake()
+	s, _ := rt.nextFiring()
+	if !sleeping && s == nil {
+		return
+	}
+	why := fmt.Sprintf("%d wakes", wakes)
+	if n < wakes {
+		why = "the clock moved " + until.String()
+		rt.now = target
+	}
+	var left []string
+	if sleeping {
+		left = append(left, "runs wait until "+time.Unix(0, wakeAt).In(rt.now.Location()).Format(time.DateTime))
+	}
+	if s != nil {
+		left = append(left, "schedules go on")
+	}
+	fmt.Fprintf(stderr, "eye run: the virtual clock stopped at %s after %s; %s\n",
+		rt.now.Format(time.DateTime), why, strings.Join(left, ", and "))
 }
 
 func hasJobs(prog *ir.Program) bool {

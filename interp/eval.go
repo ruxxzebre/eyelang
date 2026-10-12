@@ -39,6 +39,8 @@ type Interp struct {
 	// toolRun is set while durable calls ai.generate with tools: the call
 	// records each reply and each tool's result as a step of that run.
 	toolRun *jobRun
+	// files are recordings held in memory, read in place of the disk's.
+	files map[string][]byte
 	// hosts are the functions the embedding Go program registered for
 	// @host extern fns, and externs the code each extern fn called so far
 	// runs (externs.go).
