@@ -16,24 +16,25 @@ Native code and Go ran 5 times each, taking turns, and the interpreter 1 time. T
 | Go | go1.27.2 |
 | zig | 0.17.0 |
 | Date | 2026-10-12 |
-| Commit | `5f3b6f6` |
+| Commit | `df87b9e` |
 
 ## Results
 
 | Benchmark | Native ms | Go ms | Time × Go | Native MB | Go MB | Memory × Go | Interpreter ms | Interpreter MB |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| fib | 473 | 122 | 3.89× | 0.16 | 2.03 | 0.08× | 6795 | 18.8 |
-| mandelbrot | 282 | 145 | 1.94× | 0.16 | 2.03 | 0.08× | 25923 | 21.7 |
-| trees | 1142 | 397 | 2.88× | 80.2 | 12.2 | 6.56× | 7347 | 49.2 |
-| records | 1252 | 233 | 5.38× | 0.22 | 2.03 | 0.11× | 9487 | 21.1 |
-| strings | 365 | 207 | 1.76× | 83.0 | 49.8 | 1.67× | 5959 | 847.2 |
-| lists | 192 | 148 | 1.29× | 42.3 | 42.9 | 0.99× | 3577 | 146.4 |
-| maps | 501 | 97.6 | 5.14× | 1.18 | 2.53 | 0.47× | 18944 | 41.0 |
-| logs | 389 | 272 | 1.43× | 54.8 | 60.6 | 0.90× | 1753 | 95.1 |
+| fib | 455 | 96.1 | 4.74× | 0.16 | 2.03 | 0.08× | 7382 | 18.4 |
+| mandelbrot | 278 | 118 | 2.34× | 0.16 | 1.97 | 0.08× | 26318 | 23.5 |
+| trees | 1051 | 468 | 2.25× | 80.2 | 13.0 | 6.17× | 7749 | 50.3 |
+| records | 1346 | 284 | 4.75× | 0.16 | 1.97 | 0.08× | 9761 | 21.1 |
+| strings | 378 | 188 | 2.01× | 83.0 | 43.4 | 1.91× | 3323 | 733.7 |
+| lists | 179 | 162 | 1.10× | 42.3 | 46.5 | 0.91× | 3312 | 131.7 |
+| maps | 548 | 96.7 | 5.67× | 1.18 | 2.53 | 0.47× | 16824 | 31.9 |
+| logs | 383 | 263 | 1.46× | 54.7 | 59.9 | 0.91× | 1671 | 81.8 |
+| lexer | 1786 | 388 | 4.61× | 478.0 | 191.8 | 2.49× | 28247 | 1798.8 |
 
 Faster than Go: none yet.  
 Less memory than Go: fib, mandelbrot, records, lists, maps, logs.  
-Geometric mean: 2.58× Go's time, 0.49× Go's memory.  
+Geometric mean: 2.78× Go's time, 0.57× Go's memory.  
 
 Where each gap comes from, and the work that must close it, is in the [native compilation plan](./reviews/native-plan-2026-10-12.md#against-go).
 
@@ -49,6 +50,7 @@ Where each gap comes from, and the work that must close it, is in the [native co
 | [`lists`](https://github.com/ruxxzebre/eyelang/tree/dev/testdata/bench/lists) | lists: map, filter and sum over 1M ints; sort 1M |
 | [`maps`](https://github.com/ruxxzebre/eyelang/tree/dev/testdata/bench/maps) | maps: count 5M words over 5,000 keys |
 | [`logs`](https://github.com/ruxxzebre/eyelang/tree/dev/testdata/bench/logs) | text: generate a 200k-line log, parse it, aggregate per service |
+| [`lexer`](https://github.com/ruxxzebre/eyelang/tree/dev/testdata/bench/lexer) | a real program: Eyelang's lexer in Eyelang against syntax/lexer.go, on 7.5 MB of Eyelang |
 
 ## Running them
 

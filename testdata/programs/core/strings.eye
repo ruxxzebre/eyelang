@@ -90,6 +90,7 @@ test "a string's bytes" {
     if b == 34 { quotes += 1 }
   }
   expect(quotes == 1)
+  expect(src |> contains('"') && !(src |> contains('b')))
   expect(src.toText() == Some("a→\""))
   expect(src[1..] |> toText == Some("→\""))
   expect(src[2..] |> toText == None)  # the middle of →

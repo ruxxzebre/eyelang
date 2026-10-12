@@ -67,8 +67,10 @@ yet.
    pods labelled `eyelang.module`; the homelab names the namespace with `--namespace`. Since 6.13, `eye run` serves a contract over HTTP on its `@port`, which 6.4's round trip
    and the online playground (open question 34) build on. The phase's exit test is 6.6 (Notify,
    with the user, in the homelab repository) and 6.8 (agents, after 6.7).
-5. Self-hosting's early start (#82): S.1 (#83), an Eyelang lexer as a test program, checked by
-   the conformance suite. Not begun; it needs G.1, G.2 and G.4.
+5. Self-hosting's early start (#82): S.1 (#83) is done: Eyelang's lexer in Eyelang
+   (`testdata/programs/lexer`) gives the same 24,959 tokens as `syntax/`'s on the conformance
+   suite and the corpus, compiles natively, and is the suite's real-world benchmark. What it
+   found awkward is open question 43.
 6. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2), checkpoints in the
    interpreter (7.3) and the C back end with `eye build` (7.4) are done: `testdata/programs/core`
    builds for the five release targets and its tests pass natively. 7.7 (benchmarks against Go)
@@ -963,7 +965,7 @@ formatter, `eye doc` and the checker.
 
 | Task | Issue |
 |---|---|
-| S.1 An Eyelang lexer as a test program, checked by the conformance suite | [#83](https://github.com/ruxxzebre/eyelang/issues/83) |
+| S.1 An Eyelang lexer as a test program, checked by the conformance suite (done) | [#83](https://github.com/ruxxzebre/eyelang/issues/83) |
 | S.2 The runner in Eyelang: job programs without Go | [#116](https://github.com/ruxxzebre/eyelang/issues/116) |
 
 S.2 is proposed as the goal after v0.4 (the native plan, 2026-10-12): the durable runner moves from

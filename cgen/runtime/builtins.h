@@ -35,6 +35,7 @@ ey_v eyb_float_to_int(double d, const ey_type *opt);
 ey_v eyb_bytes_index(ey_v b, ey_v i, const ey_type *opt);
 ey_v eyb_bytes_at(const char *at, ey_v b, ey_v i);
 ey_v eyb_bytes_slice(ey_v b, ey_v start, ey_v end, uint32_t flags);
+bool eyb_bytes_contains(ey_v b, ey_v x);
 ey_v eyb_bytes_to_text(ey_v b, const ey_type *opt);
 void eyb_bounds(ey_v start, ey_v end, uint32_t flags, int64_t n, int64_t *lo, int64_t *hi);
 

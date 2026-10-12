@@ -460,6 +460,11 @@ ey_v eyb_bytes_slice(ey_v b, ey_v start, ey_v end, uint32_t flags) {
 	return ey_str_new(p->b + lo, hi - lo, p->h.ty);
 }
 
+bool eyb_bytes_contains(ey_v b, ey_v x) {
+	ey_str *p = EY_STR(b);
+	return p->len > 0 && memchr(p->b, (int)x, (size_t)p->len) != NULL;
+}
+
 ey_v eyb_bytes_to_text(ey_v b, const ey_type *opt) {
 	ey_str *p = EY_STR(b);
 	if (!ey_utf8_valid(p->b, p->len)) return ey_none(opt);

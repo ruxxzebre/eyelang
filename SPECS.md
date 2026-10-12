@@ -2942,7 +2942,10 @@ operator. All binary operators associate to the left except `??`, which associat
 38. **Slices and memory.** `xs[2..5]` and `bytes[i..]` share storage with what they come from
     (section 5), so a 10-byte slice keeps a 100 MB `Bytes` alive, a cost nothing shows. What is a
     slice's type, the type it was cut from or one of its own, and should keeping a small slice of
-    a large value copy it?
+    a large value copy it? Compiled by `eye build` today, a slice copies what it covers, so
+    matching `src[pos..]` once a token makes a lexer quadratic; the lexer of S.1
+    (`testdata/programs/lexer`) matches a few bytes at a time, `src[pos..pos + 3]`, for that
+    reason.
 39. **A module with two contracts.** A module that declares one contract offers its operations
     and events by name, `notify.send` (section 17). With two contracts, two operations or events
     could share a name. Should a module declare at most one contract, or should calls name the
@@ -2973,3 +2976,18 @@ operator. All binary operators associate to the left except `??`, which associat
     its captures, with the same check of the code under a paused run as a checkpoint's statement.
     Should function values whose captures can be saved be saveable, or should such helpers be
     built-ins?
+43. **Byte-level code.** Eyelang's lexer written in Eyelang (S.1, `testdata/programs/lexer`)
+    reads well, and asked for five things the language lacks. Which earn syntax, and which a
+    function?
+    - Hex literals: UTF-8's byte ranges are written `194..=223`, with `0xC2..=0xDF` in a comment.
+    - Byte-string patterns: the keyword `continue` is matched as
+      `['c', 'o', 'n', 't', 'i', 'n', 'u', 'e']`; a string literal where `Bytes` are matched
+      would read better.
+    - Changing one element of a list: `xs[i] = v` is an error, so the lexer replaces its
+      innermost open string with `(xs |> take(xs.size() - 1)) + [s]`. `xs.set(i, v)`, or
+      assignment to `xs[i]` in a `var`?
+    - `Bytes` that aren't text: `Bytes` come only from `s.bytes()`, and `fs` reads text, so a
+      lexer can't be given, or tested on, bytes that aren't UTF-8. `fs.readBytes`, and
+      `Bytes.from(List(Byte))`?
+    - A variant's number: Go's `int(kind)`. An enum's place in `T.variants()` takes a
+      `Map(Kind, Int)` built at the start.

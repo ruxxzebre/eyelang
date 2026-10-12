@@ -46,7 +46,15 @@ var suite = []benchmark{
 	{"lists", "lists: map, filter and sum over 1M ints; sort 1M", nil, []string{"1000"}},
 	{"maps", "maps: count 5M words over 5,000 keys", nil, []string{"1000"}},
 	{"logs", "text: generate a 200k-line log, parse it, aggregate per service", nil, []string{"500"}},
+	{"lexer", "a real program: Eyelang's lexer in Eyelang against syntax/lexer.go, on 7.5 MB of Eyelang", lexerArgs("70"), lexerArgs("1")},
 }
+
+// lexerInput is what the lexer benchmark lexes: a fixed set of the
+// repository's Eyelang, repeated, so the input only changes when these
+// files do.
+var lexerInput = []string{"testdata/programs/tour/tour.eye", "check/prelude.eye", "check/runtime/store.eye", "testdata/programs/lexer/lexer/lexer.eye", "testdata/programs/lexer/lexer/token.eye", "testdata/lab/digest/digest.eye", "testdata/programs/core/callbacks.eye", "testdata/programs/core/control.eye", "testdata/programs/core/fixed.eye", "testdata/programs/core/iter.eye", "testdata/programs/core/methods.eye", "testdata/programs/core/modules.eye", "testdata/programs/core/problems.eye", "testdata/programs/core/rows.eye", "testdata/programs/core/strings.eye", "testdata/programs/core/values.eye", "testdata/programs/core/wrap.eye"}
+
+func lexerArgs(times string) []string { return append([]string{times}, lexerInput...) }
 
 // Thresholds of --check: how much worse than recorded a ratio may get
 // before it counts as a regression rather than noise.

@@ -293,6 +293,8 @@ func (e *fn) builtin(in *lir.Builtin) {
 			set(fmt.Sprintf("eyb_list_contains(%s, %s)", v(0), v(1)))
 		case "String":
 			set(fmt.Sprintf("eyb_str_contains(%s, %s)", v(0), v(1)))
+		case "Bytes":
+			set(fmt.Sprintf("eyb_bytes_contains(%s, %s)", v(0), v(1)))
 		default:
 			e.unsupported("contains on " + arg(0).Ty.String())
 		}

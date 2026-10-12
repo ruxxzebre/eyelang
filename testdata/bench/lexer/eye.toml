@@ -1,0 +1,2 @@
+# Marks the root of an Eyelang program. Its lexer module is testdata/programs/lexer's.
+modules = ["../../programs/lexer"]

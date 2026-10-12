@@ -2,6 +2,7 @@ package cgen
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -133,6 +134,7 @@ func TestTestsPassAsInterpreted(t *testing.T) {
 	for _, dir := range []string{
 		"../testdata/programs/core",
 		"../testdata/programs/traits",
+		"../testdata/programs/lexer",
 		"testdata/failures",
 		"testdata/inplace",
 	} {
@@ -177,6 +179,43 @@ func TestMainBinary(t *testing.T) {
 	out, errOut, code = run("a", "b")
 	if out != "hello from 3 argument(s)\n0: a\n1: b\n" || errOut != "tired after 3 h\n" || code != 1 {
 		t.Errorf("with two arguments: stdout %q, stderr %q, exit %d", out, errOut, code)
+	}
+}
+
+// TestLexerBinary builds testdata/programs/lexer, Eyelang's lexer in
+// Eyelang, and runs it on the conformance suite: the compiled lexer prints
+// the tokens the interpreted one does, which interp's lexer_test.go checks
+// against syntax/lexer.go.
+func TestLexerBinary(t *testing.T) {
+	needZig(t)
+	if HostTarget() == "" {
+		t.Skip("eye build doesn't target this machine")
+	}
+	files, err := filepath.Glob("../testdata/syntax/*/*.eye")
+	if err != nil || len(files) < 100 {
+		t.Fatalf("found %d files in testdata/syntax: %v", len(files), err)
+	}
+	prog := load(t, "../testdata/programs/lexer")
+	var want, errs bytes.Buffer
+	if code := interp.Run(context.Background(), prog, interp.RunOptions{
+		Args: append([]string{"lexer"}, files...), Stdout: &want, Stderr: &errs,
+	}); code != 0 {
+		t.Fatalf("the interpreted lexer exited with %d: %s", code, errs.String())
+	}
+	cmd := exec.Command(build(t, prog, "", false, false), files...)
+	var got bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &got, &errs
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("the compiled lexer: %v: %s", err, errs.String())
+	}
+	if got.String() != want.String() {
+		g, w := strings.Split(got.String(), "\n"), strings.Split(want.String(), "\n")
+		for i := 0; i < len(g) && i < len(w); i++ {
+			if g[i] != w[i] {
+				t.Fatalf("line %d is %q compiled, %q interpreted", i+1, g[i], w[i])
+			}
+		}
+		t.Fatalf("the compiled lexer printed %d lines, the interpreted one %d", len(g), len(w))
 	}
 }
 
