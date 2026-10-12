@@ -1,6 +1,6 @@
 {
   "date": "2026-10-12",
-  "commit": "7b2faa2",
+  "commit": "a5ba1d0",
   "machine": "Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores, linux/amd64",
   "go": "go1.27.2",
   "zig": "0.17.0",
@@ -10,182 +10,182 @@
     {
       "name": "fib",
       "native": {
-        "min_ms": 522.021457,
-        "median_ms": 529.263943,
-        "rss_kb": 288
+        "min_ms": 233.083574,
+        "median_ms": 235.350908,
+        "rss_kb": 276
       },
       "go": {
-        "min_ms": 144.062094,
-        "median_ms": 145.656416,
-        "rss_kb": 2080
+        "min_ms": 137.762072,
+        "median_ms": 139.353129,
+        "rss_kb": 1952
       },
       "interp": {
-        "min_ms": 11488.108914,
-        "median_ms": 11488.108914,
-        "rss_kb": 19136
+        "min_ms": 9953.343039,
+        "median_ms": 9953.343039,
+        "rss_kb": 19276
       },
-      "time_ratio": 3.624,
-      "rss_ratio": 0.138
+      "time_ratio": 1.692,
+      "rss_ratio": 0.141
     },
     {
       "name": "mandelbrot",
       "native": {
-        "min_ms": 272.655071,
-        "median_ms": 273.275218,
-        "rss_kb": 288
+        "min_ms": 249.35348,
+        "median_ms": 251.682243,
+        "rss_kb": 276
       },
       "go": {
-        "min_ms": 226.447389,
-        "median_ms": 229.473642,
-        "rss_kb": 2080
+        "min_ms": 216.827031,
+        "median_ms": 221.104654,
+        "rss_kb": 1952
       },
       "interp": {
-        "min_ms": 40379.589937,
-        "median_ms": 40379.589937,
-        "rss_kb": 22024
+        "min_ms": 29342.077581,
+        "median_ms": 29342.077581,
+        "rss_kb": 22776
       },
-      "time_ratio": 1.204,
-      "rss_ratio": 0.138
+      "time_ratio": 1.15,
+      "rss_ratio": 0.141
     },
     {
       "name": "trees",
       "native": {
-        "min_ms": 671.750254,
-        "median_ms": 692.480414,
-        "rss_kb": 25764
+        "min_ms": 316.0226,
+        "median_ms": 322.478677,
+        "rss_kb": 8592
       },
       "go": {
-        "min_ms": 595.539022,
-        "median_ms": 661.934518,
-        "rss_kb": 12396
+        "min_ms": 481.555952,
+        "median_ms": 519.524572,
+        "rss_kb": 12684
       },
       "interp": {
-        "min_ms": 11904.298044,
-        "median_ms": 11904.298044,
-        "rss_kb": 54136
+        "min_ms": 10381.39532,
+        "median_ms": 10381.39532,
+        "rss_kb": 51344
       },
-      "time_ratio": 1.128,
-      "rss_ratio": 2.078
+      "time_ratio": 0.656,
+      "rss_ratio": 0.677
     },
     {
       "name": "records",
       "native": {
-        "min_ms": 1701.657373,
-        "median_ms": 1718.985946,
-        "rss_kb": 288
+        "min_ms": 133.732526,
+        "median_ms": 144.752191,
+        "rss_kb": 284
       },
       "go": {
-        "min_ms": 240.262734,
-        "median_ms": 259.690168,
-        "rss_kb": 1952
+        "min_ms": 253.253858,
+        "median_ms": 264.401089,
+        "rss_kb": 2080
       },
       "interp": {
-        "min_ms": 15143.338369,
-        "median_ms": 15143.338369,
-        "rss_kb": 21764
+        "min_ms": 10455.023463,
+        "median_ms": 10455.023463,
+        "rss_kb": 21644
       },
-      "time_ratio": 7.082,
-      "rss_ratio": 0.148
+      "time_ratio": 0.528,
+      "rss_ratio": 0.137
     },
     {
       "name": "strings",
       "native": {
-        "min_ms": 222.470663,
-        "median_ms": 236.262007,
-        "rss_kb": 69540
+        "min_ms": 167.162414,
+        "median_ms": 172.758728,
+        "rss_kb": 69532
       },
       "go": {
-        "min_ms": 355.357761,
-        "median_ms": 377.369977,
-        "rss_kb": 49344
+        "min_ms": 374.051105,
+        "median_ms": 401.860938,
+        "rss_kb": 49304
       },
       "interp": {
-        "min_ms": 6107.326494,
-        "median_ms": 6107.326494,
-        "rss_kb": 736532
+        "min_ms": 5894.1707,
+        "median_ms": 5894.1707,
+        "rss_kb": 952484
       },
-      "time_ratio": 0.626,
-      "rss_ratio": 1.409
+      "time_ratio": 0.447,
+      "rss_ratio": 1.41
     },
     {
       "name": "lists",
       "native": {
-        "min_ms": 239.777679,
-        "median_ms": 269.935672,
-        "rss_kb": 43284
+        "min_ms": 154.741682,
+        "median_ms": 158.358827,
+        "rss_kb": 19964
       },
       "go": {
-        "min_ms": 174.374858,
-        "median_ms": 202.394576,
+        "min_ms": 154.115834,
+        "median_ms": 204.997588,
         "rss_kb": 49256
       },
       "interp": {
-        "min_ms": 5111.539174,
-        "median_ms": 5111.539174,
-        "rss_kb": 145756
+        "min_ms": 3542.409439,
+        "median_ms": 3542.409439,
+        "rss_kb": 137320
       },
-      "time_ratio": 1.375,
-      "rss_ratio": 0.879
+      "time_ratio": 1.004,
+      "rss_ratio": 0.405
     },
     {
       "name": "maps",
       "native": {
-        "min_ms": 601.381556,
-        "median_ms": 607.955898,
-        "rss_kb": 916
+        "min_ms": 199.35532,
+        "median_ms": 208.387108,
+        "rss_kb": 924
       },
       "go": {
-        "min_ms": 154.638168,
-        "median_ms": 171.156321,
+        "min_ms": 123.179243,
+        "median_ms": 127.087119,
         "rss_kb": 2592
       },
       "interp": {
-        "min_ms": 30091.50183,
-        "median_ms": 30091.50183,
-        "rss_kb": 33460
+        "min_ms": 17388.274227,
+        "median_ms": 17388.274227,
+        "rss_kb": 22940
       },
-      "time_ratio": 3.889,
-      "rss_ratio": 0.353
+      "time_ratio": 1.618,
+      "rss_ratio": 0.356
     },
     {
       "name": "logs",
       "native": {
-        "min_ms": 324.909944,
-        "median_ms": 371.523091,
-        "rss_kb": 44832
+        "min_ms": 246.073192,
+        "median_ms": 254.688284,
+        "rss_kb": 44816
       },
       "go": {
-        "min_ms": 345.289703,
-        "median_ms": 408.471307,
-        "rss_kb": 61504
+        "min_ms": 330.452516,
+        "median_ms": 375.229413,
+        "rss_kb": 61264
       },
       "interp": {
-        "min_ms": 3185.383598,
-        "median_ms": 3185.383598,
-        "rss_kb": 96384
+        "min_ms": 2193.976288,
+        "median_ms": 2193.976288,
+        "rss_kb": 81352
       },
-      "time_ratio": 0.941,
-      "rss_ratio": 0.729
+      "time_ratio": 0.745,
+      "rss_ratio": 0.732
     },
     {
       "name": "lexer",
       "native": {
-        "min_ms": 1540.278034,
-        "median_ms": 1592.325905,
-        "rss_kb": 204968
+        "min_ms": 561.366459,
+        "median_ms": 601.797438,
+        "rss_kb": 64356
       },
       "go": {
-        "min_ms": 516.442057,
-        "median_ms": 578.634832,
-        "rss_kb": 196276
+        "min_ms": 870.098878,
+        "median_ms": 1004.262519,
+        "rss_kb": 196192
       },
       "interp": {
-        "min_ms": 42339.108386,
-        "median_ms": 42339.108386,
-        "rss_kb": 1756600
+        "min_ms": 30605.595685,
+        "median_ms": 30605.595685,
+        "rss_kb": 1659672
       },
-      "time_ratio": 2.982,
-      "rss_ratio": 1.044
+      "time_ratio": 0.645,
+      "rss_ratio": 0.328
     }
   ]
 }

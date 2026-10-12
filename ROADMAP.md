@@ -1019,7 +1019,21 @@ whole-program specialisation, and jobs resuming from saved frames.
   by type"): `lir.Layouts` chooses each type's layout (enums as a byte, records and tuples up to
   64 bytes inline, `Option` and other variant types in a niche or behind a tag without a box,
   large and recursive types boxed, strings as shared views, lists of values inline) and says which
-  types are counted. The C back end doesn't print them yet.
+  types are counted.
+  The C back end prints them (2026-10-12, compilation.md section 1, "Values"): scalars in their
+  own width, enums as a byte, records, tuples and variant types up to 64 bytes as C structs
+  with generated dup and drop, `Option(Int)`, `Option(String)` and `Option(Kind)` in a niche,
+  larger and recursive types boxed with a field-less variant as an immediate word, lists, sets
+  and maps holding their elements inline, closures and `dyn` values holding theirs; a list's
+  slice shares its buffer (`TestSlowLoops`' slice loop: 47 ms at 1M, 185 ms at 4M); maps keep
+  hashes in their index and remember the last key found, and sorting whole numbers compares
+  words. `cgen/testdata/layouts` checks every layout on both engines. Recorded with
+  `go run ./tools/bench --write`, against Go's time: records 0.53×, the lexer 0.65× on 0.33× of
+  Go's memory (62.8 MB against 191.6), trees 0.66× on 0.68× of the memory, lists 1.00×, maps
+  1.62×, fib 1.69×; 0.85× on the geometric mean, from 1.52× on dev before 7.5 measured back to
+  back. Left: maps within Go's time (each lookup still goes through descriptors; Go's
+  `counts[w]++` hashes once and inlines its probe), and strings and `Bytes` as views, so their
+  slices share too; until then they stay objects (`Layouts.Objects`).
 - **7.14 Cheap native fixes.** The runtime compiled with the program (one unit or LTO), a
   size-class allocator instead of musl's `malloc`, a static value per field-less variant,
   number formatting without `snprintf`, and constant division inline.

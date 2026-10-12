@@ -59,6 +59,14 @@ trees 2.94× → 1.13×, strings 1.65× → 0.63×, logs 1.49× → 0.94×, maps
 table above is the review's evidence and stays as it was; the native plan's
 [Against Go](./native-plan-2026-10-12.md#against-go) has the rest.
 
+**After 7.5 and 7.13** (counting in the low IR, and values laid out by type), recorded in
+[Benchmarks against Go](../benchmarks.md), time × Go: records 7.08× → 0.53×, the lexer
+2.98× → 0.65× (its memory 200 → 63 MB, 0.33× Go's), trees 1.13× → 0.66× (25 → 8.4 MB), fib
+3.62× → 1.69×, maps 3.89× → 1.62×, lists 1.38× → 1.00× (42 → 20 MB); 0.85× Go's time and 0.36×
+its memory on the geometric mean. That bears out section 1's diagnosis: the layout, with precise
+counting, was the larger cost, and no language rule stood in the way. Maps, fib and mandelbrot
+are what remain.
+
 Native code takes 1.1–5.7× Go's time, 2.8× on the geometric mean, and uses less memory in six of
 nine (0.57× on the geometric mean). Four of those six win only on start-up: a static binary starts
 at 0.16 MB and a Go program at 2 MB. That floor is real and useful, since a program that mostly

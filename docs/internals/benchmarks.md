@@ -16,25 +16,25 @@ Native code and Go ran 5 times each, taking turns, and the interpreter 1 time. T
 | Go | go1.27.2 |
 | zig | 0.17.0 |
 | Date | 2026-10-12 |
-| Commit | `7b2faa2` |
+| Commit | `a5ba1d0` |
 
 ## Results
 
 | Benchmark | Native ms | Go ms | Time × Go | Native MB | Go MB | Memory × Go | Interpreter ms | Interpreter MB |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| fib | 522 | 144 | 3.62× | 0.28 | 2.03 | 0.14× | 11488 | 18.7 |
-| mandelbrot | 273 | 226 | 1.20× | 0.28 | 2.03 | 0.14× | 40380 | 21.5 |
-| trees | 672 | 596 | 1.13× | 25.2 | 12.1 | 2.08× | 11904 | 52.9 |
-| records | 1702 | 240 | 7.08× | 0.28 | 1.91 | 0.15× | 15143 | 21.3 |
-| strings | 222 | 355 | 0.63× | 67.9 | 48.2 | 1.41× | 6107 | 719.3 |
-| lists | 240 | 174 | 1.38× | 42.3 | 48.1 | 0.88× | 5112 | 142.3 |
-| maps | 601 | 155 | 3.89× | 0.89 | 2.53 | 0.35× | 30092 | 32.7 |
-| logs | 325 | 345 | 0.94× | 43.8 | 60.1 | 0.73× | 3185 | 94.1 |
-| lexer | 1540 | 516 | 2.98× | 200.2 | 191.7 | 1.04× | 42339 | 1715.4 |
+| fib | 233 | 138 | 1.69× | 0.27 | 1.91 | 0.14× | 9953 | 18.8 |
+| mandelbrot | 249 | 217 | 1.15× | 0.27 | 1.91 | 0.14× | 29342 | 22.2 |
+| trees | 316 | 482 | 0.66× | 8.39 | 12.4 | 0.68× | 10381 | 50.1 |
+| records | 134 | 253 | 0.53× | 0.28 | 2.03 | 0.14× | 10455 | 21.1 |
+| strings | 167 | 374 | 0.45× | 67.9 | 48.1 | 1.41× | 5894 | 930.2 |
+| lists | 155 | 154 | 1.00× | 19.5 | 48.1 | 0.41× | 3542 | 134.1 |
+| maps | 199 | 123 | 1.62× | 0.90 | 2.53 | 0.36× | 17388 | 22.4 |
+| logs | 246 | 330 | 0.74× | 43.8 | 59.8 | 0.73× | 2194 | 79.4 |
+| lexer | 561 | 870 | 0.65× | 62.8 | 191.6 | 0.33× | 30606 | 1620.8 |
 
-Faster than Go: strings, logs.  
-Less memory than Go: fib, mandelbrot, records, lists, maps, logs.  
-Geometric mean: 1.90× Go's time, 0.50× Go's memory.  
+Faster than Go: trees, records, strings, logs, lexer.  
+Less memory than Go: fib, mandelbrot, trees, records, lists, maps, logs, lexer.  
+Geometric mean: 0.85× Go's time, 0.36× Go's memory.  
 
 Where each gap comes from, and the work that must close it, is in the [native compilation plan](./reviews/native-plan-2026-10-12.md#against-go).
 
