@@ -771,7 +771,13 @@ func (c *checker) entityDecl(m *module, f *ir.File, d *syntax.Node) {
 	for _, member := range body.NamedChildren() {
 		switch member.Kind {
 		case syntax.StateDeclaration:
-			st := &ir.State{Name: text(f, member.ChildByField(syntax.FieldName))}
+			sn := member.ChildByField(syntax.FieldName)
+			st := &ir.State{Name: text(f, sn)}
+			if st.Name == "version" {
+				// A snapshot's version counts transactions (SPECS.md §14),
+				// and a state field of that name would be hidden by it.
+				c.errorf(pos(f, sn), "a snapshot's version counts the transactions that changed %s, so a state field can't be named version: name it revision, or what it counts", e.Name)
+			}
 			e.States = append(e.States, st)
 		case syntax.FunctionDeclaration:
 			mn := member.ChildByField(syntax.FieldName)

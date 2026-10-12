@@ -196,6 +196,9 @@ pub fn main() {
 		{"with only in tests", `fn f() { with clock(2026-10-10 12:00 in "UTC") }`, []string{"1:10: with applies a test handler"}},
 		{"missing module", `import nowhere`, []string{"1:8: no module nowhere"}},
 		{"views start from an entity set", `view v = [1, 2]`, []string{"1:1: a view is a pipeline that starts from an entity set"}},
+		{"a state field can't be named version", `entity Doc(id: String) {
+  state version: Int = 8
+}`, []string{"2:9: a snapshot's version counts the transactions that changed Doc, so a state field can't be named version"}},
 		{"syntax errors", `fn f( {`, []string{"1:7: expected"}},
 		{"return leaves a function, not a lambda", `fn f() {
   let g = fn: return 1
