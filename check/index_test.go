@@ -245,6 +245,16 @@ func TestOverlayOnly(t *testing.T) {
 	delete(overlay, at("extra/extra.eye"))
 	delete(overlay, at("lib/.cache/c.eye"))
 
+	// A directory with an eye.toml of its own is another program, not a
+	// module of this one.
+	overlay[at("other/eye.toml")] = nil
+	overlay[at("other/sub/o.eye")] = []byte("fn g() -> Int = \"x\"\n")
+	if res = Check(dir, Options{Overlay: overlay, All: true}); len(res.Diagnostics) != 0 {
+		t.Errorf("diagnostics = %v; want none from the other program", res.Diagnostics)
+	}
+	delete(overlay, at("other/eye.toml"))
+	delete(overlay, at("other/sub/o.eye"))
+
 	// A module the overlay doesn't hold is still missing.
 	overlay[at("main.eye")] = []byte("import nothere\n")
 	res = Check(dir, Options{Overlay: overlay})

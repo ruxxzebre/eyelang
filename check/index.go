@@ -77,10 +77,11 @@ func (c *checker) loadAll() {
 		c.load(path, dir)
 		return nil
 	})
-	// A module held only in the overlay is part of the program too.
+	// A module held only in the overlay is part of the program too, unless
+	// it is in a program of its own: a directory below with an eye.toml.
 	var dirs []string
 	for p := range c.overlay {
-		if strings.HasSuffix(p, ".eye") {
+		if strings.HasSuffix(p, ".eye") && !c.nestedProgram(filepath.Dir(p)) {
 			dirs = append(dirs, filepath.Dir(p))
 		}
 	}
@@ -360,6 +361,19 @@ func (c *checker) isDir(dir string) bool {
 		return true
 	}
 	return c.overlayHasDir(dir)
+}
+
+// nestedProgram reports whether dir, below the program's root, is in a
+// program of its own: it or a directory between it and the root holds an
+// eye.toml in the overlay.
+func (c *checker) nestedProgram(dir string) bool {
+	root := filepath.Clean(c.root)
+	for d := filepath.Clean(dir); d != root && strings.HasPrefix(d, root+string(filepath.Separator)); d = filepath.Dir(d) {
+		if _, ok := c.overlay[filepath.Join(d, "eye.toml")]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // overlayHasDir reports whether a file of the overlay is in dir or below it.
