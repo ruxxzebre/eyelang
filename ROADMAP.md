@@ -47,6 +47,33 @@ session), the digest in the homelab, and findings that have no issue yet.
   runner's memory, after v0.4. Until then the decision log should say that pipelines over entity
   sets run in memory; it doesn't yet, since the user hasn't taken the recommendation.
 
+**The native-focus checkpoint** (set by the owner on 2026-10-12). Until it is reached, the
+language, its tools and its bugs still change; once it is, every session works on compiling and
+the native port, and nothing else starts. It is reached when all of these hold:
+
+- [ ] #131: `NaN == NaN` stays true, written into SPECS as the one exception to IEEE 754, and
+  `Show` writes `NaN`, `+Inf` and `-Inf` (owner's choice b).
+- [ ] #134: `with memory(…)` in tests is specified and built: a test sets the memory runs are
+  admitted against, so it can show a run waiting for memory or failing with `OutOfMemory`.
+- [ ] #135: an event of another service's contract reaches `eye run` as a `POST` to the program's
+  port, under the contract's `@auth`, as served operations already do (owner's choice a).
+- [ ] #136: `eye runs --retry ID` starts a failed run again, replaying the steps it recorded,
+  keeping its id and key, for faults a retry can cure (unreachable services, timeouts), not for
+  `Killed` or `unreachable`.
+- [ ] No open issue of the audit's kind: a program `eye check` accepts that fails at run time.
+- [ ] 7.9 (core gaps in C) and 7.6's groundwork (the pinned Go toolchain and the B′ link path)
+  are merged, so the native work that follows has the runtime and the build it needs.
+
+Parked until v0.4 is out, so they don't compete with it: the package manager (P0), open
+question 41 (runs pinned to the code they started on), the rest of Phase 6 that needs the homelab
+or real agents (6.6, 6.8), and new syntax or library features, which go to the open questions
+unless the native work needs them. Bugs are fixed whenever they are found.
+
+After the checkpoint, in order: 7.6 (the runner hosts compiled programs: the morning digest runs
+natively on the journal and on Postgres; v0.4's exit test, then the release), 7.11 (faster than
+Go on every benchmark: maps per key type, strings and `Bytes` as views, the rest of 7.13), 7.12
+(reuse of a matched cell, and a failing test frees what it allocated).
+
 **Ahead, in order**
 
 1. The core gaps (G.1 to G.19, under the phases) are all done, the last three being a callback

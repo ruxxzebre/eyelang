@@ -389,7 +389,7 @@ how a variant type says which variant a value is. `TestLayouts` checks it for ea
 | `Instant` | `{ns, zone}`, the zone a static table | 16 | no |
 | A newtype (`Offset`), `NonZero(Int)` | its field | | as its field |
 
-- **Inline up to 64 bytes.** A record or tuple is a C struct passed and returned by value, its
+- **Inline up to 64 bytes** (the owner approved the cut-off and the three-word string views on 2026-10-12). A record or tuple is a C struct passed and returned by value, its
   fields ordered by alignment so that little is lost to padding. Up to 64 bytes it stays inline,
   past that it is boxed. Copying 64 bytes is a few moves, less than allocating and freeing an
   object; the C ABI passes any struct over 16 bytes in memory, so the cost is flat between 3 and 8

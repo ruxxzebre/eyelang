@@ -21,6 +21,13 @@ still open with no worktree, it was never merged: start it again from its issue.
    Docker tests (`EYE_TEST_DOCKER=1`) and the VS Code window test, which a laptop or a cloud
    session usually doesn't.
 
+## The native-focus checkpoint
+
+ROADMAP.md's "What's next" opens with a checklist set by the owner on 2026-10-12: when every
+box is ticked, all work turns to compiling and the native port (7.6, then 7.11, then 7.12), and
+the package manager, open question 41 and new features wait for v0.4. Tick a box in the commit
+that finishes it.
+
 ## Native compilation: what comes next, in order
 
 The plan the owner accepted on 2026-10-12 is in
