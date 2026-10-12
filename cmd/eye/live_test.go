@@ -40,7 +40,7 @@ entity Answers(name: String) {
 }
 
 job hello(title: String) {
-  notify.send!(title, key: "hello-{title}")
+  let _ = notify.send!(title, key: "hello-{title}")
 }
 
 job count() {

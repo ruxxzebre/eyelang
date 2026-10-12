@@ -35,7 +35,7 @@ contract Notify {
 import notify
 
 job hello(title: String) {
-  notify.send!(title, key: "hello-{title}")
+  let _ = notify.send!(title, key: "hello-{title}")
 }
 
 job ask() {
@@ -195,7 +195,7 @@ func TestFailedLiveTestRecordsNothing(t *testing.T) {
 import notify
 
 job hello(title: String) {
-  notify.send!(title, key: "hello-{title}")
+  let _ = notify.send!(title, key: "hello-{title}")
 }
 
 test "a send, and a wrong expectation" {
