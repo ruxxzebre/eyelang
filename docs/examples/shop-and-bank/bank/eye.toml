@@ -1,0 +1,3 @@
+# The bank: a program of its own that serves Payments. It finds the contract's
+# module in the directory above.
+modules = [".."]

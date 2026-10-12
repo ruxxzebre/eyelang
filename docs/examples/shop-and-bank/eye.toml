@@ -1,0 +1,2 @@
+# The shop: the program the playground runs. bank/ has an eye.toml of its own,
+# so it is a second program, which serves the Payments contract.

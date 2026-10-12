@@ -174,6 +174,30 @@ try {
     if (!/\d+ tests passed/.test(out)) throw new Error(`output:\n${out}`)
   })
 
+  await step('a program calls a contract another program serves, in the page', async () => {
+    await page.locator('.pg-select').selectOption('examples/shop-and-bank')
+    if ((await page.locator('.pg-tab', { hasText: 'bank/bank.eye' }).count()) !== 1) throw new Error('no tab for bank/bank.eye')
+    await page.locator('.pg-primary').click()
+    await page.waitForFunction(() => /exit \d/.test(document.querySelector('.pg-output')?.textContent ?? ''), null, { timeout: 30_000 })
+    const out = await output()
+    for (const want of [
+      'order 1: paid 2500 cents, 7500 left',
+      'order 2: declined: only 7500 cents left',
+      'bank │ payments.Payments POST /v1/charges → 201 Created',
+      'bank │ payments.Payments POST /v1/charges → 402 Payment Required',
+      'ann has 7500 cents',
+      'exit 0',
+    ]) {
+      if (!out.includes(want)) throw new Error(`no "${want}" in the output:\n${out}`)
+    }
+    if ((await page.locator('.pg-output .pg-service').count()) === 0) throw new Error('the bank\'s lines aren\'t marked as a service\'s')
+    // Hover in the bank's program knows the contract the other directory declares.
+    await page.locator('.pg-tab', { hasText: 'bank/bank.eye' }).click()
+    await page.getByRole('tab', { name: /Problems/ }).click()
+    const problems = await page.locator('.pg-problems').innerText()
+    if (!problems.includes('No problems.')) throw new Error(`problems:\n${problems}`)
+  })
+
   await step('Stop ends a program that never ends', async () => {
     await page.locator('.pg-select').selectOption('blank')
     await setCode('pub fn main() uses {stdio} {\n  var n = 0\n  while true { n += 1 }\n}\n')

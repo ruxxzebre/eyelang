@@ -394,6 +394,13 @@ the way an Eyelang caller sends it, so the two sides agree without code of their
 `eye run` keeps no replies of its own: a repeated key reaches the `impl` again, which finds what it
 already did through the entity the key names, as the `Invoice` named by the key does above.
 
+The [playground](/playground#example=examples/shop-and-bank) runs both sides in your browser: a
+shop that calls a `Payments` contract, and a bank, a second program in a directory with an
+`eye.toml` of its own, that serves it with `impl`. Run starts the bank first, then the shop, and
+the shop's calls reach the bank in the page, as the same HTTP requests and replies two `eye run`s
+would exchange on real ports, with each request and its status shown as it crosses. An order
+charged twice with one key is paid once.
+
 **In Go or TypeScript,** `eye gen` writes the other side from the contract: the types in the one
 JSON shape, a client that calls each `@http` operation, and a server stub that routes requests
 the way `eye run` does. `eye gen go --module payments .` writes a Go package with a

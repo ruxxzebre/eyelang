@@ -1,19 +1,23 @@
 // The playground's examples are the programs the tutorial and the guide are
-// written from, so each runs in the playground as the docs show it, and the
-// Go test internal/playground TestDocsPrograms checks that it does.
+// written from, so each runs in the playground as the docs show it, and those
+// of docs/examples, written for the playground. The Go test
+// internal/playground TestDocsPrograms checks that each passes its tests.
 
 import type { Files } from './engine'
 
 export type Example = { id: string; group: string; title: string; files: Files }
 
-const sources = import.meta.glob(['../../../tutorial/code/**/*', '../../../guide/code/**/*'], {
+const sources = import.meta.glob(['../../../tutorial/code/**/*', '../../../guide/code/**/*', '../../../examples/**/*'], {
   query: '?raw',
   import: 'default',
   eager: true,
 }) as Record<string, string>
 
-// The order and titles of the tutorial's and guide's pages.
+const groups: Record<string, string> = { tutorial: 'Tutorial', guide: 'Guide', examples: 'Programs together' }
+
+// The order and titles of the examples, the tutorial's and the guide's pages.
 const titles: Record<string, string> = {
+  'examples/shop-and-bank': 'A shop and its bank: a contract between two programs',
   'tutorial/hello': 'Hello (quickstart)',
   'tutorial/values-and-functions': '1. Values and functions',
   'tutorial/types-and-matching': '2. Types and matching',
@@ -34,13 +38,14 @@ const titles: Record<string, string> = {
 function collect(): Example[] {
   const byId = new Map<string, Example>()
   for (const [path, text] of Object.entries(sources)) {
-    const m = /\/(tutorial|guide)\/code\/([^/]+)\/(.+)$/.exec(path)
+    const m = /\/(?:(tutorial|guide)\/code|(examples))\/([^/]+)\/(.+)$/.exec(path)
     if (!m) continue
-    const [, group, name, file] = m
+    const [, docs, examples, name, file] = m
+    const group = docs ?? examples
     const id = `${group}/${name}`
     let ex = byId.get(id)
     if (!ex) {
-      ex = { id, group: group === 'tutorial' ? 'Tutorial' : 'Guide', title: titles[id] ?? name, files: {} }
+      ex = { id, group: groups[group], title: titles[id] ?? name, files: {} }
       byId.set(id, ex)
     }
     ex.files[file] = text

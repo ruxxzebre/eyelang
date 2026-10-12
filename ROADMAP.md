@@ -100,8 +100,9 @@ Open questions 1–34 in [SPECS.md](SPECS.md) are settled as real programs ask; 
 wanted, not yet a task: it builds on the checkpoints of 7.3, and `eye test --debug` on a failing
 test is the first step. The online playground (34) is built: `docs/playground.md` checks, runs,
 tests and formats a program in the browser on the WebAssembly build of `cmd/eye-wasm`, with the
-tutorial's and the guide's programs as examples; its contracts demo, two programs calling each
-other in the page, is still to come.
+tutorial's and the guide's programs as examples, and two programs calling each other through a
+contract in the page (`docs/examples/shop-and-bank`); model calls with a visitor's key are still
+to come.
 
 ## Versions
 

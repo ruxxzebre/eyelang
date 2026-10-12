@@ -13,7 +13,7 @@ import { Engine, type Diagnostic, type Files, type Location, type Status } from 
 import { blank, example, examples } from './examples'
 import { encode, fromHash, load, save } from './share'
 
-type Line = { kind: 'stdout' | 'stderr' | 'info' | 'pass' | 'fail' | 'error'; text: string }
+type Line = { kind: 'stdout' | 'stderr' | 'service' | 'info' | 'pass' | 'fail' | 'error'; text: string }
 
 const host = ref<HTMLElement>()
 const engine = shallowRef<Engine>()
@@ -103,7 +103,11 @@ function chooseExample(id: string) {
   if (!e) return
   exampleId.value = id
   useFiles(e.files)
-  output.value = [{ kind: 'info', text: `${e.title}: Run (Ctrl+Enter) runs main; Test (Ctrl+Shift+Enter) runs the tests.\n` }]
+  output.value = [{ kind: 'info', text: `${e.title}: Run (${mod}+Enter) runs main; Test (${mod}+Shift+Enter) runs the tests.\n` }]
+  const services = Object.keys(e.files).filter((p) => p.endsWith('/eye.toml')).map((p) => p.slice(0, -'/eye.toml'.length))
+  for (const dir of services) {
+    print('info', `${dir}/ has an eye.toml of its own, so it is a second program: Run starts it first, and the calls to the contract it serves reach it here, in the page.\n`)
+  }
   if (location.hash) history.replaceState(null, '', location.pathname + location.search)
 }
 
@@ -147,7 +151,13 @@ async function run() {
   output.value = []
   const started = performance.now()
   try {
-    const rep = await engine.value.run(splitArgs(args.value), (stream, text) => print(stream === 'stdout' ? 'stdout' : 'stderr', text))
+    // A service's lines (another program here that serves a contract) come
+    // after its directory, as "bank │ …".
+    const kinds: Record<string, Line['kind']> = { stdout: 'stdout', stderr: 'stderr', service: 'service' }
+    const rep = await engine.value.run(splitArgs(args.value), (stream, text) =>
+      // The runner's start line says what runs, not what went wrong.
+      print(stream === 'stderr' && text.startsWith('eye run: started ') ? 'info' : (kinds[stream] ?? 'stderr'), text),
+    )
     if (rep.diagnostics.length) problems.value = rep.diagnostics
     const ms = Math.round(performance.now() - started)
     print('info', `\n${rep.exit === 0 ? 'exit 0' : `exit ${rep.exit}`} · ${ms} ms\n`)
@@ -486,6 +496,7 @@ onBeforeUnmount(() => {
 }
 .pg-stderr, .pg-error, .pg-fail { color: var(--vp-c-danger-1); }
 .pg-info { color: var(--vp-c-text-3); }
+.pg-service { color: var(--vp-c-indigo-1, var(--vp-c-brand-1)); }
 .pg-pass { color: var(--vp-c-green-1, var(--vp-c-success-1)); }
 .pg-problems { flex: 1; margin: 0; padding: 0; overflow: auto; list-style: none; font-size: 13px; }
 .pg-problems li { padding: 6px 12px; border-bottom: 1px solid var(--vp-c-divider); cursor: pointer; }

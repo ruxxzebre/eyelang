@@ -68,7 +68,7 @@ func call(p *playground.Playground, op, raw string, out func(stream, text string
 			}
 			opts.Start = t
 		}
-		result = p.Run(opts, writer{"stdout", out}, writer{"stderr", out})
+		result = p.Run(opts, writer{"stdout", out}, writer{"stderr", out}, writer{"service", out})
 	case "format":
 		text, err := p.Format(a.Path)
 		if err != nil {

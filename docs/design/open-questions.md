@@ -168,10 +168,14 @@ title: "Open questions"
     stopped after ten seconds, or with Stop. Its examples are the tutorial's and the guide's
     programs, which the Go tests and the playground's browser test run there, and each of those
     pages links to its program in the playground. A program can be shared as a link that holds its
-    files. Still open: the contracts demo, two programs side by side, one serving `impl Notify` on
-    its `@port` and one calling `notify.send!`, with the calls visible as they cross, which needs
-    the caller's `@http` calls sent to the other program's handler in memory; and model calls with
-    a key the visitor brings, which today only replay recordings.
+    files. Contracts work between two programs in the page: a directory with an `eye.toml` of its
+    own is a second program, and Run starts each such program that serves a contract as a service
+    in memory (`interp.StartService`), with no port, then sends the root program's `@http` calls to
+    its handlers (`interp.RunOptions.Services`), as the HTTP requests two `eye run`s would
+    exchange; each request shows with its status as it crosses, the secrets the contracts' `@auth`
+    names are made up for both sides, a call moves the service's clock to the caller's, and a retry
+    moves the clock instead of waiting (`docs/examples/shop-and-bank`). Still open: model calls
+    with a key the visitor brings, which today only replay recordings.
 35. **Who may publish an event.** `@allow` names the modules that may call a contract's
     commands and queries, but any module may publish any of its events. For
     `approvals.answered` that matters: the runtime checks that `by` is the request's `from`

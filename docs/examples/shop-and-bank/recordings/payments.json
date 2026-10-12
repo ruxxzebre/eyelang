@@ -1,0 +1,15 @@
+{
+  "contract": "Payments",
+  "exchanges": [
+    {
+      "op": "charge",
+      "key": "order-1",
+      "result": { "kind": "Charged", "balanceCents": 7500 }
+    },
+    {
+      "op": "charge",
+      "key": "order-2",
+      "result": { "kind": "Declined", "reason": "only 7500 cents left" }
+    }
+  ]
+}

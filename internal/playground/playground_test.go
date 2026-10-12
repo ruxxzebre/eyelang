@@ -36,7 +36,7 @@ func TestRunAndTest(t *testing.T) {
 		t.Fatalf("Check() = %v", d)
 	}
 	var out, errs bytes.Buffer
-	rep := p.Run(RunOptions{Args: []string{"Ann", "Bo"}}, &out, &errs)
+	rep := p.Run(RunOptions{Args: []string{"Ann", "Bo"}}, &out, &errs, nil)
 	if rep.Exit != 0 || out.String() != "Hello, Ann!\nHello, Bo!\n" || errs.Len() != 0 {
 		t.Errorf("Run() = %+v, stdout %q, stderr %q", rep, out.String(), errs.String())
 	}
@@ -56,7 +56,7 @@ func TestRunAndTest(t *testing.T) {
 	}
 	out.Reset()
 	errs.Reset()
-	if rep := p.Run(RunOptions{}, &out, &errs); rep.Exit != 1 || errs.String() != "main.eye:8:20: expected String, found Int\n" {
+	if rep := p.Run(RunOptions{}, &out, &errs, nil); rep.Exit != 1 || errs.String() != "main.eye:8:20: expected String, found Int\n" {
 		t.Errorf("Run() of a broken program = %+v, stderr %q", rep, errs.String())
 	}
 	if tr := p.Test(""); len(tr.Diagnostics) != 1 || tr.Output != "main.eye:8:20: expected String, found Int\n" {
@@ -75,7 +75,7 @@ func TestRunWaits(t *testing.T) {
 	p.SetFiles(map[string]string{"main.eye": string(src)})
 	var out, errs bytes.Buffer
 	start := time.Now()
-	rep := p.Run(RunOptions{Start: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}, &out, &errs)
+	rep := p.Run(RunOptions{Start: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}, &out, &errs, nil)
 	if time.Since(start) > 2*time.Second {
 		t.Errorf("Run() took %v", time.Since(start))
 	}
@@ -84,11 +84,64 @@ func TestRunWaits(t *testing.T) {
 	}
 }
 
+// TestServices runs the shop and the bank of docs/examples/shop-and-bank in
+// one playground: the shop's Payments calls reach the bank's impl, an order
+// charged twice is paid once, and the bank's side shows each call.
+func TestServices(t *testing.T) {
+	p := New()
+	p.SetFiles(readDir(t, "../../docs/examples/shop-and-bank"))
+	if d := p.Check(); len(d) != 0 {
+		t.Fatalf("Check() = %v", d)
+	}
+	var out, errs, services bytes.Buffer
+	rep := p.Run(RunOptions{Start: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}, &out, &errs, &services)
+	want := "order 1: paid 2500 cents, 7500 left\n" +
+		"order 1: paid 2500 cents, 7500 left\n" +
+		"order 2: declined: only 7500 cents left\n" +
+		"ann has 7500 cents\n"
+	if rep.Exit != 0 || out.String() != want {
+		t.Errorf("Run() = %+v, stdout:\n%s\nwant:\n%s\nstderr:\n%s\nservices:\n%s", rep, out.String(), want, errs.String(), services.String())
+	}
+	for _, line := range []string{
+		"bank │ payments.Payments POST /v1/charges → 201 Created\n",
+		"bank │ payments.Payments POST /v1/charges → 402 Payment Required\n",
+		"bank │ payments.Payments GET /v1/customers/ann/balance → 200 OK\n",
+	} {
+		if !strings.Contains(services.String(), line) {
+			t.Errorf("the services' output has no %q:\n%s", line, services.String())
+		}
+	}
+
+	// Test runs both programs' tests.
+	tr := p.Test("")
+	if tr.Failed != 0 || len(tr.Results) != 2 || tr.Results[1].Name != "bank: a charge sent twice takes the money once" {
+		t.Errorf("Test():\n%s", tr.Output)
+	}
+}
+
+func readDir(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	files := map[string]string{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, path)
+		src, err := os.ReadFile(path)
+		files[filepath.ToSlash(rel)] = string(src)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
 // TestDocsPrograms loads each program of the tutorial and the guide into a
 // playground, as its examples menu does, and checks that it checks and
 // that its tests pass, recordings and all.
 func TestDocsPrograms(t *testing.T) {
-	for _, root := range []string{"../../docs/tutorial/code", "../../docs/guide/code"} {
+	for _, root := range []string{"../../docs/tutorial/code", "../../docs/guide/code", "../../docs/examples"} {
 		entries, err := os.ReadDir(root)
 		if err != nil {
 			t.Fatal(err)
