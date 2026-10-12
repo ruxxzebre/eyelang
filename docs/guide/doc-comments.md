@@ -78,6 +78,10 @@ Run `eye doc` on your program to write its API reference as Markdown, next to th
 eye doc --out api .
 ```
 
+`eye doc` replaces the folder it writes to, but only one that is missing, empty or full of pages it
+wrote before. If the folder holds anything else, such as code, it stops without changing anything
+and asks you to pass `--out` with another folder.
+
 This site's [API reference](/reference/api/) is the standard library's, written the same way from
 the `##` comments in its source. See [the eye command](/reference/cli#doc) for the options.
 

@@ -62,8 +62,14 @@ Writes the API reference as Markdown: the standard library and, given a program,
 its modules. Each public declaration gets its signature and its ## comment.
 A [Name] in a ## comment links to that declaration; eye doc exits 1 if one
 names nothing.
+
+The pages go to ./api in the current directory, or to the directory --out names.
+eye doc replaces that directory only if it is missing, empty, or holds nothing
+but pages eye doc wrote. If it holds anything else, eye doc stops, changes
+nothing and exits 1: pass --out with another directory.
+
   -out string
-    	the directory to write the Markdown pages to; it is replaced (default "api")
+    	the directory to write the Markdown pages to (default "api")
 ```
 
 ## eye gen {#gen}

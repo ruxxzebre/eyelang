@@ -420,3 +420,36 @@ func TestUsageListsEveryCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestDocKeepsAFolderItDidntWrite runs eye doc where ./api holds someone's
+// code: it must leave the folder alone and say to pass --out. A folder it
+// wrote itself it replaces.
+func TestDocKeepsAFolderItDidntWrite(t *testing.T) {
+	dir := program(t, map[string]string{"api/server.go": "package api\n"})
+	t.Chdir(dir)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"doc"}, &stdout, &stderr); code != exitErrors {
+		t.Errorf("eye doc into a folder of code: exit %d, want %d", code, exitErrors)
+	}
+	want := "eye doc: api holds " + filepath.Join("api", "server.go") + ", which eye doc didn't write, so eye doc won't replace it; pass --out"
+	if !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
+	}
+	if b, err := os.ReadFile(filepath.Join("api", "server.go")); err != nil || string(b) != "package api\n" {
+		t.Errorf("api/server.go = %q, %v; want it untouched", b, err)
+	}
+	if entries, _ := os.ReadDir("api"); len(entries) != 1 {
+		t.Errorf("api holds %d entries, want only server.go", len(entries))
+	}
+
+	for i := range 2 { // the second run replaces what the first wrote
+		stdout.Reset()
+		stderr.Reset()
+		if code := run([]string{"doc", "--out", "docs/api"}, &stdout, &stderr); code != 0 {
+			t.Fatalf("eye doc --out docs/api, run %d: exit %d, %s", i+1, code, stderr.String())
+		}
+	}
+	if _, err := os.Stat(filepath.Join("docs", "api", "std", "builtins.md")); err != nil {
+		t.Error(err)
+	}
+}

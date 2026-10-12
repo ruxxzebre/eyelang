@@ -108,3 +108,56 @@ pub entity Board(id: String) {
 		t.Error(err)
 	}
 }
+
+// TestWriteReplacesOnlyItsOwnFolder checks which folders Write replaces:
+// missing, empty, or its own output, and not one with anything else in it.
+func TestWriteReplacesOnlyItsOwnFolder(t *testing.T) {
+	pages := []Page{{Path: "index.md", Content: frontmatter("API reference") + "# API reference\n"}}
+	root := t.TempDir()
+	own := filepath.Join(root, "own")
+	if err := Write(own, pages); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(own, pages); err != nil {
+		t.Errorf("Write over its own output: %v", err)
+	}
+	empty := filepath.Join(root, "empty")
+	if err := os.Mkdir(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(empty, pages); err != nil {
+		t.Errorf("Write into an empty folder: %v", err)
+	}
+
+	for name, files := range map[string]map[string]string{
+		"code":   {"main.go": "package main\n"},
+		"readme": {"index.md": "---\n---\n" + generated, "README.md": "# Mine\n"},
+	} {
+		dir := filepath.Join(root, name)
+		for file, src := range files {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, file), []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		err := Write(dir, pages)
+		if _, ok := err.(*NotOursError); !ok {
+			t.Errorf("Write into %s: err = %v, want a NotOursError", name, err)
+		}
+		for file, src := range files {
+			if b, err := os.ReadFile(filepath.Join(dir, file)); err != nil || string(b) != src {
+				t.Errorf("%s/%s changed: %q, %v", name, file, b, err)
+			}
+		}
+	}
+
+	file := filepath.Join(root, "file")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(file, pages); err == nil || !strings.Contains(err.Error(), file+" is a file, so eye doc won't replace it") {
+		t.Errorf("Write over a file: err = %v", err)
+	}
+}

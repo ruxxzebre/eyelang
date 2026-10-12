@@ -521,7 +521,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.15 Any function can be called as a method on its first argument | [#98](https://github.com/ruxxzebre/eyelang/issues/98) |
 | G.16 `average` and `div`, so `NonZero` division rarely needs a `match` (done) | [#99](https://github.com/ruxxzebre/eyelang/issues/99) |
 | G.17 `?` on an `Option` outside a function that returns an `Option` is an error (done) | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |
-| G.18 `eye doc` never deletes a folder it didn't write | [#108](https://github.com/ruxxzebre/eyelang/issues/108) |
+| G.18 `eye doc` never deletes a folder it didn't write (done) | [#108](https://github.com/ruxxzebre/eyelang/issues/108) |
 | G.19 A test can read a run's result; `run.join()` doesn't fail at run time after checking | [#109](https://github.com/ruxxzebre/eyelang/issues/109) |
 
 G.7 to G.16 come from the spec review of 2026-10-12, and G.18 and G.19 from the ergonomics

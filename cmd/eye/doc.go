@@ -15,7 +15,7 @@ import (
 func runDoc(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("eye doc", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	out := flags.String("out", "api", "the directory to write the Markdown pages to; it is replaced")
+	out := flags.String("out", "api", "the directory to write the Markdown pages to")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "usage: eye doc [--out dir] [program-directory]")
 		fmt.Fprintln(stderr)
@@ -23,6 +23,12 @@ func runDoc(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "its modules. Each public declaration gets its signature and its ## comment.")
 		fmt.Fprintln(stderr, "A [Name] in a ## comment links to that declaration; eye doc exits 1 if one")
 		fmt.Fprintln(stderr, "names nothing.")
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "The pages go to ./api in the current directory, or to the directory --out names.")
+		fmt.Fprintln(stderr, "eye doc replaces that directory only if it is missing, empty, or holds nothing")
+		fmt.Fprintln(stderr, "but pages eye doc wrote. If it holds anything else, eye doc stops, changes")
+		fmt.Fprintln(stderr, "nothing and exits 1: pass --out with another directory.")
+		fmt.Fprintln(stderr)
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {

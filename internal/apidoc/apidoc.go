@@ -67,8 +67,63 @@ func Reindex(pages []Page) []Page {
 	return append([]Page{index(rest)}, rest...)
 }
 
-// Write writes pages under dir, replacing what an earlier run wrote.
+// NotOursError is the error Write returns for a directory it won't replace:
+// one that holds something an earlier run didn't write.
+type NotOursError struct {
+	Dir  string // the directory Write was asked to replace
+	File string // the first file in it that eye doc didn't write; empty if Dir isn't a directory
+}
+
+func (e *NotOursError) Error() string {
+	what := e.Dir + " is a file"
+	if e.File != "" {
+		what = e.Dir + " holds " + e.File + ", which eye doc didn't write"
+	}
+	return fmt.Sprintf("%s, so eye doc won't replace it; pass --out with a directory that is missing, empty or written by eye doc", what)
+}
+
+// ours reports, as a *NotOursError, the first thing in dir that Write
+// didn't write. A missing dir is fine. Write's pages are Markdown files that
+// carry the generated line; empty directories are fine too.
+func ours(dir string) error {
+	info, err := os.Lstat(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return &NotOursError{Dir: dir}
+	}
+	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if d.Type().IsRegular() && strings.HasSuffix(path, ".md") {
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if strings.Contains(string(b), strings.TrimSpace(generated)) {
+				return nil
+			}
+		}
+		return &NotOursError{Dir: dir, File: path}
+	})
+}
+
+// Write writes pages under dir, replacing what an earlier run wrote. It
+// replaces dir only when it is missing, empty, or holds nothing but pages
+// that eye doc wrote; otherwise it changes nothing and returns a
+// *NotOursError, so a folder of someone's code is never deleted.
 func Write(dir string, pages []Page) error {
+	if err := ours(dir); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
