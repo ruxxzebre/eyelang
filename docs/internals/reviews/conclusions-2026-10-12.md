@@ -35,8 +35,10 @@ recommendation is given; nothing is built until the owner agrees.
 **Decided by the owner on 2026-10-12:** 1 (results and outcomes can't be dropped silently: task
 G.12, #95) and 5 (the waits are named `allDone!` and `firstDone!`, built by C.2). The owner also
 confirmed C.8's choices: text that matches no waiting approval is refused, an answer with no
-`by` comes from the person asked, and who may publish an event is open question 35. Decisions
-2, 3, 4 and 6 are still open.
+`by` comes from the person asked, and who may publish an event is open question 35. Later the
+same day the owner decided the rest: 2 as recommended (G.13, #96), 3 as recommended (G.14,
+#97), 4 as option (b), any function callable as a method on its first argument, since pipes are
+rare in practice (G.15, #98), and 6 as recommended (G.16, #99).
 
 1. **Results and outcomes can't be dropped silently** (finding 7). Recommend yes: a statement
    whose value is a `Result` or a command's outcome must be used, matched or discarded with
