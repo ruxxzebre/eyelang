@@ -101,8 +101,10 @@ func TypeString(t *ir.TypeExpr) string { return typeString(t) }
 func (s *Session) capture(f func()) (err error) {
 	rt := s.in.rt
 	failures := len(rt.failures)
+	depth := s.in.depth
 	defer func() {
 		s.now = rt.now
+		s.in.depth = depth // a fault unwinds calls without counting them off
 		if r := recover(); r != nil {
 			switch x := r.(type) {
 			case *Fault:

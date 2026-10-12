@@ -54,6 +54,9 @@ type Interp struct {
 	// free holds frames whose calls returned, for calls to come; each
 	// interpreter, a task's included, keeps its own.
 	free []*frame
+	// depth is how many calls of the program's functions are unfinished in
+	// this interpreter's task (runFrame).
+	depth int
 }
 
 // New prepares to run prog, printing to out and logging to log.
@@ -248,12 +251,33 @@ func (in *Interp) callFrame(fr *frame, captured []Value, args []argVal, at ir.Po
 	return in.runFrame(fr)
 }
 
+// maxDepth is how many calls of the program's functions may be unfinished
+// at once in one task. A call deeper than that is a fault, before the Go
+// stack under the interpreter, which a call takes a few kilobytes of,
+// overflows and ends the process.
+const maxDepth = 100_000
+
 // runFrame runs the body of a frame whose parameters are bound.
 func (in *Interp) runFrame(fr *frame) Value {
-	if fr.fn.Budget != nil {
-		return in.underBudget(fr.fn, func() Value { return in.runBody(fr) })
+	in.depth++
+	if in.depth > maxDepth {
+		in.tooDeep(fr.fn)
 	}
-	return in.runBody(fr)
+	var r Value
+	if fr.fn.Budget != nil {
+		r = in.underBudget(fr.fn, func() Value { return in.runBody(fr) })
+	} else {
+		r = in.runBody(fr)
+	}
+	in.depth--
+	return r
+}
+
+// tooDeep faults a call of fn made with maxDepth calls already unfinished.
+// Like every fault, it unwinds the calls without counting them off: what
+// catches it (a test, a job's run, a request) puts depth back as it was.
+func (in *Interp) tooDeep(fn *ir.Func) {
+	in.faultf(fn.Pos, "recursion too deep: %s was called with %d calls already unfinished; recurse less deeply, or use a loop", fn.Name, maxDepth)
 }
 
 // callDirect runs c, a call of fn, a function with a body, without making

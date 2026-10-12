@@ -177,7 +177,7 @@ func (in *Interp) runTasks(fns []func(*Interp) Value, limit int, first bool, wit
 // state, with its own per-call state.
 func (in *Interp) child(t *taskCtx) *Interp {
 	c := *in
-	c.task, c.run, c.want, c.call, c.free = t, nil, nil, "", nil
+	c.task, c.run, c.want, c.call, c.free, c.depth = t, nil, nil, "", nil, 0 // a goroutine, with a stack of its own
 	return &c
 }
 

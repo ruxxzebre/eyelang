@@ -905,8 +905,10 @@ func (rt *runtime) step(id int64) {
 	rt.crossed("run.step")
 	func() {
 		rt.in.run = run
+		depth := rt.in.depth
 		defer func() {
 			rt.in.run = nil
+			rt.in.depth = depth // a fault or a wait unwinds calls without counting them off
 			if r := recover(); r != nil {
 				switch x := r.(type) {
 				case parkSignal:
