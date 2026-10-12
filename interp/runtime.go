@@ -73,6 +73,9 @@ type runtime struct {
 	// journal is the store when it is a journal, whose commits wait to be
 	// synced until the runner does something outside (durable).
 	journal *Journal
+	// crossings, when set, counts what would cross between compiled code
+	// and the runner (crossings.go).
+	crossings *Crossings
 }
 
 // event is a published event, saved as bytes.
@@ -297,6 +300,7 @@ func (tx *txn) row(rt *runtime, ref *EntityRef, at ir.Pos) *txRow {
 // callEntity calls an entity method as a transaction, or as part of the
 // current one.
 func (rt *runtime) callEntity(ref *EntityRef, m *ir.Func, args []argVal, at ir.Pos) Value {
+	rt.crossed("entity.call")
 	if rt.tx != nil {
 		return rt.callIn(rt.tx, ref, m, args, at)
 	}
@@ -315,6 +319,7 @@ func (rt *runtime) callEntity(ref *EntityRef, m *ir.Func, args []argVal, at ir.P
 // serve runs an operation of a contract the program serves, as one
 // transaction: the entity calls it makes commit together, or not at all.
 func (rt *runtime) serve(op *ir.Op, args []argVal, at ir.Pos) Value {
+	rt.crossed("op.serve")
 	prevRun := rt.in.run
 	rt.in.run = nil // serving an operation never waits
 	defer func() { rt.in.run = prevRun }()
@@ -335,6 +340,7 @@ func (rt *runtime) serve(op *ir.Op, args []argVal, at ir.Pos) Value {
 }
 
 func (rt *runtime) callIn(tx *txn, ref *EntityRef, m *ir.Func, args []argVal, at ir.Pos) Value {
+	rt.crossed("entity.method")
 	row := tx.row(rt, ref, at)
 	prevRun := rt.in.run
 	rt.in.run = nil // entity methods never wait, even when a job calls them
@@ -516,6 +522,7 @@ func (rt *runtime) all(e *ir.Entity, at ir.Pos) *List {
 	if s := rt.in.scope; s != nil && s.entity == e {
 		return &List{Elems: []Value{s.snapshot}}
 	}
+	rt.crossed("entity.all")
 	l := &List{}
 	for _, key := range rt.store.Keys(entityName(e)) {
 		row, _ := rt.store.Load(key)
@@ -539,6 +546,7 @@ type viewScope struct {
 // now, a List(Entity) as the checker types it. Inside another view's check,
 // Entity.all still means the one entity being checked.
 func (rt *runtime) viewMembers(v *ir.View, at ir.Pos) *List {
+	rt.crossed("view.read")
 	result, _ := rt.in.callFunc(v.Func, nil, nil, nil, at)
 	switch r := result.(type) {
 	case *List:
@@ -607,6 +615,7 @@ func (rt *runtime) triggered(v *ir.View, kind string) []*ir.Job {
 }
 
 func (rt *runtime) inView(v *ir.View, snapshot *Record) bool {
+	rt.crossed("view.check")
 	prev := rt.in.scope
 	rt.in.scope = &viewScope{entity: v.Entity, snapshot: snapshot}
 	defer func() { rt.in.scope = prev }()
@@ -814,6 +823,7 @@ func (rt *runtime) keyed(job *ir.Job, named map[string]Value) (Value, bool) {
 
 // start starts a job: when the current transaction commits, or now.
 func (rt *runtime) start(job *ir.Job, args []Value, named map[string]Value, at ir.Pos) Value {
+	rt.crossed("job.start")
 	if run, ok := rt.keyed(job, named); ok {
 		return run
 	}
@@ -867,6 +877,9 @@ func (rt *runtime) step(id int64) {
 		rt.now = time.Now()
 	}
 	job := rt.in.jobs[run.Job]
+	if rt.crossings != nil {
+		defer rt.crossings.enterRun(run.ID, run.Job)()
+	}
 	var args []argVal
 	for _, a := range run.Args {
 		args = append(args, argVal{v: rt.in.decode(a, job.Pos)})
@@ -879,6 +892,7 @@ func (rt *runtime) step(id int64) {
 		}
 		return
 	}
+	rt.crossed("run.step")
 	func() {
 		rt.in.run = run
 		defer func() {

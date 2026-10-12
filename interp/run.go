@@ -18,6 +18,9 @@ type TestResult struct {
 	Skipped  string // why the test was skipped, under eye test --live
 	Log      string // what the test and its jobs logged and printed
 	Duration time.Duration
+	// Crossings are what the test's body and each job run it ran would
+	// cross between compiled code and the runner, with TestOptions.Crossings.
+	Crossings []*RunCrossings
 }
 
 // RunTests runs the test blocks of the program's own module whose names
@@ -76,6 +79,10 @@ func runTest(prog *ir.Program, t *ir.Test, opts TestOptions, rec *recorder) (res
 	in.rt.module = t.Module // only the test's own module's schedules fire
 	in.rt.sandbox = true    // files in a directory of its own, random numbers from a fixed seed
 	in.rt.live = newLiveTest(opts)
+	if opts.Crossings {
+		in.rt.crossings = NewCrossings("the test")
+		in.rt.countBuiltins(in.builtins)
+	}
 	start := time.Now()
 	res = TestResult{Name: t.Name, Pos: t.Pos}
 	defer func() {
@@ -84,6 +91,9 @@ func runTest(prog *ir.Program, t *ir.Test, opts TestOptions, rec *recorder) (res
 		}
 		res.Duration = time.Since(start)
 		res.Log = log.String()
+		if c := in.rt.crossings; c != nil {
+			res.Crossings = c.Runs()
+		}
 		if r := recover(); r != nil {
 			f, ok := r.(*Fault)
 			if !ok {

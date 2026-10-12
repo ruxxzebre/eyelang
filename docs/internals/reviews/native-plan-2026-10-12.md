@@ -267,6 +267,19 @@ between compiled code and the runner. Every entity call, `!` step, encode, decod
 is a crossing. If a run makes tens or hundreds, A's 300 ns is nothing and its catches are the
 only cost. If code crosses inside hot loops (an entity read in a `for`), B′'s 35 ns matters.
 
+**Measured (7.10, 2026-10-12):** the interpreter counts these operations (`eye run --crossings`,
+`eye test --crossings`). One morning of the digest, run on the journal against stand-ins for its
+services, crosses **214 times**: 2 in `main`, 36 in `digest.morning` and 176 in `digest.write`.
+Most are encodes and decodes of saved values (114 and 10), then contract operations (39 and a
+reconcile), `env.get` (21) and `http.get` (16); there are 3 turns of a run, one entity call and
+one entity read. At 35 ns that
+is about 7.5 µs, against a run that took 267 ms on stand-ins that answer at once and takes
+seconds with a real model: under 0.003% of the run. Even at A's 300 ns it would be about 64 µs.
+No crossing is in a hot loop; the most frequent come once per feed, page or step. Across the
+lab's 31 tests the busiest run crosses 190 times. So B′'s cost per crossing doesn't matter for
+these programs, and nothing needs batching; what decides between the options is one static file,
+not the 35 ns.
+
 **Recommendation:** B′, unless the owner doesn't want `eye build` to fetch Go. It is the only
 option that gives one static file, which runs in a `scratch` image with nothing beside it, and
 it has the cheapest crossings. Programs with no entities or jobs keep building with zig

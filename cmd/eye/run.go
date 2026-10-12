@@ -28,7 +28,7 @@ func storeURL(flagValue string) string {
 	return os.Getenv("EYE_STORE")
 }
 
-// runRun implements `eye run [--store url | --journal file [--fresh] | --memory] [program-directory] [-- arguments…]`.
+// runRun implements `eye run [--store url | --journal file [--fresh] | --memory] [--crossings] [program-directory] [-- arguments…]`.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	var progArgs []string
 	for i, a := range args {
@@ -44,9 +44,10 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	memory := fs.Bool("memory", false, "keep everything in memory, so nothing survives the process")
 	fresh := fs.Bool("fresh", false, "start with an empty journal; the old one is kept as JOURNAL.old")
 	store := fs.String("store", "", "keep entities, runs and events in this Postgres database, postgres://… (default $EYE_STORE)")
+	crossings := fs.Bool("crossings", false, "count main's, each job run's and the runner's operations that would cross between\ncompiled code and the runner, and print them by kind on stderr when eye run ends")
 	memLimit := fs.String("memory-limit", "", "the memory runs may hold, which @memory and reserve! wait for, such as 512MiB (default the cgroup's limit, such as a container's, or the host's memory)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye run [--store url | --journal file [--fresh] | --memory] [program-directory] [-- arguments…]")
+		fmt.Fprintln(stderr, "usage: eye run [--store url | --journal file [--fresh] | --memory] [--crossings] [program-directory] [-- arguments…]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs main, then keeps the program's jobs going: sleeping runs wake on time,")
 		fmt.Fprintln(stderr, "schedules fire, and a restart carries on where the last run of eye stopped.")
@@ -153,6 +154,13 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		}
 		defer j.Close()
 		opts.Store = j
+	}
+	if *crossings {
+		opts.Crossings = interp.NewCrossings("the runner")
+		defer func() {
+			fmt.Fprintln(stderr, "\ncrossings between compiled code and the runner (ROADMAP 7.10)")
+			interp.WriteCrossings(stderr, opts.Crossings.Runs())
+		}()
 	}
 	return interp.Run(ctx, prog, opts)
 }

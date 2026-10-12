@@ -378,8 +378,10 @@ func (in *Interp) apply(callee Value, args []argVal, at ir.Pos) Value {
 		if len(pos) != 1 {
 			in.faultf(at, "%s(…) takes the entity's identity", c.E.Name)
 		}
+		in.rt.crossed("entity.ref")
 		return &EntityRef{Entity: c.E, ID: pos[0]}
 	case *OpVal:
+		in.rt.crossed("op.call")
 		// A program that serves the contract calls itself, unless the
 		// service's URL is configured: then the service is elsewhere.
 		_, elsewhere := serviceURL(c.Op.Contract.Module.Path)
@@ -1019,6 +1021,7 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 			if in.run != nil && !durable {
 				in.faultf(at, "in a job, publishing is a durable step: write publish!(…)")
 			}
+			in.rt.crossed("event.publish")
 			in.rt.publish(r.Event, pos[0])
 			return ir.Unit{}, nil
 		}
@@ -1029,6 +1032,7 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 			if !durable && in.run != nil {
 				in.faultf(at, "a job reads an entity with read!()")
 			}
+			in.rt.crossed("entity.read")
 			return in.rt.snapshot(r, at), nil
 		}
 		meth, ok := r.Entity.Methods[name]
@@ -1058,6 +1062,7 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 		in.faultf(at, "%s has no function %s", r.E.Name, name)
 	case *Variant:
 		if name == "reconcile" {
+			in.rt.crossed("op.reconcile")
 			return in.rt.reconcile(r, at), nil
 		}
 		if r.V.Type != nil {
@@ -1136,6 +1141,7 @@ func (in *Interp) field(v Value, name string, at ir.Pos) Value {
 			return x.ID // the identity, which needs no load: an ended entity has it too
 		}
 		// Tests read an entity's committed state directly.
+		in.rt.crossed("entity.field")
 		state := in.rt.current(x, at)
 		if f, ok := state.get(name); ok {
 			return f

@@ -17,6 +17,7 @@ import (
 // of its code and what it captured; the checker lets one be saved only in a
 // checkpoint (SPECS.md §15).
 func (in *Interp) encode(v Value, at ir.Pos) []byte {
+	in.rt.crossed("encode")
 	var b bytes.Buffer
 	in.writeValue(&b, v, at)
 	return b.Bytes()
@@ -167,6 +168,7 @@ func (in *Interp) writeValues(b *bytes.Buffer, vs []Value, at ir.Pos) {
 
 // decode reads a value saved by encode.
 func (in *Interp) decode(data []byte, at ir.Pos) Value {
+	in.rt.crossed("decode")
 	r := bytes.NewReader(data)
 	v := in.readValue(r, at)
 	if r.Len() != 0 {

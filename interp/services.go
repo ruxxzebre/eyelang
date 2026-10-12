@@ -411,6 +411,11 @@ func (in *Interp) callHost(fn *ir.Func, args []argVal, at ir.Pos) Value {
 		in.faultf(at, "%v", err)
 	}
 	in.rt.durable() // what it does may be seen outside
+	if fn.Host != "" {
+		in.rt.crossed(fn.Host)
+	} else {
+		in.rt.crossed("extern " + fn.Name)
+	}
 	fr := &frame{fn: fn, slots: make([]Value, fn.Slots)}
 	in.bind(fn, fr, args, at)
 	params := map[string]Value{}

@@ -34,6 +34,9 @@ type TestOptions struct {
 	// Hosts are the host functions a Go program that embeds Eyelang
 	// registered, which extern fns call.
 	Hosts *Hosts
+	// Crossings counts, for each test, what would cross between compiled
+	// code and the runner (TestResult.Crossings).
+	Crossings bool
 }
 
 // Recorded is a recording file --record wrote, and how many exchanges the

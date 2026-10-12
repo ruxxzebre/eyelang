@@ -172,7 +172,7 @@ types, exhaustive matches, effects and where waiting calls may appear are checke
 ## eye run {#run}
 
 ```text
-usage: eye run [--store url | --journal file [--fresh] | --memory] [program-directory] [-- arguments…]
+usage: eye run [--store url | --journal file [--fresh] | --memory] [--crossings] [program-directory] [-- arguments…]
 
 Runs main, then keeps the program's jobs going: sleeping runs wake on time,
 schedules fire, and a restart carries on where the last run of eye stopped.
@@ -185,6 +185,9 @@ module, serves it on another port; 0 picks a free one, which eye run names.
 State is kept in the program's journal, or with --store in a Postgres database,
 in the first schema of its search_path: postgres://…/db?search_path=lab gives
 a program its own schema. One eye run at a time writes a journal or a schema.
+  -crossings
+    	count main's, each job run's and the runner's operations that would cross between
+    	compiled code and the runner, and print them by kind on stderr when eye run ends
   -fresh
     	start with an empty journal; the old one is kept as JOURNAL.old
   -journal string
@@ -256,12 +259,15 @@ each run waits for.
 ## eye test {#test}
 
 ```text
-usage: eye test [--run text] [-v] [--live modules [--record]] [program-directory]
+usage: eye test [--run text] [-v] [--live modules [--record]] [--crossings] [program-directory]
 
 Runs the test blocks of a program's module, each with a fresh in-memory store
 and a clock that moves only when the test advances it. Calls to other services
 are answered from recordings, except for the modules --live names, whose calls
 go where eye run sends them, with the address and secret from the environment.
+  -crossings
+    	count, for each test and each job run in it, the operations that would cross
+    	between compiled code and the runner, and print them by kind at the end
   -live modules
     	call the real services of these modules, separated by commas (ai, http or contract modules),
     	instead of replaying their recordings; a test whose service has no address or secret set is skipped

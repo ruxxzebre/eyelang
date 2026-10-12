@@ -814,7 +814,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.7 Benchmarks against Go: native code faster and leaner, checked (done) | [#110](https://github.com/ruxxzebre/eyelang/issues/110) |
 | 7.8 Native code checked against the interpreter at both levels, and stale numbers fixed | [#111](https://github.com/ruxxzebre/eyelang/issues/111) |
 | 7.9 Core gaps in the C back end: time, toJson, saved types, random, http.get | [#112](https://github.com/ruxxzebre/eyelang/issues/112) |
-| 7.10 Count the crossings between compiled code and the runner | [#113](https://github.com/ruxxzebre/eyelang/issues/113) |
+| 7.10 Count the crossings between compiled code and the runner (done) | [#113](https://github.com/ruxxzebre/eyelang/issues/113) |
 | 7.11 Native code faster than Go, and leaner without entities or jobs | [#114](https://github.com/ruxxzebre/eyelang/issues/114) |
 | 7.12 Reuse of matched cells, and a fault frees its region | [#115](https://github.com/ruxxzebre/eyelang/issues/115) |
 | 7.13 Values laid out by type | [#117](https://github.com/ruxxzebre/eyelang/issues/117) |
@@ -916,6 +916,13 @@ whole-program specialisation, and jobs resuming from saved frames.
   the runner.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
+  Crossings (7.10, counted by the interpreter with `eye run --crossings` on the journal, against
+  `cmd/eye/digest_test.go`'s stand-ins): one morning crosses 214 times, about 7.5 µs at 35 ns.
+  `main` crosses 2 times (the start); `digest.morning` 36 (2 turns, the day's entity read, the
+  write run's start, Notify's send and reconcile, 2 `env.get`, 18 encodes and 8 decodes);
+  `digest.write` 176 (38 contract operations to Miniflux and FlareSolverr, 16 `http.get`, one
+  `ai.generate`, 19 `env.get`, one entity call, 95 encodes and 2 decodes). None is in a hot loop:
+  the most frequent are one per feed, page or step.
 - **7.7 Benchmarks against Go.** The owner's bar for native code is **faster than Go, on less
   memory**, with Go as the baseline. A suite in `testdata/bench`: each benchmark is an Eyelang
   program and the same algorithm as idiomatic Go, built with `eye build` (`-O2`) and `go build`,
@@ -949,6 +956,17 @@ whole-program specialisation, and jobs resuming from saved frames.
 - **7.10 Crossings.** The interpreter counts the operations that would cross from compiled code
   into the runner (entity calls, steps, encodes, decodes, store reads, host calls).
   **Done when:** the digest's counts for one morning are recorded under 7.6.
+  Done on 2026-10-12 (`interp/crossings.go`): `eye run --crossings` and `eye test --crossings`
+  print, for main, each test and each job run, the operations by kind and a total. Into the
+  runner: the low IR's Runtime operations (entity calls, reads, references and `E.all`, view
+  reads, job starts, contract operations and reconciles, event publishes, host functions with
+  `env.get` and `log.*`, and the `!` steps that are none of these); into compiled code: a run's
+  turns, entity methods, view checks, served operations, and each encode or decode of a saved
+  value. What a resumed run replays isn't counted. One morning of the digest crosses 214 times
+  (under 7.6), about 7.5 µs against a run of 267 ms on stand-ins that answer at once and of
+  seconds with a real model; the lab's 31 tests cross 11,971 times, 10,251 of them in a test
+  that runs a day of minutely syncs (`interp/crossings_test.go` checks the counts of a small
+  program).
 - **7.11 Faster than Go.** The owner's bar, with Go as the baseline, driven by 7.7's suite.
   **Done when:** native code beats Go on time on every benchmark of the suite, and on peak memory
   for every program without entities or jobs. (With entities or jobs a program carries the Go

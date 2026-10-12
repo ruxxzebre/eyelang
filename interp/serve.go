@@ -33,6 +33,9 @@ type RunOptions struct {
 	// Hosts are the functions the Go program that embeds Eyelang provides
 	// for the program's @host extern fns; nil provides none.
 	Hosts *Hosts
+	// Crossings, when set, counts what would cross between compiled code
+	// and the runner, by run (crossings.go).
+	Crossings *Crossings
 }
 
 // Run runs a program as `eye run` does. main runs first, if the program has
@@ -46,6 +49,11 @@ type RunOptions struct {
 // returned an Err or faulted, or a job's run faulted.
 func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in := New(prog, opts.Stdout, opts.Stderr)
+	if c := opts.Crossings; c != nil {
+		c.enter("the runner")
+		in.rt.crossings = c
+		in.rt.countBuiltins(in.builtins)
+	}
 	in.rt.real = true
 	in.rt.now = time.Now()
 	in.rt.memLimit = opts.MemoryLimit
@@ -125,7 +133,13 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 			}
 			argv = []argVal{{v: list}}
 		}
+		if c := in.rt.crossings; c != nil {
+			c.enter("main")
+		}
 		result, _ := in.callFunc(main, nil, nil, argv, main.Pos)
+		if c := in.rt.crossings; c != nil {
+			c.enter("the runner")
+		}
 		if e, ok := isVariant(result, "Err"); ok {
 			fmt.Fprintln(stderr, in.display(e.Vals[0])) // with its Show, as a Problem has
 			code = 1

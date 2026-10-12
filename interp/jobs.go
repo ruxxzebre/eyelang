@@ -8,6 +8,10 @@ import (
 	"eyelang/ir"
 )
 
+// waitingBuiltins are the built-ins whose waiting calls record their own
+// steps, and replay them.
+var waitingBuiltins = map[string]bool{"poll": true, "next": true, "approval": true, "reserve": true, "lock": true, "allDone": true, "firstDone": true}
+
 // durable runs a waiting call in a job. A step the run already took returns
 // its recorded result; a new step happens, and its result is recorded before
 // the job goes on.
@@ -59,6 +63,9 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 					}
 				}
 				in.call = call
+				if fn.Fn.Host == "" {
+					in.rt.crossed("step") // a host function counts as itself, in callHost
+				}
 				prev, prevSpend := in.want, in.stepSpend
 				in.want, in.stepSpend = wanted(c), &spend{}
 				v := in.apply(fn, args, c.Pos)
@@ -71,6 +78,9 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 			r := in.apply(fn, args, c.Pos)
 			return r
 		case *BuiltinFn:
+			if waitingBuiltins[fn.Name] && run.cursor >= len(run.Log) {
+				in.rt.crossed("step")
+			}
 			switch fn.Name {
 			case "poll":
 				return in.poll(run, args, c.Pos)
@@ -92,6 +102,9 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 			return v
 		}
 		in.call = callName(callee)
+		if b, ok := callee.(*BuiltinFn); ok && !hostBuiltin(b.Name) {
+			in.rt.crossed("step") // an operation counts as op.call, in apply, and env.get as itself
+		}
 		if b, ok := callee.(*BuiltinFn); ok && (b.Name == "sleep" || b.Name == "sleepUntil") {
 			pos, _ := split(args)
 			if b.Name == "sleep" {
@@ -123,6 +136,9 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		recv := in.eval(f, c.Recv)
 		args := in.evalArgs(f, c.Args)
 		if r, ok := recv.(*RunVal); ok && c.Name == "join" {
+			if run.cursor >= len(run.Log) {
+				in.rt.crossed("step")
+			}
 			return in.join(run, r, c.Pos)
 		}
 		if j, ok := recv.(*JobVal); ok && c.Name == "start" && in.rt.tx == nil {
@@ -157,6 +173,7 @@ func (in *Interp) startChild(run *jobRun, job *ir.Job, args []Value, named map[s
 		return v
 	}
 	rt := in.rt
+	rt.crossed("job.start")
 	in.call = "start " + job.Name
 	if v, ok := rt.keyed(job, named); ok {
 		return in.record(run, v, at)
@@ -587,6 +604,7 @@ func (in *Interp) sleep(run *jobRun, wake time.Time) Value {
 // and the recorded step commit together, so the call happens exactly once.
 func (in *Interp) entityStep(run *jobRun, ref *EntityRef, meth *ir.Func, args []argVal, at ir.Pos) Value {
 	rt := in.rt
+	rt.crossed("entity.call")
 	tx := rt.begin()
 	defer func() {
 		if rt.tx == tx {

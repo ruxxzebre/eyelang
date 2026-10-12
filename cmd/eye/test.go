@@ -11,7 +11,7 @@ import (
 	"eyelang/interp"
 )
 
-// runTest implements `eye test [--run text] [-v] [--live modules [--record]] [program-directory]`.
+// runTest implements `eye test [--run text] [-v] [--live modules [--record]] [--crossings] [program-directory]`.
 func runTest(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("eye test", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -19,8 +19,9 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 	verbose := flags.Bool("v", false, "show what passing tests logged too")
 	live := flags.String("live", "", "call the real services of these `modules`, separated by commas (ai, http or contract modules),\ninstead of replaying their recordings; a test whose service has no address or secret set is skipped")
 	record := flags.Bool("record", false, "with --live, write what the real services answered as the recordings\nthe fakes read, for the tests that passed")
+	crossings := flags.Bool("crossings", false, "count, for each test and each job run in it, the operations that would cross\nbetween compiled code and the runner, and print them by kind at the end")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye test [--run text] [-v] [--live modules [--record]] [program-directory]")
+		fmt.Fprintln(stderr, "usage: eye test [--run text] [-v] [--live modules [--record]] [--crossings] [program-directory]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs the test blocks of a program's module, each with a fresh in-memory store")
 		fmt.Fprintln(stderr, "and a clock that moves only when the test advances it. Calls to other services")
@@ -61,7 +62,7 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "eye test:", err)
 		return exitUsage
 	}
-	results, recorded, recErr := interp.RunTestsWith(prog, interp.TestOptions{Filter: *filter, Live: mods, Record: *record})
+	results, recorded, recErr := interp.RunTestsWith(prog, interp.TestOptions{Filter: *filter, Live: mods, Record: *record, Crossings: *crossings})
 	failed, skipped := 0, 0
 	var total time.Duration
 	for _, r := range results {
@@ -84,6 +85,9 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprint(stdout, indent(r.Log))
 			}
 		}
+	}
+	if *crossings {
+		writeCrossings(stdout, results)
 	}
 	for _, f := range recorded {
 		fmt.Fprintf(stdout, "recorded %s (%s)\n", f.Path, plural(f.Exchanges, "exchange"))
@@ -126,4 +130,20 @@ func indent(s string) string {
 		b.WriteString("      " + line + "\n")
 	}
 	return b.String()
+}
+
+// writeCrossings prints each test's crossings: its body's, then each job
+// run's.
+func writeCrossings(w io.Writer, results []interp.TestResult) {
+	fmt.Fprintln(w, "\ncrossings between compiled code and the runner (ROADMAP 7.10)")
+	for _, r := range results {
+		if r.Skipped != "" {
+			continue
+		}
+		fmt.Fprintf(w, "\ntest %q\n", r.Name)
+		var b strings.Builder
+		interp.WriteCrossings(&b, r.Crossings)
+		fmt.Fprint(w, indent(b.String()))
+	}
+	fmt.Fprintln(w)
 }
