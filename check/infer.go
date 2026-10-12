@@ -287,6 +287,7 @@ func (c *checker) checkTypes() {
 		for _, j := range m.Jobs {
 			bodies = append(bodies, body{fn: j.Func, kind: kindJob})
 			for _, t := range j.Triggers {
+				c.triggeredParams(j, t)
 				if t.Event != nil {
 					// A run started by an event reads it off its queue.
 					addEffect(c.ts.effects, j.Func, "consume "+t.Event.Contract.Name+"."+t.Event.Name)
@@ -1013,6 +1014,66 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		return tUnit
 	}
 	return c.unknownf(e.Position(), "internal error: the checker doesn't know the expression %T", e)
+}
+
+// triggeredParams checks a job's parameters against what its trigger passes
+// it (SPECS.md §15): a schedule, the date of the firing if the job takes
+// one; enters or leaves, the Ref of the entity that crossed; an event, the
+// event.
+func (c *checker) triggeredParams(j *ir.Job, t ir.Trigger) {
+	var by, what string
+	var want typ
+	switch {
+	case t.Schedule != nil:
+		by, what, want = "a schedule", "the date of the firing", con("Date")
+	case t.View != nil:
+		e := t.View.Entity
+		if e == nil {
+			return
+		}
+		by, what = t.Kind+"("+t.View.Name+")", "the entity that "+map[string]string{"enters": "entered", "leaves": "left"}[t.Kind]
+		want = con("Ref", &tcon{name: e.Name, entity: e})
+	case t.Event != nil:
+		if t.Event.Type == nil || t.Event.Contract == nil {
+			return
+		}
+		owner := t.Event.Contract.Name
+		if m := t.Event.Contract.Module; m != nil && m.Path != "" {
+			owner = m.Name // written as the module it is imported as
+		}
+		by, what = "event("+owner+"."+t.Event.Name+")", "the event"
+		want = c.fromExpr(t.Event.Type, typeEnv{}, false)
+	default:
+		return
+	}
+	ps := j.Func.Params
+	switch {
+	case len(ps) == 0 && t.Schedule != nil:
+		return
+	case len(ps) != 1:
+		takes := "one parameter, " + articled([]string{show(want)})[0]
+		if t.Schedule != nil {
+			takes = "no parameters, or one Date"
+		}
+		at := j.Pos
+		if len(ps) > 1 && ps[1].Type != nil {
+			if p, ok := c.typePos[ps[1].Type]; ok {
+				at = p // the first parameter too many
+			}
+		}
+		c.typeErrorf(at, "%s passes %s %s, so it takes %s; it takes %d", by, j.Name, what, takes, len(ps))
+		return
+	}
+	at := j.Pos
+	if ps[0].Type != nil {
+		if p, ok := c.typePos[ps[0].Type]; ok {
+			at = p
+		}
+	}
+	got := c.paramType(j.Func, 0, typeEnv{}, false)
+	if c.unify(want, got) != nil {
+		c.typeErrorf(at, "%s passes %s %s, %s, and %s is %s", by, j.Name, what, articled([]string{show(want)})[0], ps[0].Name, articled([]string{show(got)})[0])
+	}
 }
 
 // diverges reports whether e never finishes with a value: it returns,

@@ -291,7 +291,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
   | Attribute | Meaning |
   |---|---|
-  | `@on(trigger)` | `daily(…)`, `weekdays(…)`, `every(15 min)`, `cron("…", in: zone)`, `enters(view)`, `leaves(view)`, `event(contract.event)`. A schedule passes the job the date of the firing in the schedule's zone, if the job takes one; a view, the entity's `Ref`; an event, the event |
+  | `@on(trigger)` | `daily(…)`, `weekdays(…)`, `every(15 min)`, `cron("…", in: zone)`, `enters(view)`, `leaves(view)`, `event(contract.event)`. A schedule passes the job the date of the firing in the schedule's zone, if the job takes one; a view, the entity's `Ref`; an event, the event. The job's parameters must match: none or one `Date`, one `Ref(E)` of the view's entity, one of the event's type |
   | `@memory(size)` | budget admitted before the run starts; the runtime enforces it |
   | `@priority(p)` | `interactive`, `normal`, `background` or `batch`; under memory pressure, a run of a lower priority doesn't start or resume while one of a higher priority waits for memory, and a run that is executing isn't paused (open question 26) |
   | `@deadline(duration)`, `@deadline(13:40, in: zone)` | how long after its start, or by what time, a run must finish; after that it ends as `Failed(DeadlinePassed)`, even while it sleeps or waits |

@@ -271,6 +271,32 @@ fn g(xs: List(Option(Int))) -> Int {
   }
   total
 }`, []string{"2:24: the else block of a let must leave, since the names the pattern binds have no value there: end it with return, break, continue or unreachable(…)"}},
+		{"a triggered job takes what its trigger passes", `import svc
+entity Disk(host: String) {
+  state used: Int = 0
+}
+view full = Disk.all |> filter(fn d: d.used > 90)
+@on(daily(08:00, in: "UTC"))
+job morning(at: Instant) {}
+@on(daily(08:00, in: "UTC"))
+job twice(day: Date, who: String) {}
+@on(enters(full))
+job page(host: String) {}
+@on(event(svc.pings))
+job record(p: String) {}
+@on(daily(08:00, in: "UTC"))
+job plain() {}
+@on(weekdays(08:00, in: "UTC"))
+job dated(day: Date) {}
+@on(leaves(full))
+job calm(d: Ref(Disk)) {}
+@on(event(svc.pings))
+job seen(p: svc.Ping) {}`, []string{
+			"7:17: a schedule passes morning the date of the firing, a Date, and at is an Instant",
+			"9:27: a schedule passes twice the date of the firing, so it takes no parameters, or one Date; it takes 2",
+			"11:16: enters(full) passes page the entity that entered, a Ref(Disk), and host is a String",
+			"13:15: event(svc.pings) passes record the event, a Ping, and p is a String",
+		}},
 		{"a pattern names a variant of the matched type", `type A = | One | Two
 type B = | Three
 fn f(a: A) -> Int = match a {
