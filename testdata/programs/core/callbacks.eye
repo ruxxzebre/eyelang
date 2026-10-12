@@ -1,6 +1,7 @@
 # A callback, a function given straight to a call, reads a var, a mut
 # parameter and a mut self method's receiver: their values at the call
-# (SPECS.md §7).
+# (SPECS.md §7). An entity's callbacks reading its state are in
+# testdata/programs/entities, since core also compiles to C.
 
 type Post = { links: List(String) }
 
@@ -8,17 +9,6 @@ type Shelf = { keep: Int, items: List(Int) }
 
 impl Shelf {
   fn others(mut self) -> List(Int) = self.items |> filter(fn x: x != self.keep)
-}
-
-entity Room(id: String) {
-  state owner: String = "ann"
-  state people: List(String) = []
-
-  pub fn join(p: String) {
-    people += [p]
-  }
-
-  pub fn guests() -> List(String) = people |> filter(fn p: p != owner)
 }
 
 fn unseen(feed: List(Post)) -> List(String) {
@@ -50,8 +40,4 @@ test "a callback reads a mut parameter and self" {
   expect(below(mut xs, 3) == [1, 5])
   var shelf: Shelf = { keep: 2, items: [1, 2, 3] }
   expect(shelf.others() == [1, 3])
-  let room = Room("kitchen")
-  room.join("ann")
-  room.join("bo")
-  expect(room.guests() == ["bo"])
 }

@@ -49,9 +49,9 @@ yet.
 
 **Ahead, in order**
 
-1. The core gaps (G.1 to G.19, under the phases). Done: all but G.13, G.14 and G.15, which are
-   being built (a callback may read a `var`, a lambda's record literal typed from context, any
-   function callable as a method). The spec review of 2026-10-12
+1. The core gaps (G.1 to G.19, under the phases) are all done, the last three being a callback
+   that reads a `var` (G.13), a lambda's record literal typed from context (G.14) and any
+   function callable as a method (G.15). The spec review of 2026-10-12
    ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)) is worked
    through: its correctness bugs (G.7 to G.10), the sweep of the text (G.11), dropped results
    (G.12) and the examples (C.7) are done.

@@ -221,6 +221,13 @@ ey_v eyb_set_add(ey_v s, ey_v x) {
 	return EY_V(m);
 }
 
+ey_v eyb_set_union(ey_v x, ey_v y) {
+	ey_map *b = EY_MAP(y);
+	ey_map *m = map_copy(EY_MAP(x), b->len);
+	for (int64_t i = 0; i < b->len; i++) put_dup(m, b->keys[i], 0);
+	return EY_V(m);
+}
+
 ey_v eyb_map_insert(ey_v mv, ey_v k, ey_v v) {
 	ey_map *m = map_copy(EY_MAP(mv), 1);
 	put_dup(m, k, v);

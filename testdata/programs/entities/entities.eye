@@ -140,3 +140,21 @@ test "what a method changes after end(ok) is dropped" {
   expect(named |> size == 0)
   expect(Departures("all").seen == ["ann"])
 }
+
+entity Room(id: String) {
+  state owner: String = "ann"
+  state people: List(String) = []
+
+  pub fn join(p: String) {
+    people += [p]
+  }
+
+  pub fn guests() -> List(String) = people |> filter(fn p: p != owner)
+}
+
+test "a callback in an entity's method reads its state" {
+  let room = Room("kitchen")
+  room.join("ann")
+  room.join("bo")
+  expect(room.guests() == ["bo"])
+}

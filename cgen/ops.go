@@ -59,6 +59,8 @@ func (e *fn) op(x *lir.Op) {
 		set("ey_concat(2, (ey_v[]){%s, %s})", va, vb)
 	case ka == "List" && kb == "List" && x.Op == "+":
 		set("eyb_list_concat(%s, %s)", va, vb)
+	case ka == "Set" && kb == "Set" && x.Op == "+":
+		set("eyb_set_union(%s, %s)", va, vb)
 	case (ka == "Duration" || ka == "Size") && ka == kb && (x.Op == "+" || x.Op == "-"):
 		set("%s %s %s", va, x.Op, vb)
 	case (ka == "Duration" || ka == "Size") && kb == "Int" && x.Op == "*":

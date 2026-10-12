@@ -42,6 +42,7 @@ void eyb_bounds(ey_v start, ey_v end, uint32_t flags, int64_t n, int64_t *lo, in
 ey_v eyb_list_add(ey_v l, ey_v x);
 ey_v eyb_list_concat(ey_v a, ey_v b);
 ey_v eyb_set_add(ey_v s, ey_v x);
+ey_v eyb_set_union(ey_v a, ey_v b);
 ey_v eyb_map_insert(ey_v m, ey_v k, ey_v v);
 ey_v eyb_map_remove(ey_v m, ey_v k);
 bool eyb_map_contains(ey_v m, ey_v k);
