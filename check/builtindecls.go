@@ -29,7 +29,7 @@ var goRules = map[string]bool{
 	// The collection functions.
 	"size": true, "isEmpty": true, "add": true, "remove": true, "contains": true, "insert": true,
 	"get": true, "first": true, "last": true, "map": true, "filter": true, "find": true, "any": true,
-	"all": true, "count": true, "reduce": true, "sum": true, "enumerate": true, "drop": true,
+	"all": true, "count": true, "reduce": true, "sum": true, "average": true, "enumerate": true, "drop": true,
 	"take": true, "reverse": true, "sort": true, "keys": true, "values": true, "entries": true,
 	"toList": true, "toSet": true, "join": true, "flatMap": true, "zip": true, "parallelMap": true, "iter": true,
 	// The methods of the fixed-width integers, which take any of the five

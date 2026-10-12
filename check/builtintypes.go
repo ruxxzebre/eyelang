@@ -303,6 +303,9 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	case "sum":
 		x.require(elem, c.preludeTrait("Add"), []typ{elem, elem}, at, "sum")
 		return elem
+	case "average":
+		x.averageElem(kind, elem, b.pos[0].Value.Position())
+		return option(tFloat)
 	case "enumerate":
 		return seq(&ttuple{elems: []typ{tInt, elem}})
 	case "drop", "take":
@@ -355,6 +358,29 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		return con("Iter", elem)
 	}
 	return c.fresh()
+}
+
+// averageElem reports an average of elements that aren't numbers. An Int or
+// a Float may be averaged, and so may an integer literal, which stays free
+// to become either.
+func (x *fnCheck) averageElem(kind string, elem typ, at ir.Pos) {
+	if kind == "Map" {
+		x.c.typeErrorf(at, "average takes numbers, and a Map's elements are its key and value pairs: average its values, as m.values().average()")
+		return
+	}
+	switch t := prune(elem).(type) {
+	case tunknown:
+		return
+	case *tvar:
+		if t.lit.intLiteral() || (t.lit == litNone && !t.rigid) {
+			return
+		}
+	case *tcon:
+		if t.decl == nil && t.entity == nil && (t.name == "Int" || t.name == "Float") {
+			return
+		}
+	}
+	x.c.typeErrorf(at, "average takes numbers, each an Int or a Float, and these are %s: map each to an Int or a Float first, then average those", show(defaultLiteral(elem)))
 }
 
 // ruleParams reads the parameters of a built-in declaration that goRules

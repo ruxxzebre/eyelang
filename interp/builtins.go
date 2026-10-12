@@ -3,6 +3,7 @@ package interp
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"sort"
 	"strings"
@@ -332,6 +333,32 @@ func builtinTable() map[string]*BuiltinFn {
 		}
 		return acc
 	})
+	add("average", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 1, "average", at)
+		es := in.elems(args[0], at)
+		if len(es) == 0 {
+			return in.none()
+		}
+		// Ints are added exactly and divided once, so the mean is the Float
+		// nearest to the exact one.
+		total, sum := new(big.Int), 0.0
+		for _, e := range es {
+			switch n := e.(type) {
+			case float64:
+				sum += n
+			case int64, *big.Int:
+				b, _ := bigOf(n)
+				total.Add(total, b)
+			default:
+				in.faultf(at, "average takes Ints or Floats, and this is %s", kindName(e))
+			}
+		}
+		if _, ok := es[0].(float64); ok {
+			return in.some(sum / float64(len(es)))
+		}
+		mean, _ := new(big.Rat).SetFrac(total, big.NewInt(int64(len(es)))).Float64()
+		return in.some(mean)
+	})
 	add("enumerate", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "enumerate", at)
 		if it, ok := args[0].(*IterVal); ok {
@@ -623,7 +650,24 @@ func builtinTable() map[string]*BuiltinFn {
 		}
 		return in.some(args[0])
 	})
-	add("min", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+	for _, op := range []string{"div", "rem"} {
+		sym := map[string]string{"div": "/", "rem": "%"}[op]
+		add(op, func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+			in.need(args, 2, op, at)
+			if !isInt(args[0]) || !isInt(args[1]) {
+				in.faultf(at, "%s takes two Ints, and these are %s and %s", op, kindName(args[0]), kindName(args[1]))
+			}
+			if equal(args[1], int64(0)) {
+				return in.none()
+			}
+			r, err := intArith(sym, args[0], args[1])
+			if err != nil {
+				in.faultf(at, "%v", err)
+			}
+			return in.some(r)
+		})
+	}
+	add("min",func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "min", at)
 		if c, ok := compare(args[0], args[1]); ok && c > 0 {
 			return args[1]

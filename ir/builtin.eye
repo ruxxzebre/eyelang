@@ -376,6 +376,11 @@ pub extern fn reduce(c: Collection(a), start: b, f: fn(b, a) -> b) -> b
 ## Adds the elements: numbers, durations or sizes.
 pub extern fn sum(c: Collection(a)) -> a
 
+## The mean of the numbers, an Int or a Float each, as a Float, or `None` when there are none:
+## `[1, 2].average()` is `Some(1.5)`. For an Int that rounds as `/` does, write
+## `xs.sum().div(xs.size())`.
+pub extern fn average(c: Collection(a)) -> Option(Float)
+
 ## Pairs each element with its index, from 0; on an Iter, as it is walked.
 pub extern fn enumerate(c: Collection(a)) -> List((Int, a))
 
@@ -535,6 +540,14 @@ pub extern fn toFloat(n: Int) -> Float
 
 ## `Some(n)` unless n is 0: what `/` and `%` take as a divisor.
 pub extern fn nonzero(n: Int) -> Option(NonZero(Int))
+
+## `Some(a / b)`, or `None` when b is 0, for a divisor that may be 0 without a `match` on
+## [nonzero]: `total.div(count) ?? 0`. It rounds down, as `/` does: `div(-7, 2)` is `Some(-4)`.
+pub extern fn div(a: Int, b: Int) -> Option(Int)
+
+## `Some(a % b)`, or `None` when b is 0. The remainder has the sign of b, as with `%`:
+## `rem(-7, 2)` is `Some(1)`.
+pub extern fn rem(a: Int, b: Int) -> Option(Int)
 
 ## The smaller of a and b.
 pub extern fn min(a: t, b: t) -> t where t: Ord

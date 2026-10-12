@@ -488,6 +488,16 @@ fn sum(c: Collection(a)) -> a
 
 Adds the elements: numbers, durations or sizes.
 
+### average {#average}
+
+```eye
+fn average(c: Collection(a)) -> Option(Float)
+```
+
+The mean of the numbers, an Int or a Float each, as a Float, or `None` when there are none:
+`[1, 2].average()` is `Some(1.5)`. For an Int that rounds as `/` does, write
+`xs.sum().div(xs.size())`.
+
 ### enumerate {#enumerate}
 
 ```eye
@@ -887,6 +897,24 @@ fn nonzero(n: Int) -> Option(NonZero(Int))
 ```
 
 `Some(n)` unless n is 0: what `/` and `%` take as a divisor.
+
+### div {#div}
+
+```eye
+fn div(a: Int, b: Int) -> Option(Int)
+```
+
+`Some(a / b)`, or `None` when b is 0, for a divisor that may be 0 without a `match` on
+[`nonzero`](./builtins#nonzero): `total.div(count) ?? 0`. It rounds down, as `/` does: `div(-7, 2)` is `Some(-4)`.
+
+### rem {#rem}
+
+```eye
+fn rem(a: Int, b: Int) -> Option(Int)
+```
+
+`Some(a % b)`, or `None` when b is 0. The remainder has the sign of b, as with `%`:
+`rem(-7, 2)` is `Some(1)`.
 
 ### min {#min}
 

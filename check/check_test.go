@@ -205,6 +205,24 @@ pub fn main() {
 }`, []string{"2:15: return inside a lambda would leave only the lambda"}},
 		{"_ goes in a piped call", `fn f() = _`, []string{"1:10: _ stands for the piped value"}},
 		{"in: and for: alone need a value", `fn f() = daily(07:40, in:)`, []string{"1:23: in is a keyword, not a variable, so in: needs a value"}},
+		{"average takes numbers, and div and rem take Ints", `fn f(xs: List(String), m: Map(String, Int), d: List(Duration)) {
+  let a = xs.average()
+  let b = m |> average
+  let c = d.average()
+  let e = div(1.5, 2)
+  let g: Int = [1, 2].average()
+}`, []string{
+			"2:11: average takes numbers, each an Int or a Float, and these are String: map each to an Int or a Float first",
+			"3:11: average takes numbers, and a Map's elements are its key and value pairs: average its values, as m.values().average()",
+			"4:11: average takes numbers, each an Int or a Float, and these are Duration",
+			"5:15: expected Int, found Float",
+			"6:16: expected Int, found Option(Float)",
+		}},
+		{"average and div give Options", `fn f(xs: List(Int), ys: List(Float), n: Int) -> Float {
+  let q: Option(Int) = n.div(xs.size())
+  let r: Option(Int) = n |> rem(2)
+  (xs.average() ?? 0.0) + (ys |> average ?? 0.0) + ([1, 2].average() ?? 0.0).round()
+}`, nil},
 		{"impl gives methods to a type this module declares", `impl Int {
   fn twice(self) -> Int = self * 2
 }`, []string{"1:6: impl for Int, which isn't a type declared in this module"}},

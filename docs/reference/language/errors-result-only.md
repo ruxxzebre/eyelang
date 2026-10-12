@@ -43,6 +43,23 @@ title: "Errors: Result only"
     None => 0
   }
   ```
+
+  Two kinds of division come up often enough to need no `match`. `xs.average()` is the mean of a
+  list of `Int`s or `Float`s as a `Float`, or `None` for an empty list: `[1, 2].average()` is
+  `Some(1.5)`. It gives a `Float` for `Int`s too, so its type is the same for every list and a
+  mean of `1` and `2` isn't quietly `1`. `a.div(b)` and `a.rem(b)` are `a / b` and `a % b` for
+  `Int`s, or `None` when `b` is `0`. They round as `/` and `%` do, down, so `div(-7, 2)` is
+  `Some(-4)` and `rem(-7, 2)` is `Some(1)`.
+
+  ```eye
+  fn summary(latencies: List(Int), sent: Int, failed: Int) -> String {
+    let mean = latencies.average() ?? 0.0
+    let failedPerHundred = (failed * 100).div(sent) ?? 0
+    "{mean} ms on average, {failedPerHundred} of every 100 failed"
+  }
+  ```
+
+  For an `Int` mean that rounds as `/` does, write `xs.sum().div(xs.size())`.
 - **Runtime faults** (out of memory, over budget, killed, deadline passed, `unreachable`) are not
   errors that code can throw or catch. They end the run, and whoever started it sees `Failed(fault)` as the run's
   outcome.

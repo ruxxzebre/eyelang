@@ -6,7 +6,9 @@ title: "Values and types"
 
 # Values and types
 
-- **Primitives:** `Int`, `NonZero(Int)`, `Float`, `Bool`, `Char`, `String`, `()`.
+- **Primitives:** `Int`, `NonZero(Int)`, `Float`, `Bool`, `Char`, `String`, `()`. A
+  `NonZero(Int)` is what `/` and `%` take as a divisor, so dividing can't fail ([section 10](/reference/language/errors-result-only)). Most
+  code doesn't need one by name: `xs.average()` and `a.div(b)` give an `Option` instead.
 - **Bytes and fixed-width integers:** `Byte` (0 to 255), `Int32`, `Int64`, `UInt32` and `UInt64`,
   and `Bytes`, a sequence of `Byte`s, for binary formats, hashing, lexers and foreign functions.
   They compare with the usual operators but have no `+`, `-`, `*` or `/`. Arithmetic and bit

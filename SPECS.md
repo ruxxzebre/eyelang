@@ -165,6 +165,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Naming the joins | **The waits for several runs are `allDone!` and `firstDone!`, not `all!` and `first!`**; `all` and `first` are only the collection functions, and `all!(runs)` or `first!(runs)` is an error that names the wait to write (section 15). Decided by the owner on 2026-10-12 | `!` only ever marks the same call as a step; it never changes which function a name means. With `all!` and `first!`, adding or dropping a `!` switched between a wait and a collection function, and a reader had to know both. From the spec review of 2026-10-12, design risk 11 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
 | Ending entities | **`end(ok)` in an entity's own method ends it for good**: `ok` must be an `Approval`, the state is removed, and the store keeps only when it ended and whose approval let it. Calling or reading an ended entity faults; its identity never starts again. In an entity's method `end` is the entity's; elsewhere it is a string's end (section 14) | Ending deletes data, so it takes a person's consent that the compiler checks. If a later call started the identity again from its defaults, a job holding an old reference would bring back what a person approved ending, silently. Resolving `end` by context keeps `s.end()` and the spec's `end(ok)` both |
 | Lazy iteration | **`xs.iter()` gives an `Iter(a)`, a value that describes a walk and runs it again each time it is walked.** Lists, sets, maps, `Int` ranges, strings and `Bytes` give one, and `s.chars()` is one; `map`, `filter`, `take`, `drop`, `enumerate`, `zip` and `flatMap` on an `Iter` give an `Iter`, and the other collection functions walk it. Its functions only compute; it has none of the derived traits, so it can't be live across a `!`; and there are no endless sources (section 5) | Walking twice gives the same elements because an `Iter` is a value, not a cursor a first walk would use up, which would be state shared by everyone holding it. Functions without effects make a second walk cost time and nothing else, wherever it happens. Sources that end keep `size`, `toList` and `sort` sure to finish |
+| Division helpers | **`/` and `%` keep their `NonZero` divisor, and `xs.average()`, `a.div(b)` and `a.rem(b)` give an `Option` instead**: `None` for an empty list or a divisor of 0. `average` gives a `Float` for `Int`s too; `div` and `rem` round down as `/` and `%` do (section 10) | Every mean needed `match nonzero(xs \|> size) { … }`, so the obvious code was long. One result type for every list keeps `average` predictable, and a mean of `1` and `2` that is quietly `1` would be the wrong answer made easy; `xs.sum().div(xs.size())` is there for an `Int` mean (decided 2026-10-12) |
 
 ## 3. A tour
 
@@ -353,7 +354,9 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 
 ## 5. Values and types
 
-- **Primitives:** `Int`, `NonZero(Int)`, `Float`, `Bool`, `Char`, `String`, `()`.
+- **Primitives:** `Int`, `NonZero(Int)`, `Float`, `Bool`, `Char`, `String`, `()`. A
+  `NonZero(Int)` is what `/` and `%` take as a divisor, so dividing can't fail (section 10). Most
+  code doesn't need one by name: `xs.average()` and `a.div(b)` give an `Option` instead.
 - **Bytes and fixed-width integers:** `Byte` (0 to 255), `Int32`, `Int64`, `UInt32` and `UInt64`,
   and `Bytes`, a sequence of `Byte`s, for binary formats, hashing, lexers and foreign functions.
   They compare with the usual operators but have no `+`, `-`, `*` or `/`. Arithmetic and bit
@@ -745,6 +748,23 @@ it a compile error, which is how a new outcome from another service reaches ever
     None => 0
   }
   ```
+
+  Two kinds of division come up often enough to need no `match`. `xs.average()` is the mean of a
+  list of `Int`s or `Float`s as a `Float`, or `None` for an empty list: `[1, 2].average()` is
+  `Some(1.5)`. It gives a `Float` for `Int`s too, so its type is the same for every list and a
+  mean of `1` and `2` isn't quietly `1`. `a.div(b)` and `a.rem(b)` are `a / b` and `a % b` for
+  `Int`s, or `None` when `b` is `0`. They round as `/` and `%` do, down, so `div(-7, 2)` is
+  `Some(-4)` and `rem(-7, 2)` is `Some(1)`.
+
+  ```eye
+  fn summary(latencies: List(Int), sent: Int, failed: Int) -> String {
+    let mean = latencies.average() ?? 0.0
+    let failedPerHundred = (failed * 100).div(sent) ?? 0
+    "{mean} ms on average, {failedPerHundred} of every 100 failed"
+  }
+  ```
+
+  For an `Int` mean that rounds as `/` does, write `xs.sum().div(xs.size())`.
 - **Runtime faults** (out of memory, over budget, killed, deadline passed, `unreachable`) are not
   errors that code can throw or catch. They end the run, and whoever started it sees `Failed(fault)` as the run's
   outcome.

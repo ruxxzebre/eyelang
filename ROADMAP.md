@@ -490,7 +490,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.13 A callback may read a `var` | [#96](https://github.com/ruxxzebre/eyelang/issues/96) |
 | G.14 A lambda's record literal takes its type from where the result goes | [#97](https://github.com/ruxxzebre/eyelang/issues/97) |
 | G.15 Any function can be called as a method on its first argument | [#98](https://github.com/ruxxzebre/eyelang/issues/98) |
-| G.16 `average` and `div`, so `NonZero` division rarely needs a `match` | [#99](https://github.com/ruxxzebre/eyelang/issues/99) |
+| G.16 `average` and `div`, so `NonZero` division rarely needs a `match` (done) | [#99](https://github.com/ruxxzebre/eyelang/issues/99) |
 
 G.7 to G.16 come from the spec review of 2026-10-12 (docs/internals/reviews). Each issue says
 what it is and when it is done. G.1, G.2 and G.4 come before S.1, the

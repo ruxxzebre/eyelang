@@ -266,3 +266,28 @@ test "a whole number scales a duration or a size from either side" {
   expect(k * 1 h == 4 h && 1 h / k == 15 min)
   expect(2 * 8 MiB == 16 MiB && 16 MiB / 2 == 8 MiB)
 }
+
+test "div and rem give None for a zero divisor, and round as / and % do" {
+  let zero = 0
+  expect(7.div(2) == Some(3) && 7 |> rem(2) == Some(1))
+  expect(7.div(zero) == None && 7.rem(zero) == None)
+  expect(div(-7, 2) == Some(-7 / 2) && div(-7, 2) == Some(-4))
+  expect(rem(-7, 2) == Some(-7 % 2) && rem(-7, 2) == Some(1))
+  expect(div(7, -2) == Some(-4) && rem(7, -2) == Some(-1))
+  expect(div(18446744073709551616, 2) == Some(9223372036854775808))
+}
+
+test "average gives the mean as a Float, or None for no numbers" {
+  let none: List(Int) = []
+  expect(none.average() == None && none |> average == None)
+  expect([1, 2].average() == Some(1.5) && [1, 2] |> average == Some(1.5))
+  expect([-1, -2].average() == Some(-1.5))
+  expect([1.5, 2.5, 5.0].average() == Some(3.0))
+  let floats: List(Float) = []
+  expect(floats.average() == None)
+  expect((1..=4).average() == Some(2.5))
+  let big = 9223372036854775807
+  expect([big, big + 2].average() == Some((big + 1).toFloat()))
+  let xs = [3, 4, 4]
+  expect(xs.sum().div(xs.size()) == Some(3))
+}
