@@ -57,8 +57,8 @@ yet.
 2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
-3. Phase 6 (v0.3): 6.2, 6.10 to 6.13 are done; 6.1 and 6.3 to 6.9 are open, each with its
-   issue. The user chose plain Kubernetes NetworkPolicy, with pods labelled `eyelang.module`, for
+3. Phase 6 (v0.3): 6.2, 6.3 and 6.10 to 6.13 are done; 6.1 and 6.4 to 6.9 are open, each with
+   its issue. The user chose plain Kubernetes NetworkPolicy, with pods labelled `eyelang.module`, for
    6.5. Since 6.13, `eye run` serves a contract over HTTP on its `@port`, which 6.4's round trip
    and the online playground (open question 34) build on. The phase's exit test is 6.6 (Notify,
    with the user, in the homelab repository) and 6.8 (agents, after 6.7).
