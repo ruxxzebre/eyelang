@@ -49,14 +49,13 @@ yet.
 
 **Ahead, in order**
 
-1. The core gaps (G.1 to G.16, under the phases). G.1 to G.6, lazy `iter` (G.3) and the sweep
-   of SPECS.md (G.11) are done. Left from the spec review of 2026-10-12
+1. The core gaps (G.1 to G.17, under the phases). G.1 to G.6, lazy `iter` (G.3), the sweep of
+   SPECS.md (G.11) and `average`/`div` (G.16) are done; G.17 is a checker bug found since. Left from the spec review of 2026-10-12
    ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)): four correctness
    bugs first (entity methods reaching outside, G.7; unrecorded reads in jobs, G.8; re-entrant
    entity calls losing a write, G.9; effects missing at the boundary, G.10), then the owner's
    decisions (results must be used, G.12; a callback may read a `var`, G.13; a lambda's record
-   literal typed from context, G.14; any function callable as a method, G.15; `average` and
-   `div`, G.16).
+   literal typed from context, G.14; any function callable as a method, G.15).
 2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
@@ -491,6 +490,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.14 A lambda's record literal takes its type from where the result goes | [#97](https://github.com/ruxxzebre/eyelang/issues/97) |
 | G.15 Any function can be called as a method on its first argument | [#98](https://github.com/ruxxzebre/eyelang/issues/98) |
 | G.16 `average` and `div`, so `NonZero` division rarely needs a `match` (done) | [#99](https://github.com/ruxxzebre/eyelang/issues/99) |
+| G.17 `?` on an `Option` outside a function that returns an `Option` is an error | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |
 
 G.7 to G.16 come from the spec review of 2026-10-12 (docs/internals/reviews). Each issue says
 what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
