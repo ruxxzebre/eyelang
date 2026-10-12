@@ -174,3 +174,28 @@ test "results of structs" {
   expect(r.map(fn p: p.x) == Ok(0.0))
   expect(e.mapErr(fn s: s.size()) == Err(2))
 }
+
+test "maps grow, find keys made apart, and remove" {
+  var m: Map(String, Int) = {}
+  for i in 0..1000 {
+    m = m.insert("k{i}", i)
+  }
+  for i in 0..1000 {
+    let k = "k{i % 10}"
+    m = m.insert(k, (m[k] ?? 0) + 1)
+  }
+  expect(m.size() == 1000 && m["k3"] == Some(103) && m["k999"] == Some(999) && m["k1000"] == None)
+  m = m.remove("k3")
+  expect(m["k3"] == None && m["k4"] == Some(104) && m.size() == 999)
+  let more = m.insert("new", 1)
+  expect(more.size() == 1000 && m.size() == 999 && more["k500"] == Some(500))
+  var s: Set(Int) = toSet([])
+  for i in 0..500 {
+    s = s.add(i * 7 % 300)
+  }
+  expect(s.size() == 300 && s.contains(299) && !s.contains(300))
+  let sorted = [5, -3, 1_000_000_000_000_000_000_000, 2, -3, 0] |> sort
+  expect(sorted == [-3, -3, 0, 2, 5, 1_000_000_000_000_000_000_000])
+  let words = ["pear", "apple", "fig", "apple"] |> sort
+  expect(words == ["apple", "apple", "fig", "pear"])
+}

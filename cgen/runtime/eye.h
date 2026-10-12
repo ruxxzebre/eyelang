@@ -185,13 +185,15 @@ typedef struct ey_list {
 } ey_list;
 
 /* A Set (vals is NULL) or a Map, in insertion order; index holds each
- * key's position plus one, by hash, in a table of icap slots. */
+ * key's hash and position, by hash, in a table of icap slots (coll.c).
+ * last is the position the last lookup found, or -1. */
 typedef struct ey_map {
 	ey_obj h;
 	int64_t len, cap;
 	char *keys, *vals;
-	int32_t *index;
+	uint64_t *index;
 	int64_t icap;
+	int64_t last;
 } ey_map;
 
 /* A range: its start and end as words (an Int's word, or a scalar's bits)
@@ -496,8 +498,21 @@ void ey_tuple_make(const ey_type *t, void *out, const void *const *fields);
 void ey_box_own(ey_v *p);
 /* Option and Result, taking v: v points at a value of the payload's type;
  * the _v forms take a scalar's, an enum's or a word's value as a word. */
-void ey_some(const ey_type *opt, void *out, const void *v);
-void ey_none(const ey_type *opt, void *out);
+static inline bool ey_niche_word(const ey_type *t) { return t->tag == EY_TAG_NICHE && t->tagsize == 8 && t->size == 8; }
+/* An Option whose niche fills a word (Option(Int), Option(String),
+ * Option(List(a))) is its payload's word, or None's. */
+static inline void ey_some(const ey_type *opt, void *out, const void *v) {
+	if (ey_niche_word(opt))
+		memcpy(out, v, 8);
+	else
+		ey_variant_make(opt, out, 0, (const void *const[]){v});
+}
+static inline void ey_none(const ey_type *opt, void *out) {
+	if (ey_niche_word(opt))
+		memcpy(out, &opt->variants[1].value, 8);
+	else
+		ey_variant_make(opt, out, 1, NULL);
+}
 void ey_ok(const ey_type *res, void *out, const void *v);
 void ey_err(const ey_type *res, void *out, const void *v);
 void ey_some_v(const ey_type *opt, void *out, ey_v v);

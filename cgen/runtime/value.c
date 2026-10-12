@@ -84,6 +84,21 @@ void ey_variant_make(const ey_type *t, void *out, uint32_t tag, const void *cons
 		return;
 	}
 	char *base = out;
+	if (t->tag == EY_TAG_NICHE) {
+		/* Option(Int), Option(String), Option(List(a)): the payload or
+		 * the niche fills the whole value */
+		if (v->n == 1 && v->fields[0]->size == t->size) {
+			if (t->size == 8)
+				memcpy(out, fields[0], 8);
+			else
+				memcpy(out, fields[0], t->size);
+			return;
+		}
+		if (v->n == 0 && t->tagsize == t->size) {
+			store_u(out, t->tagsize, v->value);
+			return;
+		}
+	}
 	if (t->tag == EY_TAG_BOX) {
 		if (v->n == 0) {
 			*(ey_v *)out = v->value;
@@ -140,8 +155,6 @@ void ey_box_own(ey_v *p) {
 	*p = EY_V(q);
 }
 
-void ey_some(const ey_type *opt, void *out, const void *v) { ey_variant_make(opt, out, 0, (const void *const[]){v}); }
-void ey_none(const ey_type *opt, void *out) { ey_variant_make(opt, out, 1, NULL); }
 void ey_ok(const ey_type *res, void *out, const void *v) { ey_variant_make(res, out, 0, (const void *const[]){v}); }
 void ey_err(const ey_type *res, void *out, const void *v) { ey_variant_make(res, out, 1, (const void *const[]){v}); }
 
@@ -314,11 +327,29 @@ static uint64_t fin(uint64_t x) {
 
 static uint64_t mix(uint64_t h, uint64_t x) { return fin(h ^ (x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2))); }
 
+/* ey_str_hash reads a string's bytes eight at a time; maps call it for
+ * every probe, so it must be cheap for short keys. */
 uint64_t ey_str_hash(ey_v v) {
 	ey_str *s = EY_STR(v);
-	uint64_t h = 1469598103934665603ULL;
-	for (int64_t i = 0; i < s->len; i++) h = (h ^ (unsigned char)s->b[i]) * 1099511628211ULL;
-	return fin(h);
+	const unsigned char *p = (const unsigned char *)s->b;
+	int64_t n = s->len;
+	uint64_t h = 0x9e3779b97f4a7c15ULL ^ (uint64_t)n;
+	for (; n >= 8; p += 8, n -= 8) {
+		uint64_t w;
+		memcpy(&w, p, 8);
+		h = (h ^ w) * 0xff51afd7ed558ccdULL;
+		h ^= h >> 29;
+	}
+	uint64_t w = 0;
+	if (n > 0 && ((uintptr_t)p & 7) == 0) {
+		/* the last bytes in one aligned load, which can't cross a page
+		 * the string doesn't reach; the bytes past its end are masked */
+		memcpy(&w, p, 8);
+		w &= ~UINT64_C(0) >> (64 - 8 * n);
+	} else {
+		for (int64_t i = 0; i < n; i++) w |= (uint64_t)p[i] << (8 * i);
+	}
+	return fin(h ^ w);
 }
 
 uint64_t ey_hash(const ey_type *t, const void *p) {

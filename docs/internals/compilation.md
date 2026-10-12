@@ -250,7 +250,7 @@ called through `void code(ey_fn *self, void *out, void *const *args)`, whatever 
 | `rt.c` | allocation (free lists by 8-byte size class up to 256 bytes, carved from 256 KB chunks; `malloc` above), freeing by descriptor, counts of objects, integers in decimal, faults, `print` and `log`, running `main` or the tests |
 | `int.c` | `Int`: the small fast path inline in `eye.h` with `__builtin_*_overflow`, and a big integer of 32-bit limbs (schoolbook multiplication; division a limb at a time by one limb, and by shifting and subtracting by more), written for this runtime, not vendored |
 | `str.c` | UTF-8 strings and `Bytes`, `Offset` positions as byte offsets, searching, slicing, parsing numbers |
-| `coll.c` | lists; sets and maps in insertion order with an open-addressing hash index; the collection functions |
+| `coll.c` | lists; sets and maps in insertion order with an open-addressing hash index whose slots keep each key's hash, so a probe compares keys only when hashes match and growing hashes nothing again, and which remembers the last key found, so `m.insert(k, (m[k] ?? 0) + 1)` looks `k` up once; `sort`, by merging, with whole numbers compared as words; the collection functions |
 | `iter.c` | lazy `Iter` values (a source and its steps), cursors that pull one element at a time through them, and the walks `for` loops use |
 | `value.c` | equality, order, hashing and `Show`, exactly as the interpreter prints values |
 | `fixed.c` | the fixed-width integers' methods: wrapping, checked, bits and shifts |

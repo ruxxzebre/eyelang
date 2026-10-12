@@ -77,48 +77,102 @@ static void list_reserve(ey_list *l, int64_t need) {
 #define KSIZE(m) ((int64_t)(m)->h.ty->args[0]->size)
 #define VSIZE(m) ((int64_t)(m)->h.ty->args[1]->size)
 
-static uint64_t key_hash(const ey_type *kt, const void *k) {
-	if (kt->kind == EY_STRING) return ey_str_hash(*(const ey_v *)k);
-	return ey_hash(kt, k);
+/* copy copies a value of n bytes; a word, the common case, in one move */
+static inline void copy_val(void *d, const void *s, int64_t n) {
+	if (n == 8)
+		memcpy(d, s, 8);
+	else
+		memcpy(d, s, (size_t)n);
 }
 
-static bool key_eq(const ey_type *kt, const void *a, const void *b) {
+static inline uint32_t key_hash(const ey_type *kt, const void *k) {
+	uint64_t h;
+	if (kt->kind == EY_STRING)
+		h = ey_str_hash(*(const ey_v *)k);
+	else
+		h = ey_hash(kt, k);
+	return (uint32_t)(h ^ (h >> 32));
+}
+
+static inline bool key_eq(const ey_type *kt, const void *a, const void *b) {
 	switch (kt->kind) {
-	case EY_STRING:
-		return ey_str_eq(*(const ey_v *)a, *(const ey_v *)b);
+	case EY_STRING: {
+		ey_v x = *(const ey_v *)a, y = *(const ey_v *)b;
+		return x == y || ey_str_eq(x, y);
+	}
 	case EY_INT:
 		return ey_int_eq(*(const ey_v *)a, *(const ey_v *)b);
 	}
 	return ey_eq(kt, a, b);
 }
 
-static void index_build(ey_map *m) {
+/* The index is a table of icap slots, each 0 or a key's hash (32 bits)
+ * above its position plus one, so that a probe compares keys only when
+ * their hashes match and growing the table hashes nothing again. */
+#define SLOT(h, i) ((uint64_t)(h) << 32 | (uint64_t)((i) + 1))
+#define SLOT_HASH(e) ((uint32_t)((e) >> 32))
+#define SLOT_POS(e) ((int64_t)(uint32_t)(e) - 1)
+
+static void index_alloc(ey_map *m, int64_t keys) {
 	int64_t icap = 8;
-	while (icap < m->len * 2 + 2) icap *= 2;
-	free(m->index);
-	m->index = calloc((size_t)icap, sizeof(int32_t));
+	while (icap < keys * 2 + 2) icap *= 2;
+	m->index = calloc((size_t)icap, sizeof(uint64_t));
 	if (!m->index) ey_out_of_memory();
 	m->icap = icap;
+}
+
+static inline void index_put(ey_map *m, uint64_t e) {
+	uint64_t mask = (uint64_t)m->icap - 1, j = SLOT_HASH(e) & mask;
+	while (m->index[j]) j = (j + 1) & mask;
+	m->index[j] = e;
+}
+
+/* index_from indexes m's keys from another index of the same keys, room
+ * for keys keys */
+static void index_from(ey_map *m, const uint64_t *from, int64_t n, int64_t keys) {
+	index_alloc(m, keys);
+	for (int64_t j = 0; j < n; j++)
+		if (from[j]) index_put(m, from[j]);
+}
+
+/* index_build indexes m's keys afresh */
+static void index_build(ey_map *m) {
+	free(m->index);
+	index_alloc(m, m->len);
 	const ey_type *kt = m->h.ty->args[0];
 	int64_t ks = KSIZE(m);
-	for (int64_t i = 0; i < m->len; i++) {
-		uint64_t h = key_hash(kt, ITEM(m->keys, i, ks)) & (uint64_t)(icap - 1);
-		while (m->index[h]) h = (h + 1) & (uint64_t)(icap - 1);
-		m->index[h] = (int32_t)(i + 1);
+	for (int64_t i = 0; i < m->len; i++) index_put(m, SLOT(key_hash(kt, ITEM(m->keys, i, ks)), i));
+}
+
+/* map_find gives the key's position, or -1, and its hash when it is
+ * missing. A key that is the same word as the one the last lookup found
+ * (the same string, or the same whole number) is found without hashing:
+ * `m.insert(k, (m[k] ?? 0) + 1)` looks k up once. */
+static inline int64_t map_find(ey_map *m, const void *key, uint32_t *hash) {
+	const ey_type *kt = m->h.ty->args[0];
+	int64_t last = m->last;
+	if ((kt->kind == EY_STRING || kt->kind == EY_INT) && last >= 0 && last < m->len &&
+	    ((const ey_v *)m->keys)[last] == *(const ey_v *)key)
+		return last;
+	uint32_t h = key_hash(kt, key);
+	*hash = h;
+	if (m->len == 0) return -1;
+	int64_t ks = KSIZE(m);
+	uint64_t mask = (uint64_t)m->icap - 1, j = h & mask;
+	for (;;) {
+		uint64_t e = m->index[j];
+		if (e == 0) return -1;
+		if (SLOT_HASH(e) == h && key_eq(kt, ITEM(m->keys, SLOT_POS(e), ks), key)) {
+			m->last = SLOT_POS(e);
+			return m->last;
+		}
+		j = (j + 1) & mask;
 	}
 }
 
 int64_t ey_map_find(ey_map *m, const void *key) {
-	if (m->len == 0) return -1;
-	const ey_type *kt = m->h.ty->args[0];
-	int64_t ks = KSIZE(m);
-	uint64_t h = key_hash(kt, key) & (uint64_t)(m->icap - 1);
-	for (;;) {
-		int32_t i = m->index[h];
-		if (i == 0) return -1;
-		if (key_eq(kt, ITEM(m->keys, i - 1, ks), key)) return i - 1;
-		h = (h + 1) & (uint64_t)(m->icap - 1);
-	}
+	uint32_t h;
+	return map_find(m, key, &h);
 }
 
 static ey_map *map_alloc(const ey_type *ty, int64_t cap) {
@@ -127,60 +181,67 @@ static ey_map *map_alloc(const ey_type *ty, int64_t cap) {
 	m->cap = cap ? cap : 1;
 	m->keys = xmalloc((size_t)(m->cap * KSIZE(m)));
 	m->vals = ty->kind == EY_MAP ? xmalloc((size_t)(m->cap * VSIZE(m))) : NULL;
-	m->index = NULL;
-	m->icap = 0;
-	index_build(m);
+	m->last = -1;
+	index_alloc(m, cap);
 	return m;
+}
+
+/* append adds a key (and value) m doesn't have, with its hash, taking
+ * them, and gives where they went */
+static int64_t map_append(ey_map *m, uint32_t h, const void *key, const void *val) {
+	int64_t ks = KSIZE(m), i = m->len;
+	if (i == m->cap) {
+		m->cap = grow(m->cap);
+		m->keys = xrealloc(m->keys, (size_t)(m->cap * ks));
+		if (m->vals) m->vals = xrealloc(m->vals, (size_t)(m->cap * VSIZE(m)));
+	}
+	if ((i + 1) * 2 + 2 > m->icap) {
+		uint64_t *old = m->index;
+		index_from(m, old, m->icap, i + 1);
+		free(old);
+	}
+	index_put(m, SLOT(h, i));
+	copy_val(ITEM(m->keys, i, ks), key, ks);
+	if (m->vals) copy_val(ITEM(m->vals, i, VSIZE(m)), val, VSIZE(m));
+	m->len = i + 1;
+	return i;
 }
 
 /* map_put adds the key (and value) given, taking them, or for a key it
  * has, replaces its value and drops the key given. */
 static void map_put(ey_map *m, const void *key, const void *val) {
 	const ey_type *ty = m->h.ty;
-	int64_t ks = KSIZE(m);
-	int64_t i = ey_map_find(m, key);
-	if (i >= 0) {
-		ey_drop_at(ty->args[0], (void *)key);
-		if (m->vals) {
-			int64_t vs = VSIZE(m);
-			ey_drop_at(ty->args[1], ITEM(m->vals, i, vs));
-			memcpy(ITEM(m->vals, i, vs), val, (size_t)vs);
-		}
+	uint32_t h;
+	int64_t i = map_find(m, key, &h);
+	if (i < 0) {
+		map_append(m, h, key, val);
 		return;
 	}
-	if (m->len == m->cap) {
-		m->cap = grow(m->cap);
-		m->keys = xrealloc(m->keys, (size_t)(m->cap * ks));
-		if (m->vals) m->vals = xrealloc(m->vals, (size_t)(m->cap * VSIZE(m)));
-	}
-	memcpy(ITEM(m->keys, m->len, ks), key, (size_t)ks);
-	if (m->vals) memcpy(ITEM(m->vals, m->len, VSIZE(m)), val, (size_t)VSIZE(m));
-	m->len++;
-	if (m->len * 2 + 2 > m->icap) {
-		index_build(m);
-	} else {
-		uint64_t h = key_hash(ty->args[0], key) & (uint64_t)(m->icap - 1);
-		while (m->index[h]) h = (h + 1) & (uint64_t)(m->icap - 1);
-		m->index[h] = (int32_t)m->len;
+	ey_drop_at(ty->args[0], (void *)key);
+	if (m->vals) {
+		int64_t vs = VSIZE(m);
+		ey_drop_at(ty->args[1], ITEM(m->vals, i, vs));
+		copy_val(ITEM(m->vals, i, vs), val, vs);
 	}
 }
 
 /* put_dup adds copies of the key and value given, which it borrows */
 static void put_dup(ey_map *m, const void *key, const void *val) {
 	const ey_type *ty = m->h.ty;
-	char k[64], v[64];
-	char *kb = KSIZE(m) <= 64 ? k : xmalloc((size_t)KSIZE(m));
-	memcpy(kb, key, (size_t)KSIZE(m));
-	ey_dup_at(ty->args[0], kb);
-	char *vb = NULL;
-	if (m->vals) {
-		vb = VSIZE(m) <= 64 ? v : xmalloc((size_t)VSIZE(m));
-		memcpy(vb, val, (size_t)VSIZE(m));
-		ey_dup_at(ty->args[1], vb);
+	uint32_t h;
+	int64_t i = map_find(m, key, &h);
+	if (i < 0) {
+		i = map_append(m, h, key, val);
+		ey_dup_at(ty->args[0], ITEM(m->keys, i, KSIZE(m)));
+		if (m->vals) ey_dup_at(ty->args[1], ITEM(m->vals, i, VSIZE(m)));
+		return;
 	}
-	map_put(m, kb, vb);
-	if (kb != k) free(kb);
-	if (vb && vb != v) free(vb);
+	if (m->vals) {
+		int64_t vs = VSIZE(m);
+		ey_dup_at(ty->args[1], (void *)val);
+		ey_drop_at(ty->args[1], ITEM(m->vals, i, vs));
+		copy_val(ITEM(m->vals, i, vs), val, vs);
+	}
 }
 
 ey_v ey_set_new(const ey_type *ty, int64_t n, const void *items) {
@@ -209,11 +270,25 @@ ey_v ey_map_from(const ey_type *ty, int64_t n, void *const *keys, void *const *v
 	return EY_V(m);
 }
 
+/* map_copy copies a set or map, with room for extra more */
 static ey_map *map_copy(ey_map *src, int64_t extra) {
-	ey_map *m = map_alloc(src->h.ty, src->len + extra);
-	int64_t ks = KSIZE(src);
-	for (int64_t i = 0; i < src->len; i++)
-		put_dup(m, ITEM(src->keys, i, ks), src->vals ? ITEM(src->vals, i, VSIZE(src)) : NULL);
+	const ey_type *ty = src->h.ty;
+	ey_map *m = ey_alloc(sizeof(ey_map), ty);
+	int64_t n = src->len, ks = KSIZE(src);
+	m->len = n;
+	m->cap = n + extra ? n + extra : 1;
+	m->keys = xmalloc((size_t)(m->cap * ks));
+	memcpy(m->keys, src->keys, (size_t)(n * ks));
+	ey_dup_n(ty->args[0], m->keys, n);
+	m->vals = NULL;
+	if (src->vals) {
+		int64_t vs = VSIZE(src);
+		m->vals = xmalloc((size_t)(m->cap * vs));
+		memcpy(m->vals, src->vals, (size_t)(n * vs));
+		ey_dup_n(ty->args[1], m->vals, n);
+	}
+	m->last = -1;
+	index_from(m, src->index, src->icap, n + extra);
 	return m;
 }
 
@@ -421,25 +496,6 @@ static void some_dup(const ey_type *opt, void *out, const ey_type *et, const voi
 	ey_some(opt, out, p);
 }
 
-void eyb_map_get(ey_v mv, const void *k, void *out, const ey_type *opt) {
-	ey_map *m = EY_MAP(mv);
-	int64_t i = ey_map_find(m, k);
-	if (i < 0) {
-		ey_none(opt, out);
-		return;
-	}
-	some_dup(opt, out, m->h.ty->args[1], ITEM(m->vals, i, VSIZE(m)));
-}
-
-void eyb_list_index(ey_v l, ey_v i, void *out, const ey_type *opt) {
-	ey_list *a = EY_LIST(l);
-	int64_t k = EY_IS_SMALL(i) ? EY_SMALL_VAL(i) : -1;
-	if (k < 0 || k >= a->len) {
-		ey_none(opt, out);
-		return;
-	}
-	some_dup(opt, out, a->h.ty->args[0], ITEM(a->items, k, ESIZE(a)));
-}
 
 void eyb_list_at(const char *at, ey_v l, ey_v i, void *out) {
 	ey_list *a = EY_LIST(l);
@@ -614,21 +670,48 @@ ey_v eyb_seq_reverse(ey_v c, const ey_type *rt) {
 	return ey_list_take(rt, n, out);
 }
 
+/* sort_small sorts whole numbers that are all small, whose words order as
+ * their values do: insertion sort for short runs, merge sort above. */
+static void sort_small(int64_t *a, int64_t *tmp, int64_t n) {
+	if (n <= 24) {
+		for (int64_t i = 1; i < n; i++) {
+			int64_t x = a[i], j = i;
+			for (; j > 0 && a[j - 1] > x; j--) a[j] = a[j - 1];
+			a[j] = x;
+		}
+		return;
+	}
+	int64_t m = n / 2;
+	sort_small(a, tmp, m);
+	sort_small(a + m, tmp, n - m);
+	if (a[m - 1] <= a[m]) return;
+	memcpy(tmp, a, (size_t)m * sizeof(int64_t));
+	int64_t i = 0, j = m, k = 0;
+	while (i < m && j < n) a[k++] = a[j] < tmp[i] ? a[j++] : tmp[i++];
+	while (i < m) a[k++] = tmp[i++];
+}
+
 static void merge_sort(const ey_type *t, char *a, char *tmp, int64_t n) {
 	if (n < 2) return;
 	int64_t es = t->size, m = n / 2;
 	merge_sort(t, a, tmp, m);
 	merge_sort(t, ITEM(a, m, es), tmp, n - m);
+	if (ey_cmp(t, ITEM(a, m, es), ITEM(a, m - 1, es)) >= 0) return;
+	memcpy(tmp, a, (size_t)(m * es));
 	int64_t i = 0, j = m, k = 0;
 	while (i < m && j < n) {
-		if (ey_cmp(t, ITEM(a, j, es), ITEM(a, i, es)) < 0)
-			memcpy(ITEM(tmp, k++, es), ITEM(a, j++, es), (size_t)es);
+		if (ey_cmp(t, ITEM(a, j, es), ITEM(tmp, i, es)) < 0)
+			memcpy(ITEM(a, k++, es), ITEM(a, j++, es), (size_t)es);
 		else
-			memcpy(ITEM(tmp, k++, es), ITEM(a, i++, es), (size_t)es);
+			memcpy(ITEM(a, k++, es), ITEM(tmp, i++, es), (size_t)es);
 	}
-	while (i < m) memcpy(ITEM(tmp, k++, es), ITEM(a, i++, es), (size_t)es);
-	while (j < n) memcpy(ITEM(tmp, k++, es), ITEM(a, j++, es), (size_t)es);
-	memcpy(a, tmp, (size_t)(n * es));
+	while (i < m) memcpy(ITEM(a, k++, es), ITEM(tmp, i++, es), (size_t)es);
+}
+
+static bool all_small(const ey_v *a, int64_t n) {
+	for (int64_t i = 0; i < n; i++)
+		if (!EY_IS_SMALL(a[i])) return false;
+	return true;
 }
 
 ey_v eyb_seq_sort(ey_v c, const ey_type *rt) {
@@ -636,12 +719,15 @@ ey_v eyb_seq_sort(ey_v c, const ey_type *rt) {
 	const ey_type *et;
 	char *it = items(c, &n, &et);
 	ey_v r = ey_list_new(rt, n, it);
-	char *tmp = xmalloc((size_t)(n * (int64_t)et->size));
-	merge_sort(rt->args[0], EY_LIST(r)->items, tmp, n);
+	char *a = EY_LIST(r)->items;
+	char *tmp = xmalloc((size_t)((n / 2 + 1) * (int64_t)et->size));
+	if (et->kind == EY_INT && all_small((const ey_v *)a, n))
+		sort_small((int64_t *)a, (int64_t *)tmp, n);
+	else
+		merge_sort(rt->args[0], a, tmp, n);
 	free(tmp);
 	return r;
 }
-
 /* which: 0 keys, 1 values, 2 entries */
 ey_v eyb_map_list(ey_v mv, int which, const ey_type *rt) {
 	ey_map *m = EY_MAP(mv);

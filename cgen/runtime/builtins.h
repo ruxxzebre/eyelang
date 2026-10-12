@@ -50,8 +50,32 @@ ey_v eyb_map_insert(ey_v m, const void *k, const void *v);
 ey_v eyb_map_remove(ey_v m, const void *k);
 bool eyb_map_contains(ey_v m, const void *k);
 bool eyb_list_contains(ey_v l, const void *x);
-void eyb_map_get(ey_v m, const void *k, void *out, const ey_type *opt);
-void eyb_list_index(ey_v l, ey_v i, void *out, const ey_type *opt);
+/* xs[i] and m[k] are inline: the element's type is the Option's payload,
+ * which the compiler knows from the descriptor, so the dup is the type's. */
+static inline void eyb_list_index(ey_v l, ey_v i, void *out, const ey_type *opt) {
+	ey_list *a = EY_LIST(l);
+	int64_t k = EY_IS_SMALL(i) ? EY_SMALL_VAL(i) : -1;
+	if (k < 0 || k >= a->len) {
+		ey_none(opt, out);
+		return;
+	}
+	const ey_type *et = opt->variants[0].fields[0];
+	void *p = a->items + k * (int64_t)et->size;
+	ey_dup_at(et, p);
+	ey_some(opt, out, p);
+}
+static inline void eyb_map_get(ey_v mv, const void *k, void *out, const ey_type *opt) {
+	ey_map *m = EY_MAP(mv);
+	int64_t i = ey_map_find(m, k);
+	if (i < 0) {
+		ey_none(opt, out);
+		return;
+	}
+	const ey_type *vt = opt->variants[0].fields[0];
+	void *p = m->vals + i * (int64_t)vt->size;
+	ey_dup_at(vt, p);
+	ey_some(opt, out, p);
+}
 void eyb_list_at(const char *at, ey_v l, ey_v i, void *out);
 ey_v eyb_list_slice(ey_v l, ey_v start, ey_v end, uint32_t flags);
 void eyb_seq_end(ey_v c, bool last, void *out, const ey_type *opt);
