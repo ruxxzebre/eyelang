@@ -152,7 +152,7 @@ Checker:
 Language server and editor:
 
 Library:
-- Not built: `fs.lines`, reading a file as bytes, fakes for `process`, regular expressions. The
+- Not built: `fs.lines`, reading a file as bytes, regular expressions. The
   digest's `plain()` strips HTML without them.
 
 Syntax: open questions 13 (`eye fmt` and the two forms of `if`), 14 (`if let`), 25 (naming a

@@ -2,7 +2,9 @@
 ##
 ## A program runs without a shell, in the directory the program was started
 ## in, or in a test, in the test's own empty directory. In a job, each run
-## is a step: `process.run!("git", args: ["pull"])`.
+## is a step: `process.run!("git", args: ["pull"])`. A test answers runs from
+## recordings with `with fakes(process, from: "recordings/")`, and lists them
+## with `calls(process.run)`.
 
 # SPECS.md §12. Its primitives are provided by the host.
 

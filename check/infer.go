@@ -82,8 +82,9 @@ type typeState struct {
 	// its function was checked, and ops are operators on such types.
 	deferred []requirement
 	ops      []pendingOp
-	// calls are the record types of fakes.calls(op), one per operation.
-	calls map[*ir.Op]*ir.Type
+	// calls are the record types of fakes.calls(op), one per operation,
+	// and of fakes.calls(process.run).
+	calls map[any]*ir.Type
 	// tools are the functions named where an ai.Tool is expected (tools.go).
 	tools []toolUse
 	// unkeyed are the jobs each function starts without a key, which main
@@ -2135,19 +2136,36 @@ func (x *fnCheck) fakeCalls(e *ir.MethodCall) typ {
 	c := x.c
 	c.useName(e, method("calls"))
 	var op *ir.Op
+	var run *ir.Func // process.run, which fakes(process, …) answers
 	if len(e.Args) == 1 && e.Args[0].Name == "" {
 		if r, ok := e.Args[0].Value.(*ir.Ref); ok {
 			op, _ = r.Decl.(*ir.Op)
+			if f, ok := r.Decl.(*ir.Func); ok && f.Host == "process.run" {
+				run = f
+			}
 		}
+	}
+	if c.ts.calls == nil {
+		c.ts.calls = map[any]*ir.Type{}
+	}
+	if run != nil {
+		x.check(e.Args[0].Value, nil)
+		d := c.ts.calls[run]
+		if d == nil {
+			rec := &ir.TypeExpr{Name: "record"}
+			for _, p := range run.Params {
+				rec.Fields, rec.Args = append(rec.Fields, p.Name), append(rec.Args, p.Type)
+			}
+			d = &ir.Type{Name: "Call(process.run)", Module: run.Module, Fields: rec.Fields, Alias: rec, Pos: run.Pos}
+			c.ts.calls[run] = d
+		}
+		return con("List", &tcon{name: d.Name, decl: d})
 	}
 	if op == nil {
 		x.inferArgs(e.Args)
-		return c.unknownf(e.Pos, "calls takes an operation of a contract the fakes answer for, as calls(notify.send)")
+		return c.unknownf(e.Pos, "calls takes an operation of a contract the fakes answer for, as calls(notify.send), or process.run")
 	}
 	c.ts.exprs = append(c.ts.exprs, typedExpr{e.Args[0].Value, c.opType(op)}) // names the operation
-	if c.ts.calls == nil {
-		c.ts.calls = map[*ir.Op]*ir.Type{}
-	}
 	d := c.ts.calls[op]
 	if d == nil {
 		name := "Call(" + op.Contract.Module.Name + "." + op.Name + ")"

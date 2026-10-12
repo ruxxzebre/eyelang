@@ -34,8 +34,10 @@ type runtime struct {
 	uncertain map[string]sentCommand
 	// aiReplies are recorded model replies, when a test applies fakes(ai, …).
 	aiReplies []recordedReply
-	// httpFakes answer http.get, when a test applies fakes(http, …).
-	httpFakes *httpFakes
+	// httpFakes answer http.get, when a test applies fakes(http, …), and
+	// processFakes process.run, when it applies fakes(process, …).
+	httpFakes    *httpFakes
+	processFakes *processFakes
 	// live, in a test run with eye test --live, says which modules the
 	// real services answer for, and keeps what --record writes (live.go).
 	live *liveTest

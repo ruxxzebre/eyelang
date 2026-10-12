@@ -105,6 +105,7 @@ type fakesHandler struct {
 	modules []*ir.Module
 	dir     string
 	sets    map[*ir.Contract]*fakeSet
+	process *processFakes // when it fakes process
 }
 
 // calls is fakes.calls(op): the calls the fakes answered for op, oldest
@@ -112,12 +113,17 @@ type fakesHandler struct {
 func (h *fakesHandler) calls(in *Interp, args []Value, at ir.Pos) Value {
 	var o *ir.Op
 	if len(args) == 1 {
-		if v, ok := args[0].(*OpVal); ok {
+		switch v := args[0].(type) {
+		case *OpVal:
 			o = v.Op
+		case *Closure:
+			if v.Fn.Host == "process.run" {
+				return h.ranCalls(in, at)
+			}
 		}
 	}
 	if o == nil {
-		in.faultf(at, "calls takes an operation of a contract the fakes answer for, as calls(notify.send)")
+		in.faultf(at, "calls takes an operation of a contract the fakes answer for, as calls(notify.send), or process.run")
 	}
 	faked := false
 	for _, m := range h.modules {
@@ -157,6 +163,11 @@ func (h *fakesHandler) apply(in *Interp, at ir.Pos) {
 		}
 		if m.Path == "http" && m.Dir == "" {
 			in.rt.httpFakes = in.loadHTTPFakes(filepath.Join(base, h.dir, "http.json"), at)
+			continue
+		}
+		if m.Path == "process" && m.Dir == "" {
+			h.process = in.loadProcessFakes(filepath.Join(base, h.dir, "process.json"), at)
+			in.rt.processFakes = h.process
 			continue
 		}
 		if len(m.Contracts) != 1 {

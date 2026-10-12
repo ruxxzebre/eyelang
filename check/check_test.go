@@ -523,7 +523,7 @@ test "t" {
 	res := Check(dir, Options{})
 	want := []string{
 		"main.eye:8:10: Call(mail.send) has no field subject",
-		"main.eye:9:11: calls takes an operation of a contract the fakes answer for, as calls(notify.send)",
+		"main.eye:9:11: calls takes an operation of a contract the fakes answer for, as calls(notify.send), or process.run",
 	}
 	var got []string
 	for _, d := range res.Diagnostics {

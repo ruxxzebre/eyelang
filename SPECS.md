@@ -2661,6 +2661,38 @@ fake with no recorded answer) fails the test too; one that ends as an outcome th
 declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
 with the run's `outcome()`: `expect(run.outcome() == Some(Failed(DeadlinePassed)))` (section 15).
 
+**Programs a test runs.** `with fakes(process, from: "recordings/")` answers `process.run` from
+`recordings/process.json` instead of running anything, so a test of a program that runs `git` or
+a deploy script gives the same result on every machine. Each exchange's `"key"` is a command line,
+the program and its arguments separated by spaces, with an argument that is empty or holds a space,
+a quote or a backslash written as a quoted string; its `"result"` is what `process.run` returns.
+An exchange without a key answers every command no other names, and a command none answers fails
+the test with the key to add. As for a contract, `calls(process.run)` lists the runs the fakes
+answered, oldest first, each a record of `program`, `args`, `input` and `dir`:
+
+```eye
+import process
+
+fn pull() -> Int uses {process} = match process.run("git", args: ["pull", "--ff-only"]) {
+  Ok(output) => output.status
+  Err(_) => -1
+}
+
+test "pull runs git once" {
+  let ran = fakes(process, from: "recordings/")
+  with ran
+  expect(pull() == 0)
+  let [git] = ran.calls(process.run) else { unreachable("not one run") }
+  expect(git.args == ["pull", "--ff-only"])
+}
+```
+
+```json
+{ "contract": "process",
+  "exchanges": [{ "op": "run", "key": "git pull --ff-only",
+                  "result": { "kind": "Ok", "value": { "status": 0, "stdout": "Already up to date.\n", "stderr": "" } } }] }
+```
+
 **Live tests.** `eye test --live ai,notify` runs the tests against the real services and models of
 the modules named, instead of their recordings. A `with fakes(…)` leaves those modules out, and
 their calls go where `eye run` sends them: to the address and with the secret the environment

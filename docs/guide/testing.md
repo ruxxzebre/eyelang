@@ -161,6 +161,12 @@ main.eye:31:9: job digest: notify.send calls another service; replay recordings 
 Model calls are faked the same way: `with fakes(ai, from: "recordings/")` reads
 `recordings/ai.json`, whose exchanges are the replies, used in order. See [AI calls](/guide/ai-calls).
 
+Programs the code runs are too: `with fakes(process, from: "recordings/")` answers `process.run`
+from `recordings/process.json`, one exchange per command line, such as `"key": "git pull
+--ff-only"`, with what the run returns (`{ "kind": "Ok", "value": { "status": 0, "stdout": "…",
+"stderr": "" } }`). An exchange without a key answers every other command, and
+`ran.calls(process.run)` lists the runs, each with its `program`, `args`, `input` and `dir`.
+
 ### Running against the real services
 
 `eye test --live ai,notify` runs the same tests against the real model and the real Notify. A

@@ -198,6 +198,9 @@ func hostRun(in *Interp, p map[string]Value, at ir.Pos) Value {
 	for _, a := range in.elems(p["args"], at) {
 		args = append(args, show(a))
 	}
+	if v, ok := in.fakeRun(p, program, args, at); ok {
+		return v
+	}
 	input, _ := p["input"].(string)
 	dir := in.workDir(at)
 	if d, ok := p["dir"].(*Variant); ok && d.V == in.pre.some {
