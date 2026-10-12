@@ -14,8 +14,9 @@ Timings there vary by up to about 1.5× between runs, so ranges are given.
 - **Native code is fast where it works.** 10–80× the interpreter per benchmark after R.6, 8× on
   the whole benchmark file, 0.3 ms to start, 658 KB for core's stripped test binary. fib(30)
   takes 19 ms, against 220 ms interpreted and 5–12 ms in Go.
-- **It doesn't beat Go yet, which is the owner's bar.** On 7.7's eight benchmarks native code
-  takes 1.3–5.4× Go's time and uses less memory in six ([Against Go](#against-go)).
+- **It doesn't beat Go yet, which is the owner's bar.** On 7.7's nine benchmarks, the lexer
+  among them, native code takes 1.1–5.7× Go's time and uses less memory in six
+  ([Against Go](#against-go)).
 - **It works on very little.** Two of the fifteen programs in `testdata/programs` compile (core
   and traits). Everything with an entity, job, view or contract stops at one check, and that is
   all of the lab.
@@ -127,27 +128,28 @@ are persistent vectors (R.3). Native code needs 7.5 to match it.
 ### Against Go
 
 The owner's bar for native code is **faster than Go, on less memory**, with Go as the baseline.
-7.7 ([#110](https://github.com/ruxxzebre/eyelang/issues/110)) measures it: eight benchmarks in
+7.7 ([#110](https://github.com/ruxxzebre/eyelang/issues/110)) measures it: nine benchmarks in
 `testdata/bench`, each an Eyelang program and the same algorithm as idiomatic Go, run by
 `go run ./tools/bench`. The full table, the machine and how to run it are on
 [Benchmarks against Go](../benchmarks.md); `--check` fails when a ratio gets worse than recorded.
-On the survey's machine, in ms and MB (time is the fastest of 5 runs, memory the peak RSS):
+Recorded on 2026-10-12 on the survey's machine, in ms and MB (time is the fastest of 5 runs, memory the peak RSS):
 
 | Benchmark | Native | Go | Time × Go | Native MB | Go MB | Memory × Go | Interpreter |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| fib(37) | 473 | 122 | 3.89× | 0.16 | 2.03 | 0.08× | 6,795 |
-| mandelbrot, 1600² | 282 | 145 | 1.94× | 0.16 | 2.03 | 0.08× | 25,923 |
-| trees, depth 16 | 1,142 | 397 | 2.88× | 80.2 | 12.2 | 6.56× | 7,347 |
-| records, 30M `with` | 1,252 | 233 | 5.38× | 0.22 | 2.03 | 0.11× | 9,487 |
-| strings, 1M parts | 365 | 207 | 1.76× | 83.0 | 49.8 | 1.67× | 5,959 |
-| lists, 1M | 192 | 148 | 1.29× | 42.3 | 42.9 | 0.99× | 3,577 |
-| maps, 5M lookups | 501 | 98 | 5.14× | 1.18 | 2.53 | 0.47× | 18,944 |
-| logs, 300k lines | 389 | 272 | 1.43× | 54.8 | 60.6 | 0.90× | 1,753 |
+| fib(37) | 455 | 96 | 4.74× | 0.16 | 2.03 | 0.08× | 7,382 |
+| mandelbrot, 1600² | 278 | 118 | 2.34× | 0.16 | 1.97 | 0.08× | 26,318 |
+| trees, depth 16 | 1,051 | 468 | 2.25× | 80.2 | 13.0 | 6.17× | 7,749 |
+| records, 30M `with` | 1,346 | 284 | 4.75× | 0.16 | 1.97 | 0.08× | 9,761 |
+| strings, 1M parts | 378 | 188 | 2.01× | 83.0 | 43.4 | 1.91× | 3,323 |
+| lists, 1M | 179 | 162 | 1.10× | 42.3 | 46.5 | 0.91× | 3,312 |
+| maps, 5M lookups | 548 | 97 | 5.67× | 1.18 | 2.53 | 0.47× | 16,824 |
+| logs, 200k lines | 383 | 263 | 1.46× | 54.7 | 59.9 | 0.91× | 1,671 |
+| lexer, 7.5 MB of Eyelang | 1,786 | 388 | 4.61× | 478.0 | 191.8 | 2.49× | 28,247 |
 
-**No benchmark beats Go on time**: native code takes 1.3–5.4× as long, 2.6× on the geometric mean.
-**Six of eight use less memory**, but four of those only because a static musl binary starts at
+**No benchmark beats Go on time**: native code takes 1.1–5.7× as long, 2.8× on the geometric mean.
+**Six of nine use less memory** (0.57× on the geometric mean), but four of those only because a static musl binary starts at
 0.16 MB and a Go program at 2 MB; lists and logs hold real data and come in just under Go, whose
-heap grows to about twice what is live. Trees and strings use more. Between a quiet and a busy
+heap grows to about twice what is live. Trees, strings and the lexer use more. Between a quiet and a busy
 stretch of this shared machine a time ratio moved by up to 40% (fib, 3.5× to 4.9×), so the check
 allows 25% and measures a benchmark that looks worse twice more before it fails.
 
@@ -332,6 +334,10 @@ smaller runtime and back-end tasks that come after it.
   pure-core program, it would be a good cross-check and benchmark for native code once it exists.
 
 ## 7. Decisions for the owner
+
+The [benchmark review](./benchmarks-review-2026-10-12.md) reads 7.7's and S.1's numbers and
+updates the recommendations below; where the two differ, the review is newer. Its main change:
+a new task, values laid out by type (7.13), before or with 7.5a.
 
 The owner's bar, set on 2026-10-12: native code faster than Go, and using less memory. The owner
 will decide the points below once 7.7's benchmarks against Go and S.1's lexer benchmark are in,

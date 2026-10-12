@@ -73,14 +73,17 @@ yet.
    found awkward is open question 43.
 6. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2), checkpoints in the
    interpreter (7.3) and the C back end with `eye build` (7.4) are done: `testdata/programs/core`
-   builds for the five release targets and its tests pass natively. 7.7 (benchmarks against Go)
-   and S.1 (the lexer, also a benchmark) are being built. The rest waits on their numbers, which
-   may change parsing or more fundamental choices: the
-   [native compilation plan](docs/internals/reviews/native-plan-2026-10-12.md) proposes 7.8
-   (checked against the interpreter), 7.9 (core gaps in C), 7.5 (counting in the low IR), 7.10
-   (crossings) and 7.6 with B′ hosting (one static binary, Go linked through cgo), 7.11 (faster
-   than Go, the owner's bar) alongside, 7.12 last, and S.2 (the runner in Eyelang) after v0.4.
-   The owner decides once the numbers are in. The design is
+   builds for the five release targets and its tests pass natively. 7.7 (benchmarks against Go,
+   nine of them with S.1's lexer) is done: native code takes 1.1–5.7× Go's time and uses less
+   memory in six of nine. The [benchmark review](docs/internals/reviews/benchmarks-review-2026-10-12.md)
+   finds no language rule in the way: every gap is the C back end's (one word per value, heap
+   objects for records, enums and `Option`, counting decided while printing C, musl's `malloc`,
+   no inlining across runtime files). It recommends, for the owner to decide: a small task of
+   cheap fixes and 7.8 now; a new 7.13, values laid out by type, with 7.5a; then 7.9, 7.10 and
+   7.6 with B′ hosting; 7.11 (faster than Go, the owner's bar) throughout; 7.12 last; S.2 (the
+   runner in Eyelang) after v0.4. Open question 43's five small language changes from the lexer
+   (element assignment, hex literals, string patterns over `Bytes`, `fs.readBytes`, a variant's
+   number) are a separate task. Nothing starts until the owner decides. The design is
    [docs/internals/compilation.md](docs/internals/compilation.md).
 
 The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all
@@ -918,16 +921,16 @@ whole-program specialisation, and jobs resuming from saved frames.
   for time and memory; the results are recorded in the docs with the machine; a check fails when
   native code gets slower or larger than its recorded ratio by more than the noise; and the plan
   records which benchmarks already beat Go and what is needed for the rest.
-  Done on 2026-10-12: eight benchmarks (fib, mandelbrot, trees, records, strings, lists, maps,
-  logs); `go run ./tools/bench` prints native, Go and the interpreter, `--write` records
+  Done on 2026-10-12: nine benchmarks (fib, mandelbrot, trees, records, strings, lists, maps,
+  logs, and S.1's lexer against `syntax/lexer.go`); `go run ./tools/bench` prints native, Go and the interpreter, `--write` records
   [docs/internals/benchmarks.md](docs/internals/benchmarks.md) and `testdata/bench/results.json`,
   and `--check` fails when a ratio to Go grows by more than 25% (time) or 15% (memory), measuring
   a suspect benchmark again before failing. `go test ./tools/bench` builds and runs each at a
   small size to compare outputs; CI doesn't run the timing check. Native code beats Go on
-  memory in six of eight and on time in none: it takes 1.3–5.4× Go's time, 2.6× on the
+  memory in six of nine and on time in none: it takes 1.1–5.7× Go's time, 2.8× on the
   geometric mean ([native plan, "Against Go"](docs/internals/reviews/native-plan-2026-10-12.md#against-go)
   says where each gap comes from). The task is the harness and the check; the bar itself is
-  what 7.5 and the work after it must clear. S.1's lexer joins the suite when it lands.
+  what 7.5 and the work after it must clear.
 
 - **7.8 Checked against the interpreter.** Every program `eye build` compiles runs its tests at
   `-O0` and `-O2` against `eye test -v`; a counting allocator in debug builds checks that frees

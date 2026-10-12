@@ -90,6 +90,7 @@ const internals = {
     { text: 'How it is to type, 2026-10-12', link: '/internals/reviews/ergonomics-2026-10-12' },
     { text: 'Review conclusions, 2026-10-12', link: '/internals/reviews/conclusions-2026-10-12' },
     { text: 'Native compilation plan, 2026-10-12', link: '/internals/reviews/native-plan-2026-10-12' },
+    { text: 'What the benchmarks say, 2026-10-12', link: '/internals/reviews/benchmarks-review-2026-10-12' },
   ],
 }
 
