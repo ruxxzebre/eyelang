@@ -124,17 +124,12 @@ func firstDifference(got, want string) string {
 }
 
 // kindNames reads syntax's token kinds from syntax/token.go: each kind's
-// constant name, as the Eyelang lexer names its variants. Its literals'
-// names differ, since a variant named Int would hide the type.
+// constant name, as the Eyelang lexer names its variants.
 func kindNames(t *testing.T) []string {
 	t.Helper()
 	f, err := parser.ParseFile(token.NewFileSet(), "../syntax/token.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
-	}
-	renamed := map[string]string{
-		"Int": "IntLiteral", "Float": "FloatLiteral", "Date": "DateLiteral",
-		"Time": "TimeLiteral", "Char": "CharLiteral",
 	}
 	var names []string
 	for _, d := range f.Decls {
@@ -147,9 +142,6 @@ func kindNames(t *testing.T) []string {
 				name := n.Name
 				if name == "lastToken" {
 					break
-				}
-				if r, ok := renamed[name]; ok {
-					name = r
 				}
 				names = append(names, name)
 			}

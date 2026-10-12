@@ -142,13 +142,13 @@ impl Lexer {
   fn number(mut self) -> Token {
     let src = self.src
     let start = self.pos
-    if isDate(src[start..start + 10]) then return self.take(DateLiteral, start + 10)
+    if isDate(src[start..start + 10]) then return self.take(Date, start + 10)
     let time = timeLength(src[start..start + 8])
-    if time > 0 then return self.take(TimeLiteral, start + time)
+    if time > 0 then return self.take(Time, start + time)
     let end = digits(src, start)
     match src[end..end + 2] {
-      ['.', '0'..='9'] => self.take(FloatLiteral, exponent(src, digits(src, end + 1)))
-      _ => self.take(IntLiteral, end)
+      ['.', '0'..='9'] => self.take(Float, exponent(src, digits(src, end + 1)))
+      _ => self.take(Int, end)
     }
   }
 
@@ -158,7 +158,7 @@ impl Lexer {
     let src = self.src
     let start = self.pos
     match charEnd(src, start + 1) {
-      Some(end) if src[end] == Some('\'') => self.take(CharLiteral, end + 1)
+      Some(end) if src[end] == Some('\'') => self.take(Char, end + 1)
       _ => {
         let end = skip(src, start + 1, fn c: c != '\n' && c != '\'')
         self.take(Illegal, if src[end] == Some('\'') then end + 1 else end)

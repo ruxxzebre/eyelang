@@ -23,15 +23,15 @@ test "reserved words are keywords, other keywords are names" {
 }
 
 test "the longest match wins" {
-  expect(kinds("2026-10-10 2026 - 10") == [DateLiteral, IntLiteral, Minus, IntLiteral, EOF])
-  expect(kinds("07:40 23:59:30 7:40") == [TimeLiteral, TimeLiteral, IntLiteral, Colon, IntLiteral, EOF])
+  expect(kinds("2026-10-10 2026 - 10") == [Date, Int, Minus, Int, EOF])
+  expect(kinds("07:40 23:59:30 7:40") == [Time, Time, Int, Colon, Int, EOF])
   expect(kinds("1_000 1.5 6.02e23 1.5e 1.x") == [
-    IntLiteral,
-    FloatLiteral,
-    FloatLiteral,
-    FloatLiteral,
+    Int,
+    Float,
+    Float,
+    Float,
     Ident,
-    IntLiteral,
+    Int,
     Dot,
     Ident,
     EOF,
@@ -61,7 +61,7 @@ test "an interpolation ends at the } that closes no record" {
     LBrace,
     Ident,
     Colon,
-    IntLiteral,
+    Int,
     RBrace,
     InterpClose,
     StringText,
@@ -90,10 +90,10 @@ test "a multi-line string holds line breaks and quotes" {
 test "escapes and characters" {
   expect(kinds("\"\\n\\u\{1F600}\\q\"") == [StringStart, StringEscape, StringEscape, Illegal, StringEnd, EOF])
   expect(kinds("'a' '\\n' '\\'' 'é' '' 'ab'") == [
-    CharLiteral,
-    CharLiteral,
-    CharLiteral,
-    CharLiteral,
+    Char,
+    Char,
+    Char,
+    Char,
     Illegal,
     Illegal,
     EOF,

@@ -2,8 +2,8 @@
 
 ## What a token is. The kinds are declared in the order of `syntax/token.go`,
 ## after its `Invalid`, so a kind's place in `Kind.variants()`, counting from
-## 1, is its number there. The literals are named `IntLiteral` and so on,
-## since a variant named `Int` would hide the type.
+## 1, is its number there, and its name is the constant's. A variant named
+## `Int` leaves `Int` the type wherever a type goes.
 pub type Kind =
   | EOF
   | Whitespace
@@ -14,11 +14,11 @@ pub type Kind =
   | Ident
   ## A type, variant, entity or contract name: `World`, `Some`.
   | TypeIdent
-  | IntLiteral
-  | FloatLiteral
-  | DateLiteral
-  | TimeLiteral
-  | CharLiteral
+  | Int
+  | Float
+  | Date
+  | Time
+  | Char
   | StringStart
   ## Text between a string's escapes and interpolations.
   | StringText
