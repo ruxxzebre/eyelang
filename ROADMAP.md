@@ -57,9 +57,7 @@ yet.
    (G.12) and the examples (C.7) are done.
 2. Runtime at scale (R.1 to R.7, under the phases) is done. The last, R.7, keeps a 48-byte
    handle per waiting run and loads its record when it wakes: 20,000 waiting runs cost about
-   7 MB above an idle runner instead of 32, and a restart reads no record. Native compilation
-   pauses here for the owner's decisions in the
-   [native compilation plan](docs/internals/reviews/native-plan-2026-10-12.md).
+   7 MB above an idle runner instead of 32, and a restart reads no record.
 3. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
@@ -73,9 +71,14 @@ yet.
    the conformance suite. Not begun; it needs G.1, G.2 and G.4.
 6. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2), checkpoints in the
    interpreter (7.3) and the C back end with `eye build` (7.4) are done: `testdata/programs/core`
-   builds for the five release targets and its tests pass natively. 7.5 and 7.6 wait on the
-   owner's decisions in the native compilation plan; 7.7 (benchmarks against Go) and S.1 (the
-   lexer, also a benchmark) are being built. The design is
+   builds for the five release targets and its tests pass natively. 7.7 (benchmarks against Go)
+   and S.1 (the lexer, also a benchmark) are being built. The rest waits on their numbers, which
+   may change parsing or more fundamental choices: the
+   [native compilation plan](docs/internals/reviews/native-plan-2026-10-12.md) proposes 7.8
+   (checked against the interpreter), 7.9 (core gaps in C), 7.5 (counting in the low IR), 7.10
+   (crossings) and 7.6 with B′ hosting (one static binary, Go linked through cgo), 7.11 (faster
+   than Go, the owner's bar) alongside, 7.12 last, and S.2 (the runner in Eyelang) after v0.4.
+   The owner decides once the numbers are in. The design is
    [docs/internals/compilation.md](docs/internals/compilation.md).
 
 The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all
@@ -800,8 +803,14 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.2 Low IR and specialisation (done) | [#75](https://github.com/ruxxzebre/eyelang/issues/75) |
 | 7.3 Jobs as state machines, resuming from saved frames (done in the interpreter) | [#76](https://github.com/ruxxzebre/eyelang/issues/76) |
 | 7.4 The C back end and the core runtime (done) | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
-| 7.5 Reference counting and reuse | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
+| 7.5 Reference counting in the low IR: drop after last use, in place when unique | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
 | 7.6 The runner hosts compiled programs, and the digest runs natively | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
+| 7.7 Benchmarks against Go: native code faster and leaner, checked | [#110](https://github.com/ruxxzebre/eyelang/issues/110) |
+| 7.8 Native code checked against the interpreter at both levels, and stale numbers fixed | [#111](https://github.com/ruxxzebre/eyelang/issues/111) |
+| 7.9 Core gaps in the C back end: time, toJson, saved types, random, http.get | [#112](https://github.com/ruxxzebre/eyelang/issues/112) |
+| 7.10 Count the crossings between compiled code and the runner | [#113](https://github.com/ruxxzebre/eyelang/issues/113) |
+| 7.11 Native code faster than Go, and leaner without entities or jobs | [#114](https://github.com/ruxxzebre/eyelang/issues/114) |
+| 7.12 Reuse of matched cells, and a fault frees its region | [#115](https://github.com/ruxxzebre/eyelang/issues/115) |
 
 - **7.1 Typed IR.** The checker keeps what it computes: a resolved type on every expression,
   every call resolved to its target, the impls each generic call's `where` bounds use, and each
@@ -879,19 +888,56 @@ whole-program specialisation, and jobs resuming from saved frames.
   and checked on first use rather than packed in the release archives. Entities, jobs, views,
   contracts, durable steps, `with` in tests and foreign code aren't compiled; such a program
   gets an error that says so.
-- **7.5 Reference counting and reuse.** Perceus: precise `dup` and `drop`, borrowed parameters,
-  reuse in `match`, and in-place updates when a value is unique; `mut` parameters become
-  pointers.
-  **Done when:** a loop that appends to a list runs in linear time and allocates once per growth;
-  a test counts allocations and frees and finds no leak in the core programs.
+- **7.5 Reference counting in the low IR.** `Dup`, `Drop` and in-place updates become low-IR
+  instructions instead of being decided while C is printed: a value is dropped after its last
+  use, borrowed parameters are inferred (Lean's scheme), and an update whose operand is unique at
+  run time and dead after it is done in place, whatever the shape around it. `mut` parameters
+  are already pointers. Reuse in `match` and fault regions would be 7.12 (the plan splits the task,
+  2026-10-12, proposed).
+  **Done when:** the native plan's slow loops (an append through a helper, a map insert through
+  a `let`) run in linear time; 7.8's counting allocator finds as many frees as allocations in
+  every program `eye build` compiles; `eye check --lir` prints the new instructions, with golden
+  tests.
 - **7.6 The runner hosts compiled programs.** The Go runner calls a compiled program's interface
-  (run `main`, run a test, call an entity method, step a job, encode and decode saved types)
-  without cgo in `eye`; how it loads the program is open in compilation.md, section 1.
+  (run `main`, run a test, call an entity method, step a job, encode and decode saved types).
+  The plan proposes B′ for hosting, to be decided after 7.7's numbers: the runner is the program's `main`, and `eye build` links
+  the program's C into it through cgo, with the pinned zig as the C compiler and a pinned Go
+  toolchain it fetches as it fetches zig. One static binary per program; `eye` itself stays free
+  of cgo; programs with no entities or jobs build with zig alone. The store and tasks stay in
+  the runner.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
-  memory and resume time are measured and recorded in this file.
+  memory and resume time are measured and recorded in this file, beside the interpreter's.
+- **7.7 Benchmarks against Go.** Each benchmark is an Eyelang program and the same algorithm in
+  idiomatic Go; `go run ./tools/bench` builds both, times them, records peak memory, checks the
+  outputs match, and `--check` fails when native code falls behind its recorded ratio to Go.
+  **Done when:** the suite covers calls, floats, allocation, records, strings, lists, maps and a
+  realistic text task, the lexer of S.1 among them, and its results are recorded in the docs.
+- **7.8 Checked against the interpreter.** Every program `eye build` compiles runs its tests at
+  `-O0` and `-O2` against `eye test -v`; a counting allocator in debug builds checks that frees
+  match allocations; the native plan's slow loops are tests; stale numbers in ROADMAP,
+  compilation.md and the performance review are fixed.
+  **Done when:** `go test ./cgen` runs both levels on every compilable program and the counts
+  balance.
+- **7.9 Core gaps in C.** The time methods, `toJson`, the `Schema`/`Save` derivations,
+  `random.*` and `http.get`, each matching the interpreter.
+  **Done when:** the lab's six core-blocked functions compile and `testdata/programs/limits`
+  gets past `Instant.date`.
+- **7.10 Crossings.** The interpreter counts the operations that would cross from compiled code
+  into the runner (entity calls, steps, encodes, decodes, store reads, host calls).
+  **Done when:** the digest's counts for one morning are recorded under 7.6.
+- **7.11 Faster than Go.** The owner's bar, with Go as the baseline, driven by 7.7's suite.
+  **Done when:** native code beats Go on time on every benchmark of the suite, and on peak memory
+  for every program without entities or jobs. (With entities or jobs a program carries the Go
+  runner, so beating Go on memory there is S.2's.)
+- **7.12 Reuse and fault regions.** A `match` arm that builds a value of the same size reuses the
+  matched cell; a fault frees what its run allocated as a whole.
+  **Done when:** allocation counts drop on the tree and pattern benchmarks, and a failing native
+  test leaks nothing.
 
-Order: 7.1, then 7.3, both in v0.3. 7.2 after 7.1, then 7.4, then 7.5. 7.6 last, after 7.3 and
-7.5.
+Proposed order (the native plan; the owner decides after 7.7's and S.1's numbers): 7.7 and S.1
+first; then 7.8 and 7.9 in parallel; 7.5 after 7.8; 7.10,
+then 7.6; 7.11 runs alongside from 7.7's results; 7.12 last. v0.4's exit test stays the digest
+running as a native job.
 
 ### After v0.4: Self-hosting — [#82](https://github.com/ruxxzebre/eyelang/issues/82)
 
@@ -903,6 +949,12 @@ formatter, `eye doc` and the checker.
 | Task | Issue |
 |---|---|
 | S.1 An Eyelang lexer as a test program, checked by the conformance suite | [#83](https://github.com/ruxxzebre/eyelang/issues/83) |
+| S.2 The runner in Eyelang: job programs without Go | [#116](https://github.com/ruxxzebre/eyelang/issues/116) |
+
+S.2 is proposed as the goal after v0.4 (the native plan, 2026-10-12): the durable runner moves from
+Go into Eyelang, part by part, so that a native job program has no Go in it and can beat Go on
+memory. **Done when:** the digest runs as a native job with no Go in its binary, on the journal
+and on Postgres, using less memory than under the Go runner.
 
 Later tasks are added when phase 7 is close to done.
 

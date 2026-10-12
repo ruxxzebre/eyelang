@@ -219,7 +219,14 @@ Each step is one task with an issue, closed by its done-when.
 | 3 | Core gaps in C: the time methods, `toJson`, `Schema`/`Save`, `random.*`, `http.get`; the `Date.at` message | The lab's 6 core-blocked functions compile; `testdata/programs/limits` gets past `Instant.date` |
 | 4 | Count crossings: the interpreter counts, per run, the calls that would cross the hosting boundary (entity calls, steps, encodes, decodes, store reads), and records them for one digest morning | A number in ROADMAP 7.6, and the owner's hosting decision made on it |
 | 5 | 7.6 with the chosen hosting: the five interface functions, the runner calling them, the store and tasks staying in Go | The digest runs as a native job on the journal and on Postgres, with idle memory and resume time recorded beside the interpreted numbers |
-| 6 | 7.5b: matched-cell reuse and fault regions | Allocation counts drop on the tree and pattern benchmarks; a failing test frees its region |
+| 6 | Close the speed gap with Go (7.11), driven by the 7.7 benchmarks | Native code beats Go on time on every benchmark of the suite, the lexer included, and on peak memory for every program without entities or jobs |
+| 7 | 7.5b: matched-cell reuse and fault regions (7.12) | Allocation counts drop on the tree and pattern benchmarks; a failing test frees its region |
+
+After v0.4 comes **S.2, the runner in Eyelang**. Under B′, every program with entities or jobs
+carries the Go runtime, so its memory floor is Go's. Moving the runner into Eyelang, part by part
+as self-hosting moves the compiler, is how job programs beat Go on memory too.
+
+The steps have issues: 7.8 is #111, 7.9 #112, 7.10 #113, 7.11 #114, 7.12 #115 and S.2 #116.
 
 Steps 0, 1 and 3 need no decision and can run in parallel. Step 2 needs the owner to agree to the
 split. Step 5 needs the hosting decision.
@@ -245,6 +252,10 @@ split. Step 5 needs the hosting decision.
   pure-core program, it would be a good cross-check and benchmark for native code once it exists.
 
 ## 7. Decisions for the owner
+
+The owner's bar, set on 2026-10-12: native code faster than Go, and using less memory. The owner
+will decide the points below once 7.7's benchmarks against Go and S.1's lexer benchmark are in,
+since their numbers may change parsing or more fundamental choices.
 
 1. **7.5 split.** Do 7.5a now (counting in the low IR, drop after last use, borrowed parameters,
    in place for any unique value) and 7.5b later? *Recommended: yes.*
