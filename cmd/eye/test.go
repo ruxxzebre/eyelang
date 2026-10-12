@@ -121,7 +121,7 @@ func plural(n int, word string) string {
 	if n == 1 {
 		return "1 " + word
 	}
-	return fmt.Sprintf("%d %ss", n, word)
+	return count(n) + " " + word + "s"
 }
 
 func indent(s string) string {

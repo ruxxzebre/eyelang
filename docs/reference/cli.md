@@ -40,7 +40,7 @@ Prints the syntax tree of each file and reports syntax errors.
 ## eye fmt {#fmt}
 
 ```text
-usage: eye fmt [--check] [--syntax-only] [file.eye | directory]...
+usage: eye fmt [--check] [--cold] [--syntax-only] [--stats] [file.eye | directory]...
 
 Formats files in place; directories are searched for .eye files. With no
 paths, formats standard input to standard output.
@@ -49,8 +49,15 @@ Recursive searches skip hidden directories and node_modules, unless named explic
 A directory's files are also checked as programs, and each public function's
 uses clause is written from the effects its body has. A file named alone is
 formatted for syntax only.
+
+At a terminal, it ends with a line saying how many files and lines it
+formatted and how long that took; --stats breaks the time down.
   -check
     	list files that aren't formatted and exit 1 if there are any, without changing them
+  -cold
+    	run a fresh formatting check without reusing saved results (requires --check)
+  -stats
+    	after formatting paths, report counts, each phase's time and the slowest files on standard error
   -syntax-only
     	format a directory's files without checking its program, leaving uses clauses as written
 ```

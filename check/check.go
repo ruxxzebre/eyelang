@@ -115,7 +115,7 @@ type checker struct {
 	// expected settles each (fnCheck.chooseVariant).
 	variantChoices map[*ir.Ref][]*ir.Variant
 	overlay        map[string][]byte       // unsaved files, by path
-	parsed         map[string]*ir.File     // immutable syntax shared by a formatting session
+	parsed         *FormatSession          // immutable syntax and observed formatting inputs
 	index          *Index                  // nil unless a tool asked for it
 	all            bool                    // load every module below root, for tools
 	names          names                   // where names are written, until types resolve them
@@ -179,7 +179,7 @@ func parseFile(path string, src []byte) *ir.File {
 
 // load reads the module at path from dir, and the modules it imports.
 func (c *checker) load(path, dir string) *module {
-	entries, err := os.ReadDir(dir)
+	entries, err := c.readDirInput(dir)
 	if err != nil && !c.overlayHasDir(dir) {
 		c.errorf(ir.Pos{}, "reading %s: %v", dir, err)
 		return nil
@@ -190,7 +190,7 @@ func (c *checker) load(path, dir string) *module {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
-		src, err := c.readFile(p)
+		src, err := c.readInput(p)
 		if err != nil {
 			c.errorf(ir.Pos{}, "%v", err)
 			continue
@@ -287,6 +287,15 @@ func (c *checker) parse(path, dir string, files []*ir.File) *module {
 // declares, when that can be read.
 func (c *checker) skipBroken(m *module, f *ir.File, d *syntax.Node) bool {
 	broken := d.Kind == syntax.ErrorNode
+	// An unfinished lambda's diagnostic can point at the next token, just
+	// beyond this declaration's span. Its missing body still makes the
+	// declaration incomplete and unsafe to lower.
+	d.Walk(func(n *syntax.Node) bool {
+		if n.Kind == syntax.Lambda && n.ChildByField(syntax.FieldBody) == nil {
+			broken = true
+		}
+		return !broken
+	})
 	for _, diag := range f.Tree.Diagnostics {
 		if d.Span.Start <= diag.Span.Start && diag.Span.Start <= d.Span.End {
 			broken = true

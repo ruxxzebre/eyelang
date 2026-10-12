@@ -20,12 +20,12 @@ import (
 func (c *checker) readConfig() {
 	c.importRoots = []string{c.root}
 	path := filepath.Join(c.root, "eye.toml")
-	src, err := c.readFile(path)
+	src, err := c.readInput(path)
 	if err != nil {
 		return // no eye.toml: the program is its directory alone
 	}
 	f := &ir.File{Path: path, Src: src, Tree: syntax.Parse(src)}
-	repo := repository(c.root)
+	repo := c.repositoryInput(c.root)
 	for _, e := range parseConfig(string(src)) {
 		at := ir.Pos{File: f, Offset: e.offset, End: e.end}
 		if e.err != "" {
@@ -37,7 +37,7 @@ func (c *checker) readConfig() {
 			continue
 		}
 		dir := filepath.Join(c.root, filepath.FromSlash(e.value))
-		if !c.isDir(dir) {
+		if info, err := c.statInput(dir); (err != nil || !info.IsDir()) && !c.overlayHasDir(dir) {
 			c.errorf(at, "modules lists %s, but there is no directory %s", e.value, dir)
 			continue
 		}

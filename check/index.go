@@ -357,7 +357,7 @@ func (c *checker) readFile(path string) ([]byte, error) {
 // overlay: a program held only in memory, as in the online playground, has
 // its directories there and nowhere else.
 func (c *checker) isDir(dir string) bool {
-	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+	if info, err := c.statInput(dir); err == nil && info.IsDir() {
 		return true
 	}
 	return c.overlayHasDir(dir)

@@ -99,3 +99,29 @@ This fast path is for ordinary edits in this checkout; intentionally backdating 
 - Full task check passed generated-file verification, build, vet, lint, all Go tests, formatting, conformance, grammar, extension unit tests/packaging and the docs build. It failed only at the final pre-existing roadmap check: What's next names closed issue #83. The extension's GUI end-to-end test is skipped by the existing macOS task.
 - The final full check, including the wrapper tests, passed those same code checks. Its roadmap check also found G.20's issue #119 had closed while the row still lacked `(done)`. These unrelated roadmap entries were left unchanged.
 - Rebased onto the concurrent language/tooling commits, preserving variant-choice state and hexadecimal-literal normalization in the two conflicts. Full task check again passed every code check; only the existing closed-issue #83 roadmap reference remains. The upstream commits corrected the #119 bookkeeping.
+
+## Follow-up: Warm results and explicit cold checks
+
+The user requests substantially less than 250 ms and explicitly wants both a cold-check flag and first-run timings. Execute inline.
+
+1. Profile the remaining work, then retain a baseline binary for output comparisons.
+2. Replace the shell wrapper's repeated Go/Git subprocesses with native checkout validation in cmd/eye/checkout.go. Check raw build environment, Go configuration, Go executable identity, Git HEAD/ref files, executable identity and source/directory timestamps. Preserve automatic rebuilds and unconditional Go dependency checks for external workspace/replace inputs. Use scripts/eye only to bootstrap the native version, and cover source additions/deletions, environment/config changes and failed rebuilds in tests.
+3. Add a content-validated fmt --check result cache in cmd/eye/fmt_cache.go. Key requests by executable identity, working directory, syntax mode and requested paths. Validate the discovered file list, source/config content hashes, consulted directory entries and absent paths; record checker filesystem inputs in check/format.go, check/check.go and check/eyetoml.go. Replay identical stdout, stderr and status only after every recorded input still matches. Ignore corrupt/unwritable caches. Keep caches outside the source tree.
+4. Add --cold to bypass saved formatting/checking results. Keep stdin and in-place formatting uncached. Test source edits with preserved timestamps, imported-file edits/additions/deletions, new manifests, external module search roots, cached errors, corrupt caches, and warm/cold output equivalence.
+5. If profiling justifies it, use a bounded worker pool for independent cold module checks with a concurrency-safe syntax cache; consume results in the existing order and preserve dependency deduplication and diagnostics.
+6. Run relevant tests/race checks and task check, then compare warm, --cold and the first call after a rebuild with the same files and options. Update the CLI reference/status, commit and push after validation.
+
+### Result (2026-10-13)
+
+Done: steps 2–4 and 6, plus `--stats` and a summary line at a terminal. Tests cover warm/cold equivalence, edits that keep a file's time, an imported module outside the checked directory, added and removed files, a module that appears, a new `eye.toml`, damaged or incomplete saved results, an unwritable cache and in-place formatting; the launcher's tests cover branch moves, packed refs, detached heads, linked worktrees, Go's config file and a replaced binary. `go test -race ./check ./cmd/eye ./internal/lsp` passes.
+
+`eye fmt --check .` on this repository (354 files, 13,926 lines, 116 programs), as `--stats` reports it on a loaded machine:
+
+| Run | Time |
+|---|---:|
+| Warm (saved result, 872 inputs reread) | about 40 ms |
+| `--cold` | about 480 ms, 82% of it the program check |
+| Cache miss, `bin/eye` with an empty cache | 210–360 ms |
+| First run after a source edit (rebuild through `scripts/eye`) | about 530 ms |
+
+Not done: step 5. The cold path checks programs one after another; profile it before adding a worker pool.

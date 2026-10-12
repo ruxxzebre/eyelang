@@ -97,3 +97,15 @@ func TestFormatSessionErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatSessionUnfinishedLambda(t *testing.T) {
+	dir := writeProgram(t, map[string]string{"main.eye": "let f = fn x 1\npub fn good() -> Int = 1\n"})
+	var session FormatSession
+	res := session.Check(dir, dir)
+	if len(res.Diagnostics) == 0 || res.Program.Root.Funcs["good"] == nil {
+		t.Fatalf("unfinished lambda lost its diagnostic or the valid declaration: %v", res.Diagnostics)
+	}
+	if _, clean := res.Signatures(); clean {
+		t.Fatal("unfinished source returned writable effects")
+	}
+}

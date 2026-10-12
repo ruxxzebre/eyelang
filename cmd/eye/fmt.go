@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -25,9 +26,11 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("eye fmt", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	checkOnly := flags.Bool("check", false, "list files that aren't formatted and exit 1 if there are any, without changing them")
+	cold := flags.Bool("cold", false, "run a fresh formatting check without reusing saved results (requires --check)")
 	syntaxOnly := flags.Bool("syntax-only", false, "format a directory's files without checking its program, leaving uses clauses as written")
+	showStats := flags.Bool("stats", false, "after formatting paths, report counts, each phase's time and the slowest files on standard error")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye fmt [--check] [--syntax-only] [file.eye | directory]...")
+		fmt.Fprintln(stderr, "usage: eye fmt [--check] [--cold] [--syntax-only] [--stats] [file.eye | directory]...")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Formats files in place; directories are searched for .eye files. With no")
 		fmt.Fprintln(stderr, "paths, formats standard input to standard output.")
@@ -36,9 +39,16 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "A directory's files are also checked as programs, and each public function's")
 		fmt.Fprintln(stderr, "uses clause is written from the effects its body has. A file named alone is")
 		fmt.Fprintln(stderr, "formatted for syntax only.")
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "At a terminal, it ends with a line saying how many files and lines it")
+		fmt.Fprintln(stderr, "formatted and how long that took; --stats breaks the time down.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
+		return exitUsage
+	}
+	if *cold && !*checkOnly {
+		fmt.Fprintln(stderr, "eye fmt: --cold requires --check")
 		return exitUsage
 	}
 
@@ -71,25 +81,58 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	// Stats are kept even unasked, for a saved result to report later.
+	stats := newFmtStats(*checkOnly, flags.NArg())
 	files, inDirs, err := eyeFiles(flags.Args())
 	if err != nil {
 		fmt.Fprintf(stderr, "eye fmt: %v\n", err)
 		return exitErrors
+	}
+	if report := stderr; *showStats || fmtSummaryWanted(report) {
+		defer func() { // to stderr itself: the stats aren't part of a saved result
+			if *showStats {
+				stats.report(report)
+			} else {
+				fmt.Fprintln(report, stats.summary())
+			}
+		}()
+	}
+	stats.phase("find files", fmt.Sprintf("%s under %s", plural(len(files), ".eye file"), plural(flags.NArg(), "path")))
+	cachePath := ""
+	var cachedOut, cachedErr bytes.Buffer
+	if *checkOnly && !*cold {
+		cachePath = fmtResultPath(flags.Args(), *syntaxOnly)
+		if result, ok := loadFmtResult(cachePath, files); ok {
+			stats.replay(result, len(files))
+			_, _ = stdout.Write(result.Stdout)
+			_, _ = stderr.Write(result.Stderr)
+			return result.Code
+		}
+		stats.cache = "miss"
+		stats.phase("cache lookup", "no saved result matches")
+		stdout = io.MultiWriter(stdout, &cachedOut)
+		stderr = io.MultiWriter(stderr, &cachedErr)
+	} else if *checkOnly {
+		stats.cache = "off"
 	}
 	code := 0
 	var sigs map[string][]check.Signature
 	var session check.FormatSession
 	if !*syntaxOnly {
 		var ok bool
-		if sigs, ok = signatures(inDirs, &session, stderr); !ok {
+		if sigs, ok = signatures(inDirs, &session, stats, stderr); !ok {
 			code = exitErrors
 		}
+		stats.phase("check", fmt.Sprintf("%s, %s, for uses clauses", plural(stats.programs, "program"), plural(stats.modules, "module")))
 	}
 	for _, path := range files {
+		fileStart := time.Now()
 		src, err := os.ReadFile(path)
+		session.RecordSource(absPath(path), src, err)
 		if err != nil {
 			fmt.Fprintf(stderr, "eye fmt: %v\n", err)
 			code = exitErrors
+			stats.errors++
 			continue
 		}
 		in := src
@@ -101,8 +144,10 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 			parsed = syntax.Parse(in)
 		}
 		out, ok := formatParsed(path, parsed, stderr)
+		stats.file(path, src, time.Since(fileStart))
 		if !ok {
 			code = exitErrors
+			stats.errors++
 			continue
 		}
 		if bytes.Equal(src, out) {
@@ -111,12 +156,26 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 		if *checkOnly {
 			fmt.Fprintln(stdout, path)
 			code = exitErrors
+			stats.unformatted++
 			continue
 		}
 		if err := os.WriteFile(path, out, 0o644); err != nil {
 			fmt.Fprintf(stderr, "eye fmt: %v\n", err)
 			code = exitErrors
+			stats.errors++
+		} else {
+			stats.wrote++
 		}
+	}
+	detail := "read, parse unless the check did, and format each file"
+	if !*checkOnly {
+		detail += fmt.Sprintf("; wrote %s", plural(stats.wrote, "file"))
+	}
+	stats.phase("format", detail)
+	if *checkOnly && !*cold {
+		inputs := saveFmtResult(cachePath, files, &session, cachedOut.Bytes(), cachedErr.Bytes(), code, stats.saved())
+		stats.cacheInputs = inputs
+		stats.phase("save result", fmt.Sprintf("hash %s inputs for the next run", count(inputs)))
 	}
 	return code
 }
@@ -178,7 +237,7 @@ func eyeFiles(paths []string) (files, inDirs []string, err error) {
 // returns by absolute path the public functions whose uses clause doesn't
 // say what their bodies do. It reports a program with other errors, whose
 // clauses it leaves as written, and returns false.
-func signatures(files []string, session *check.FormatSession, stderr io.Writer) (map[string][]check.Signature, bool) {
+func signatures(files []string, session *check.FormatSession, stats *fmtStats, stderr io.Writer) (map[string][]check.Signature, bool) {
 	out := map[string][]check.Signature{}
 	checked := map[string]bool{} // module directories
 	seen := map[string]bool{}    // functions, by file and offset: a module imported by two checked ones comes back twice
@@ -188,9 +247,11 @@ func signatures(files []string, session *check.FormatSession, stderr io.Writer) 
 		if checked[dir] {
 			continue
 		}
-		root := check.Root(dir)
+		root := session.Root(dir)
 		res := session.Check(root, dir)
 		checked[dir] = true
+		stats.programs++
+		stats.modules += len(res.Program.Modules)
 		for _, m := range res.Program.Modules {
 			if m.Dir != "" {
 				checked[absPath(m.Dir)] = true

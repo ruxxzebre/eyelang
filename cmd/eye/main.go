@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 )
 
 // version is set for releases with -ldflags "-X main.version=v0.1.0".
@@ -50,6 +52,28 @@ func init() {
 }
 
 func main() {
+	if root := os.Getenv("EYE_CHECKOUT_ROOT"); root != "" {
+		bootstrap := os.Getenv("EYE_CHECKOUT_BOOTSTRAP") == "1"
+		_ = os.Unsetenv("EYE_CHECKOUT_ROOT")
+		_ = os.Unsetenv("EYE_CHECKOUT_BOOTSTRAP")
+		rebuilt, err := prepareCheckout(root, bootstrap, os.Stdout, os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "eye:", err)
+			os.Exit(exitErrors)
+		}
+		if rebuilt {
+			cmd := exec.Command(filepath.Join(root, "bin", "eye"), os.Args[1:]...)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := cmd.Run(); err != nil {
+				if exit, ok := err.(*exec.ExitError); ok {
+					os.Exit(exit.ExitCode())
+				}
+				fmt.Fprintln(os.Stderr, "eye:", err)
+				os.Exit(exitErrors)
+			}
+			os.Exit(0)
+		}
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
