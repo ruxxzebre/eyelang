@@ -35,6 +35,7 @@ func init() {
 		{name: "parse", summary: "print the syntax tree of files", run: runParse, phase: 1, issue: 2},
 		{name: "fmt", summary: "format source files", run: runFmt, phase: 1, issue: 2},
 		{name: "doc", summary: "write the API reference as Markdown", run: runDoc, phase: 3, issue: 30},
+		{name: "gen", summary: "write build output from a program's contracts: network policy", run: runGen, phase: 6, issue: 57},
 		{name: "check", summary: "report errors in a program: syntax, names, types and effects", run: runCheck, phase: 1, issue: 43},
 		{name: "run", summary: "run a program: main, then its jobs, kept in a journal across restarts", run: runRun, phase: 3, issue: 31},
 		{name: "runs", summary: "list a program's job runs: status, what each waits for, and steps", run: runRuns, phase: 4, issue: 34},

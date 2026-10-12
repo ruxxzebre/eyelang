@@ -66,6 +66,49 @@ type Delivery =
   # trains/trains.eye: an error, since trains isn't in Notify's @allow
   fn whoIs(user: UserId) -> Identity = notify.identity(user)
   ```
+- **`eye gen policy DIR` writes the network policy** that `@port` and `@allow` describe, as
+  Kubernetes `NetworkPolicy` objects (`networking.k8s.io/v1`), one per contract with `@port`.
+  Each module runs in pods labelled `eyelang.module: <module>`, its import path; the program's
+  own module goes by the name of the program's directory.
+  - The policy selects the pods of the module that serves the contract with `impl`. When nothing
+    in the program serves it, as for a Notify written in TypeScript, it selects the pods labelled
+    with the contract's own module, `eyelang.module: notify`, which that service's pods carry.
+  - It lets in TCP on the contract's port from the pods of each module whose code calls one of
+    its operations or names one as a value, among the modules `@allow` lets call it: the calls
+    the checker refuses get no rule. Tests, a fake's `calls(op)` and the serving module itself
+    don't count. With no caller, as under `@allow(nobody)`, it lets in no pod of the program;
+    callers outside the program need a policy of their own, which Kubernetes adds to this one.
+  - Contracts without `@port` get no policy, events go through the bus rather than the port, and
+    egress isn't written: a service outside the network is reached as the cluster allows.
+  - `--namespace homelab` puts the policies in that namespace; without it they name none, and
+    `kubectl apply -n` decides. Each is named after the program and the contract (`lab-notify`
+    for Notify in `testdata/lab`), so the policies of two programs that call one service add up
+    rather than replace each other. Like generated code, the output is a build artifact.
+
+  For the lab, whose `notifier` serves Notify:
+
+  ```yaml
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    name: lab-notify
+    namespace: homelab
+  spec:
+    podSelector:
+      matchLabels:
+        eyelang.module: notifier
+    policyTypes:
+      - Ingress
+    ingress:
+      - from:
+          - podSelector:
+              matchLabels:
+                eyelang.module: access
+          # … approving, digest and trains likewise
+        ports:
+          - protocol: TCP
+            port: 3001
+  ```
 - **Commands** return a variant type, and every command can also return `Uncertain(key)`: its
   reply was lost, so the other service may or may not have acted. Until it is reconciled, or a
   `match` handles `Uncertain(_)`, the result can't be passed where the declared type is expected. With `@reconcile(query)`,

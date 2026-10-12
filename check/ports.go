@@ -98,13 +98,8 @@ func (l *lowerer) mayCall(at *syntax.Node, decl any) {
 		return
 	}
 	ct, from := op.Contract, l.m.mod
-	if from == ct.Module || from.Path != "" && slices.Contains(ct.Allowed, from.Name) {
+	if mayCallFrom(ct, from) {
 		return
-	}
-	for _, o := range ct.Ops {
-		if o.Impl != nil && o.Impl.Module == from {
-			return
-		}
 	}
 	who, hint := "module "+from.Name, "add "+from.Name+" there to call it from here"
 	if from.Path == "" {
@@ -115,6 +110,86 @@ func (l *lowerer) mayCall(at *syntax.Node, decl any) {
 		return
 	}
 	l.errorf(at, "%s may not call %s, an operation of %s: its @allow lists only %s; %s", who, op.Name, ct.Name, andList(ct.Allowed), hint)
+}
+
+// mayCallFrom reports whether code in module from may call a contract's
+// operations: any module may unless the contract has @allow, and then its
+// own module, the modules that serve it and the modules it lists may.
+func mayCallFrom(ct *ir.Contract, from *ir.Module) bool {
+	if !ct.Guarded || from == ct.Module || from.Path != "" && slices.Contains(ct.Allowed, from.Name) {
+		return true
+	}
+	for _, o := range ct.Ops {
+		if o.Impl != nil && o.Impl.Module == from {
+			return true
+		}
+	}
+	return false
+}
+
+// Callers returns, for each contract, the modules whose code calls its
+// operations or names one as a value, sorted by import path, the program's
+// own module ("") first. Tests don't count, since they reach fakes or the
+// program's own impl, and neither does naming an operation for a fake's
+// calls(op). A module the contract's @allow doesn't let call it is left
+// out too: the checker reports its calls as errors. eye gen policy writes
+// the network policy from this.
+func Callers(prog *ir.Program) map[*ir.Contract][]*ir.Module {
+	found := map[*ir.Contract]map[*ir.Module]bool{}
+	for _, m := range prog.Modules {
+		tests := map[*ir.Func]bool{}
+		for _, t := range m.Tests {
+			tests[t.Func] = true
+		}
+		var visit func(e ir.Expr, _ bool) bool
+		visit = func(e ir.Expr, _ bool) bool {
+			switch e := e.(type) {
+			case *ir.MethodCall:
+				if fakeCalls(e) {
+					walk(e.Recv, false, visit)
+					return false
+				}
+			case *ir.Ref:
+				if op, ok := e.Decl.(*ir.Op); ok && mayCallFrom(op.Contract, m) {
+					if found[op.Contract] == nil {
+						found[op.Contract] = map[*ir.Module]bool{}
+					}
+					found[op.Contract][m] = true
+				}
+			}
+			return true
+		}
+		for _, f := range Bodies(m) {
+			if !tests[f] {
+				walk(f.Body, false, visit)
+			}
+		}
+	}
+	out := map[*ir.Contract][]*ir.Module{}
+	for ct, set := range found {
+		for m := range set {
+			out[ct] = append(out[ct], m)
+		}
+		slices.SortFunc(out[ct], func(a, b *ir.Module) int { return strings.Compare(a.Path, b.Path) })
+	}
+	return out
+}
+
+// fakeCalls reports a fake's calls(op), which names an operation to list
+// what the fake answered, and calls nothing.
+func fakeCalls(e *ir.MethodCall) bool {
+	if e.Name != "calls" || len(e.Args) != 1 || e.Args[0].Name != "" {
+		return false
+	}
+	if _, method := e.Target.(*ir.Func); method {
+		return false
+	}
+	r, ok := e.Args[0].Value.(*ir.Ref)
+	if !ok {
+		return false
+	}
+	_, ok = r.Decl.(*ir.Op)
+	return ok
 }
 
 // attributeNode returns a declaration's attribute @name, or nil.

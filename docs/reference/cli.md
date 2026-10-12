@@ -13,6 +13,7 @@ title: The eye command
 | [`eye parse`](#parse) | print the syntax tree of files |
 | [`eye fmt`](#fmt) | format source files |
 | [`eye doc`](#doc) | write the API reference as Markdown |
+| [`eye gen`](#gen) | write build output from a program's contracts: network policy |
 | [`eye check`](#check) | report errors in a program: syntax, names, types and effects |
 | [`eye run`](#run) | run a program: main, then its jobs, kept in a journal across restarts |
 | [`eye runs`](#runs) | list a program's job runs: status, what each waits for, and steps |
@@ -62,6 +63,37 @@ A [Name] in a ## comment links to that declaration; eye doc exits 1 if one
 names nothing.
   -out string
     	the directory to write the Markdown pages to; it is replaced (default "api")
+```
+
+## eye gen {#gen}
+
+```text
+usage: eye gen <target> [flags] [program-directory]
+
+Writes build output from a program's contracts to standard output. The program
+must check; with no directory, it is the program in the current directory.
+
+targets:
+  policy   Kubernetes network policy: which module may reach which service on which port
+
+usage: eye gen policy [--namespace name] [program-directory]
+
+Writes a Kubernetes NetworkPolicy (networking.k8s.io/v1) for each contract with
+@port: the pods of the module that serves it accept TCP on that port only from
+the pods of the modules whose code calls its operations, among those its @allow
+lets call it. A module's pods carry the label eyelang.module: <module>, its
+import path; the program's own module goes by the name of the program's
+directory. When nothing in the program serves a contract, the policy selects
+the pods labelled with the contract's own module, such as eyelang.module: notify
+for a Notify written in another language. Tests, events and contracts without
+@port, which are services outside the network, get no rule; nor does egress.
+Each policy is named after the program and the contract, such as lab-notify,
+so the policies of programs that call one service add up. For example:
+
+  eye gen policy --namespace homelab testdata/lab | kubectl apply -f -
+
+  -namespace namespace
+    	the Kubernetes namespace the policies go in, such as homelab; without it they have none, and kubectl apply -n decides
 ```
 
 ## eye check {#check}

@@ -476,7 +476,7 @@ waits.
 | 6.2 `@port` and `@allow` enforced (done) | [#54](https://github.com/ruxxzebre/eyelang/issues/54) |
 | 6.3 `@fresh` and `@destructive` (done) | [#55](https://github.com/ruxxzebre/eyelang/issues/55) |
 | 6.4 Go and TypeScript types, clients and server stubs from contracts | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
-| 6.5 Network policy from contracts | [#57](https://github.com/ruxxzebre/eyelang/issues/57) |
+| 6.5 Network policy from contracts (done) | [#57](https://github.com/ruxxzebre/eyelang/issues/57) |
 | 6.6 Notify's boundary generated from its contract | [#58](https://github.com/ruxxzebre/eyelang/issues/58) |
 | 6.7 Model tools: functions passed as `tools:` | [#59](https://github.com/ruxxzebre/eyelang/issues/59) |
 | 6.8 The `agents` module: coding-agent sessions owned by jobs | [#60](https://github.com/ruxxzebre/eyelang/issues/60) |
@@ -536,6 +536,14 @@ What each task is, until its issue holds it:
   **Done when:** for the lab, the generated policy lets `digest`, `trains`, `access` and
   `approving` reach Notify on its port and nothing else reach it, checked by a golden test; a
   call that 6.2 refuses has no rule.
+  Done on 2026-10-12, in the format the user named: plain Kubernetes `NetworkPolicy`
+  (`networking.k8s.io/v1`), pods labelled `eyelang.module: <module>`, the namespace from
+  `eye gen policy --namespace`. Each contract with `@port` gets a policy selecting its serving
+  module's pods (the contract's own module when nothing in the program serves it), letting in
+  TCP on its port from the modules that call it, which `check.Callers` finds in the checked
+  code, among those `@allow` lets (SPECS §17, decision log "Network policy";
+  `internal/netpolicy`, `cmd/eye/gen.go`; golden `internal/netpolicy/testdata/lab.yaml`, and
+  `TestRefusedCallHasNoRule` for a refused call).
 - **6.6 Notify's boundary generated from its contract.** The phase's exit test. The homelab's
   Notify (TypeScript, `js/apps/notify` in the homelab repository) and the digest's callers build
   against the types 6.4 generates from `testdata/lab/notify/notify.eye`, so a change to the

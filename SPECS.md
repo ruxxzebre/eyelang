@@ -95,6 +95,7 @@ construct that also works outside that domain.
 | Serving over HTTP | **`eye run` serves each contract a program serves on its `@port`, read the way a caller sends it**: the `@http` route picks the operation, arguments and replies are in the one JSON shape, `@auth` is checked before any code runs (401), each request is one transaction, and a result has the status `status:` gives its variant, else 200. `NOTIFY_PORT` moves the port, `0` to any free one (section 17) | Callers and servers agree because both read the same attributes, and the key, not a cache of replies, makes a repeat safe, as for any service. From the lab: Notify written in Eyelang must answer the lab's other programs |
 | Ports and callers | **`@port` is where a service listens, and `@allow` who may reach it, checked at compile time.** A contract a program serves must declare `@port`; a contract without one is a service outside the network, reached at its configured URL, that any module may call. `@allow(m, …)` lists the modules that may call its operations (besides its own module, the modules that serve it, and tests); each name is a module the program can import; `@allow(nobody)` lets no module call it; `@allow` needs `@port` (section 17) | The lab's own Notify has a port and four callers, which network policy can be written from, while Telegram, Miniflux and NetBird are outside services with no port of ours to guard: a rule that every called contract declares a port would have given them made-up ones. Callers get the port from the contract, so a call can't go to a wrong one |
 | Fresh and destructive commands | **`@fresh` adds a `basedOn: Version` parameter and the outcomes `Stale` and `Expired`; `@destructive` adds an `approval: Approval` parameter.** Both come after the declared parameters, before `key`, and a served `impl` takes them too. `Stale` means the state changed since that version, `Expired` that what the command was based on is gone; `Expired` is the one `approval!` gives. A `Version` has `==` and no order; a snapshot's `version` is one. Over HTTP they travel as arguments, a reply of 409 is `Stale` and 410 `Expired`, and both outcomes are objects tagged with `"kind"` (section 17) | The check-then-act race is the usual bug in programs that act on another service's state, and the fix (send the version you read, let the service refuse) is easy to forget, so the contract asks for it and the match must handle the refusal. Two outcomes because a caller does different things: read again after `Stale`, give up after `Expired`. Reusing `approval!`'s `Expired` keeps one word for "too late" |
+| Network policy | **`eye gen policy` writes Kubernetes `NetworkPolicy` objects from the contracts**: for each contract with `@port`, the pods of the module that serves it (else of the contract's own module) accept TCP on that port only from the pods of the modules whose code calls it, among those `@allow` lets. Pods are labelled `eyelang.module: <module>`; the namespace is the `--namespace` flag (section 17) | The homelab deploys to Kubernetes, and a plain `NetworkPolicy` needs no CNI extension. The checker already knows who calls what, so the policy admits the callers the code has, not every name `@allow` lists: a module listed but not yet calling stays out until it does. The namespace is a deployment's choice, not the program's |
 | Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
 | Reactions | **Views trigger jobs**: `@on(enters(view))`, `@on(leaves(view))` | Replaces most polling cron jobs |
@@ -1317,6 +1318,49 @@ type Delivery =
 
   # trains/trains.eye: an error, since trains isn't in Notify's @allow
   fn whoIs(user: UserId) -> Identity = notify.identity(user)
+  ```
+- **`eye gen policy DIR` writes the network policy** that `@port` and `@allow` describe, as
+  Kubernetes `NetworkPolicy` objects (`networking.k8s.io/v1`), one per contract with `@port`.
+  Each module runs in pods labelled `eyelang.module: <module>`, its import path; the program's
+  own module goes by the name of the program's directory.
+  - The policy selects the pods of the module that serves the contract with `impl`. When nothing
+    in the program serves it, as for a Notify written in TypeScript, it selects the pods labelled
+    with the contract's own module, `eyelang.module: notify`, which that service's pods carry.
+  - It lets in TCP on the contract's port from the pods of each module whose code calls one of
+    its operations or names one as a value, among the modules `@allow` lets call it: the calls
+    the checker refuses get no rule. Tests, a fake's `calls(op)` and the serving module itself
+    don't count. With no caller, as under `@allow(nobody)`, it lets in no pod of the program;
+    callers outside the program need a policy of their own, which Kubernetes adds to this one.
+  - Contracts without `@port` get no policy, events go through the bus rather than the port, and
+    egress isn't written: a service outside the network is reached as the cluster allows.
+  - `--namespace homelab` puts the policies in that namespace; without it they name none, and
+    `kubectl apply -n` decides. Each is named after the program and the contract (`lab-notify`
+    for Notify in `testdata/lab`), so the policies of two programs that call one service add up
+    rather than replace each other. Like generated code, the output is a build artifact.
+
+  For the lab, whose `notifier` serves Notify:
+
+  ```yaml
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    name: lab-notify
+    namespace: homelab
+  spec:
+    podSelector:
+      matchLabels:
+        eyelang.module: notifier
+    policyTypes:
+      - Ingress
+    ingress:
+      - from:
+          - podSelector:
+              matchLabels:
+                eyelang.module: access
+          # … approving, digest and trains likewise
+        ports:
+          - protocol: TCP
+            port: 3001
   ```
 - **Commands** return a variant type, and every command can also return `Uncertain(key)`: its
   reply was lost, so the other service may or may not have acted. Until it is reconciled, or a
