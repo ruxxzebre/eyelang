@@ -6,7 +6,8 @@ title: "Jobs and waiting"
 
 # Jobs and waiting
 
-A job is a durable function: it can pause for any length of time and holds no memory while paused.
+A job is a durable function: it can pause for any length of time and holds no thread while paused,
+only its saved record.
 
 ```eye
 @on(daily(07:40, in: "Europe/Dublin"))

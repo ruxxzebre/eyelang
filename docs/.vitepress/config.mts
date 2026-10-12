@@ -85,6 +85,7 @@ const internals = {
     { text: 'Compilation', link: '/internals/compilation' },
     { text: 'Proposals', link: '/internals/proposals' },
     { text: 'Spec review, 2026-10-12', link: '/internals/reviews/spec-review-2026-10-12' },
+    { text: 'Performance and packages, 2026-10-12', link: '/internals/reviews/performance-and-packages-2026-10-12' },
     { text: 'Review conclusions, 2026-10-12', link: '/internals/reviews/conclusions-2026-10-12' },
   ],
 }

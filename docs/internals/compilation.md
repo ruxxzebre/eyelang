@@ -76,12 +76,13 @@ without its tests. The parts that matter for compilation:
 - **Values** are Go `any`: `int64`, or `*big.Int` once an `Int` outgrows it; `string`; `*List`,
   `*Set` and `*Map` over Go slices, with sets and maps keeping insertion order; `*Record` with
   its field names; `*Variant`; `*Closure` with copied captures.
-- **No reference counts.** Every update makes a new value: `Map.with` and `Record.with` copy. So
-  `xs += [x]` in a loop is quadratic today, and the store keeps runs in buckets of 64 to keep
+- **No reference counts.** Most updates make a new value: `Record.with` copies, and so does
+  replacing a key's value in a `Map`, so a loop that updates one map, or builds a string with
+  `+=`, is quadratic (ROADMAP R.3, R.4). Appending to a list and adding a new key to a map or set
+  share a backing array and are amortised O(1). The store keeps runs in buckets of 64 to keep
   each commit's copy small (`check/runtime/store.eye`).
-- **A record's type is found at run time by its field names.** `typeOf` in `interp/traits.go`
-  walks every type of every module to find one with the same fields, so that an operator or a
-  `Show` impl can be found. Nominal records exist only in the checker.
+- **A record knows its type** since 7.1 (2026-10-11): the checker writes it into the typed IR,
+  and the interpreter no longer guesses it from field names.
 - **`mut` is copy in, copy out.** The callee returns the changed value and the caller writes it
   back to the place (`evalCall` in `interp/eval.go`).
 - **Jobs resume by replaying.** A run is its arguments and a log of steps

@@ -1,8 +1,9 @@
 # Conclusions from the reviews of 2026-10-12
 
-What the coordinating session concluded from the [spec review](./spec-review-2026-10-12.md),
-and what it proposes to do about each finding. The performance and package-manager analysis is
-still running; its report and conclusions are added here when it lands.
+What the coordinating session concluded from the [spec review](./spec-review-2026-10-12.md) and
+the [performance and package-manager analysis](./performance-and-packages-2026-10-12.md), and
+what it proposes to do about each finding. Sections 1 to 5 are about the spec review; section 6
+is about performance and packages.
 
 ## The short version
 
@@ -98,10 +99,66 @@ Found by the review and fixed the same day, or fixed by work that was already un
 entity (G.6), `cron` and the schedule policies (C.3), `@fresh` and `@destructive`, which also
 gave `Version` a type (6.3), and serving a contract over HTTP (6.13).
 
-## 5. Next steps
+## 5. Where the spec review stands
 
-1. File G.7 to G.11 as issues under "Core gaps", and build G.7 to G.10 (the correctness bugs)
-   in the next wave, alongside the tasks already queued.
-2. Bring the seven decisions above to the owner.
-3. Add the performance and package-manager report and its conclusions to this folder when it
-   lands.
+G.7 to G.17 are filed under "Core gaps" in ROADMAP. Done: G.9 (re-entrant calls), G.11 (the
+sweep), G.16 (`average` and `div`), and the review's examples move to C.7. Being built: G.7, G.8
+and G.10 (the effect rules) and C.7. Waiting for the effect rules to land, since they change the
+same checker code: G.12 to G.15 and G.17.
+
+## 6. Performance and packages
+
+### What the numbers say
+
+The interpreter's constant speed (2–9× slower than CPython) is fine for programs that mostly
+wait. The six slowdowns that grow with the input are not: they turn ordinary programs (a string
+built with `+=`, a word count in a map, a binary tree, ten thousand waiting runs) from
+milliseconds into seconds or minutes, and three of them sit in exactly the part of the system the
+language is for. They come before more compiler work, because v0.4 keeps the Go runner and the
+store, where most of them live. Three were prototyped in about 30 lines with large measured wins.
+
+So a new group of tasks, R.1 to R.7 ("Runtime at scale"), goes ahead of 7.5:
+
+| Task | What | Measured or expected |
+|---|---|---|
+| R.1 | Exhaustiveness uses the default matrix when no row tests a column (`check/exhaust.go`) | 9.4 s to 13 ms on a tree match (prototyped) |
+| R.2 | Waking runs: a timer min-heap and an index by event in the waiting index, and the store touches its event list only when a commit changes it | 10k waiting runs: 25.8 s to 4.2 s (prototyped), under 1 s expected with the heap |
+| R.3 | A persistent hash map (HAMT) behind `Map` and `Set`, so replacing a key's value and every entity write are O(log n) | the map-counter idiom and entity writes stop being quadratic |
+| R.4 | String append shares spare room the way list append does | `+=` on strings becomes amortised O(1) |
+| R.5 | The journal stores run records as raw JSON, keeps the 20-step trail out of every commit, and groups commits in bursts | commits 3–5× smaller; 5k starts from `main` in about 1 s instead of 4.5 s |
+| R.6 | The call path: bindings precomputed, closures and fieldless variants cached, `return` and `break` without panics, fast `equal`, shared record names | 2–3× on call- and record-heavy code |
+| R.7 | A waiting run's record leaves RAM: only `(id, wakeAt, event)` stays, the record loads on wake | the pillar "waiting costs no memory" becomes true, not "about 1.5 KB" |
+
+Also, at once and without a task: SPECS §1's "a waiting job holds no memory at all" is reworded to
+what is true (no thread, and its saved record, about 1.5 KB, until R.7), and
+docs/internals/compilation.md's stale "What exists today" lines (quadratic `xs += [x]`, `typeOf`)
+are corrected.
+
+### The idea
+
+The analysis agrees with the direction: compile-time-checked determinism for durable code,
+single-writer entities with value semantics, exactly-once made explicit in types, contracts that
+derive network policy, and deterministic tests are a real step past Temporal, Restate and Durable
+Objects. Its warning is about scope: one team is carrying a durable engine, an actor runtime, a
+migration system and cron at once. The answer is the one the roadmap already takes: the lab's
+workloads decide what gets built, and each piece stays small.
+
+### Decisions for the owner
+
+1. **How the Go runner hosts compiled code (7.6).** The analysis leans towards linking the runner
+   into each compiled program as a static library (`-buildmode=c-archive`; cgo only at release
+   build time, `eye` itself stays cgo-free), because loading the program with a pure-Go `dlopen`
+   makes every entity call, step and store access a C-to-Go callback through trampolines.
+   **Recommendation:** the static library. (6.1 builds a pure-Go loader for `@library` C functions
+   anyway; that stays right for calling C from the interpreter.)
+2. **A package manager, phased.** **Recommendation:** yes, as the analysis proposes. P0 now:
+   `path` and `git` dependencies in `eye.toml` with a local alias as the import root, an
+   `eye.lock` with content hashes and each dependency's effects, a cache, `eye vendor`, and
+   minimal version selection; it answers open question 18 (programs sharing Notify). P1: npm's
+   registry as transport, read only by `eye`'s own client, never running scripts, scoped names
+   only, with semver enforced from the API diff. P2: Nix as an optional output (`eye gen nix`),
+   never a requirement. A registry of our own only after v1.0, if wanted.
+3. **New open questions for SPECS**, from the analysis: import names for dependencies, whether
+   packages may declare entities and jobs, an effect policy for dependencies, allow lists across
+   packages, and what else belongs in `eye.toml`. **Recommendation:** add them as open questions
+   41 to 45 with P0.

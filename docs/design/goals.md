@@ -27,4 +27,5 @@ title: "Goals"
 - **Small and predictable for agents.** Coding agents write most of the changes, so there is one
   obvious way to do each thing, strict checks, and tests that can't flake.
 - **Low memory.** Compiled to native code with reference counting (no tracing GC). A waiting job
-  holds no memory at all.
+  holds no thread or stack, only its saved record: about 1.5 KB of RAM today, since the stores
+  keep every record in memory, and nothing once records wait outside RAM (ROADMAP R.7).
