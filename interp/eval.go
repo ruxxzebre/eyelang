@@ -70,7 +70,28 @@ type frame struct {
 	fn    *ir.Func
 	slots []Value
 	self  Value
-	ck    *checkpointing // a job run's own frame keeps its checkpoints
+	// row, in an entity method, holds self: the entity's in-progress state
+	// in the transaction, which every call on the entity in the call tree
+	// reads and changes (SPECS.md §14).
+	row *txRow
+	ck  *checkpointing // a job run's own frame keeps its checkpoints
+}
+
+// getSelf returns the receiver: an entity method's in-progress state, or a
+// `mut self` method's value.
+func (f *frame) getSelf() Value {
+	if f.row != nil {
+		return f.row.state
+	}
+	return f.self
+}
+
+func (f *frame) setSelf(v Value) {
+	if f.row != nil {
+		f.row.state = v.(*Record)
+		return
+	}
+	f.self = v
 }
 
 // Control flow that leaves an expression early.
@@ -133,13 +154,25 @@ func split(args []argVal) ([]Value, map[string]Value) {
 // as the function left it, and the final value of the parameter each
 // argument was bound to, for `mut` arguments.
 func (in *Interp) callFunc(fn *ir.Func, self Value, captured []Value, args []argVal, at ir.Pos) (Value, Value, []Value) {
+	return in.callFrame(&frame{fn: fn, slots: make([]Value, fn.Slots), self: self}, captured, args, at)
+}
+
+// callOnRow calls an entity method on the entity's row in the transaction,
+// which holds its state for the method and for every call that comes back
+// to the entity while it runs.
+func (in *Interp) callOnRow(fn *ir.Func, row *txRow, args []argVal, at ir.Pos) Value {
+	r, _, _ := in.callFrame(&frame{fn: fn, slots: make([]Value, fn.Slots), row: row}, nil, args, at)
+	return r
+}
+
+func (in *Interp) callFrame(fr *frame, captured []Value, args []argVal, at ir.Pos) (Value, Value, []Value) {
+	fn := fr.fn
 	if fn.Body == nil {
 		if fn.Host != "" {
 			return in.callHost(fn, args, at), nil, make([]Value, len(args))
 		}
 		in.faultf(at, "%s has no body: extern functions arrive with task 3.6", fn.Name)
 	}
-	fr := &frame{fn: fn, slots: make([]Value, fn.Slots), self: self}
 	for i, c := range fn.Captures {
 		fr.slots[c.Slot] = captured[i]
 	}
@@ -156,7 +189,7 @@ func (in *Interp) callFunc(fn *ir.Func, self Value, captured []Value, args []arg
 			final[i] = fr.slots[fn.Params[p].Slot]
 		}
 	}
-	return result, fr.self, final
+	return result, fr.getSelf(), final
 }
 
 // bind puts arguments into the callee's parameter slots and fills in
@@ -316,9 +349,9 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 		}
 		return v
 	case *ir.Self:
-		return f.self
+		return f.getSelf()
 	case *ir.SelfField:
-		return in.field(f.self, x.Name, x.Pos)
+		return in.field(f.getSelf(), x.Name, x.Pos)
 	case *ir.Ref:
 		return in.ref(x)
 	case *ir.Call:
@@ -694,6 +727,9 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 		// An entity method calling another of the entity's methods, in the
 		// same transaction, on the same state.
 		if meth, ok := f.fn.Entity.Methods[m.Name]; ok {
+			if f.row != nil {
+				return in.callOnRow(meth, f.row, args, m.Pos)
+			}
 			r, self, _ := in.callFunc(meth, f.self, nil, args, m.Pos)
 			f.self = self
 			return r
@@ -1133,7 +1169,7 @@ func (in *Interp) wrapError(err Value, target *ir.Type) Value {
 func (in *Interp) readPlace(f *frame, p ir.Place) Value {
 	var v Value
 	if p.Self {
-		v = f.self
+		v = f.getSelf()
 	} else {
 		v = f.slots[p.Slot]
 	}
@@ -1145,7 +1181,7 @@ func (in *Interp) readPlace(f *frame, p ir.Place) Value {
 
 func (in *Interp) writePlace(f *frame, p ir.Place, v Value) {
 	if p.Self {
-		f.self = in.setPath(f.self, p.Path, v, p.Pos)
+		f.setSelf(in.setPath(f.getSelf(), p.Path, v, p.Pos))
 		return
 	}
 	f.slots[p.Slot] = in.setPath(f.slots[p.Slot], p.Path, v, p.Pos)

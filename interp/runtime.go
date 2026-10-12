@@ -205,19 +205,37 @@ func coerce(v Value, t *ir.TypeExpr) Value {
 
 // current returns an entity's state as the current transaction sees it.
 func (rt *runtime) current(ref *EntityRef, at ir.Pos) *Record {
-	if rt.tx != nil {
-		if r, ok := rt.tx.rows[entityKey(ref)]; ok {
-			return r.state
-		}
-	}
-	state, _, _ := rt.load(ref, at)
+	state, _ := rt.stateOf(ref, at)
 	return state
 }
 
-// snapshot is what `read!()` returns: the state with its version.
+// snapshot is what `read!()` returns: the state with its version. In a
+// transaction that has the entity, it is the state in progress, at the
+// version it was loaded at.
 func (rt *runtime) snapshot(ref *EntityRef, at ir.Pos) *Record {
+	return snapshotOf(rt.stateOf(ref, at))
+}
+
+// stateOf returns an entity's state and version as the current transaction
+// sees them: in progress if a call in the transaction has it, else as
+// committed.
+func (rt *runtime) stateOf(ref *EntityRef, at ir.Pos) (*Record, int64) {
+	if rt.tx != nil {
+		if r, ok := rt.tx.rows[entityKey(ref)]; ok {
+			if r.ended != nil {
+				rt.endedInTx(ref, at)
+			}
+			return r.state, r.version
+		}
+	}
 	state, version, _ := rt.load(ref, at)
-	return snapshotOf(state, version)
+	return state, version
+}
+
+// endedInTx stops a call on, or a read of, an entity that a call earlier in
+// the transaction ended.
+func (rt *runtime) endedInTx(ref *EntityRef, at ir.Pos) {
+	rt.in.faultf(at, "%s(%s) ended earlier in this transaction, so it can't be read or changed", ref.Entity.Name, showValue(ref.ID))
 }
 
 func snapshotOf(state *Record, version int64) *Record {
@@ -237,7 +255,7 @@ func (tx *txn) row(rt *runtime, ref *EntityRef, at ir.Pos) *txRow {
 	key := entityKey(ref)
 	if r, ok := tx.rows[key]; ok {
 		if r.ended != nil {
-			rt.in.faultf(at, "%s(%s) ended earlier in this transaction, so it can't be changed", ref.Entity.Name, showValue(ref.ID))
+			rt.endedInTx(ref, at)
 		}
 		return r
 	}
@@ -297,9 +315,10 @@ func (rt *runtime) callIn(tx *txn, ref *EntityRef, m *ir.Func, args []argVal, at
 		rt.in.run = prevRun
 		rt.selves = rt.selves[:len(rt.selves)-1]
 	}()
-	result, self, _ := rt.in.callFunc(m, row.state, nil, args, at)
-	row.state = self.(*Record)
-	return result
+	// The method changes row.state as it goes, so a call that comes back to
+	// the entity before it returns starts from its changes, and it goes on
+	// from the changes that call made (SPECS.md §14).
+	return rt.in.callOnRow(m, row, args, at)
 }
 
 // end ends the entity whose method is running: `end(ok)`. Its row is

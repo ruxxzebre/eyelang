@@ -26,6 +26,43 @@ test "one writer at a time: tasks that call a method at once lose no change" {
   expect(Counter("c").read().version == 10)
 }
 
+# A call tree that comes back to an entity shares its state: Ping.ping
+# counts one, Pong.pong calls Ping.bump, which counts another, and Ping
+# commits once with both.
+
+entity Ping(id: String) {
+  state n: Int = 0
+  state log: List(String) = []
+
+  ## Counts one, has Pong come back to bump, and gives the count after.
+  pub fn ping() -> Int {
+    n += 1
+    let before = n
+    Pong(id).pong()
+    log += ["{before} before pong, {n} after"]
+    n
+  }
+
+  pub fn bump() { n += 1 }
+}
+
+entity Pong(id: String) {
+  state saw: Int = 0
+
+  pub fn pong() {
+    saw = Ping(id).n
+    Ping(id).bump()
+  }
+}
+
+test "a call that comes back to an entity sees and keeps its changes" {
+  expect(Ping("x").ping() == 2)
+  expect(Ping("x").n == 2)
+  expect(Ping("x").log == ["1 before pong, 2 after"])
+  expect(Ping("x").read().version == 1)
+  expect(Pong("x").saw == 1)
+}
+
 entity Player(id: String) {
   state name: String = ""
 

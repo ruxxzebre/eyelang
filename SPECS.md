@@ -166,6 +166,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Ending entities | **`end(ok)` in an entity's own method ends it for good**: `ok` must be an `Approval`, the state is removed, and the store keeps only when it ended and whose approval let it. Calling or reading an ended entity faults; its identity never starts again. In an entity's method `end` is the entity's; elsewhere it is a string's end (section 14) | Ending deletes data, so it takes a person's consent that the compiler checks. If a later call started the identity again from its defaults, a job holding an old reference would bring back what a person approved ending, silently. Resolving `end` by context keeps `s.end()` and the spec's `end(ok)` both |
 | Lazy iteration | **`xs.iter()` gives an `Iter(a)`, a value that describes a walk and runs it again each time it is walked.** Lists, sets, maps, `Int` ranges, strings and `Bytes` give one, and `s.chars()` is one; `map`, `filter`, `take`, `drop`, `enumerate`, `zip` and `flatMap` on an `Iter` give an `Iter`, and the other collection functions walk it. Its functions only compute; it has none of the derived traits, so it can't be live across a `!`; and there are no endless sources (section 5) | Walking twice gives the same elements because an `Iter` is a value, not a cursor a first walk would use up, which would be state shared by everyone holding it. Functions without effects make a second walk cost time and nothing else, wherever it happens. Sources that end keep `size`, `toList` and `sort` sure to finish |
 | Division helpers | **`/` and `%` keep their `NonZero` divisor, and `xs.average()`, `a.div(b)` and `a.rem(b)` give an `Option` instead**: `None` for an empty list or a divisor of 0. `average` gives a `Float` for `Int`s too; `div` and `rem` round down as `/` and `%` do (section 10) | Every mean needed `match nonzero(xs \|> size) { … }`, so the obvious code was long. One result type for every list keeps `average` predictable, and a mean of `1` and `2` that is quietly `1` would be the wrong answer made easy; `xs.sum().div(xs.size())` is there for an `Int` mean (decided 2026-10-12) |
+| Calls that come back | **A call tree is one transaction, and an entity has one state in it**: a call that comes back to an entity whose method is still running starts from the tree's changes, the outer method goes on from the call's changes as from a `mut self` call, reads in the tree see the state in progress, and the entity commits once (from 2026-10-12, section 14) | Each call loaded its own copy and the last to finish won, so `A.ping` calling `B.pong` calling `A.bump` lost a write without a word. Refusing re-entry would be simpler, but it rejects programs that "the whole call tree commits together" invites |
 
 ## 3. A tour
 
@@ -1144,6 +1145,52 @@ entity Player(id: PlayerId) {
   An `Err` is a value like any other: a method that returns one commits what it changed. Only a
   fault (section 15), such as `unreachable`, rolls the call tree back, and with it the jobs it
   started and the events it published, which never happen.
+- **A call tree that comes back to an entity shares its state.** The call tree is one
+  transaction, and in it each entity has one state in progress, which every call on the entity
+  reads and changes. A call that comes back to an entity whose method is still running is not a
+  second writer: it starts from what the tree has changed so far, and the entity commits once,
+  with every change.
+
+  ```eye
+  entity Ping(id: String) {
+    state n: Int = 0
+
+    pub fn ping() -> Int {
+      n += 1
+      let before = n   # 1
+      Pong(id).pong()  # comes back to bump, which sees n == 1 and makes it 2
+      n                # 2; before is still 1
+    }
+
+    pub fn bump() { n += 1 }
+  }
+
+  entity Pong(id: String) {
+    pub fn pong() { Ping(id).bump() }
+  }
+  ```
+
+  After `Ping("x").ping()`, `Ping("x").n` is 2, at version 1.
+  - **The outer method goes on from the inner call's changes.** A method's state is its `mut
+    self` (section 7), and a call that may come back to the entity passes it on, the way
+    `unpin(p)` passes it to another method of the entity: the call takes the state as it is and
+    gives it back changed. So after `Pong(id).pong()` returns, `n` in `ping` reads 2. A value
+    read before the call keeps what it read, as values do: `before` stays 1. So does the first
+    `n` in `n = n + c.more()`, when the call `c.more()` comes back and changes `n`: the
+    assignment writes over that change. `n += x` evaluates `x` before it reads `n`, so
+    `n += c.more()` keeps both.
+  - **Reads in the tree see the state in progress.** `Ping(id).n` or `Ping(id).read()` in
+    `pong` gives `ping`'s changes so far, at the version the entity was loaded at; nothing outside
+    the tree sees them until it commits.
+  - **An end in a call that comes back ends the entity for the whole tree.** When `pong` calls a
+    method of `Ping` that runs `end(ok)`, `Ping` ends when the tree commits. Its methods still
+    running, such as `ping`, run to the end, and what they change after the end is dropped with
+    the rest of the state, as in the method that called `end`; a new call on `Ping`, or a read
+    of it, in the same tree faults.
+  - **Jobs and events from every level commit together.** A job started or an event published in
+    any call of the tree, on any entity, starts or is published when the tree commits, in the
+    order the calls made them; a fault anywhere in the tree drops all of them with every
+    entity's changes.
 - **Ending an entity needs an Approval.** `end(ok)` in one of the entity's methods ends it when
   the transaction commits. `ok` is an `Approval`, which only `approval!` makes (section 15), so
   retiring an entity takes a person's consent, and `end` without one doesn't compile. The
@@ -1167,9 +1214,9 @@ entity Player(id: PlayerId) {
   (section 7). A `state` field such as `devices` is short for `self.devices`, and a method is
   called by its name too: `unpin(p)` in another method is `self.unpin(p)`, in the same
   transaction. A pipe still calls a function, never a method: `shapes |> add(s)` is the collection
-  function `add`, even in an entity that has a method of that name. The state is
-  loaded before the call and saved when the transaction commits; nothing outside the method sees a
-  change until the commit.
+  function `add`, even in an entity that has a method of that name. The state is loaded when the
+  transaction first calls the entity and saved when it commits; nothing outside the transaction
+  sees a change until the commit.
   - **A method's closures may read state fields**, unlike a `var` (section 7):
     `players |> filter(fn p: p != owner)`. A closure gets each field's value as it was when the
     closure was made, as it gets a `let`'s, and can't change one: `a closure can't change the
@@ -1183,7 +1230,8 @@ entity Player(id: PlayerId) {
   (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field, a
   `Version` that counts the transactions that changed the entity: 0 when it is new, then one more
   for each. Snapshots go stale, and commands can name the version they were based on (see
-  `@fresh` in section 17). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
+  `@fresh` in section 17). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`;
+  in a transaction that has called `w`, it gives the state in progress.
   Since the snapshot's `version` is the transactions', a state field can't be named `version`:
   `a snapshot's version counts the transactions that changed Doc, so a state field can't be
   named version: name it revision, or what it counts`.

@@ -260,3 +260,180 @@ pub fn main() uses {entity Counter, stdio} {
 		t.Errorf("count, distinct counts seen and version = %s, want 200 200 200", got)
 	}
 }
+
+const reentry = `
+import bus
+
+entity A(id: String) {
+  state n: Int = 0
+  state log: List(String) = []
+
+  ## Counts one, calls B, which comes back to bump, and faults if asked.
+  pub fn ping(fail: Bool) -> Int {
+    n += 1
+    let before = n
+    note.start("ping")
+    bus.pings.publish(1)
+    B(id).pong()
+    log += ["ping saw {before}, then {n}"]
+    if fail { unreachable("ping fails after pong") }
+    n
+  }
+
+  pub fn bump() {
+    n += 1
+    note.start("bump")
+    bus.pings.publish(3)
+  }
+
+  ## Comes back to A from inside a private method.
+  pub fn viaHelper() { helper() }
+
+  fn helper() {
+    n += 10
+    B(id).pong()
+    n += 100
+  }
+
+  pub fn retire(ok: Approval) { end(ok) }
+
+  ## Changes A, has B end it, and changes it again: both changes are
+  ## dropped with the state.
+  pub fn countThenRetired(ok: Approval) {
+    n += 1
+    B(id).retireA(ok)
+    n += 1
+  }
+}
+
+entity B(id: String) {
+  state calls: Int = 0
+  state sawN: Int = 0
+
+  pub fn pong() {
+    calls += 1
+    sawN = A(id).n
+    note.start("pong")
+    bus.pings.publish(2)
+    A(id).bump()
+  }
+
+  pub fn retireA(ok: Approval) {
+    calls += 1
+    A(id).retire(ok)
+  }
+}
+
+entity Notes(id: String) {
+  state from: List(String) = []
+
+  pub fn add(s: String) { from += [s] }
+}
+
+job note(from: String) { Notes("all").add!(from) }
+`
+
+// TestACallTreeThatComesBackSharesItsState runs SPECS.md §14's re-entry
+// rule: A.ping counts one and calls B.pong, which calls A.bump, which
+// counts another. bump starts from what ping changed, ping goes on from
+// what bump changed, and A commits once with both. A fault after the call
+// came back rolls back both changes, B's, and the jobs and events every
+// level started. An end inside the call that came back ends A for the whole
+// transaction.
+func TestACallTreeThatComesBackSharesItsState(t *testing.T) {
+	prog := load(t, reentry, map[string]string{"bus/bus.eye": `
+contract Bus {
+  event pings: Int on "bus.pings"
+}
+`})
+	in := New(prog, &strings.Builder{}, &strings.Builder{})
+	a, b := prog.Root.Entities["A"], prog.Root.Entities["B"]
+	refA, refB := &EntityRef{Entity: a, ID: "x"}, &EntityRef{Entity: b, ID: "x"}
+	field := func(ref *EntityRef, name string) (string, int64) {
+		t.Helper()
+		state, version, _ := in.rt.load(ref, ir.Pos{})
+		v, _ := state.get(name)
+		return show(v), version
+	}
+	notes := func() string {
+		state, _, _ := in.rt.load(&EntityRef{Entity: prog.Root.Entities["Notes"], ID: "all"}, ir.Pos{})
+		v, _ := state.get("from")
+		return show(v)
+	}
+	pings := func() string {
+		var got []string
+		for _, e := range in.rt.events {
+			if e.name == "bus.pings" {
+				got = append(got, show(in.decode(e.data, ir.Pos{})))
+			}
+		}
+		return strings.Join(got, " ")
+	}
+
+	got := in.rt.callEntity(refA, a.Methods["ping"], []argVal{{v: false}}, ir.Pos{})
+	if got != int64(2) {
+		t.Errorf("ping returned %s, want 2: it goes on from bump's change", show(got))
+	}
+	if n, version := field(refA, "n"); n != "2" || version != 1 {
+		t.Errorf("A has n = %s at version %d, want 2 at version 1: both changes, one commit", n, version)
+	}
+	if log, _ := field(refA, "log"); log != `["ping saw 1, then 2"]` {
+		t.Errorf("A's log is %s", log)
+	}
+	if calls, version := field(refB, "calls"); calls != "1" || version != 1 {
+		t.Errorf("B has calls = %s at version %d, want 1 at version 1", calls, version)
+	}
+	if saw, _ := field(refB, "sawN"); saw != "1" {
+		t.Errorf("B read A's n as %s, want 1, the count ping had made so far", saw)
+	}
+	in.rt.advance(ir.Duration(time.Hour))
+	if got := notes(); got != `["ping", "pong", "bump"]` {
+		t.Errorf("the jobs the call tree started ran as %s, want ping, pong and bump", got)
+	}
+	if got := pings(); got != "1 2 3" {
+		t.Errorf("the call tree published %q, want one ping from each level", got)
+	}
+
+	// A fault after the call came back rolls back every level.
+	msg := faultOf(func() {
+		in.rt.callEntity(refA, a.Methods["ping"], []argVal{{v: true}}, ir.Pos{})
+	})
+	if !strings.Contains(msg, "ping fails after pong") {
+		t.Fatalf("the failing ping gave %q", msg)
+	}
+	if in.rt.tx != nil {
+		t.Error("the transaction is still open after the fault")
+	}
+	in.rt.advance(ir.Duration(time.Hour))
+	if n, version := field(refA, "n"); n != "2" || version != 1 {
+		t.Errorf("after the fault A has n = %s at version %d, want 2 at version 1", n, version)
+	}
+	if calls, _ := field(refB, "calls"); calls != "1" {
+		t.Errorf("after the fault B has calls = %s, want 1", calls)
+	}
+	if got := notes(); got != `["ping", "pong", "bump"]` {
+		t.Errorf("after the fault the jobs ran as %s: a job the rolled-back tree started ran", got)
+	}
+	if got := pings(); got != "1 2 3" {
+		t.Errorf("after the fault the pings are %q: the rolled-back tree published some", got)
+	}
+
+	// From a private method: the outer call goes on from the inner one's
+	// change there too.
+	in.rt.callEntity(refA, a.Methods["viaHelper"], nil, ir.Pos{})
+	if n, _ := field(refA, "n"); n != "113" {
+		t.Errorf("after viaHelper A has n = %s, want 2 + 10 + 1 + 100 = 113", n)
+	}
+
+	// B ends A inside a call that came back to it: A ends when the
+	// transaction commits, what A's methods change after the end is
+	// dropped, and B's change commits.
+	ok := &ApprovalVal{What: "Retire x?", By: "operator"}
+	in.rt.callEntity(refA, a.Methods["countThenRetired"], []argVal{{v: ok}}, ir.Pos{})
+	if row, saved := in.rt.store.Load(entityKey(refA)); !saved || !row.Ended {
+		t.Errorf("A wasn't ended: saved %v, %q", saved, row.State)
+	}
+	if calls, _ := field(refB, "calls"); calls != "3" {
+		t.Errorf("B has calls = %s, want 3: its change commits with the end", calls)
+	}
+}

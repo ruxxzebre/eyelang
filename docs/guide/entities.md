@@ -75,6 +75,12 @@ change after, as `spend` does: it returns `Short` before it touches `cents`, and
 `spend` before `topUp`.
 :::
 
+A call can also come back to an entity whose method is still running: the ledger's `move` calls a
+wallet, and the wallet calls the ledger. That is still one transaction, and the ledger has one
+state in it. The call that comes back starts from what `move` has changed so far, `move` goes on
+from what that call changed, and the ledger commits once with both. A value `move` read before the
+call, such as `let before = moves`, keeps what it read.
+
 ### Methods never wait
 
 A method holds its entity while it runs, so it can't pause. It can't sleep, wait for an event or
