@@ -49,16 +49,18 @@ yet.
 
 **Ahead, in order**
 
-1. The core gaps (G.1 to G.17, under the phases). Done: G.1 to G.11 and G.16, among them the
+1. The core gaps (G.1 to G.19, under the phases). Done: G.1 to G.11 and G.16, among them the
    four correctness bugs the spec review of 2026-10-12 found
    ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)): entity methods
    stay inside the program (G.7), jobs read entities only in recorded steps (G.8), re-entrant
    entity calls share one state (G.9), and effects show at the boundary (G.10). Left: the
    owner's decisions of 2026-10-12 (results must be used, G.12; a callback may read a `var`,
    G.13; a lambda's record literal typed from context, G.14; any function callable as a method,
-   G.15) and a checker bug (G.17).
-2. Runtime at scale (R.1 to R.7, under the phases): the six slowdowns the performance analysis
-   of 2026-10-12 measured, and waiting runs' records leaving RAM. Before 7.5.
+   G.15), a checker bug (G.17), and two bugs the ergonomics analysis found: `eye doc` deletes an
+   existing `./api` (G.18, fix soon) and a test can't read a run's result (G.19).
+2. Runtime at scale (R.1 to R.7, under the phases): R.1 to R.4 are done (the exhaustiveness
+   check, waking runs, map updates and entity writes, string `+=`); left are the journal (R.5),
+   the call path (R.6) and waiting runs' records leaving RAM (R.7). Before 7.5.
 3. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
@@ -517,8 +519,11 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.15 Any function can be called as a method on its first argument | [#98](https://github.com/ruxxzebre/eyelang/issues/98) |
 | G.16 `average` and `div`, so `NonZero` division rarely needs a `match` (done) | [#99](https://github.com/ruxxzebre/eyelang/issues/99) |
 | G.17 `?` on an `Option` outside a function that returns an `Option` is an error | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |
+| G.18 `eye doc` never deletes a folder it didn't write | [#108](https://github.com/ruxxzebre/eyelang/issues/108) |
+| G.19 A test can read a run's result; `run.join()` doesn't fail at run time after checking | [#109](https://github.com/ruxxzebre/eyelang/issues/109) |
 
-G.7 to G.16 come from the spec review of 2026-10-12 (docs/internals/reviews). Each issue says
+G.7 to G.16 come from the spec review of 2026-10-12, and G.18 and G.19 from the ergonomics
+analysis of the same day (docs/internals/reviews). Each issue says
 what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
 self-hosted lexer; G.1 before 7.4 too.
 
