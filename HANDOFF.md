@@ -4,8 +4,11 @@ What `task next` and ROADMAP.md's "What's next" can't hold: the state of the hom
 findings that have no issue yet. Delete an item once it is done or moved to an issue, and the
 file once nothing is left.
 
-Nothing is in flight: every branch of 2026-10-11 and 2026-10-12 is merged into `dev`, no
-worktree is left, and nobody holds a claim.
+In flight on 2026-10-12, each in a worktree of the coordinating session, to be merged into `dev`
+by it: 7.14 (#118, cheap native fixes), 7.8 (#111, native code checked against the interpreter at
+both levels) and G.20 (#119, the lexer's five language changes). If they are merged, `git
+worktree list` shows nothing under `.claude/worktrees` and ROADMAP marks them done. If one is
+still open with no worktree, it was never merged: start it again from its issue.
 
 ## Pick up first
 
@@ -16,6 +19,59 @@ worktree is left, and nobody holds a claim.
    3`, or the GitHub Actions list for `ci.yml`). A local `task check` isn't enough: CI runs the
    Docker tests (`EYE_TEST_DOCKER=1`) and the VS Code window test, which a laptop or a cloud
    session usually doesn't.
+
+## Native compilation: what comes next, in order
+
+The plan the owner accepted on 2026-10-12 is in
+[docs/internals/reviews/benchmarks-review-2026-10-12.md](docs/internals/reviews/benchmarks-review-2026-10-12.md)
+(read it first) and [native-plan-2026-10-12.md](docs/internals/reviews/native-plan-2026-10-12.md)
+(the measurements behind it). Each task below has an issue with its done-when, and a bullet in
+ROADMAP.md's phase 7. Take them in this order; a fresh session can start at the first one not
+marked done.
+
+1. **7.13 (#117) values laid out by type, with 7.5 (#78) reference counting in the low IR.** The
+   big step. The C back end today makes every value one word and everything but small numbers a
+   heap object; the low IR is monomorphic, so it can lay values out by type instead: field-less
+   enums as integers, small records as C structs, `Option` without a box, lists of fixed-size
+   values as arrays, slices that share storage. 7.5 then moves `dup`/`drop` into the low IR, drops
+   a value after its last use, infers borrowed parameters and updates in place whenever a value is
+   unique. Do the layout first or in the same piece of work: which values are counted depends on
+   it. Needs 7.14 merged (it changes the same files).
+2. **7.9 (#112) core gaps in C:** time methods, `toJson`, the `Schema`/`Save` derivations,
+   `random.*`, `http.get`. What the lab needs beyond entities and jobs.
+3. **7.10 (#113) crossings:** the interpreter counts the operations that would cross between
+   compiled code and the Go runner; record a digest morning's counts under 7.6.
+4. **7.6 (#79) the runner hosts compiled programs, with B′ hosting** (decided): the Go runner is
+   the program's `main`, `eye build` links the program's C into it through cgo with the pinned
+   zig as C compiler and a pinned Go toolchain fetched like zig. One static binary. Done when the
+   morning digest runs as a native job on the journal and on Postgres, with idle memory and
+   resume time recorded beside the interpreter's. **This is v0.4's exit test.**
+5. **7.11 (#114) faster than Go:** the owner's bar, per benchmark, tracked throughout by
+   `go run ./tools/bench --check`; closed when native code beats Go on time on every benchmark and
+   on memory for every program without entities or jobs.
+6. **7.12 (#115) reuse and fault regions:** a `match` arm reuses the matched cell; a failing test
+   frees what it allocated.
+7. **After v0.4: S.2 (#116) the runner in Eyelang,** so a job program has no Go in it and can beat
+   Go on memory.
+
+Rules for every native task: run `go run ./tools/bench --check` before and after (it fails when a
+ratio to Go gets worse), record gains with `go run ./tools/bench --write` on a quiet machine,
+keep `go test ./cgen`'s cross-check against the interpreter green, and update the benchmark
+review's numbers when they change a conclusion.
+
+Outside the compiler, and not for this repository alone:
+- **The digest in the homelab** (below): read its runs, fix what they show, move its pin.
+- **Phase 6's exit test:** 6.6 (Notify in the homelab repository) and 6.8 (sessions with real
+  coding agents).
+
+Waiting on the owner:
+- **The package manager's first step (P0)**, recommended in
+  [performance-and-packages-2026-10-12.md](docs/internals/reviews/performance-and-packages-2026-10-12.md),
+  section 2.4: `[dependencies]` in `eye.toml` with `path` and `git` sources, `eye.lock` with
+  content hashes, a cache and `eye vendor`. No task until the owner says go.
+- **Open question 41:** runs pinned to the code they started on.
+- Whether pipelines over entity sets officially run in memory until several runners share a
+  database (ROADMAP, "Owed by releases already made").
 
 ## The digest in the homelab
 
@@ -80,10 +136,6 @@ Runtime and tools:
 - `http.get` and `ai.generate` should retry an unreachable service the way contract calls do
   (see the risk above).
 - `ai.generate` has no `reasoning_effort` parameter; the TypeScript digest sends "medium".
-- Replacing a key's value in a map (`m |> insert(k, f(m[k]))`, counting words) still copies the
-  map, so a loop that updates one map is quadratic. Adding a set's element or a map's new key
-  doesn't: they share a `shelf` the way lists share a buffer (`interp/value.go`). String building
-  is most of what is left of `plain()`'s 0.47 s.
 - A faulted run stays failed, and nothing restarts it (docs/guide/running.md, "Not yet"). It
   needs a command, such as `eye runs --retry ID`, and a decision first: whether the retried run
   replays the steps it recorded before the fault.

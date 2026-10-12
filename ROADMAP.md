@@ -24,8 +24,8 @@ changes it, and set the date below when you check it; `task next -- --check`, pa
 
 Checked: 2026-10-12
 
-Start with [HANDOFF.md](HANDOFF.md): the digest in the homelab, and findings that have no issue
-yet.
+Start with [HANDOFF.md](HANDOFF.md): the native compiler's next tasks in order (for a fresh
+session), the digest in the homelab, and findings that have no issue yet.
 
 **Owed by releases already made**
 
