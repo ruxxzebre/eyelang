@@ -127,11 +127,15 @@ private function here, and it can't change a wallet because it never gets one.
 
 In a [job](/guide/jobs-and-waiting), `read!()` takes a snapshot as a durable step. A snapshot goes
 stale as soon as the next transaction commits, so a job that waits reads the entity again after
-the wait instead of trusting what it read before.
+the wait instead of trusting what it read before. Outside jobs, `w.cents` is short for
+`w.read().cents`; in a job it is an error, since a resumed run would read the wallet again and
+could see another value: read a snapshot with `w.read!()` and take the field from it.
 
 `Wallet.all` is every wallet, as a collection of snapshots, so the usual pipes work on it:
 
 <<< ./code/entities/main.eye#all
+
+A job reads it as a step, `Wallet.all.read!()`, which records the list.
 
 ## Starting a job from a method
 

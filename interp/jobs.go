@@ -108,6 +108,16 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		v, _ := in.apply(callee, args, c.Pos)
 		return in.record(run, v, c.Pos)
 	case *ir.MethodCall:
+		if c.Name == "read" && entitySet(c.Recv) {
+			// A view or E.all read as a step: a resumed run gets the
+			// snapshots the first read saw.
+			name := "read " + c.Recv.Position().Text()
+			if v, ok := in.replay(run, name, w.Pos); ok {
+				return v
+			}
+			in.call = name
+			return in.record(run, in.snapshots(in.eval(f, c.Recv), c.Pos), c.Pos)
+		}
 		recv := in.eval(f, c.Recv)
 		args := in.evalArgs(f, c.Args)
 		if r, ok := recv.(*RunVal); ok && c.Name == "join" {

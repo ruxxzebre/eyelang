@@ -95,7 +95,7 @@ job command(update: telegram.Update) {
 fn written(day: Date, refresh: Bool) -> Result(Article, DigestError) =
   match Day(day).read!().article {
     Some(article) if !refresh => Ok(article)
-    _ => match write.start(day).join!() {
+    _ => match write.start!(day).join!() {
       Completed(result) => result
       Failed(fault) => Err(Faulted(fault))
     }

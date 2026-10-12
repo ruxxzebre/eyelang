@@ -124,6 +124,11 @@ type fnCheck struct {
 	top     *fnCheck // the outermost function, for effects and pending checks
 	waiting ir.Expr  // the call the innermost `!` marks
 	calling ir.Expr  // the callee of the call being checked
+	reading ir.Expr  // the view or E.all whose read() is being checked
+	// durable says where the body runs in a run, which records its steps:
+	// "in a job" or "in a waiting function", and "" elsewhere. It is set
+	// on the outermost function.
+	durable string
 	callAt  *ir.Pos  // where to report an operator of this generic body, for one call
 	records []pendingRecord
 	matches []pendingMatch
@@ -355,6 +360,14 @@ func (c *checker) checkBody(b body) {
 func (c *checker) newFnCheck(fn *ir.Func, kind fnKind, outer *fnCheck) *fnCheck {
 	x := &fnCheck{c: c, fn: fn, kind: kind, slots: make([]typ, fn.Slots), env: typeEnv{}, outer: outer}
 	x.top = x
+	switch {
+	case kind == kindJob:
+		x.durable = "in a job"
+	case kind == kindPlain && hasSteps(fn) && (fn.Module == nil || fn.Module.Main != fn):
+		// A waiting function runs only in a run, which replays its steps,
+		// so it follows a job's rules (SPECS.md §12).
+		x.durable = "in a waiting function"
+	}
 	if outer != nil {
 		x.top = outer.top
 		x.ret = outer.ret
@@ -669,7 +682,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.waiting = e.Call
 		t := x.check(e.Call, want)
 		x.waiting = prev
-		if x.top.kind == kindJob && x.kind != kindLambda {
+		if x.top.durable != "" && x.kind != kindLambda {
 			c.ts.steps = append(c.ts.steps, stepResult{job: x.top.fn, w: e, t: t})
 		}
 		return t
@@ -977,6 +990,8 @@ func (x *fnCheck) ref(e *ir.Ref) typ {
 		return &tjob{job: d}
 	case *ir.View:
 		if d.Entity != nil {
+			x.effect("entity " + d.Entity.Name)
+			x.unrecordedSet(e, d.Name)
 			return con("List", &tcon{name: d.Entity.Name, entity: d.Entity})
 		}
 		return c.unknownf(e.Pos, "internal error: view %s has no entity", d.Name)
@@ -1459,6 +1474,21 @@ func (x *fnCheck) endEntity(e *ir.MethodCall) typ {
 // methodCall checks `recv.name(args)`.
 func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	c := x.c
+	if e.Name == "read" && entitySet(e.Recv) {
+		// idleWorlds.read() and World.all.read() give the snapshots, and
+		// in a job are a recorded step (SPECS.md §15).
+		prev := x.reading
+		x.reading = e.Recv
+		t := x.check(e.Recv, nil)
+		x.reading = prev
+		c.useName(e, method("read"))
+		x.stepCall(e, "reading "+e.Recv.Position().Text())
+		if len(e.Args) > 0 {
+			x.inferArgs(e.Args)
+			c.typeErrorf(e.Pos, "read takes no arguments")
+		}
+		return t
+	}
 	recv := x.check(e.Recv, nil)
 	if _, isSelf := e.Recv.(*ir.Self); isSelf && x.entity != nil {
 		if m, ok := x.entity.Methods[e.Name]; ok {
@@ -1718,11 +1748,12 @@ func (x *fnCheck) entityCall(e *ir.MethodCall) {
 	x.stepCall(e, "an entity call")
 }
 
-// stepCall reports a recorded step in a job written without `!`: an entity
-// call, publishing an event or starting a child run (SPECS.md §12).
+// stepCall reports a recorded step in a job or a waiting function written
+// without `!`: an entity call, publishing an event, starting a child run or
+// reading a view (SPECS.md §12).
 func (x *fnCheck) stepCall(e *ir.MethodCall, what string) {
-	if x.top.kind == kindJob && x.kind != kindLambda && x.waiting != ir.Expr(e) {
-		x.c.typeErrorf(e.Pos, "in a job, %s is a durable step: write %s!(…)", what, e.Name)
+	if x.top.durable != "" && x.kind != kindLambda && x.waiting != ir.Expr(e) {
+		x.c.typeErrorf(e.Pos, "%s, %s is a durable step: write %s!(…)", x.top.durable, what, e.Name)
 	}
 }
 
@@ -1756,7 +1787,7 @@ func (x *fnCheck) start(job *ir.Job, e *ir.MethodCall) typ {
 		keyed = keyed || a.Name == "key"
 	}
 	switch main := x.top.fn; {
-	case keyed || x.top.kind == kindJob:
+	case keyed || x.top.durable != "":
 	case main.Module != nil && main.Module.Main == main && x.top.kind == kindPlain:
 		x.c.typeErrorf(e.Pos, "eye run runs main every time it starts, so this would start %s again after each restart; give the run a key, which starts it once: %s.start(…, key: \"…\")", job.Name, job.Name)
 	default:
@@ -1802,12 +1833,18 @@ func (x *fnCheck) field(e *ir.Field) typ {
 		if e.Name == "all" {
 			c.useName(e, GoText{File: "check/infer.go", Text: `e.Name == "all"`})
 			x.effect("entity " + r.e.Name)
+			x.unrecordedSet(e, r.e.Name+".all")
 			return con("List", &tcon{name: r.e.Name, entity: r.e})
 		}
 	case *tcon:
 		if r.name == "Ref" && r.decl == nil && len(r.args) == 1 {
-			if s, ok := prune(r.args[0]).(*tcon); ok && s.entity != nil && e.Name != "id" {
+			if s, ok := prune(r.args[0]).(*tcon); ok && s.entity != nil && !isIdentity(s.entity, e.Name) {
 				x.effect("entity " + s.entity.Name)
+				if x.top.durable != "" {
+					// Outside jobs ref.field is short for ref.read().field.
+					ref := e.Value.Position().Text()
+					c.typeErrorf(e.Pos, "%s, %s reads %s without recording it, so a resumed run could see another value: read a snapshot with %s.read!() and take %s from it", x.top.durable, e.Pos.Text(), s.entity.Name, ref, e.Name)
+				}
 			}
 		}
 		if d, ok := c.opaqueTo(x.top.fn.Module, r); ok {
@@ -1832,6 +1869,37 @@ func (x *fnCheck) field(e *ir.Field) typ {
 		}
 	}
 	return c.unknownf(e.Pos, "%s has no field %s", show(defaultLiteral(recv)), e.Name)
+}
+
+// isIdentity reports whether name is an entity's identity field, which a
+// Ref reads without loading the entity (SPECS.md §14).
+func isIdentity(e *ir.Entity, name string) bool {
+	return name == "id" || e.ID != nil && e.ID.Name == name
+}
+
+// unrecordedSet reports a view or E.all read in a job or a waiting function
+// other than with read!(): a resumed run would read it again and could see
+// other entities (SPECS.md §15).
+func (x *fnCheck) unrecordedSet(e ir.Expr, name string) {
+	if x.top.durable != "" && x.reading != e {
+		x.c.typeErrorf(e.Position(), "%s, reading %s isn't recorded, so a resumed run could see other entities: read it with %s.read!(), a recorded step that gives a list of snapshots", x.top.durable, name, name)
+	}
+}
+
+// entitySet reports whether e is a view or E.all, whose read() gives its
+// snapshots.
+func entitySet(e ir.Expr) bool {
+	switch e := e.(type) {
+	case *ir.Ref:
+		_, ok := e.Decl.(*ir.View)
+		return ok
+	case *ir.Field:
+		if r, ok := e.Value.(*ir.Ref); ok {
+			_, isEntity := r.Decl.(*ir.Entity)
+			return isEntity && e.Name == "all"
+		}
+	}
+	return false
 }
 
 func (x *fnCheck) index(e *ir.Index) typ {

@@ -722,6 +722,9 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 		return in.evalCall(f, fc.Call) // a field that holds a function
 	}
 	recv := in.eval(f, m.Recv)
+	if m.Name == "read" && entitySet(m.Recv) {
+		return in.snapshots(recv, m.Pos)
+	}
 	args := in.evalArgs(f, m.Args)
 	if b, ok := m.Target.(ir.Builtin); ok && fixedMethods[b.Name] {
 		return in.fixedCall(b.Name, m.Recv.Ty(), append([]argVal{{v: recv}}, args...), m.Pos)
@@ -747,6 +750,31 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 		in.writePlace(f, *m.RecvPlace, newRecv)
 	}
 	return result
+}
+
+// entitySet reports whether e is a view or E.all, whose read() gives its
+// snapshots (SPECS.md §15).
+func entitySet(e ir.Expr) bool {
+	switch e := e.(type) {
+	case *ir.Ref:
+		_, ok := e.Decl.(*ir.View)
+		return ok
+	case *ir.Field:
+		if r, ok := e.Value.(*ir.Ref); ok {
+			_, isEntity := r.Decl.(*ir.Entity)
+			return isEntity && e.Name == "all"
+		}
+	}
+	return false
+}
+
+// snapshots is what read() on a view or E.all gives: the list of its
+// entities' snapshots, as they are now.
+func (in *Interp) snapshots(set Value, at ir.Pos) Value {
+	if s, ok := set.(*EntitySet); ok {
+		return in.rt.all(s.Entity, at)
+	}
+	return set // a view is its list already
 }
 
 // method calls a method on a value. durable is set for a waiting call in a

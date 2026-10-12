@@ -485,7 +485,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.5 A type alias that names itself is an error, with a hint for a one-variant type (done) | [#88](https://github.com/ruxxzebre/eyelang/issues/88) |
 | G.6 `impl Trait` for an entity or `Ref(Entity)` is refused, not ignored (done) | [#89](https://github.com/ruxxzebre/eyelang/issues/89) |
 | G.7 Entity methods and served operations can't reach outside the program (done) | [#90](https://github.com/ruxxzebre/eyelang/issues/90) |
-| G.8 A job reads entities and views only through recorded steps | [#91](https://github.com/ruxxzebre/eyelang/issues/91) |
+| G.8 A job reads entities and views only through recorded steps (done) | [#91](https://github.com/ruxxzebre/eyelang/issues/91) |
 | G.9 A call tree that comes back to an entity shares its transaction's state (done) | [#92](https://github.com/ruxxzebre/eyelang/issues/92) |
 | G.10 Effects at the boundary: entity methods, jobs, starting jobs, and calls that wait (done) | [#93](https://github.com/ruxxzebre/eyelang/issues/93) |
 | G.11 One sweep of SPECS.md: stale text, unrecorded rules, contradictions, open questions, glossary (done) | [#94](https://github.com/ruxxzebre/eyelang/issues/94) |

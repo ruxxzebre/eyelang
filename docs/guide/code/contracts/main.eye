@@ -78,7 +78,7 @@ fn receipt(id: InvoiceId, phone: String, text: String) {
 ## @key is the charge, so a refund delivered twice runs this once.
 @on(event(payments.refunded))
 job refunded(r: payments.Refunded) {
-  let paid = Invoice.all |> find(fn i: i.status == Paid(charge: r.charge))
+  let paid = Invoice.all.read!() |> find(fn i: i.status == Paid(charge: r.charge))
   let Some(invoice) = paid else { return }
   Invoice(invoice.id).refund!(r.amountCents)
 }

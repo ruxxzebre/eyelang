@@ -947,6 +947,41 @@ pub fn main() uses {wait} {
 			"21:3: helper has durable steps, which only a job records, so a test can't call it: start a job that calls it, then advance(…) the clock",
 			"27:3: helper has durable steps, which only a job records, so main can't call it: start a job that does",
 		}},
+		{"a job reads entities and views only through recorded steps", `entity World(name: String) {
+  state phase: Int = 0
+  pub fn bump() { phase += 1 }
+}
+view busy = World.all |> filter(fn w: w.phase > 0)
+fn phaseOf(w: Ref(World)) -> Int = w.phase
+job j(w: Ref(World)) {
+  let a = w.phase
+  let b = w.name
+  let c = busy |> size
+  let d = World.all |> size
+  let e = w.read!().phase
+  let f = busy.read!() |> size
+  let g = World.all.read!() |> size
+  let h = busy.read()
+  let i = [w] |> map(fn r: r.phase)
+  let k = phaseOf(w)
+}
+fn outside(w: Ref(World)) -> Int = w.phase + (busy |> size) + (busy.read() |> size) + (World.all.read() |> size)
+test "t" { expect(World("a").phase == 0) }
+fn look(w: Ref(World)) -> Int {
+  sleep!(1 min)
+  w.bump()
+  w.phase + (busy |> size)
+}`, []string{
+			"8:11: in a job, w.phase reads World without recording it, so a resumed run could see another value: read a snapshot with w.read!() and take phase from it",
+			"10:11: in a job, reading busy isn't recorded, so a resumed run could see other entities: read it with busy.read!(), a recorded step that gives a list of snapshots",
+			"11:11: in a job, reading World.all isn't recorded, so a resumed run could see other entities: read it with World.all.read!(), a recorded step that gives a list of snapshots",
+			"15:11: in a job, reading busy is a durable step: write read!(…)",
+			"16:28: in a job, r.phase reads World without recording it",
+			"17:11: in a job, phaseOf uses entity World, so calling it is a durable step: write phaseOf!(…)",
+			"23:3: in a waiting function, an entity call is a durable step: write bump!(…)",
+			"24:3: in a waiting function, w.phase reads World without recording it",
+			"24:14: in a waiting function, reading busy isn't recorded",
+		}},
 		{"a trigger names a contract's event", `import svc
 @on(event(svc.missing))
 job j(p: svc.Ping) {}`, []string{"2:11: event(…) takes a contract's event, such as telegram.updates"}},

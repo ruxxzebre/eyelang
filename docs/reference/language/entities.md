@@ -134,6 +134,13 @@ entity Player(id: PlayerId) {
   Since the snapshot's `version` is the transactions', a state field can't be named `version`:
   `a snapshot's version counts the transactions that changed Doc, so a state field can't be
   named version: name it revision, or what it counts`.
+  - **A field of a reference.** Outside jobs, `w.phase` is short for `w.read().phase`. In a job,
+    and in a waiting function, it would read the entity without recording it, so a resumed run
+    could see another value; it is an error that says to read a snapshot: `in a job, w.phase reads
+    World without recording it, so a resumed run could see another value: read a snapshot with
+    w.read!() and take phase from it`. The identity, `w.id`, reads without loading the entity,
+    so it is allowed everywhere. A job reads views and `World.all` with `read!()` too
+    ([section 15](/reference/language/jobs-and-waiting)).
 - **Evolution:** `@version(N)` numbers the shape of an entity's stored state (1 without it), and
   every row records the version it was saved with; it isn't the snapshot's `version`, which counts
   transactions.

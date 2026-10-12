@@ -51,6 +51,15 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   rest.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a `!` is a compile error.
+- **A job reads stored state only in steps.** A resumed run must see what it saw, so every read
+  of entities in a job is a recorded step: `w.read!()` gives one entity's snapshot, and
+  `idleWorlds.read!()` a view's snapshots, as a list, as `World.all.read!()` gives every
+  `World`'s. The run records the list, and a replay returns it, even when the entities have
+  changed since. A view, `World.all` or a state field read any other way in a job is an error
+  that names the step to write: `in a job, reading idleWorlds isn't recorded, so a resumed run
+  could see other entities: read it with idleWorlds.read!(), a recorded step that gives a list
+  of snapshots`. A waiting function follows the same rule, since it runs in the job's run.
+  Outside jobs a view and `World.all` are those lists already, and `read()` gives the same.
 - **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction that
   records the step in the run, so they happen exactly once.
 - **Where runs live.** Entities, runs and checkpoints are kept by a store, chosen when the program is

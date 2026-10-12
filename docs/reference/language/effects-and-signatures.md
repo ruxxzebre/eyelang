@@ -95,7 +95,8 @@ recorded, so a resumed run never repeats it and sees the same values. The steps 
   holds for a function of the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without
   `!` is an error, `in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)`;
 - entity calls (`w.read!()`, `w.markAsleep!()`), each committed in the same transaction as its
-  checkpoint ([section 15](/reference/language/jobs-and-waiting));
+  checkpoint ([section 15](/reference/language/jobs-and-waiting)), and reading a view or every entity of a type, `idleWorlds.read!()`
+  and `World.all.read!()`;
 - publishing an event, `bus.pinged.publish!({ n: 1 })`, which is sent when the step commits;
 - starting a child run, `digest.start!(day)`, so a resumed run doesn't start it again.
 
@@ -110,7 +111,10 @@ people watching a run, not part of what the run computes.
 **Waiting functions.** A function whose body has `!` steps, such as `summarise` above, is a
 *waiting function*. It has `wait` in its effects, and a job calls it with `!`: its steps are
 recorded as the job's own, and replayed with them ([section 15](/reference/language/jobs-and-waiting)). A waiting function writes every
-wait with `!`, and calls another waiting function with `!` too. Only a run records steps, so
+wait with `!`, and calls another waiting function with `!` too; as in a job, an entity call,
+publishing, starting a child run and reading entities or views are `!` steps in it, and an error
+without one (`in a waiting function, an entity call is a durable step: write bump!(…)`). Only a
+run records steps, so
 neither `main` nor a test can call a waiting function, with `!` or without: `summarise has
 durable steps, which only a job records, so main can't call it: start a job that does`.
 

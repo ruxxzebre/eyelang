@@ -95,7 +95,7 @@ test "nobody acknowledges, so the lead hears about it" {
 ## On weekday mornings, a summary of the disks that are nearly full.
 @on(weekdays(08:30, in: dublin))
 job morning(day: Date) {
-  let hosts = Disk.all |> filter(full) |> map(fn d: d.host)
+  let hosts = nearlyFull.read!() |> map(fn d: d.host)
   if hosts == [] { return }
   Pager("team").add!("{day.format("%A")}: {hosts |> join(", ")} nearly full")
 }

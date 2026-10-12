@@ -130,6 +130,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts. Each attribute is declared with where it goes and what it takes, and the checker holds every use to that: `@concurency isn't an attribute; did you mean @concurrency?` | One general mechanism instead of special syntax per feature, and a program can't say "one at a time" and quietly get five. From the lab: a misspelt attribute was ignored, and `@concurrency(1)` wasn't enforced |
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Effects at the boundary | **Public entity methods and public jobs state their effects as public functions do, and starting a job is an effect, `start J`.** The key rule for `main` follows calls through it: a function or method `main` calls that starts a job without a key is refused. `eye fmt` writes the clauses (section 12) | A method that starts a job, or a job that reads files, does as much as a function that does, and a reviewer needs to see it in the same place. Starting a job is a change to the outside of the call: in a job a function that starts one is a recorded step, and a helper could otherwise hide from `main`'s key rule a start that repeats on every restart. From the spec review of 2026-10-12 |
+| Reading entities in jobs | **A job reads stored state only in recorded steps**: `w.read!()`, and `idleWorlds.read!()` or `World.all.read!()`, which give a list of snapshots. In a job or a waiting function, `w.phase`, a view and `World.all` read any other way are errors that name the step; outside jobs `w.phase` is short for `w.read().phase`, and a reference's identity reads anywhere (sections 14 and 15) | A resumed run must see the values it saw, and an unrecorded read in a replayed statement sees the entity as it is now. Making the reads errors, rather than quietly recording them, keeps every step visible as a `!`. From the spec review of 2026-10-12: a job read `w.phase`, slept, and recorded a value the test had changed meanwhile |
 | Waiting functions | **A function whose body has `!` steps is a waiting function**: it has `wait` in its effects, and jobs and other waiting functions call it with `!`, but `main` and tests can't. **Outside a job a wait blocks**: `sleep(1 s)` in `main` holds it, and the call keeps `wait` in the caller's effects; a job can't call a function that waits that way (section 12) | Every wait in a run is a recorded step, so a job can't block on a sleep a helper hides. Outside jobs blocking is what a script expects, and `wait` in a signature shows that a call can hold its caller up. From the spec review of 2026-10-12: `pub fn pause() { sleep(1 s) }` passed as pure |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps, and is used only in jobs and in the waiting functions they call. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
@@ -969,7 +970,8 @@ recorded, so a resumed run never repeats it and sees the same values. The steps 
   holds for a function of the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without
   `!` is an error, `in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)`;
 - entity calls (`w.read!()`, `w.markAsleep!()`), each committed in the same transaction as its
-  checkpoint (section 15);
+  checkpoint (section 15), and reading a view or every entity of a type, `idleWorlds.read!()`
+  and `World.all.read!()`;
 - publishing an event, `bus.pinged.publish!({ n: 1 })`, which is sent when the step commits;
 - starting a child run, `digest.start!(day)`, so a resumed run doesn't start it again.
 
@@ -984,7 +986,10 @@ people watching a run, not part of what the run computes.
 **Waiting functions.** A function whose body has `!` steps, such as `summarise` above, is a
 *waiting function*. It has `wait` in its effects, and a job calls it with `!`: its steps are
 recorded as the job's own, and replayed with them (section 15). A waiting function writes every
-wait with `!`, and calls another waiting function with `!` too. Only a run records steps, so
+wait with `!`, and calls another waiting function with `!` too; as in a job, an entity call,
+publishing, starting a child run and reading entities or views are `!` steps in it, and an error
+without one (`in a waiting function, an entity call is a durable step: write bump!(…)`). Only a
+run records steps, so
 neither `main` nor a test can call a waiting function, with `!` or without: `summarise has
 durable steps, which only a job records, so main can't call it: start a job that does`.
 
@@ -1281,6 +1286,13 @@ entity Player(id: PlayerId) {
   Since the snapshot's `version` is the transactions', a state field can't be named `version`:
   `a snapshot's version counts the transactions that changed Doc, so a state field can't be
   named version: name it revision, or what it counts`.
+  - **A field of a reference.** Outside jobs, `w.phase` is short for `w.read().phase`. In a job,
+    and in a waiting function, it would read the entity without recording it, so a resumed run
+    could see another value; it is an error that says to read a snapshot: `in a job, w.phase reads
+    World without recording it, so a resumed run could see another value: read a snapshot with
+    w.read!() and take phase from it`. The identity, `w.id`, reads without loading the entity,
+    so it is allowed everywhere. A job reads views and `World.all` with `read!()` too
+    (section 15).
 - **Evolution:** `@version(N)` numbers the shape of an entity's stored state (1 without it), and
   every row records the version it was saved with; it isn't the snapshot's `version`, which counts
   transactions.
@@ -1347,6 +1359,15 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   rest.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
   file handle or `Secret` across a `!` is a compile error.
+- **A job reads stored state only in steps.** A resumed run must see what it saw, so every read
+  of entities in a job is a recorded step: `w.read!()` gives one entity's snapshot, and
+  `idleWorlds.read!()` a view's snapshots, as a list, as `World.all.read!()` gives every
+  `World`'s. The run records the list, and a replay returns it, even when the entities have
+  changed since. A view, `World.all` or a state field read any other way in a job is an error
+  that names the step to write: `in a job, reading idleWorlds isn't recorded, so a resumed run
+  could see other entities: read it with idleWorlds.read!(), a recorded step that gives a list
+  of snapshots`. A waiting function follows the same rule, since it runs in the job's run.
+  Outside jobs a view and `World.all` are those lists already, and `read()` gives the same.
 - **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction that
   records the step in the run, so they happen exactly once.
 - **Where runs live.** Entities, runs and checkpoints are kept by a store, chosen when the program is
@@ -1522,7 +1543,7 @@ job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
 ```
 
 - A view is a named pipeline over entities. The runtime keeps it up to date as entity transactions
-  commit.
+  commit. A job reads it as a recorded step, `idleWorlds.read!()` (section 15).
 - `enters(view)` starts one run per entity that begins matching; `leaves(view)` starts one per
   entity that stops matching.
 - Over entity sets, pipelines run in memory today, over the entities the store holds, with the

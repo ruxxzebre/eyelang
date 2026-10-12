@@ -110,6 +110,10 @@ A schedule starts a run on a clock in a named time zone:
 
 <<< ./code/views-events-schedules/main.eye#morning
 
+`nearlyFull.read!()` reads the view as a step: it gives the snapshots of the disks in it, and
+the run records them, so a run that resumes sees the same disks. In a job, a view, `Disk.all` or
+a field of a reference read without a step is an error that says which step to write.
+
 <<< ./code/views-events-schedules/main.eye#compact
 
 - `daily(at, in: zone)` fires every day at that time on the zone's clock, and `weekdays(at, in:
@@ -155,10 +159,7 @@ reached is skipped, not queued (see [Limits](/guide/jobs-and-waiting#limits)).
 | A firing is lost, or repeated, by a restart | Each firing is saved with its run |
 
 ::: info Not yet
-A view can only be used in `@on(enters(...))` and `@on(leaves(...))` for now: reading one as a
-collection, such as `nearlyFull |> map(...)`, passes the checker but fails at run time, so
-`morning` filters `Disk.all` with the same function instead. In `eye run`, nothing outside the
-program can publish an event into it yet. Views over entities run in memory; compiling them to SQL
+In `eye run`, nothing outside the program can publish an event into it yet. Views over entities run in memory; compiling them to SQL
 comes with the Postgres store in v0.2. See [What runs today](/reference/status).
 :::
 

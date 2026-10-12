@@ -212,7 +212,7 @@ job expire(r: Ref(Request)) {
 ## On weekday mornings the approver hears how many requests are waiting.
 @on(weekdays(09:00, in: dublin))
 job morning(day: Date) {
-  let open = Request.all |> filter(fn r: r.status == Waiting)
+  let open = Request.all.read!() |> filter(fn r: r.status == Waiting)
   if open == [] { return }
   for r in open { Request(r.id).remind!() }
   tell!(approver, "{open |> size} access requests are waiting for you.", key: "waiting-{day}")

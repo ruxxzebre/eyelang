@@ -15,7 +15,7 @@ job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
 ```
 
 - A view is a named pipeline over entities. The runtime keeps it up to date as entity transactions
-  commit.
+  commit. A job reads it as a recorded step, `idleWorlds.read!()` ([section 15](/reference/language/jobs-and-waiting)).
 - `enters(view)` starts one run per entity that begins matching; `leaves(view)` starts one per
   entity that stops matching.
 - Over entity sets, pipelines run in memory today, over the entities the store holds, with the
