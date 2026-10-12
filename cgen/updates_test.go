@@ -28,17 +28,17 @@ var slowLoops = []struct {
 	small, large int    // the two sizes timed; large is 4 × small
 	quadratic    bool
 }{
-	{"add", 250_000, 1_000_000, false}, // xs = xs.add(i), in place since 7.4: the control
-	{"append", 2_500, 10_000, true},    // xs = push(xs, i), fn push(xs, x) = xs.add(x)
-	{"insert", 1_000, 4_000, true},     // let next = m.insert(i, i); m = next
-	{"with", 2_500, 10_000, true},      // p = { p with items: p.items.add(i) }
+	{"add", 1_000_000, 4_000_000, false}, // xs = xs.add(i), in place since 7.4: the control
+	{"append", 2_500, 10_000, true},      // xs = push(xs, i), fn push(xs, x) = xs.add(x)
+	{"insert", 1_000, 4_000, true},       // let next = m.insert(i, i); m = next
+	{"with", 2_500, 10_000, true},        // p = { p with items: p.items.add(i) }
 }
 
 // TestSlowLoops builds testdata/updates' main at -O2, times each slow loop
 // at two sizes, and works out how its time grows with the size: as size^k,
 // with k near 1 for a linear loop and near 2 for a quadratic one. Each time
-// is the fastest of three runs, and k = 1.5 divides the two, which leaves
-// room for the noise of a shared machine. testdata/updates' tests check the
+// is the least CPU time of three runs, and k = 1.5 divides the two, which
+// leaves room for the noise of a shared machine. testdata/updates' tests check the
 // loops' results on both engines; this test checks only their growth.
 //
 // Recorded on 2026-10-12 on a 4-core Xeon at 2.1 GHz, native at -O2: append
@@ -54,16 +54,18 @@ func TestSlowLoops(t *testing.T) {
 	fastest := func(loop string, n int) time.Duration {
 		best := time.Duration(math.MaxInt64)
 		for range 3 {
-			start := time.Now()
-			out, err := exec.Command(exe, loop, fmt.Sprint(n)).CombinedOutput()
-			d := time.Since(start)
+			cmd := exec.Command(exe, loop, fmt.Sprint(n))
+			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("updates %s %d: %v\n%s", loop, n, err, out)
 			}
 			if got := strings.TrimSpace(string(out)); got != fmt.Sprint(n) {
 				t.Fatalf("updates %s %d printed %q, not %d", loop, n, got, n)
 			}
-			best = min(best, d)
+			// CPU time, not wall time: under `go test ./...` other
+			// packages' tests share the machine, and waiting for a core
+			// once made the linear control look like size^1.65.
+			best = min(best, cmd.ProcessState.UserTime()+cmd.ProcessState.SystemTime())
 		}
 		return best
 	}
