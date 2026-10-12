@@ -375,3 +375,108 @@ func moduleByPath(t *testing.T, prog *ir.Program, path string) *ir.Module {
 	t.Fatalf("no module %s", path)
 	return nil
 }
+
+// TestFreshAndDestructiveOverHTTP checks the JSON shape of SPECS.md §17 for
+// @fresh and @destructive commands: basedOn and approval go as arguments, a
+// 409 is Stale and a 410 Expired, and a body can say either too.
+func TestFreshAndDestructiveOverHTTP(t *testing.T) {
+	var mu sync.Mutex
+	var bodies []map[string]any
+	clears := []struct {
+		status int
+		body   string
+	}{
+		{http.StatusConflict, `{"error": "changed"}`},
+		{http.StatusGone, ``},
+		{http.StatusOK, `{"kind": "Stale"}`},
+		{http.StatusOK, `"expired"`},
+		{http.StatusOK, `{"kind": "Cleared", "count": 2}`},
+		{http.StatusPreconditionFailed, ``},
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/shelves/a":
+			_, _ = io.WriteString(w, `{"id": "a", "version": "W/\"41\""}`)
+		case r.Method == "POST" && r.URL.Path == "/shelves/a/clear":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			bodies = append(bodies, body)
+			reply := clears[len(bodies)-1]
+			mu.Unlock()
+			w.WriteHeader(reply.status)
+			_, _ = io.WriteString(w, reply.body)
+		case r.Method == "POST" && r.URL.Path == "/shelves/a/burn":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			bodies = append(bodies, body)
+			mu.Unlock()
+			_, _ = io.WriteString(w, `"burned"`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("SHELVES_URL", srv.URL)
+	in := New(loadFiles(t, map[string]string{
+		"shelves/shelves.eye": `
+pub type Shelf = { id: String, version: Version }
+pub type Cleared = | Cleared(count: Int)
+pub type Burned = | Burned
+
+@http(names: snake)
+contract Shelves {
+  @http("GET /shelves/:id")
+  query shelf(id: String) -> Shelf
+
+  @fresh
+  @http("POST /shelves/:id/clear", status: { 412: Stale })
+  command clear(id: String) -> Cleared
+
+  @destructive
+  @http("POST /shelves/:id/burn")
+  command burn(id: String) -> Burned
+}
+`,
+		"main.eye": `
+import shelves.{Cleared, Burned}
+
+job tidy(id: String) -> String {
+  let shelf = shelves.shelf!(id)
+  match shelves.clear!(id, basedOn: shelf.version) {
+    Cleared(n) => "cleared {n}"
+    Stale => "stale"
+    Expired => "expired"
+    Uncertain(_) => "uncertain"
+  }
+}
+
+job burnIt(id: String, ok: Approval) -> String {
+  match shelves.burn!(id, approval: ok) {
+    Burned => "burned"
+    Uncertain(_) => "uncertain"
+  }
+}
+`,
+	}), io.Discard, io.Discard)
+	for i, want := range []string{"stale", "expired", "stale", "expired", "cleared 2", "stale"} {
+		if got := runJob(t, in, "tidy", "a"); got != `Completed("`+want+`")` {
+			t.Errorf("clear %d = %s, want %s", i+1, got, want)
+		}
+	}
+	if got := runJob(t, in, "burnIt", "a", &ApprovalVal{What: "Burn shelf a?", By: "ann"}); got != `Completed("burned")` {
+		t.Errorf("burn = %s", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for i, body := range bodies[:len(clears)] {
+		if body["based_on"] != `W/"41"` || len(body) != 1 {
+			t.Errorf("clear %d sent %v, want based_on as the shelf's version", i+1, body)
+		}
+	}
+	approval, _ := bodies[len(clears)]["approval"].(map[string]any)
+	if approval["what"] != "Burn shelf a?" || approval["by"] != "ann" {
+		t.Errorf("burn sent %v, want the approval's what and by", bodies[len(clears)])
+	}
+}

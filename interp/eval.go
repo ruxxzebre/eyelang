@@ -61,7 +61,7 @@ func New(prog *ir.Program, out, log io.Writer) *Interp {
 	}
 	p := prog.Prelude
 	in.pre = preludeVariants{some: p.Variants["Some"], none: p.Variants["None"], ok: p.Variants["Ok"], err: p.Variants["Err"],
-		problem: p.Variants["Problem"], offset: p.Variants["Offset"]}
+		problem: p.Variants["Problem"], offset: p.Variants["Offset"], stale: p.Variants["Stale"], expired: p.Variants["Expired"]}
 	in.rt = newRuntime(in)
 	return in
 }

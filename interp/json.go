@@ -126,6 +126,10 @@ func (in *Interp) toWire(v Value, snake bool) any {
 			return in.toWire(x.Vals[0], snake)
 		case t != nil && t.Newtype():
 			return in.toWire(x.Vals[0], snake)
+		case x.V == in.pre.stale:
+			// It joins a command's own variants, which may have fields, so
+			// it is tagged, as Expired and Uncertain are.
+			return map[string]any{"kind": x.V.Name}
 		case t != nil && isEnum(t):
 			return wireName(x.V.Name, snake)
 		}
@@ -136,8 +140,41 @@ func (in *Interp) toWire(v Value, snake bool) any {
 		return obj
 	case *SecretVal:
 		return x.value
+	case *ApprovalVal:
+		return map[string]any{"what": x.What, "by": x.By}
 	}
 	return show(v)
+}
+
+// opResult reads an operation's result in its JSON shape, as type t. A
+// @fresh command may also answer Stale or Expired: {"kind": "Stale"}, or
+// the bare name.
+func (in *Interp) opResult(op *ir.Op, x any, t *ir.TypeExpr, snake bool) (Value, error) {
+	if v := in.freshOutcome(op, x, snake); v != nil {
+		return v, nil
+	}
+	return in.fromWire(x, t, snake)
+}
+
+// freshOutcome is Stale or Expired when x says one of them and op is a
+// @fresh command, and nil otherwise.
+func (in *Interp) freshOutcome(op *ir.Op, x any, snake bool) Value {
+	if !op.Fresh {
+		return nil
+	}
+	for _, v := range []*ir.Variant{in.pre.stale, in.pre.expired} {
+		switch y := x.(type) {
+		case string:
+			if y == wireName(v.Name, snake) {
+				return &Variant{V: v}
+			}
+		case map[string]any:
+			if y["kind"] == v.Name {
+				return &Variant{V: v}
+			}
+		}
+	}
+	return nil
 }
 
 // fieldName is a variant field's name in JSON: its own, or "value" for a
@@ -223,6 +260,17 @@ func (in *Interp) decodeWire(x any, t *ir.TypeExpr, snake bool, env typeEnv, pat
 			}
 		}
 		return fail("a whole number")
+	case "Version":
+		// As the service gives it: a number, as a snapshot's, or a string.
+		switch v := x.(type) {
+		case json.Number:
+			if b, ok := new(big.Int).SetString(v.String(), 10); ok {
+				return normInt(b), nil
+			}
+		case string:
+			return v, nil
+		}
+		return fail("a version, a whole number or a string")
 	case "Float":
 		if n, ok := x.(json.Number); ok {
 			if f, err := n.Float64(); err == nil {

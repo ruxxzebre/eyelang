@@ -1,0 +1,5 @@
+{ "contract": "Shelves",
+  "exchanges": [
+    { "op": "shelf", "result": { "id": "d", "items": ["date"], "version": 7 } },
+    { "op": "clear", "result": { "kind": "Stale" } }
+  ] }

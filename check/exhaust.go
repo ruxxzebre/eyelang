@@ -211,6 +211,9 @@ func (c *checker) constructors(t typ, rows [][]ir.Pattern) ([]ctor, bool) {
 				}
 				out = append(out, k)
 			}
+			if x.fresh && c.ts.stale != nil && c.ts.expired != nil {
+				out = append(out, ctor{name: "Stale", variant: c.ts.stale}, ctor{name: "Expired", variant: c.ts.expired})
+			}
 			if x.uncertain && c.ts.uncert != nil {
 				out = append(out, ctor{name: "Uncertain", variant: c.ts.uncert, fields: []typ{tKey}})
 			}

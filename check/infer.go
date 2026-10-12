@@ -56,6 +56,9 @@ type typeState struct {
 	outcome  *ir.Type
 	decision *ir.Type
 	uncert   *ir.Variant
+	// stale and expired are what a @fresh command may answer besides its
+	// declared variants; expired is approval!'s Expired.
+	stale, expired *ir.Variant
 	// bounds holds the traits a function's own type variables have, from
 	// its `where` clause.
 	bounds map[*tvar][]cbound
@@ -162,6 +165,7 @@ func (c *checker) checkTypes() {
 		inferred: map[*ir.Func]inferState{}, schemes: map[*ir.Func]*scheme{},
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
+		stale: pre.Variants["Stale"], expired: pre.Variants["Expired"],
 		bounds: map[*tvar][]cbound{},
 		rows:   map[*ir.Entity]map[int]*tcon{}, rowOf: map[*ir.Type]*row{},
 	}
@@ -403,7 +407,7 @@ func (x *fnCheck) operation(op *ir.Op) typ {
 			x.slots[p.Slot] = tKey
 		}
 	}
-	return x.c.fromExpr(op.Return, x.env, true)
+	return freshResult(op, x.c.fromExpr(op.Return, x.env, true))
 }
 
 // paramType is the type of a function's parameter i, in env. A parameter
@@ -556,6 +560,18 @@ func (x *fnCheck) expect(at ir.Pos, want, got typ) bool {
 			return false
 		}
 	}
+	if w, ok := prune(want).(*tcon); ok && !w.fresh {
+		if g, ok := prune(got).(*tcon); ok && g.fresh && sameCon(w, g) {
+			x.c.typeErrorf(at, "this command is @fresh, so it may be Stale or Expired: match it with Stale and Expired arms")
+			return false
+		}
+	}
+	if g, ok := prune(got).(*tcon); ok && x.c.ts.stale != nil && g.decl == x.c.ts.stale.Type {
+		if w, ok := prune(want).(*tcon); ok && w.decl != g.decl {
+			x.c.typeErrorf(at, "expected %s, found Stale, which only a @fresh command answers", show(want))
+			return false
+		}
+	}
 	if m := x.c.unify(want, got); m != nil {
 		msg := fmt.Sprintf("expected %s, found %s", show(defaultLiteral(want)), show(defaultLiteral(got)))
 		if m.dyn != nil {
@@ -612,6 +628,9 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		}
 		return c.unknownf(e.Pos, "internal error: %s isn't a state field here", e.Name)
 	case *ir.Ref:
+		if t := x.freshOutcome(e, want); t != nil {
+			return t
+		}
 		return x.ref(e)
 	case *ir.Call:
 		return x.call(e, want)
@@ -973,12 +992,13 @@ func (c *checker) variantType(v *ir.Variant) typ {
 }
 
 // opType is a contract operation as a function. A command may also come back
-// Uncertain, and a command with @key takes the key last.
+// Uncertain, a @fresh one Stale or Expired, and a command with @key takes the
+// key last.
 func (c *checker) opType(op *ir.Op) typ {
 	env := typeEnv{}
 	f := &tfun{}
 	for _, p := range op.Params {
-		f.params = append(f.params, fparam{name: p.Name, t: c.fromExpr(p.Type, env, false), hasDefault: p.Default != nil})
+		f.params = append(f.params, fparam{name: p.Name, t: c.fromExpr(p.Type, env, false), hasDefault: p.Default != nil, why: addedWhy(op, p)})
 	}
 	if op.Key {
 		f.params = append(f.params, fparam{name: "key", t: tKey})
@@ -987,12 +1007,69 @@ func (c *checker) opType(op *ir.Op) typ {
 	if op.Command {
 		if r, ok := ret.(*tcon); ok && r.decl != nil && len(r.decl.Variants) > 0 {
 			cp := *r
-			cp.uncertain, cp.reconcilable = true, op.Reconcile != ""
+			cp.uncertain, cp.reconcilable, cp.fresh = true, op.Reconcile != "", op.Fresh
 			ret = &cp
 		}
 	}
 	f.ret = ret
 	return f
+}
+
+// addedWhy says why a call needs a parameter that @fresh or @destructive
+// added to a command, after the command's name.
+func addedWhy(op *ir.Op, p *ir.Param) string {
+	switch {
+	case op.Fresh && p.Name == "basedOn":
+		return " is @fresh, so it takes the Version of the state it was based on, as basedOn: snapshot.version"
+	case op.Destructive && p.Name == "approval":
+		return " is @destructive, so it takes the Approval that approval!(…) gives"
+	}
+	return ""
+}
+
+// freshVariant is Stale or Expired, by name, when k is a @fresh command's
+// result, which may be either besides its declared variants.
+func (c *checker) freshVariant(name string, k *tcon) *ir.Variant {
+	if k == nil || !k.fresh {
+		return nil
+	}
+	switch name {
+	case "Stale":
+		return c.ts.stale
+	case "Expired":
+		return c.ts.expired
+	}
+	return nil
+}
+
+// freshOutcome types Stale or Expired where a @fresh command's result is
+// expected, as in the impl that serves the command: it is that result. The
+// reference is pointed at the prelude's variant, whichever one its name
+// found.
+func (x *fnCheck) freshOutcome(e *ir.Ref, want typ) typ {
+	d, ok := e.Decl.(*ir.Variant)
+	if !ok || want == nil {
+		return nil
+	}
+	k, _ := prune(want).(*tcon)
+	v := x.c.freshVariant(d.Name, k)
+	if v == nil {
+		return nil
+	}
+	e.Decl = v
+	return k
+}
+
+// freshResult returns t with Stale and Expired among its outcomes, when it
+// is a @fresh command's result type, so that an impl of the command can
+// answer them.
+func freshResult(op *ir.Op, t typ) typ {
+	if r, ok := t.(*tcon); ok && op.Fresh && r.decl != nil && len(r.decl.Variants) > 0 {
+		cp := *r
+		cp.fresh = true
+		return &cp
+	}
+	return t
 }
 
 func (c *checker) globalType(g *ir.Global) typ {
@@ -1171,7 +1248,11 @@ func (x *fnCheck) args(f *tfun, args []ir.Arg, name string, at ir.Pos) {
 	}
 	for j, p := range f.params {
 		if !assigned[j] && !p.hasDefault {
-			x.c.typeErrorf(at, "%s needs an argument for %s", name, paramName(p, j))
+			why := ""
+			if p.why != "" {
+				why = ": " + name + p.why
+			}
+			x.c.typeErrorf(at, "%s needs an argument for %s%s", name, paramName(p, j), why)
 		}
 	}
 	x.useGeneric(f, name, at)
@@ -2412,6 +2493,9 @@ func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 		if !found && p.Variant.Name == "Uncertain" && k.uncertain {
 			p.Variant, found = c.ts.uncert, true
 		}
+		if v := c.freshVariant(p.Variant.Name, k); !found && v != nil {
+			p.Variant, found = v, true
+		}
 		if !found {
 			x.bindAnyArgs(&p, c.unknownf(at, "%s isn't a variant of %s, the type of what is matched", p.Variant.Name, show(t)), at)
 			return p
@@ -2425,7 +2509,7 @@ func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 	var env typeEnv
 	if k != nil && k.decl == v.Type {
 		env = envOf(k)
-	} else if v == c.ts.uncert {
+	} else if v == c.ts.uncert || c.freshVariant(v.Name, k) == v {
 		env = typeEnv{}
 	} else {
 		vt, e := c.declType(v.Type)

@@ -316,7 +316,11 @@ func (v *Variant) field(name string) (Value, bool) {
 }
 
 // prelude variants, found when the interpreter starts.
-type preludeVariants struct{ some, none, ok, err, problem, offset *ir.Variant }
+type preludeVariants struct {
+	some, none, ok, err, problem, offset *ir.Variant
+	// What a @fresh command may answer besides its declared variants.
+	stale, expired *ir.Variant
+}
 
 func (in *Interp) some(v Value) Value { return &Variant{V: in.pre.some, Vals: []Value{v}} }
 func (in *Interp) none() Value        { return &Variant{V: in.pre.none} }

@@ -178,6 +178,14 @@ func (in *Interp) loadFakes(path string, ct *ir.Contract) (*fakeSet, error) {
 			return nil, fmt.Errorf("%s: exchange %d: %s has no operation %q", path, i+1, ct.Name, e.Op)
 		}
 		v, err := in.recorded(e.Result, op.Return)
+		if err != nil && op.Fresh {
+			// A @fresh command may answer {"kind": "Stale"} or {"kind": "Expired"}.
+			if x, xerr := decodeJSON(e.Result); xerr == nil {
+				if f := in.freshOutcome(op, x, false); f != nil {
+					v, err = f, nil
+				}
+			}
+		}
 		if err != nil && op.Command {
 			// A command's reply may have been lost: {"kind": "Uncertain", "key": "…"}.
 			if u, uerr := in.recorded(e.Result, &ir.TypeExpr{Name: "Unconfirmed", Decl: in.prog.Prelude.Types["Unconfirmed"]}); uerr == nil {

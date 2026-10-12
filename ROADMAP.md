@@ -474,7 +474,7 @@ waits.
 |---|---|
 | 6.1 `extern` functions: Go host functions and C libraries (from phase 3) | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
 | 6.2 `@port` and `@allow` enforced (done) | [#54](https://github.com/ruxxzebre/eyelang/issues/54) |
-| 6.3 `@fresh` and `@destructive` | [#55](https://github.com/ruxxzebre/eyelang/issues/55) |
+| 6.3 `@fresh` and `@destructive` (done) | [#55](https://github.com/ruxxzebre/eyelang/issues/55) |
 | 6.4 Go and TypeScript types, clients and server stubs from contracts | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
 | 6.5 Network policy from contracts | [#57](https://github.com/ruxxzebre/eyelang/issues/57) |
 | 6.6 Notify's boundary generated from its contract | [#58](https://github.com/ruxxzebre/eyelang/issues/58) |
@@ -514,6 +514,15 @@ What each task is, until its issue holds it:
   `Stale` and `Expired`, fails to compile; calling a `@destructive` command without an
   `Approval` fails to compile; a served `impl` receives `basedOn` and can answer `Stale`; each
   has a test in `testdata/programs`.
+  Done on 2026-10-12 (#55): the checker adds `basedOn: Version` and `approval: Approval` to the
+  command's parameters, after its own and before `key` (`check/check.go`), and gives a `@fresh`
+  command's result `Stale` and `Expired` as it gives every command `Uncertain` (`check/infer.go`,
+  `check/exhaust.go`); `Expired` is `approval!`'s. A snapshot's `version` is now a `Version`, which
+  has `==` and takes an integer literal. Over HTTP both go as arguments, 409 is `Stale` and 410
+  `Expired`, and the outcomes are tagged objects (SPECS §17, decision log "Fresh and destructive
+  commands"; `interp/json.go`, `interp/services.go`, `interp/fakes.go`). Tests:
+  `check/fresh_test.go`, `testdata/programs/contracts`, `TestFreshAndDestructiveOverHTTP`.
+  Serving these over HTTP, including reading an incoming `approval`, comes with 6.13.
 - **6.4 Go and TypeScript from contracts.** `eye gen go|ts DIR` writes, for each contract, its
   types in the JSON shape of SPECS §17 (a variant type as a discriminated union on `"kind"`), a
   client that calls the operations over `@http`, and a server stub to implement. Build output,

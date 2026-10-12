@@ -155,7 +155,7 @@ func toTy(t typ) ir.Ty {
 		if !ok {
 			return nil
 		}
-		return &ir.TCon{Name: x.name, Decl: x.decl, Entity: x.entity, Args: args, Uncertain: x.uncertain}
+		return &ir.TCon{Name: x.name, Decl: x.decl, Entity: x.entity, Args: args, Uncertain: x.uncertain, Fresh: x.fresh}
 	case *tfun:
 		params := make([]ir.Ty, len(x.params))
 		for i, p := range x.params {

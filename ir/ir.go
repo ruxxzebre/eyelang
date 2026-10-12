@@ -391,12 +391,17 @@ type Op struct {
 	Params    []*Param
 	Return    *TypeExpr
 	Reconcile string // the query that resolves an Uncertain outcome
-	Key       bool   // @key: the command takes a `key: Key` argument
-	KeyHeader string // @key(…, header: "…"): the HTTP header that carries the key
-	KeyField  string // @key(…, field: "…"): a body field that carries it too
-	HTTP      *OpHTTP
-	Impl      *Func // the function that serves it, when this program serves the contract
-	Pos       Pos
+	// Fresh (@fresh): the command takes `basedOn: Version` and may answer
+	// Stale or Expired. Destructive (@destructive): it takes `approval:
+	// Approval`. The checker adds those parameters to Params.
+	Fresh       bool
+	Destructive bool
+	Key         bool   // @key: the command takes a `key: Key` argument
+	KeyHeader   string // @key(…, header: "…"): the HTTP header that carries the key
+	KeyField    string // @key(…, field: "…"): a body field that carries it too
+	HTTP        *OpHTTP
+	Impl        *Func // the function that serves it, when this program serves the contract
+	Pos         Pos
 }
 
 // Test is a `test "name" { … }` block.

@@ -18,13 +18,15 @@ type (
 	// TCon is a named type applied to its arguments: a built-in type (Name
 	// only, as Int or List(String)), a declared one (Decl), or an entity's
 	// snapshot (Entity). Uncertain is set on a command's result, which may
-	// also be Uncertain(key).
+	// also be Uncertain(key), and Fresh on a @fresh command's result, which
+	// may also be Stale or Expired.
 	TCon struct {
 		Name      string
 		Decl      *Type
 		Entity    *Entity
 		Args      []Ty
 		Uncertain bool
+		Fresh     bool
 	}
 	// TFun is a function type and the effects it states.
 	TFun struct {

@@ -13,10 +13,9 @@ import (
 // or a test function. Each message says what was expected, what was found
 // and where (CLAUDE.md, "Writing").
 //
-// Not checked yet, and so not listed: the Approval that @destructive
-// commands and ending an entity need, recordings that lack a field the
-// code reads (@unwitnessed), values captured by structured concurrency's
-// tasks (3.5) and dyn (v0.2).
+// Not checked yet, and so not listed: the Approval that ending an entity
+// needs, recordings that lack a field the code reads (@unwitnessed), values
+// captured by structured concurrency's tasks (3.5) and dyn (v0.2).
 var errorClasses = []struct{ section, class, test string }{
 	{"§4, §23", "a syntax error", "syntax errors"},
 	{"§6", "a name nothing declares", "undefined names"},
@@ -126,6 +125,12 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§17", "a command's Uncertain left unhandled", "a command may come back Uncertain"},
 	{"§17", "a command's result used before it is reconciled", "an Uncertain result can't pass for an outcome"},
 	{"§17", "reconcile without a @reconcile query", "reconcile needs a @reconcile query"},
+	{"§17", "a @fresh command called without basedOn", "a @fresh command needs basedOn"},
+	{"§17", "a @fresh command's Stale or Expired left unhandled", "a match on a @fresh command's result handles Stale and Expired"},
+	{"§17", "a @fresh command's result used as its declared type", "a @fresh command's result can't pass for its declared outcomes"},
+	{"§17", "Stale answered by what isn't a @fresh command", "only a @fresh command's impl answers Stale"},
+	{"§17", "@fresh on a result that isn't a variant type or has Stale or Expired, or a declared basedOn or approval", "@fresh needs a variant result without Stale or Expired, and adds names a command can't declare"},
+	{"§17", "a @destructive command called without an Approval", "a @destructive command needs an Approval, which only approval! makes"},
 	{"§17", "an event's value of the wrong type", "events carry their type"},
 	{"§17", "a served contract missing an operation or changing its parameters", "a served contract serves every operation, as declared"},
 	{"§17", "a trigger that isn't an event", "a trigger names a contract's event"},

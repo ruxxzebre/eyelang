@@ -99,6 +99,12 @@ pub type OverlapPolicy =
   ## Fire both times, an hour apart: for a job that should run every hour.
   | Both
 
+## What a `@fresh` command can answer besides its declared variants:
+## `Stale`, when the state it acts on changed after the version it names
+## in `basedOn:`, so it did nothing. Its other extra outcome is `Expired`,
+## the same one `approval!` gives: what it was based on is gone.
+pub type Outdated = | Stale
+
 ## `==` and `!=`. Derived for every type whose parts have it.
 pub trait Eq {}
 

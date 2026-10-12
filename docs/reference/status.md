@@ -23,8 +23,7 @@ listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/
 along with the test that reports it.
 
 **The biggest gaps today.** Some waits (`lock!`, `all!`, `first!`, ending an entity), coding
-agents and model tools, the checks that come from contracts (`@fresh`, `@destructive`,
-`@unwitnessed`), fixed-width integers, and native compilation (v0.4).
+agents and model tools, `@unwitnessed` recordings, fixed-width integers, and native compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
 
@@ -70,7 +69,8 @@ agents and model tools, the checks that come from contracts (`@fresh`, `@destruc
 | Iteration with `for`; `s.chars()`; lazy `xs.iter()` | ✓ | partial: `iter` isn't built, so the checker reports it as a method that doesn't exist ([#86](https://github.com/ruxxzebre/eyelang/issues/86)) | partial: lists, sets, ranges, maps and `s.chars()` work; `iter` and `Iter` don't exist | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L94), [core: strings](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/strings.eye#L49) |
 | `Ref(E)`, different for each entity | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L35) |
 | `Secret(a)`: no printing, no saving | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L180) |
-| `Approval`, made only by `approval!` | ✓ | partial: nothing requires one yet, and its `what` and `by` can't be read ([#71](https://github.com/ruxxzebre/eyelang/issues/71)) | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L192) |
+| `Approval`, made only by `approval!` | ✓ | partial: a `@destructive` command requires one; its `what` and `by` can't be read ([#71](https://github.com/ruxxzebre/eyelang/issues/71)) | ✓ | [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L192), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L116) |
+| `Version`: a snapshot's `version`, `==` and no order, from an integer literal | ✓ | ✓ | ✓ | [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L130) |
 | `Key`, `Run(a)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | A program's `extern type`, whose values foreign code owns: not saved, shown or compared (`Handle` is gone, open question 21) | ✓ | ✓ | — (no foreign code yet) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
 | `opaque` types | ✓ | ✓ (other modules can't read, write, build or match its fields or variants) | ✓ as an ordinary type | [visibility_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/visibility_test.go#L35), [spec-08 example](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/spec-08-methods-and-generics-1.eye) |
@@ -253,7 +253,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@key`, `@reconcile` | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | `@http`, `@auth` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
 | `@port`, `@allow` | ✓ | ✓: a served contract and one with `@allow` need `@port`; a call from a module `@allow` doesn't list, a name that isn't a module, and any call under `@allow(nobody)` are errors | ✓: `eye run` serves a served contract on its `@port` (`<MODULE>_PORT` moves it); `@allow` isn't enforced at the port until network policy (6.5) | [ports_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/ports_test.go#L41), [serve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/serve_test.go) |
-| `@fresh`, `@destructive` | ✓ | partial: only where they go; no `basedOn:` or `Approval` argument is added | — | |
+| `@fresh`, `@destructive` | ✓ | partial: on commands ✓; `@destructive` on a model's tool is 6.7 | partial: on commands ✓ | [fresh_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/fresh_test.go#L61), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L92) |
 | `@unwitnessed("why")` | ✓ | partial: only where it goes | — | |
 | `@library`, `@host` | ✓ | ✓ | partial: only the standard library's host functions exist | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L30) |
 
@@ -278,7 +278,7 @@ Runs column says whether the runtime does what the attribute says.
 | A request never sent is retried, not `Uncertain` | n/a | n/a | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L289) |
 | Queries retried, then `Failed(Unavailable(…))`; `Result(T, HttpError)` gets the failures | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L289), [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L16) |
 | Events published on commit or as a job's step; `@key` starts one run per key | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L37), [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L190) |
-| `@fresh` and `@destructive` commands | ✓ | — | — | |
+| `@fresh` and `@destructive` commands | ✓ | ✓ A `@fresh` command takes `basedOn: Version` and may be `Stale` or `Expired`, which a match must handle; a `@destructive` one takes an `Approval`; a served `impl` takes both and answers `Stale` | ✓ in calls, fakes and an `impl`; over HTTP `basedOn` and `approval` go as arguments, and 409 is `Stale`, 410 `Expired` | [fresh_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/fresh_test.go#L61), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L92), [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L382) |
 | A contract's operations are its module's functions | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | Serving a contract with `impl Contract { … }` | ✓ | ✓ | ✓ | [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L228), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L297) |
 | Values as JSON, one shape everywhere | n/a | n/a | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |

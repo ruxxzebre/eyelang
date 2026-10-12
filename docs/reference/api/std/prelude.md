@@ -149,3 +149,14 @@ such as 01:30 on the night the clock goes back from 02:00 to 01:00:
 - <span id="OverlapPolicy-Second"></span>`Second`: Fire the second time.
 - <span id="OverlapPolicy-Both"></span>`Both`: Fire both times, an hour apart: for a job that should run every hour.
 
+### Outdated {#Outdated}
+
+```eye
+pub type Outdated = | Stale
+```
+
+What a `@fresh` command can answer besides its declared variants:
+`Stale`, when the state it acts on changed after the version it names
+in `basedOn:`, so it did nothing. Its other extra outcome is `Expired`,
+the same one `approval!` gives: what it was based on is gone.
+

@@ -229,6 +229,13 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 				in.faultf(at, "%s answered %d with a body that isn't %s: %v", name, status, op.HTTP.Status[status], derr)
 			}
 			return v, true
+		case op.Fresh && (status == http.StatusConflict || status == http.StatusGone):
+			// A @fresh command's service refused it: the state changed after
+			// basedOn (409), or what it was based on is gone (410).
+			if status == http.StatusConflict {
+				return &Variant{V: in.pre.stale}, true
+			}
+			return &Variant{V: in.pre.expired}, true
 		case status >= 200 && status < 300:
 			t := op.Return
 			if httpErr != nil {
@@ -237,7 +244,7 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 			x, derr := decodeJSON(reply)
 			var v Value
 			if derr == nil {
-				v, derr = in.fromWire(x, t, wire.Snake)
+				v, derr = in.opResult(op, x, t, wire.Snake)
 			}
 			if derr != nil {
 				in.faultf(at, "%s answered with a body that isn't %s: %v", name, typeString(t), derr)
@@ -316,6 +323,9 @@ func decodeJSON(data []byte) (any, error) {
 // fields are the variant's.
 func (in *Interp) decodeStatus(op *ir.Op, status int, reply []byte) (Value, error) {
 	name := op.HTTP.Status[status]
+	if v := in.freshOutcome(op, name, false); v != nil {
+		return v, nil // status: { 412: Stale }
+	}
 	d := op.Return.Decl
 	if httpErrorType(op.Return) != nil {
 		d = op.Return.Args[0].Decl

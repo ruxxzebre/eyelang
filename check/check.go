@@ -867,6 +867,8 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			op.Reconcile = text(f, args[0])
 			names[op] = args[0]
 		}
+		op.Fresh = op.Command && hasAttribute(f, member, "fresh")
+		op.Destructive = op.Command && hasAttribute(f, member, "destructive")
 		op.Key = hasAttribute(f, member, "key")
 		if _, named, ok := attribute(f, member, "key"); ok {
 			op.KeyHeader = c.stringArg(f, named["header"])
@@ -890,6 +892,7 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 				op.Params = append(op.Params, param)
 			}
 			op.Return = c.typeExpr(m, f, member.ChildByField(syntax.FieldReturnType), nil)
+			c.commandParams(f, member, op)
 			wire := func(string) string {
 				return "an operation's values cross the wire, so their types are named in full"
 			}
@@ -918,6 +921,41 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			}
 		}
 	}}, m.decls...)
+}
+
+// commandParams adds the parameters that @fresh and @destructive give a
+// command, after the ones it declares (SPECS.md §17): `basedOn: Version`,
+// the version of the state the command was based on, then `approval:
+// Approval`. A @fresh command may also answer Stale or Expired, which join
+// the variants of its result type.
+func (c *checker) commandParams(f *ir.File, member *syntax.Node, op *ir.Op) {
+	add := func(attr, name, typ string) {
+		for _, p := range member.ChildByField(syntax.FieldParameters).NamedChildren() {
+			if n := p.ChildByField(syntax.FieldName); text(f, n) == name {
+				c.errorf(pos(f, n), "@%s adds the parameter %s, so %s can't declare one of that name", attr, name, op.Name)
+				return
+			}
+		}
+		op.Params = append(op.Params, &ir.Param{Name: name, Type: &ir.TypeExpr{Name: typ}})
+	}
+	if op.Fresh {
+		add("fresh", "basedOn", "Version")
+		ret := member.ChildByField(syntax.FieldReturnType)
+		switch d := op.Return; {
+		case d == nil:
+		case d.Decl == nil || len(d.Decl.Variants) == 0:
+			c.errorf(pos(f, ret), "@fresh adds Stale and Expired to %s's outcomes, so it returns a variant type, and %s isn't one", op.Name, text(f, ret))
+		default:
+			for _, v := range d.Decl.Variants {
+				if v.Name == "Stale" || v.Name == "Expired" {
+					c.errorf(pos(f, ret), "@fresh adds Stale and Expired to %s's outcomes, and %s already has a variant %s", op.Name, d.Decl.Name, v.Name)
+				}
+			}
+		}
+	}
+	if op.Destructive {
+		add("destructive", "approval", "Approval")
+	}
 }
 
 // attributeArgs returns the arguments of a declaration's attribute @name.

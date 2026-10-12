@@ -30,6 +30,9 @@ type (
 		uncertain bool
 		// The command names a @reconcile query, so .reconcile!() resolves it.
 		reconcilable bool
+		// A @fresh command's result: its declared variants, Stale and
+		// Expired. Reconciling keeps them.
+		fresh bool
 	}
 	tfun struct {
 		params []fparam
@@ -98,6 +101,9 @@ type fparam struct {
 	t          typ
 	hasDefault bool
 	mut        bool // a mut parameter: the call passes `mut x`
+	// why says why the parameter is there, when a call leaves it out: the
+	// ones @fresh and @destructive add to a command.
+	why string
 }
 
 // boundUse is a trait a call of a generic function needs a type variable to
@@ -163,6 +169,7 @@ var (
 	tInstant  = con("Instant")
 	tZone     = con("Zone")
 	tKey      = con("Key")
+	tVersion  = con("Version")
 	tHandler  = con("Handler")
 )
 
@@ -184,7 +191,7 @@ func (k litKind) allows(c *tcon) bool {
 		return c.decl == nil && c.entity == nil && (c.name == "String" || c.name == "Key" || c.name == "Zone")
 	case litInt, litZero:
 		switch c.name {
-		case "Int", "Int32", "Int64", "UInt32", "UInt64", "Byte":
+		case "Int", "Int32", "Int64", "UInt32", "UInt64", "Byte", "Version":
 			return c.decl == nil
 		case "NonZero":
 			// Literals other than 0 qualify (SPECS.md §10).
@@ -688,7 +695,7 @@ func (c *checker) stateType(e *ir.Entity, name string) (typ, bool) {
 		return c.fromExpr(e.ID.Type, typeEnv{}, false), true
 	}
 	if name == "version" {
-		return tInt, true
+		return tVersion, true
 	}
 	for _, s := range e.States {
 		if s.Name == name {

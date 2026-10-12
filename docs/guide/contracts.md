@@ -163,6 +163,94 @@ Nothing is ever sent again on a guess. If a query still can't settle a command a
 the run stops with a fault rather than guess. A command whose reply was lost is kept in the
 program's journal until it is settled, so a restart in the middle of reconciling carries on.
 
+## When the state may have changed: @fresh
+
+A job that reads a service's state, decides, and then acts can act on state that changed in
+between: it clears a shelf that someone filled again a second ago. `@fresh` on a command makes
+every caller say which version of the state it read, and lets the service refuse:
+
+```eye
+pub type Shelf = { id: String, items: List(String), version: Version }
+
+@port(3004)
+contract Shelves {
+  query shelf(id: String) -> Shelf
+
+  ## Empties a shelf, unless it changed after `basedOn`.
+  @fresh
+  command clear(id: String) -> Cleared
+}
+```
+
+`clear` now takes `basedOn: Version` after its own parameters, and has two more outcomes:
+`Stale`, when the shelf changed after that version, and `Expired`, when the shelf is gone. Neither
+did anything. The caller handles both, and usually reads again after `Stale`:
+
+```eye
+job tidy(id: String) {
+  while true {
+    let shelf = shelves.shelf!(id)
+    match shelves.clear!(id, basedOn: shelf.version) {
+      Cleared(n) => {
+        Log(id).add!("cleared {n}")
+        return
+      }
+      Stale => ()
+      Expired | Uncertain(_) => return
+    }
+  }
+}
+```
+
+Leave out `basedOn:`, or a `Stale` or `Expired` arm, and the checker stops you:
+
+```text
+main.eye:6:5: this match doesn't handle Expired: add an arm for it, or `_ => …`
+main.eye:6:11: clear needs an argument for basedOn: clear is @fresh, so it takes the Version of the state it was based on, as basedOn: snapshot.version
+```
+
+A `Version` is whatever the service gives: a number or a string. An entity's snapshot has one in
+its `version` field, so a program that serves the contract answers from it:
+
+```eye
+impl shelves.Shelves {
+  fn shelf(id) {
+    let rack = Rack(id).read()
+    { id, items: rack.items, version: rack.version }
+  }
+
+  fn clear(id, basedOn) {
+    let rack = Rack(id).read()
+    if rack.gone { return Expired }
+    if rack.version != basedOn { return Stale }
+    Cleared(count: Rack(id).empty())
+  }
+}
+```
+
+## Commands that need a person: @destructive
+
+`@destructive` on a command adds a parameter `approval: Approval`. Only `approval!` makes an
+`Approval`, so the command can be called only after a person said yes:
+
+```eye
+job demolish(id: String) {
+  match approval!("Burn shelf {id}?", from: "operator", within: 1 h) {
+    Approved(ok) => {
+      let _ = shelves.burn!(id, approval: ok)
+    }
+    Declined | Expired => ()
+  }
+}
+```
+
+```text
+main.eye:17:15: burn needs an argument for approval: burn is @destructive, so it takes the Approval that approval!(…) gives
+```
+
+The [shelves program](https://github.com/ruxxzebre/eyelang/tree/dev/testdata/programs/contracts)
+serves and calls both commands, and its tests show each outcome.
+
 ## Over HTTP
 
 Attributes say how each operation goes over HTTP. The address and the credentials are never in the
@@ -180,6 +268,7 @@ code: they come from the environment when the program runs (see
 | `@auth(header: "X-Auth-Token", secret: "…")` | Sends a secret in a header of your choice |
 
 Arguments are sent with their defaults filled in. An argument that is `None` is left out.
+`basedOn` and `approval` go like any other argument (`based_on` with `names: snake`).
 
 This is what the payment service received when the program ran against a stand-in, with
 `PAYMENTS_URL` and `PAYMENTS_TOKEN` set:
@@ -206,7 +295,8 @@ or a query that returns `Result(T, http.HttpError)`:
 | Doesn't answer: a timeout or a broken connection | `Uncertain(key)` | Tried again | `Err(TimedOut)` or `Err(NoAnswer(reason))` |
 
 "Tried again" means for about a minute, while the run waits; after that the run ends as
-`Failed(Unavailable(…))`.
+`Failed(Unavailable(…))`. A `@fresh` command reads a 409 as `Stale` and a 410 as `Expired`,
+unless `status:` names those codes; `status: { 412: Stale }` names another.
 
 A refused request is a bug in the program or its configuration, not an outcome to handle, so it
 stops the run where you can see it:
@@ -232,6 +322,8 @@ examples below.
 | Lists, sets and tuples; a map with string keys | Arrays; an object |
 | `Instant`, `Date` | `"2026-10-12T09:30:00Z"`, `"2026-10-12"` |
 | `Duration`, `Size` | A number of milliseconds, a number of bytes |
+| `Version`, `Approval` | A number or a string, as the service gave it; `{"what": "…", "by": "…"}` |
+| `Stale`, `Expired`, `Uncertain(key)` | Always tagged, whatever the command's own variants: `{"kind": "Stale"}` |
 
 So `Charged(id: ChargeId("ch-1"), at: 2026-10-12 09:30 in "UTC")` goes over the wire as:
 
@@ -302,6 +394,10 @@ says:
   answer, without acting again.
 - For `@reconcile(query)`, offer that query: the outcome of the command with that key, or `null` if
   it never arrived.
+- For a `@fresh` command, compare `basedOn` with the current version, and answer 409 without
+  acting when they differ, or 410 when what it acts on is gone.
+- For a `@destructive` command, record the `approval` it carries. You can't check it, so let only
+  the callers in `@allow` reach the service.
 - Answer a bad request with a 4xx, which stops the caller's run, and a passing problem with a 5xx,
   which a query retries and a command treats as uncertain. Don't answer a command with a 5xx after
   acting on it, unless a repeat with the same key gives the real answer.
@@ -361,6 +457,10 @@ See [Testing with time and recordings](/guide/testing) for clocks, events and ap
   or by a repeat that the key makes harmless, or by a person.
 - **Ignoring a lost reply.** `Uncertain` is part of every command's result type, and `match` must
   handle it.
+- **Acting on state that changed.** A `@fresh` command names the version it was based on, and
+  the caller must handle `Stale` and `Expired`.
+- **Destroying without a person.** A `@destructive` command needs an `Approval`, which only
+  `approval!` makes.
 - **Credentials in code.** Addresses and secrets come from the environment; the contract names
   only the secret.
 - **Drift between caller and service.** The types, routes and keys are written once, and
