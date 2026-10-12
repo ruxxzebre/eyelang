@@ -86,7 +86,7 @@ impl notify.Notify {
   fn ask(event, to, text, choices, within, key) {
     if choices |> size < 2 || choices |> size > 4 { return NotAsked(BadChoices) }
     let question = QuestionId("{key}")
-    Question(question).open(choices, within:)
+    Question(question).open(choices, to:, within:)
     Message(key).queue({ event, title: "", body: text, priority: High, format: Plain, choices }, [to])
     Asking(question)
   }
@@ -164,15 +164,19 @@ fn render(c: Content) -> String =
 
 # ---------------------------------------------------------------- questions
 
-## A question asked with buttons. The first press answers it for everyone who
-## was asked; later presses are told who answered.
+## A question asked with buttons. The first press by the person asked answers
+## it; later presses are told who answered, and a press by anyone else is
+## refused while the question stays open.
 entity Question(id: QuestionId) {
   state choices: List(Choice) = []
   state answer: Option(Answered) = None
   state open: Bool = false
+  ## Who the question asks; None for one opened before it was kept.
+  state asked: Option(UserId) = None
 
-  pub fn open(c: List(Choice), within: Duration) {
+  pub fn open(c: List(Choice), to: UserId, within: Duration) {
     choices = c
+    asked = Some(to)
     open = true
     close.start(id, after: within)
   }
@@ -183,6 +187,7 @@ entity Question(id: QuestionId) {
       None => ()
     }
     if !open { return Err(Closed) }
+    if asked != None && asked != Some(by) { return Err(SomeoneElse) }
     if !(choices |> any(fn c: c.id == choice)) { return Err(NoSuchChoice) }
     let a: Answered = { question: id, choice, by, at }
     answer = Some(a)
@@ -207,6 +212,8 @@ type Unanswerable =
   | AlreadyAnswered(Answered)
   | Closed
   | NoSuchChoice
+  ## The press came from someone the question doesn't ask.
+  | SomeoneElse
 
 job close(id: QuestionId) { Question(id).close!() }
 
@@ -219,7 +226,7 @@ job pressed(update: telegram.Update) {
   match Question(question).press!(button, by: person, at: update.sentAt) {
     Ok(a) => telegram.editMessage!(update.chat, message, "Decided: {a.choice} by {person}")
     Err(AlreadyAnswered(a)) => telegram.editMessage!(update.chat, message, "Already decided: {a.choice} by {a.by}")
-    Err(Closed) | Err(NoSuchChoice) => ()
+    Err(Closed) | Err(NoSuchChoice) | Err(SomeoneElse) => ()
   }
 }
 
@@ -243,9 +250,19 @@ test "quiet hours hold a normal message until eight" {
 
 test "the first press answers a question" {
   let q = Question(QuestionId("q1"))
-  q.open([{ id: "yes", label: "Yes" }, { id: "no", label: "No" }], within: 1 h)
+  q.open([{ id: "yes", label: "Yes" }, { id: "no", label: "No" }], to: operator, within: 1 h)
   let at = 2026-10-12 09:00 in dublin
   expect(q.press("yes", by: operator, at:) |> isOk)
-  expect(q.press("no", by: UserId("someone"), at:) |> isErr)
+  expect(q.press("no", by: operator, at:) |> isErr)
   expect(q.answer |> map(fn a: a.choice) == Some("yes"))
+}
+
+test "a press by someone the question doesn't ask is refused, and the person asked can still answer" {
+  let q = Question(QuestionId("q2"))
+  q.open([{ id: "yes", label: "Yes" }, { id: "no", label: "No" }], to: operator, within: 1 h)
+  let at = 2026-10-12 09:00 in dublin
+  expect(q.press("yes", by: UserId("mallory"), at:) == Err(SomeoneElse))
+  expect(q.answer == None)
+  expect(q.press("no", by: operator, at:) |> isOk)
+  expect(q.answer |> map(fn a: a.choice) == Some("no"))
 }
