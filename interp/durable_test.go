@@ -75,7 +75,7 @@ job work() -> Int {
   Counter(1).read!().n
 }
 
-pub fn main() {
+pub fn main() uses {start work} {
   work.start(key: "work")
 }
 `)
@@ -166,7 +166,7 @@ job nap(i: Int) {
   sleep!(1 h)
 }
 
-pub fn main() {
+pub fn main() uses {start nap} {
   for i in 1..=1000 { nap.start(i, key: "nap-{i}") }
 }
 `)

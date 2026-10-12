@@ -14,7 +14,7 @@ entity Reminder(id: String) {
   state text: String = ""
   state due: Instant = 2026-01-01 00:00 in "UTC"
 
-  pub fn set(t: String, at: Instant) {
+  pub fn set(t: String, at: Instant) uses {start ring} {
     text = t
     due = at
     ring.start(id, key: "ring-{id}")
@@ -209,7 +209,7 @@ test "a lock lets one migration run at a time" {
 
 # region main
 ## Sets one reminder the first time the program starts.
-pub fn main() uses {entity Reminder, clock} {
+pub fn main() uses {clock, entity Reminder, start ring} {
   let r = Reminder("stretch")
   if r.read().version == 0 {
     r.set("stand up and stretch", now() + 1 min)

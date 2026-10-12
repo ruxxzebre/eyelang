@@ -131,7 +131,7 @@ pub fn main() uses {stdio, clock} {
 }
 `, "5050", ""},
 		{`
-pub fn main() uses {stdio, clock} {
+pub fn main() uses {stdio, clock, wait} {
   taskGroup(fn group {
     group.spawn(fn {
       sleep(10 ms)

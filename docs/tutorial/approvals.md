@@ -224,8 +224,9 @@ from the command line:
 
 <<< ./code/approvals/main.eye#main
 
-It calls an entity method, so its signature says `uses {entity Request}`. Because `submit`
-ignores a request it has seen, running the program again with the same arguments changes nothing.
+It calls an entity method that starts the review, so its signature says
+`uses {entity Request, start review}`. Because `submit` ignores a request it has seen, and starts
+the review with a key, running the program again with the same arguments changes nothing.
 
 ## Tests that play out days in milliseconds
 

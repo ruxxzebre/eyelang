@@ -844,8 +844,108 @@ impl svc.Svc {
 			"22:26: raw uses net Svc.raw, which an entity method can't",
 			"23:16: sleep uses wait, which an entity method can't",
 			"25:13: stamp uses clock, which an entity method can't",
+			"26:5: pause uses wait, which an entity method can't",
 			"28:43: stamp uses clock, which an entity method can't",
 			"39:13: now uses clock, which serving an operation can't: it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, which the operation can start",
+		}},
+		{"public entity methods and jobs state their effects", `import svc
+import fs
+job worker(n: Int) {}
+entity Other(id: String) {
+  state n: Int = 0
+  pub fn bump() { n += 1 }
+}
+entity Box(id: String) {
+  state n: Int = 0
+  pub fn pure() { n += 1 }
+  pub fn starts() { let r = worker.start(n) }
+  pub fn publishes() { svc.pings.publish({ id: 1, text: "a" }) }
+  pub fn calls() { Other(id).bump() }
+  pub fn stated() uses {start worker, entity Other} {
+    let r = worker.start(n)
+    Other(id).bump()
+  }
+  fn private() { let r = worker.start(n) }
+}
+pub job reads() -> String {
+  let at = now!()
+  sleep!(1 min)
+  let text = fs.readText!("a")
+  "read"
+}
+pub job statesIt() uses {clock, wait} { let at = now!() }
+job private() { let at = now!() }`, []string{
+			"11:3: starts uses start worker, which its signature doesn't list: run eye fmt, or add uses {start worker}",
+			"12:3: publishes uses publish Svc.pings, which its signature doesn't list",
+			"13:3: calls uses entity Other, which its signature doesn't list",
+			"20:1: reads uses clock, fs, wait, which its signature doesn't list: run eye fmt, or add uses {clock, fs, wait}",
+		}},
+		{"starting a job is an effect, and main's key rule follows calls", `job ring(room: String) {}
+entity Bell(id: String) {
+  state rung: Bool = false
+  pub fn ring() uses {start ring} {
+    rung = true
+    let r = ring.start(id)
+  }
+  pub fn keyed() uses {start ring} { let r = ring.start(id, key: "{id}") }
+}
+pub fn starter() -> Run(()) = ring.start("hall")
+fn kick() { let r = ring.start("kitchen") }
+fn twice() { kick() }
+fn once() { let r = ring.start("porch", key: "porch") }
+job j() {
+  kick()
+  kick!()
+}
+pub fn main() uses {entity Bell, start ring} {
+  twice()
+  Bell("b").ring()
+  Bell("b").keyed()
+  once()
+  let r = ring.start("attic", key: "attic")
+}`, []string{
+			"10:1: starter uses start ring, which its signature doesn't list: run eye fmt, or add uses {start ring}",
+			"15:3: in a job, kick uses start ring, so calling it is a durable step: write kick!(…)",
+			`19:3: eye run runs main every time it starts, and twice starts ring without a key (in kick), so each restart would start it again; give that start a key, which starts it once: ring.start(…, key: "…")`,
+			"20:3: eye run runs main every time it starts, and ring starts ring without a key, so each restart would start it again",
+		}},
+		{"a call that waits keeps wait, and waiting functions are called from runs", `import svc
+pub fn pause() { sleep(1 s) }
+pub fn stated() uses {wait} { sleep(1 s) }
+fn helper() uses {wait} { sleep!(1 min) }
+fn mixed() uses {wait} {
+  sleep!(1 min)
+  sleep(1 min)
+}
+fn plain() {
+  helper()
+  let e = next(svc.pings, where: fn p: true, within: 1 min)
+}
+fn blocks() { stated() }
+job j() {
+  pause()
+  pause!()
+  blocks!()
+  helper!()
+}
+test "t" {
+  helper()
+  pause()
+}
+pub fn main() uses {wait} {
+  sleep(1 s)
+  pause()
+  helper()
+}`, []string{
+			"2:1: pause uses wait, which its signature doesn't list: run eye fmt, or add uses {wait}",
+			"7:3: mixed has durable steps, so its waits are steps too: write sleep!(…)",
+			"10:3: helper waits, so calling it is a durable step: write helper!(…)",
+			"11:11: next waits for what only a run can wait for, so only a job or a function with ! steps can call it, as next!(…)",
+			"15:3: pause waits through calls without !, which block outside a job, so a run couldn't record its wait: write the waiting calls in pause with !, as sleep!(…)",
+			"16:3: pause waits through calls without !",
+			"17:3: blocks waits through calls without !",
+			"21:3: helper has durable steps, which only a job records, so a test can't call it: start a job that calls it, then advance(…) the clock",
+			"27:3: helper has durable steps, which only a job records, so main can't call it: start a job that does",
 		}},
 		{"a trigger names a contract's event", `import svc
 @on(event(svc.missing))

@@ -42,8 +42,12 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   carries on where the last one stopped: a run that was due while the program was down runs at
   once, and a schedule that missed firings fires once, for the latest. Because `main` runs on every
   start, a job it starts takes a key, which starts it once (`ring.start("kitchen", key:
-  "kitchen")`); without one, the checker refuses the call. `eye runs` lists the runs in the
-  journal: their status, what each waits for and until when, and their steps.
+  "kitchen")`); without one, the checker refuses the call. The rule follows calls, through the
+  `start J` effect ([section 12](/reference/language/effects-and-signatures)): a call in `main` of a function or entity method that starts a
+  job without a key, itself or through what it calls, is refused too, `eye run runs main every
+  time it starts, and kick starts ring without a key, so each restart would start it again`.
+  `eye runs` lists the runs in the journal: their status, what each waits for and until when,
+  and their steps.
 - **`eye repl [dir]`** is an interactive session in a program, or in an empty one. An expression
   prints its value and type (`[1, 2] |> map(fn x: x * 10)` prints `[10, 20]: List(Int)`), a
   statement runs, and `let` and `var` bindings last for the session. A declaration (`fn`, `type`,

@@ -47,7 +47,7 @@ test "the identity is the entity" {
 entity Ledger(name: String) {
   state moves: Int = 0
 
-  pub fn move(from: Ref(Wallet), to: Ref(Wallet), n: Int) -> Result((), SpendError) {
+  pub fn move(from: Ref(Wallet), to: Ref(Wallet), n: Int) -> Result((), SpendError) uses {entity Wallet} {
     from.spend(n)?
     to.topUp(n)
     moves += 1
@@ -101,7 +101,7 @@ entity Quota(team: String) {
     warned = false
   }
 
-  pub fn spend(n: Int) -> Result((), SpendError) {
+  pub fn spend(n: Int) -> Result((), SpendError) uses {start warnLow} {
     if n > cents { return Err(Short(balance: cents)) }
     cents -= n
     if cents < 100 && !warned {

@@ -187,7 +187,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
   is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't
-  start the child again. Scheduled starts take
+  start the child again. Starting a job is the effect `start J` ([section 12](/reference/language/effects-and-signatures)), so a function that
+  starts one is a step in a job too, `kick!()`. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.

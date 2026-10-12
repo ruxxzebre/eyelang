@@ -38,10 +38,10 @@ entity Ticket(id: TicketId) {
   state sorting: Sorting = Unsorted
 
   ## Takes a message in and starts its triage, in one transaction.
-  pub fn receive(message: String) {
+  pub fn receive(message: String) uses {start triage} {
     if text != "" { return }
     text = message
-    triage.start(id, message)
+    triage.start(id, message, key: "triage-{id}")
   }
 
   pub fn sort(s: Sorting) { sorting = s }
@@ -76,7 +76,7 @@ job triage(id: TicketId, text: String) {
 # region main
 ## Takes one message from the command line, for example
 ## `eye run . -- t-1 "I was charged twice for order 1182"`.
-pub fn main(args: List(String)) -> Result((), String) uses {entity Ticket} {
+pub fn main(args: List(String)) -> Result((), String) uses {entity Ticket, start triage} {
   let (Some(id), Some(text)) = (args[1], args[2]) else {
     return Err("usage: eye run . -- TICKET MESSAGE")
   }

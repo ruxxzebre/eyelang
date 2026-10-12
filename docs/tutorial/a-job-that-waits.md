@@ -47,8 +47,10 @@ The shelf starts the job when it takes a hold:
 
 <<< ./code/a-job-that-waits/main.eye#shelf
 
-`expire.start(item, order)` in `hold` starts a run of the job. The start is part of the method's
-transaction: the run begins only if `hold` commits. A hold and its expiry can't come apart.
+`expire.start(item, order, key: …)` in `hold` starts a run of the job. The start is part of the
+method's transaction: the run begins only if `hold` commits. A hold and its expiry can't come apart.
+The key starts one run per hold, however often `hold` is called with it, which `main` below needs.
+Starting a job is an effect, so the public method says so: `uses {start expire}`.
 
 `release` returns whether it found the hold, so the job logs only when it put stock back. An order
 that was paid in time has been removed by `sell`, and its expiry does nothing.
@@ -85,7 +87,10 @@ long as any job has something to wait for:
 <<< ./code/a-job-that-waits/main.eye#main
 
 `main` runs every time the program starts, so it checks the shelf's `version` and stocks it only
-the first time. Like any public function, it lists its effects: `uses {entity Shelf}`.
+the first time. Like any public function, it lists its effects: `uses {entity Shelf, start expire}`,
+since `hold` starts `expire`. A job that `main` starts, itself or through a method it calls, needs
+a key, or every restart would start it again; the checker follows the call into `hold` to see that
+it has one.
 
 ```sh
 eye run

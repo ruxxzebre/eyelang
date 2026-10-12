@@ -136,8 +136,11 @@ contract Shop {
 fn a() uses {nonsense} {}
 fn b() uses {net Nowhere.send, net Shop.sell, net Shop.buy, net} {}
 fn c() uses {entity Ghost, entity Order, clock now} {}
-fn d() uses {publish Shop.nothing, consume Nowhere, secret token, entity "x", secret "ok"} {}`, []string{
-			"5:14: nonsense isn't an effect: an effect is clock, consume, entity, env, ffi, fs, net, process, publish, random, secret, stdio or wait",
+fn d() uses {publish Shop.nothing, consume Nowhere, secret token, entity "x", secret "ok"} {}
+job ring() {}
+fn e() uses {start ring, start bell, start} {}`, []string{
+			"5:14: nonsense isn't an effect: an effect is clock, consume, entity, env, ffi, fs, net, process, publish, random, secret, start, stdio or wait",
+			"10:32: start names a job by its name, as start digest, and the program has no job bell",
 			"6:18: net names a contract and its operation, as net Notify.send, and there is no contract Nowhere here",
 			"6:36: contract Shop has no operation sell",
 			"7:21: entity names an entity, and there is no entity Ghost here",

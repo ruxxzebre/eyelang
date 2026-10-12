@@ -157,6 +157,14 @@ pub fn both() -> Instant uses {fs, stdio} {
 pub fn hello() uses {stdio} = print("hi")
 pub fn pure() uses {} = 1
 fn quiet() -> Instant uses {clock, stdio} = now()
+job ring() {}
+pub job tick() -> Int {
+  sleep!(1 min)
+  1
+}
+entity Bell(id: String) {
+  pub fn press() { let r = ring.start() }
+}
 pub fn main() uses {stdio} = print("{stamp()} {quiet()}")
 `
 	want := `import base
@@ -170,6 +178,14 @@ pub fn both() -> Instant uses {clock, stdio} {
 pub fn hello() uses {stdio} = print("hi")
 pub fn pure() = 1
 fn quiet() -> Instant uses {clock, stdio} = now()
+job ring() {}
+pub job tick() -> Int uses {wait} {
+  sleep!(1 min)
+  1
+}
+entity Bell(id: String) {
+  pub fn press() uses {start ring} { let r = ring.start() }
+}
 pub fn main() uses {clock, stdio} = print("{stamp()} {quiet()}")
 `
 	// base is walked before main.eye, and checked again as main's import.

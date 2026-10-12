@@ -10,11 +10,11 @@ entity Shelf(item: String) {
 
   pub fn restock(n: Int) { count += n }
 
-  pub fn hold(order: String, n: Int) -> Result((), StockError) {
+  pub fn hold(order: String, n: Int) -> Result((), StockError) uses {start expire} {
     if n > count { return Err(OutOfStock(left: count)) }
     count -= n
     held = held |> insert(order, n)
-    expire.start(item, order)
+    expire.start(item, order, key: "expire-{item}-{order}")
     Ok(())
   }
 
@@ -58,7 +58,7 @@ test "a hold ends after 15 minutes unless the order is paid" {
 # endregion test
 
 # region main
-pub fn main() uses {entity Shelf} {
+pub fn main() uses {entity Shelf, start expire} {
   let apples = Shelf("apples")
   if apples.read().version == 0 {
     apples.restock(5)

@@ -48,7 +48,7 @@ entity Traveller(id: UserId) {
 
   ## Sends a reminder, unless it was sent before. The record and the start
   ## of the job that sends it commit together.
-  pub fn remind(r: Reminder) {
+  pub fn remind(r: Reminder) uses {start ask} {
     if reminded |> contains(r) { return }
     reminded = reminded |> add(r)
     ask.start(id, r)

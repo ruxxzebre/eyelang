@@ -61,13 +61,13 @@ entity Request(id: RequestId) {
 
   ## Takes a request in and starts its review, in one transaction. Sending
   ## the same request again changes nothing and starts nothing.
-  pub fn submit(d: Details) {
+  pub fn submit(d: Details) uses {start review} {
     if status != New { return }
     details = Some(d)
     match admissible(d) {
       Ok(_) => {
         status = Waiting
-        review.start(id, d)
+        review.start(id, d, key: "review-{id}")
       }
       Err(why) => status = Denied(why: "{why}")
     }
@@ -223,7 +223,7 @@ job morning(day: Date) {
 ## Submits one request from the command line, for example
 ## `eye run . -- r-1 ann prod-db 2 "fix the stuck migration"`. Running it
 ## again with the same id changes nothing.
-pub fn main(args: List(String)) -> Result((), String) uses {entity Request} {
+pub fn main(args: List(String)) -> Result((), String) uses {entity Request, start review} {
   let usage = "usage: eye run . -- ID PERSON GROUP HOURS REASON"
   let (Some(id), Some(person), Some(group), Some(hours), Some(reason)) = (args[1], args[2], args[3], args[4], args[5]) else {
     return Err(usage)

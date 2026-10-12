@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -11,10 +12,11 @@ import (
 
 // Effects (SPECS.md §12) are inferred inside and stated at the boundary: a
 // function's effects are what its body does (waiting, calling another
-// service, touching entities, the clock, standard output) and what the
-// functions it calls do; a callback's effects count where the lambda is
-// written. A public function lists them with `uses`, and one without `uses`
-// is pure. Publishing events, starting jobs and logging aren't effects yet.
+// service, touching entities, the clock, standard output, publishing events,
+// starting jobs) and what the functions it calls do; a callback's effects
+// count where the lambda is written. A public function, entity method or
+// job lists them with `uses`, and one without `uses` is pure. Logging isn't
+// an effect.
 
 // checkEffects checks public signatures against inferred effects, calls of
 // waiting functions without `!`, and what jobs hold across a `!`.
@@ -39,6 +41,19 @@ func (c *checker) checkEffects() {
 				}
 			}
 		}
+		// Public entity methods and jobs state their effects too.
+		for _, e := range m.Entities {
+			for _, f := range e.Methods {
+				if (f.Pub || f.HasUses) && f.Body != nil {
+					fns = append(fns, f)
+				}
+			}
+		}
+		for _, j := range m.Jobs {
+			if j.Func.Pub || j.Func.HasUses {
+				fns = append(fns, j.Func)
+			}
+		}
 		sort.Slice(fns, func(i, j int) bool { return fns[i].Pos.Offset < fns[j].Pos.Offset })
 		for _, f := range fns {
 			c.checkUses(f, all[f])
@@ -47,6 +62,7 @@ func (c *checker) checkEffects() {
 	}
 	c.checkMigrationEffects(all)
 	c.checkTransactions(all)
+	c.checkUnkeyedStarts()
 	c.checkFnLimits(all)
 	c.checkTools(all)
 	c.checkStepResults(all)
@@ -68,8 +84,27 @@ func (c *checker) checkEffects() {
 		f.Effects = sortedEffects(c.srcEffects(fxSrc{fn: f, lambda: true}, all))
 	}
 	for _, m := range c.prog.Modules {
+		kinds := map[*ir.Func]fnKind{}
+		for _, j := range m.Jobs {
+			kinds[j.Func] = kindJob
+		}
+		for _, t := range m.Tests {
+			kinds[t.Func] = kindTest
+		}
+		for _, e := range m.Entities {
+			for _, f := range e.Methods {
+				kinds[f] = kindEntity
+			}
+		}
+		for _, ct := range m.Contracts {
+			for _, op := range ct.Ops {
+				if op.Impl != nil {
+					kinds[op.Impl] = kindOperation
+				}
+			}
+		}
 		for _, f := range c.bodiesOf(m) {
-			c.checkWaitingCalls(f, all)
+			c.checkWaitingCalls(f, kinds[f], all)
 		}
 		for _, j := range m.Jobs {
 			c.checkSteps(j.Func, all)
@@ -257,13 +292,13 @@ func covered(uses []string, effect string) bool {
 var effectKinds = map[string]bool{
 	"wait": false, "net": true, "entity": true, "clock": false, "random": false, "fs": false,
 	"process": false, "stdio": false, "env": false, "ffi": false, "secret": true, "publish": true,
-	"consume": true,
+	"consume": true, "start": true,
 }
 
 // effectExample shows how each effect that names something names it.
 var effectExample = map[string]string{
 	"net": "net Notify.send", "entity": "entity Order", "publish": "publish Bus.pinged",
-	"consume": "consume Bus.pinged", "secret": `secret "telegram-bot-token"`,
+	"consume": "consume Bus.pinged", "secret": `secret "telegram-bot-token"`, "start": "start digest",
 }
 
 // checkEffectNames checks a uses clause's effects: each is one SPECS.md §12
@@ -330,8 +365,32 @@ func (c *checker) checkEffectNames(m *module, f *ir.File, d *syntax.Node) {
 			if c.entityIn(m, name) == nil {
 				c.errorf(pos(f, target), "entity names an entity, and there is no entity %s here", name)
 			}
+		case "start":
+			if c.jobIn(m, name) == nil {
+				c.errorf(pos(f, target), "start names a job by its name, as start digest, and the program has no job %s", name)
+			}
 		}
 	}
+}
+
+// jobIn finds a job by name: in a module, the modules it imports, or any
+// module of the program, since a function another module offers may start
+// a job of a module this one doesn't import.
+func (c *checker) jobIn(m *module, name string) *ir.Job {
+	if j, ok := m.values[name].(*ir.Job); ok {
+		return j
+	}
+	for _, imp := range m.imports {
+		if j, ok := imp.values[name].(*ir.Job); ok {
+			return j
+		}
+	}
+	for _, other := range c.modules {
+		if j, ok := other.values[name].(*ir.Job); ok {
+			return j
+		}
+	}
+	return nil
 }
 
 // contractIn finds a contract by name in a module or the modules it
@@ -397,17 +456,81 @@ func (c *checker) bodiesOf(m *ir.Module) []*ir.Func {
 	return out
 }
 
-// checkWaitingCalls reports calls of waiting functions without `!`: a call
-// that may pause is a durable step, and the `!` shows where.
-func (c *checker) checkWaitingCalls(f *ir.Func, all map[*ir.Func]map[string]bool) {
+// hasSteps reports whether a function's body has `!` steps, which makes it
+// a waiting function (SPECS.md §12).
+func hasSteps(f *ir.Func) bool {
+	found := false
+	walk(f.Body, false, func(e ir.Expr, _ bool) bool {
+		_, w := e.(*ir.Waiting)
+		found = found || w
+		return !found
+	})
+	return found
+}
+
+// jobOnlyWaits are the built-ins that wait for what only a run can wait
+// for: outside a job they would fault, where sleep and poll block.
+var jobOnlyWaits = map[string]bool{"next": true, "approval": true, "reserve": true}
+
+// checkWaitingCalls holds calls that wait to SPECS.md §12. In a job or a
+// waiting function every wait is a `!` step, so a call that waits without
+// one, or a function that waits by blocking, is an error. Elsewhere a call
+// of sleep or of a function that blocks keeps `wait` in the caller's
+// effects, and a waiting function, whose steps only a run records, can't
+// be called.
+func (c *checker) checkWaitingCalls(f *ir.Func, kind fnKind, all map[*ir.Func]map[string]bool) {
+	if kind == kindEntity || kind == kindOperation {
+		return // a transaction can't wait at all (checkTransactions)
+	}
+	durable := kind == kindJob || hasSteps(f)
+	steps := map[*ir.Func]bool{}
+	// waits says whether calling g waits, and whether a run records its
+	// waits: an extern fn's host does, and a waiting function's steps do.
+	waits := func(g *ir.Func) (wait, recorded bool) {
+		if g.Extern {
+			return effectsOf(g, all)["wait"], true
+		}
+		if _, ok := steps[g]; !ok {
+			steps[g] = hasSteps(g)
+		}
+		return effectsOf(g, all)["wait"], steps[g]
+	}
+	main := f.Module != nil && f.Module.Main == f
 	walk(f.Body, false, func(e ir.Expr, waiting bool) bool {
 		call, ok := e.(*ir.Call)
-		if !ok || waiting {
+		if !ok {
 			return true
 		}
-		if r, ok := call.Func.(*ir.Ref); ok {
-			if g, ok := r.Decl.(*ir.Func); ok && all[g]["wait"] {
-				c.typeErrorf(call.Pos, "%s waits, so calling it is a durable step: write %s!(…)", g.Name, g.Name)
+		r, ok := call.Func.(*ir.Ref)
+		if !ok {
+			return true
+		}
+		switch d := r.Decl.(type) {
+		case *ir.Func:
+			wait, recorded := waits(d)
+			switch {
+			case !wait:
+			case !recorded && (durable || waiting):
+				c.typeErrorf(call.Pos, "%s waits through calls without !, which block outside a job, so a run couldn't record its wait: write the waiting calls in %s with !, as sleep!(…)", d.Name, d.Name)
+			case waiting || !recorded:
+			case durable || kind == kindPlain && !main:
+				c.typeErrorf(call.Pos, "%s waits, so calling it is a durable step: write %s!(…)", d.Name, d.Name)
+			case kind == kindTest:
+				c.typeErrorf(call.Pos, "%s has durable steps, which only a job records, so a test can't call it: start a job that calls it, then advance(…) the clock", d.Name)
+			default:
+				c.typeErrorf(call.Pos, "%s has durable steps, which only a job records, so %s can't call it: start a job that does", d.Name, f.Name)
+			}
+		case ir.Builtin:
+			if waiting || !slices.Contains(c.builtins.uses[d.Name], "wait") {
+				return true
+			}
+			switch {
+			case kind == kindJob:
+				// The lowerer reports it, even in a program with other errors.
+			case durable:
+				c.typeErrorf(call.Pos, "%s has durable steps, so its waits are steps too: write %s!(…)", f.Name, d.Name)
+			case jobOnlyWaits[d.Name]:
+				c.typeErrorf(call.Pos, "%s waits for what only a run can wait for, so only a job or a function with ! steps can call it, as %s!(…)", d.Name, d.Name)
 			}
 		}
 		return true
@@ -556,6 +679,68 @@ func (c *checker) checkTransaction(f *ir.Func, all map[*ir.Func]map[string]bool)
 	report(f.Pos, f.Name, rest)
 }
 
+// checkUnkeyedStarts reports a call in main of a function that starts a
+// job without a key, itself or through the functions it calls: main runs
+// on every start of eye run, so the job would start again after each
+// restart (SPECS.md §13). main's own starts are checked as they are found.
+func (c *checker) checkUnkeyedStarts() {
+	// What each function starts without a key, with what it calls.
+	unkeyed := map[*ir.Func][]unkeyedStart{}
+	for f, starts := range c.ts.unkeyed {
+		unkeyed[f] = append([]unkeyedStart{}, starts...)
+	}
+	for changed := true; changed; {
+		changed = false
+		for f, callees := range c.ts.callees {
+			for _, g := range callees {
+				for _, s := range unkeyed[g] {
+					if !slices.Contains(unkeyed[f], s) {
+						unkeyed[f] = append(unkeyed[f], s)
+						changed = true
+					}
+				}
+			}
+		}
+	}
+	for _, m := range c.prog.Modules {
+		main := m.Main
+		if main == nil || main.Body == nil || (m.Dir == "" && m != c.prog.Root) {
+			continue
+		}
+		reported := map[*ir.Func]bool{}
+		walk(main.Body, false, func(e ir.Expr, _ bool) bool {
+			var g *ir.Func
+			switch e := e.(type) {
+			case *ir.Call:
+				if r, ok := e.Func.(*ir.Ref); ok {
+					g, _ = r.Decl.(*ir.Func)
+				}
+			case *ir.Ref:
+				g, _ = e.Decl.(*ir.Func)
+			case *ir.MethodCall:
+				g, _ = e.Target.(*ir.Func)
+			}
+			starts := unkeyed[g]
+			if g == nil || len(starts) == 0 || reported[g] {
+				return true
+			}
+			reported[g] = true
+			s := starts[0]
+			for _, t := range starts[1:] {
+				if t.job.Pos.Offset < s.job.Pos.Offset {
+					s = t
+				}
+			}
+			where := ""
+			if s.in != g {
+				where = " (in " + s.in.Name + ")"
+			}
+			c.typeErrorf(e.Position(), "eye run runs main every time it starts, and %s starts %s without a key%s, so each restart would start it again; give that start a key, which starts it once: %s.start(…, key: \"…\")", g.Name, s.job.Name, where, s.job.Name)
+			return true
+		})
+	}
+}
+
 // taskBuiltins are the built-in functions that run the functions given to
 // them as tasks. taskGroup runs its function as the group's first task, so
 // the functions it spawns are inside one too.
@@ -564,7 +749,8 @@ var taskBuiltins = map[string]bool{"parallelMap": true, "both": true, "race": tr
 // outside reports the first effect in a set that reaches outside the
 // program, which in a job makes a call a durable step (SPECS.md §12):
 // another service, the clock, randomness, the environment, files, other
-// processes, foreign code, entities, secrets and events. Standard output and
+// processes, foreign code, entities, secrets, events and starting jobs,
+// which a resumed run must not do again. Standard output and
 // waiting aren't among them: waiting is reported on its own, and output is
 // not a step (open question 22).
 func outside(effects map[string]bool) string {
@@ -572,7 +758,7 @@ func outside(effects map[string]bool) string {
 	for e := range effects {
 		kind, _, _ := strings.Cut(e, " ")
 		switch kind {
-		case "net", "clock", "random", "env", "fs", "process", "ffi", "entity", "secret", "publish", "consume":
+		case "net", "clock", "random", "env", "fs", "process", "ffi", "entity", "secret", "publish", "consume", "start":
 			found = append(found, e)
 		}
 	}

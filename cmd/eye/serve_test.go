@@ -44,11 +44,11 @@ func TestServeNotifyBetweenPrograms(t *testing.T) {
 	// one message twice with one key.
 	t.Setenv("NOTIFY_URL", url)
 	callerFiles := map[string]string{
-		"lab.eye": "import digest\n\npub fn main() {\n  digest.sendTwice.start(key: \"exit-6.13\")\n}\n",
+		"lab.eye": "import digest\n\npub fn main() uses {start sendTwice} {\n  digest.sendTwice.start(key: \"exit-6.13\")\n}\n",
 		"digest/sendtwice.eye": `import home.{operator}
 import notify
 
-pub job sendTwice() -> String {
+pub job sendTwice() -> String uses {net Notify.send, wait} {
   let first = notify.send!(event: "digest.ireland", title: "Hello", body: "From the digest", to: Some([operator]), key: "exit-6.13").reconcile!()
   let again = notify.send!(event: "digest.ireland", title: "Hello", body: "From the digest", to: Some([operator]), key: "exit-6.13").reconcile!()
   "{first}; {again}"

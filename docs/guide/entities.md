@@ -81,7 +81,7 @@ state in it. The call that comes back starts from what `move` has changed so far
 from what that call changed, and the ledger commits once with both. A value `move` read before the
 call, such as `let before = moves`, keeps what it read.
 
-### Methods never wait
+### Methods stay inside the program
 
 A method holds its entity while it runs, so it can't pause. It can't sleep, wait for an event or
 call another service. A method with `sleep!` in it doesn't compile:
@@ -90,8 +90,19 @@ call another service. A method with `sleep!` in it doesn't compile:
 main.eye:109:7: an entity method is a transaction and can't wait; start a job for this instead
 ```
 
-Because methods have no outside effects, the runtime can safely run one again after a conflict.
-Work that waits belongs in a [job](/guide/jobs-and-waiting), which the method can start.
+The runtime may run a method again after a conflict, so a method does nothing that someone outside
+the program would see twice. It can't call another service, read or write files, run programs,
+read the clock, the environment or a secret, draw random numbers or call foreign code, itself or
+through a function it calls:
+
+```text
+main.eye:12:13: now uses clock, which an entity method can't: it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, which the method can start
+```
+
+What it may do commits with the transaction: change its state, call other entities' methods,
+start jobs and publish events. Printing and logging are allowed too, since a line written twice
+on a retry harms no one. A method that needs the time takes it as an argument. Work that waits or
+reaches outside belongs in a [job](/guide/jobs-and-waiting), which the method can start.
 
 ## References
 
@@ -125,7 +136,8 @@ the wait instead of trusting what it read before.
 ## Starting a job from a method
 
 A method can't wait, but it can start a job that does. The start is part of the transaction:
-the run begins only if the method commits.
+the run begins only if the method commits. Starting a job is an effect, so a public method that
+starts one says so in its signature, `uses {start warnLow}`.
 
 <<< ./code/entities/main.eye#quota
 
@@ -241,6 +253,7 @@ A few signs that something should be an entity:
 | Half a change is visible | Nothing outside a method sees its changes until it commits, nested calls included |
 | A change commits, its follow-up is lost | A job started in a method begins only if the method commits |
 | A lock held across a network call | Methods can't wait, so they finish quickly |
+| A retried transaction sends a message twice | Methods can't call services or touch files; the jobs they start begin once, when they commit |
 | "Not found", or two rows for one thing | An entity exists from its first use, and its identity can't change |
 | Old rows that the new code can't read | `@version` and `migrate from` are checked, and `eye run` refuses rows it can't migrate |
 

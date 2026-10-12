@@ -51,7 +51,7 @@ entity Message(key: Key) {
 
   ## Queues the message for each person. Only the first call with a key
   ## does anything; a repeat gets the same answer.
-  pub fn queue(c: Content, to: List(UserId)) -> Delivery {
+  pub fn queue(c: Content, to: List(UserId)) -> Delivery uses {start deliver} {
     let deduped = content != None
     if !deduped {
       content = Some(c)
@@ -174,14 +174,14 @@ entity Question(id: QuestionId) {
   ## Who the question asks; None for one opened before it was kept.
   state asked: Option(UserId) = None
 
-  pub fn open(c: List(Choice), to: UserId, within: Duration) {
+  pub fn open(c: List(Choice), to: UserId, within: Duration) uses {start close} {
     choices = c
     asked = Some(to)
     open = true
     close.start(id, after: within)
   }
 
-  pub fn press(choice: String, by: UserId, at: Instant) -> Result(Answered, Unanswerable) {
+  pub fn press(choice: String, by: UserId, at: Instant) -> Result(Answered, Unanswerable) uses {publish Notify.answered} {
     match answer {
       Some(a) => return Err(AlreadyAnswered(a))
       None => ()

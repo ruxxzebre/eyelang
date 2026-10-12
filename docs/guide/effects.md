@@ -21,12 +21,13 @@ every evening. Its tests run with `eye test docs/guide/code/effects`.
 
 | Effect | Comes from |
 |---|---|
-| `wait` | A `!` call: a step that may pause, such as `sleep!`, `next!` or a call to a waiting function |
+| `wait` | A `!` call: a step that may pause, such as `sleep!`, `next!` or a call to a waiting function; and outside a job, a call that blocks, such as `sleep(1 s)` |
 | `net Chat.post` | Calling operation `post` of contract `Chat` |
 | `net` | Calling a service without a contract: `http.get`, `ai.generate` |
 | `entity Order` | Reading or changing entities of type `Order` |
 | `publish Bus.pinged` | Publishing event `pinged` of contract `Bus`: `bus.pinged.publish(…)` |
 | `consume Bus.pinged` | Waiting for that event: `next!(bus.pinged, …)` |
+| `start digest` | Starting a run of job `digest`: `digest.start(day)` |
 | `secret "chat-token"` | Reading a secret: `secret("chat-token")` |
 | `ffi` | Calling an `extern fn` of the program, which runs foreign code |
 | `clock` | `now()` |
@@ -34,17 +35,18 @@ every evening. Its tests run with `eye test docs/guide/code/effects`.
 | `env` | `env.get(…)` |
 
 A broader name covers the narrower ones: `net Chat` covers every operation of `Chat`, and `net`
-covers every call to another service; `publish` covers every event, and `secret` every secret.
-Prefer the narrow name. `uses {net Chat.post}` tells a reader exactly which operation a function
-can call; `uses {net}` tells them almost nothing.
+covers every call to another service; `publish` covers every event, `start` every job, and
+`secret` every secret. Prefer the narrow name. `uses {net Chat.post}` tells a reader exactly which
+operation a function can call; `uses {net}` tells them almost nothing.
 
-Logging (`log.info` and the rest) isn't an effect, and neither is starting a job, although in a job
-starting a child run is a step (see below).
+Logging (`log.info` and the rest) isn't an effect.
 
 ## Public functions state them
 
 A public function without `uses` is **pure**: it computes its result from its arguments and does
-nothing else. The compiler holds it to that:
+nothing else. Public entity methods and public jobs are held to the same rule: a method that
+starts a job says `uses {start …}`, and one that calls another entity `uses {entity …}`. The
+compiler holds them to that:
 
 <<< ./code/effects/main.eye#pure
 
@@ -154,7 +156,7 @@ Waiting calls can appear only where waiting makes sense:
 |---|---|---|
 | A job | Yes, each one a saved step | |
 | Any other function | Yes; it becomes a waiting function, which only jobs and other waiting functions can call | |
-| An entity method | No: a method is a transaction | `an entity method is a transaction and can't wait; start a job for this instead` |
+| An entity method | No: a method is a transaction, which stays inside the program | `an entity method is a transaction and can't wait; start a job for this instead` |
 | Serving a contract's operation | No: it is a transaction | `serving an operation is a transaction and can't wait; start a job for this instead` |
 | `main` | No: `main` isn't durable | `` `!` marks a durable step, and only jobs have them; in main, call it without `!` `` |
 | A test | No | `a test can't make waiting calls; start a job, then advance(…) the clock` |
@@ -163,6 +165,26 @@ A waiting function can't be called from `main` or a test at all, with `!` or wit
 that does the waiting instead. A test then moves its clock with
 `advance(…)`, as the program's test does with the evening job. See
 [Jobs and waiting](/guide/jobs-and-waiting).
+
+Outside a job, `sleep(1 s)` without `!` blocks: `main` waits for a second, and a test's clock
+moves by one. That still waits, so the call keeps `wait` in the caller's effects, and so does a
+call of a function that blocks: `pub fn pause() uses {wait} { sleep(1 s) }`. A job can't call
+`pause`, with `!` or without, since its run couldn't record that wait:
+
+```text
+pause waits through calls without !, which block outside a job, so a run couldn't record its wait: write the waiting calls in pause with !, as sleep!(…)
+```
+
+## Starting jobs
+
+Starting a job is the effect `start J`, named after the job. In a job, a function that starts one
+is a step, written with `!`, so a resumed run doesn't start it again. And `main`, which runs every
+time `eye run` starts, may start a job only with a key, which starts it once: the checker follows
+the calls `main` makes, entity methods included, and refuses one that starts a job without a key:
+
+```text
+eye run runs main every time it starts, and kick starts ring without a key, so each restart would start it again; give that start a key, which starts it once: ring.start(…, key: "…")
+```
 
 ## What can't be held across a `!`
 

@@ -47,7 +47,7 @@ job nap() {
   sleep!(1 h)
 }
 
-pub fn main() {
+pub fn main() uses {start nap} {
   nap.start(key: "nap")
 }
 `})
@@ -94,7 +94,7 @@ job ring(name: String) -> String {
 }
 
 ## main runs on every start; the key makes it start ring once.
-pub fn main() {
+pub fn main() uses {start ring} {
   ring.start("kitchen", key: "kitchen")
 }
 `})
@@ -171,7 +171,7 @@ job stamp() -> String {
   "stamped at {at}"
 }
 
-pub fn main() {
+pub fn main() uses {start stamp} {
   stamp.start(key: "once")
 }
 `})
@@ -204,7 +204,7 @@ job bake(name: String) -> String {
   "{name} is out of the oven"
 }
 
-pub fn main() {
+pub fn main() uses {start bake} {
   bake.start("rye", key: "rye")
 }
 `})
@@ -242,7 +242,7 @@ func TestRunFreshRefuses(t *testing.T) {
 	dir := program(t, map[string]string{"main.eye": `
 job bake() {}
 
-pub fn main() {
+pub fn main() uses {start bake} {
   bake.start(key: "once")
 }
 `})
@@ -289,7 +289,7 @@ job wait(name: String) -> String {
   "{name} waited from {start}"
 }
 
-pub fn main() {
+pub fn main() uses {start wait} {
   wait.start("a", key: "a")
 }
 `

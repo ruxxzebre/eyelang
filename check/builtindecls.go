@@ -81,13 +81,11 @@ func (c *checker) loadBuiltins() {
 }
 
 // builtinEffects adds what calling a built-in does to the function being
-// checked. Waiting isn't among them: outside a job, sleep blocks, and in a
-// job the `!` the call needs says that it waits.
+// checked. Waiting is among them: outside a job, sleep blocks, and the
+// caller's signature says that it can hold its own caller up (SPECS.md §12).
 func (x *fnCheck) builtinEffects(name string, args []ir.Arg) {
 	for _, u := range x.c.builtins.uses[name] {
-		if u != "wait" {
-			x.effect(namedEffect(u, args))
-		}
+		x.effect(namedEffect(u, args))
 	}
 }
 

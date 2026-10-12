@@ -39,7 +39,7 @@ fn body(name: String) -> String uses {net, env} {
   }
 }
 
-pub fn main() uses {net, env, stdio, clock} {
+pub fn main() uses {net, env, stdio, clock, wait} {
   let (x, y) = both(fn { body("A_URL") }, fn { body("B_URL") })
   let all = ["A_URL", "B_URL", "A_URL", "B_URL"] |> parallelMap(fn n: body(n), limit: 2)
   let first = race([fn { body("A_URL") }, fn {
@@ -69,7 +69,7 @@ pub fn main() uses {net, env, stdio, clock} {
 // the failure.
 func TestATaskFaultEndsTheCall(t *testing.T) {
 	prog := loadFiles(t, map[string]string{"main.eye": `
-pub fn main() uses {stdio, clock} {
+pub fn main() uses {stdio, clock, wait} {
   let pair = both(fn {
     sleep(10 ms)
     unreachable("broken")

@@ -28,7 +28,7 @@ entity Account(id: String) {
   ## Moves n cents to another account: it tops that one up and starts an
   ## audit before it takes from this one, which faults when there isn't
   ## enough.
-  pub fn move(to: String, n: Int) {
+  pub fn move(to: String, n: Int) uses {entity Account, start audit} {
     moves += 1
     Account(to).topUp(n)
     audit.start(id, n)
@@ -156,7 +156,7 @@ entity Player(id: String) {
 
 entity Club(id: String) {
   ## Ends the player, then calls it again in the same transaction.
-  pub fn retireThenRename(p: Ref(Player), ok: Approval) {
+  pub fn retireThenRename(p: Ref(Player), ok: Approval) uses {entity Player} {
     p.retire(ok)
     p.rename("again")
   }
@@ -247,7 +247,7 @@ fn bumpAfter(ms: Int) -> Int {
   Counter("c").bump()
 }
 
-pub fn main() uses {entity Counter, stdio} {
+pub fn main() uses {entity Counter, stdio, wait} {
   let seen = (1..=200) |> parallelMap(fn i: bumpAfter(i % 7))
   print(Counter("c").n, seen |> toSet |> size, Counter("c").read().version)
 }

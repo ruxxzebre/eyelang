@@ -129,7 +129,9 @@ Words this document uses in one sense, and names that mean different things in d
 | Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing, saving and schemas are derived for data types whose parts have them. An impl lives in the module of the trait or of the type (an `impl` of a contract, which serves it, may go in any module), and a type variable has only the traits its `where` gives it | One mechanism for generic code; a requirement written once is checked at every call, and two modules can't give one type two meanings of a trait |
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts. Each attribute is declared with where it goes and what it takes, and the checker holds every use to that: `@concurency isn't an attribute; did you mean @concurrency?` | One general mechanism instead of special syntax per feature, and a program can't say "one at a time" and quietly get five. From the lab: a misspelt attribute was ignored, and `@concurrency(1)` wasn't enforced |
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
-| Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
+| Effects at the boundary | **Public entity methods and public jobs state their effects as public functions do, and starting a job is an effect, `start J`.** The key rule for `main` follows calls through it: a function or method `main` calls that starts a job without a key is refused. `eye fmt` writes the clauses (section 12) | A method that starts a job, or a job that reads files, does as much as a function that does, and a reviewer needs to see it in the same place. Starting a job is a change to the outside of the call: in a job a function that starts one is a recorded step, and a helper could otherwise hide from `main`'s key rule a start that repeats on every restart. From the spec review of 2026-10-12 |
+| Waiting functions | **A function whose body has `!` steps is a waiting function**: it has `wait` in its effects, and jobs and other waiting functions call it with `!`, but `main` and tests can't. **Outside a job a wait blocks**: `sleep(1 s)` in `main` holds it, and the call keeps `wait` in the caller's effects; a job can't call a function that waits that way (section 12) | Every wait in a run is a recorded step, so a job can't block on a sleep a helper hides. Outside jobs blocking is what a script expects, and `wait` in a signature shows that a call can hold its caller up. From the spec review of 2026-10-12: `pub fn pause() { sleep(1 s) }` passed as pure |
+| Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps, and is used only in jobs and in the waiting functions they call. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
 | Callbacks and stored functions | **A parameter's function type without `uses` takes a callback; every other function type states its effects.** A callback may do anything, and its effects count where it is given. A lambda or named function kept in a field, a collection or a result does no more than that type states, and a callback can't be kept in data without its parameter's type stating its effects (section 12) | Higher-order functions stay generic over effects without effect variables, and a stored function can't do behind its caller's back what the caller's signature doesn't show |
 | Writing effects | **`eye fmt` writes public functions' `uses` clauses.** Formatting a program's directory checks the program and writes each public function's inferred effects into its signature: it adds what is missing and drops what the body no longer does. A file formatted alone, and a program with other errors, keep their clauses as written (section 12) | Effects in a signature are there for the reviewer, who reads them in the diff; working them out and keeping them current is the compiler's job, not the author's, and a permission the code stopped using doesn't linger |
@@ -191,7 +193,7 @@ entity World(id: WorldId) {
   state phase: Phase = Asleep
   state players: Set(PlayerId) = {}
 
-  pub fn join(p: PlayerId) {
+  pub fn join(p: PlayerId) uses {start wake} {
     players = players |> add(p)
     if phase == Asleep {
       phase = Waking
@@ -889,9 +891,10 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 
 | Effect | Comes from | What the compiler does with it |
 |---|---|---|
-| `wait` | any `!` call | Compiles the function to a resumable state machine; allowed only in jobs and waiting functions |
+| `wait` | any `!` call, and a call of a function that waits, such as `sleep(1 s)` outside a job | Compiles the function to a resumable state machine; see waiting functions below |
 | `net C.op` | calling an operation on contract `C` | Derives network policy, credentials and allowed-caller checks |
 | `publish C.event`, `consume C.event` | publishing contract `C`'s event (`bus.pinged.publish!(…)`), or waiting for it or starting on it (`next!(bus.pinged)`, `@on(event(bus.pinged))`) | Derives message-queue permissions |
+| `start J` | starting a run of job `J`, `digest.start(day)` | Follows starts through calls, so `main` can't start a job without a key through a function it calls (section 13) |
 | `entity E` | reading or changing entities of type `E` | Database grants; includes the type in backups |
 | `secret "name"` | reading a secret, `secret("telegram-bot-token")` | Delivers that secret only to code that uses it |
 | `clock`, `random` | `now()`, `random.int(1..=6)` | Lets tests replace them |
@@ -899,20 +902,26 @@ pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
 | `ffi` | calling an `extern fn` (section 18) | Marks code the compiler can't check |
 
 Every effect in the table is inferred, and a private function's effects never need writing. A
-public function that publishes an event, reads a secret or calls an `extern fn` lists it in
-`uses` as the table names it, as one that calls a service lists `net C.op`:
+public function that publishes an event, reads a secret, starts a job or calls an `extern fn`
+lists it in `uses` as the table names it, as one that calls a service lists `net C.op`:
 `uses {publish Bus.pinged}`, `uses {secret "telegram-bot-token"}`, with the name as passed to
-`secret(…)`, and `uses {ffi}`. A bare kind covers all of its kind: `net` every operation,
-`publish` and `consume` every event, `entity` every entity, and `secret` every secret, which is
-what reading a secret by a name that isn't a literal needs. An `extern fn` that states its own
-`uses`, as `http.get` states `net Http.get`, has those effects instead of `ffi`.
+`secret(…)`, `uses {start digest}`, with the job's name, and `uses {ffi}`. A bare kind covers all
+of its kind: `net` every operation, `publish` and `consume` every event, `entity` every entity,
+`start` every job, and `secret` every secret, which is what reading a secret by a name that isn't
+a literal needs. An `extern fn` that states its own `uses`, as `http.get` states `net Http.get`,
+has those effects instead of `ffi`.
 
 - **Pure means no `uses`.** A public function without a `uses` clause is pure, and the compiler
   holds it to that: if `area` read a file, the error would say `area uses fs, which its signature
   doesn't list: run eye fmt, or add uses {fs}`. Editors show the inferred effects of private
   functions.
+- **Public entity methods and jobs state theirs too.** A `pub fn` in an entity and a `pub job`
+  are boundaries like any public function: `pub fn join(p: PlayerId) uses {start wake}` in the
+  tour, and a `pub job` lists everything it does, `wait` included. What a method does to its own
+  entity's state isn't an effect; calling another entity's method is `entity E`.
 - **`eye fmt` writes the clauses.** Formatting a program's directory, `eye fmt DIR`, checks the
-  program and writes each public function's `uses` from what its body does: it adds a missing
+  program and writes each public function's, entity method's and job's `uses` from what its body
+  does: it adds a missing
   effect and drops one the body no longer has. An entry that still covers an effect stays, as
   `net` stays while the body calls any service; a clause that changes is written in sorted order.
   A file formatted alone (`eye fmt FILE`, or an editor formatting on save) is formatted for syntax
@@ -956,8 +965,8 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
 recorded, so a resumed run never repeats it and sees the same values. The steps are:
 
 - every call with an outside effect (`net`, `fs`, `process`, `clock`, `random`, `env`, `ffi`,
-  `secret` and `entity`), an `extern fn` included (`open!(path)`). That holds for a function of
-  the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without
+  `secret`, `entity`, `publish` and `start`), an `extern fn` included (`open!(path)`). That
+  holds for a function of the program too: `stamp!()`, where `fn stamp() = now()`, is one step, and calling it without
   `!` is an error, `in a job, stamp uses clock, so calling it is a durable step: write stamp!(…)`;
 - entity calls (`w.read!()`, `w.markAsleep!()`), each committed in the same transaction as its
   checkpoint (section 15);
@@ -971,6 +980,22 @@ can't make most of these calls at all: they are transactions, which stay inside 
 step:** `print` has the effect `stdio`, which public signatures list, but in a job it is written
 without `!` and isn't recorded, and logging (`log.info`) is not an effect at all. Output is for
 people watching a run, not part of what the run computes.
+
+**Waiting functions.** A function whose body has `!` steps, such as `summarise` above, is a
+*waiting function*. It has `wait` in its effects, and a job calls it with `!`: its steps are
+recorded as the job's own, and replayed with them (section 15). A waiting function writes every
+wait with `!`, and calls another waiting function with `!` too. Only a run records steps, so
+neither `main` nor a test can call a waiting function, with `!` or without: `summarise has
+durable steps, which only a job records, so main can't call it: start a job that does`.
+
+- **Outside a job, a wait blocks.** `sleep(1 s)`, `sleepUntil(…)` and `poll(…)`, written without
+  `!` in `main`, a test or a plain function, hold the caller until they return; in a test they
+  move the test's clock. They still wait, and so does a function that calls one, so the call
+  keeps `wait` in the caller's effects: `pub fn pause() uses {wait} { sleep(1 s) }`. A job can't
+  call such a function, with `!` or without, since the run couldn't record its wait: `pause waits
+  through calls without !, which block outside a job, so a run couldn't record its wait: write the
+  waiting calls in pause with !, as sleep!(…)`. `next`, `approval` and `reserve` wait for what
+  only a run can wait for, so outside jobs and waiting functions they are errors.
 
 **A step's result is saved.** It is recorded so that a resumed run sees the same value, so it must
 be something that can be saved (section 15). A `Secret`, or a value of an `extern type`, is used
@@ -1028,8 +1053,12 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   carries on where the last one stopped: a run that was due while the program was down runs at
   once, and a schedule that missed firings fires once, for the latest. Because `main` runs on every
   start, a job it starts takes a key, which starts it once (`ring.start("kitchen", key:
-  "kitchen")`); without one, the checker refuses the call. `eye runs` lists the runs in the
-  journal: their status, what each waits for and until when, and their steps.
+  "kitchen")`); without one, the checker refuses the call. The rule follows calls, through the
+  `start J` effect (section 12): a call in `main` of a function or entity method that starts a
+  job without a key, itself or through what it calls, is refused too, `eye run runs main every
+  time it starts, and kick starts ring without a key, so each restart would start it again`.
+  `eye runs` lists the runs in the journal: their status, what each waits for and until when,
+  and their steps.
 - **`eye repl [dir]`** is an interactive session in a program, or in an empty one. An expression
   prints its value and type (`[1, 2] |> map(fn x: x * 10)` prints `[10, 20]: List(Int)`), a
   statement runs, and `let` and `var` bindings last for the session. A declaration (`fn`, `type`,
@@ -1454,7 +1483,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
   is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't
-  start the child again. Scheduled starts take
+  start the child again. Starting a job is the effect `start J` (section 12), so a function that
+  starts one is a step in a job too, `kick!()`. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.

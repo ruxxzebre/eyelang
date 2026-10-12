@@ -24,7 +24,7 @@ job restart() -> String {
   }
 }
 
-pub fn main() {
+pub fn main() uses {start restart} {
   restart.start(key: "router")
 }
 `})
@@ -101,7 +101,7 @@ job restart(what: String, within: Duration) -> String {
   }
 }
 
-pub fn main() {
+pub fn main() uses {start restart} {
   restart.start("router", 1 h, key: "router")
   restart.start("printer", 2 s, key: "printer")
 }

@@ -21,7 +21,7 @@ entity Disk(host: String) {
   pub fn report(percent: Int) { used = percent }
 
   ## Someone has seen the alert: tell every run that waits for it.
-  pub fn acknowledge(by: String) {
+  pub fn acknowledge(by: String) uses {publish Monitor.acks} {
     monitor.acks.publish({ host, by })
   }
 }

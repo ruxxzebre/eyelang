@@ -14,11 +14,11 @@ entity Invoice(id: InvoiceId) {
   state receiptUnsure: Bool = false
 
   ## Records the invoice and starts collecting it, in one transaction.
-  pub fn issue(c: CustomerId, cents: Int, phone: String) {
+  pub fn issue(c: CustomerId, cents: Int, phone: String) uses {start collect} {
     if customer != None { return }
     customer = Some(c)
     amountCents = cents
-    collect.start(id, c, cents, phone)
+    collect.start(id, c, cents, phone, key: "collect-{id}")
   }
 
   pub fn settle(s: Status) { status = s }
@@ -114,7 +114,7 @@ pub fn looksUp(page: http.Response) -> Bool =
 # region main
 ## Issues one invoice from the command line, for example
 ## `eye run . -- i-1 ann 4250 "+353 85 000 0001"`.
-pub fn main(args: List(String)) -> Result((), String) uses {entity Invoice} {
+pub fn main(args: List(String)) -> Result((), String) uses {entity Invoice, start collect} {
   let usage = "usage: eye run . -- INVOICE CUSTOMER CENTS PHONE"
   let (Some(id), Some(customer), Some(cents), Some(phone)) = (args[1], args[2], args[3], args[4]) else {
     return Err(usage)

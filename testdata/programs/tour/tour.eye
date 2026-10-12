@@ -11,7 +11,7 @@ entity World(id: WorldId) {
   state phase: Phase = Asleep
   state players: Set(PlayerId) = {}
 
-  pub fn join(p: PlayerId) {
+  pub fn join(p: PlayerId) uses {start wake} {
     players = players |> add(p)
     if phase == Asleep {
       phase = Waking

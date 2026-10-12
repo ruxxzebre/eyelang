@@ -6,7 +6,7 @@ entity Kettle(id: String) {
   state phase: Phase = Idle
   state brews: Int = 0
 
-  pub fn brew() {
+  pub fn brew() uses {start boil} {
     if phase == Idle {
       phase = Brewing
       boil.start(id, after: 1 min)

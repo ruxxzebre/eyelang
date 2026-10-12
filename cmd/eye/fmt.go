@@ -206,7 +206,7 @@ func writeUses(path string, src []byte, sigs []check.Signature, stderr io.Writer
 		}
 		var d *syntax.Node
 		at.File.Tree.Root.Walk(func(n *syntax.Node) bool {
-			if n.Kind == syntax.FunctionDeclaration && n.Span.Start == at.Offset && n.Span.End == at.End {
+			if (n.Kind == syntax.FunctionDeclaration || n.Kind == syntax.JobDeclaration) && n.Span.Start == at.Offset && n.Span.End == at.End {
 				d = n
 			}
 			return d == nil

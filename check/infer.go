@@ -78,6 +78,16 @@ type typeState struct {
 	calls map[*ir.Op]*ir.Type
 	// tools are the functions named where an ai.Tool is expected (tools.go).
 	tools []toolUse
+	// unkeyed are the jobs each function starts without a key, which main
+	// may not do, even through the functions it calls.
+	unkeyed map[*ir.Func][]unkeyedStart
+}
+
+// unkeyedStart is a job started without a key, and the function that
+// starts it.
+type unkeyedStart struct {
+	job *ir.Job
+	in  *ir.Func
 }
 
 type zoneLit struct {
@@ -167,7 +177,7 @@ func (c *checker) checkTypes() {
 		checking: map[*ir.Global]bool{}, effects: map[*ir.Func]map[string]bool{},
 		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{}, forIters: map[*ir.For]typ{},
 		lambdaEffects: map[*ir.Func]map[string]bool{}, lambdaCallees: map[*ir.Func][]*ir.Func{},
-		sigs:     map[*ir.Func]*tfun{},
+		sigs: map[*ir.Func]*tfun{}, unkeyed: map[*ir.Func][]unkeyedStart{},
 		inferred: map[*ir.Func]inferState{}, schemes: map[*ir.Func]*scheme{},
 		option: pre.Types["Option"], result: pre.Types["Result"], outcome: pre.Types["Outcome"],
 		decision: pre.Types["Decision"], uncert: pre.Variants["Uncertain"],
@@ -1740,14 +1750,19 @@ func (x *fnCheck) start(job *ir.Job, e *ir.MethodCall) typ {
 		fparam{name: "after", t: tDuration, hasDefault: true},
 		fparam{name: "at", t: tInstant, hasDefault: true},
 		fparam{name: "key", t: tKey, hasDefault: true})
-	if main := x.top.fn; main.Module != nil && main.Module.Main == main && x.top.kind == kindPlain {
-		keyed := false
-		for _, a := range e.Args {
-			keyed = keyed || a.Name == "key"
-		}
-		if !keyed {
-			x.c.typeErrorf(e.Pos, "eye run runs main every time it starts, so this would start %s again after each restart; give the run a key, which starts it once: %s.start(…, key: \"…\")", job.Name, job.Name)
-		}
+	x.effect("start " + job.Name)
+	keyed := false
+	for _, a := range e.Args {
+		keyed = keyed || a.Name == "key"
+	}
+	switch main := x.top.fn; {
+	case keyed || x.top.kind == kindJob:
+	case main.Module != nil && main.Module.Main == main && x.top.kind == kindPlain:
+		x.c.typeErrorf(e.Pos, "eye run runs main every time it starts, so this would start %s again after each restart; give the run a key, which starts it once: %s.start(…, key: \"…\")", job.Name, job.Name)
+	default:
+		// A function main calls, directly or not, would do the same
+		// (checkUnkeyedStarts).
+		x.c.ts.unkeyed[x.top.fn] = append(x.c.ts.unkeyed[x.top.fn], unkeyedStart{job: job, in: x.top.fn})
 	}
 	x.args(f, e.Args, job.Name+".start", e.Pos)
 	return con("Run", f.ret)

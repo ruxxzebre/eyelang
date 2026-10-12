@@ -347,7 +347,7 @@ impl bell.Bell {
   }
 }
 
-pub fn main() {
+pub fn main() uses {start wait} {
   wait.start(key: "wait")
 }
 `,
