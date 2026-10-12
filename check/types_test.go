@@ -1018,6 +1018,19 @@ fn f(xs: List(Named)) -> Int = 0`, []string{"4:1: f's parameter xs has Named ins
 		{"what a job saves has Save, field by field", `type Login = { user: String, password: Secret(String) }
 job j(login: Login) { sleep!(1 min) }`,
 			[]string{"2:1: j's argument login is a Login (its field password is a Secret)"}},
+		{"an entity's state has Save", `entity Holder(id: String) {
+  state f: fn(Int) -> Int = fn x: x
+  state token: Option(Secret(String)) = None
+  state n: Int = 0
+  pub fn set(k: Int) { f = fn x: x * k }
+  pub fn call(x: Int) -> Int = f(x)
+}
+entity Other(id: String) {
+  state h: Ref(Holder) = Holder("a")
+}`, []string{
+			"2:12: Holder's state f is a function, which can't be saved, and an entity's state is: keep what the function would compute, or a variant that names it",
+			"3:16: Holder's state token is a Secret, which can't be saved, and an entity's state is",
+		}},
 		{"a model is asked for a type with a Schema", `import ai
 job j() {
   let r: Result(Secret(String), ai.AiError) = ai.generate!(model: "m", prompt: "p")

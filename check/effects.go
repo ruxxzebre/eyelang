@@ -123,6 +123,9 @@ func (c *checker) checkEffects() {
 			c.checkJobArgs(j)
 			keep(c.checkSave(j.Func, false))
 		}
+		for _, e := range m.Entities {
+			c.checkStates(e)
+		}
 	}
 	c.checkFnPasses(frames)
 }
@@ -1065,6 +1068,8 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 			switch x.name {
 			case "Secret", "TaskGroup", "Sender", "Receiver", "Iter":
 				return x.name
+			case "Ref":
+				return "" // saved as the entity's identity
 			}
 		}
 		for _, a := range x.args {
@@ -1171,6 +1176,30 @@ func (c *checker) checkJobArgs(j *ir.Job) {
 				c.typeErrorf(j.Pos, "%s's argument %s is %s, which can't be saved, and a job's arguments are", j.Name, p.Name, withArticle(what))
 			}
 		}
+	}
+}
+
+// checkStates reports an entity's state that can't be saved: the store
+// keeps every entity's state, and a function, say, is code that a later
+// version of the program may not have (SPECS.md §2, "Functions across a !").
+func (c *checker) checkStates(e *ir.Entity) {
+	for _, s := range e.States {
+		if s.Type == nil {
+			continue
+		}
+		at, ok := c.typePos[s.Type]
+		if !ok {
+			at = e.Pos
+		}
+		what := c.unsaveable(c.fromExpr(s.Type, typeEnv{}, false))
+		if what == "" {
+			continue
+		}
+		msg := fmt.Sprintf("%s's state %s is %s, which can't be saved, and an entity's state is", e.Name, s.Name, withArticle(what))
+		if strings.Contains(what, "function") {
+			msg += ": keep what the function would compute, or a variant that names it"
+		}
+		c.typeErrorf(at, "%s", msg)
 	}
 }
 

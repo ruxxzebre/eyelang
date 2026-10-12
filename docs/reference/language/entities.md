@@ -28,6 +28,9 @@ entity Player(id: PlayerId) {
 
 - **Identity:** `Player(id)` is a reference. The entity exists on first use, starting from
   default state.
+- **State is saved, so its types have `Save`.** A `state` field can't hold a function, a
+  `Secret` or anything else without `Save`: the store keeps every entity's state, and a function
+  is code that the next version of the program may not have. A `Ref` is saved as its identity.
 - **Methods are atomic transactions.** One writer at a time per entity, all or nothing. A method
   may call methods on other entities, and the whole call tree commits or rolls back together.
   An `Err` is a value like any other: a method that returns one commits what it changed. Only a
