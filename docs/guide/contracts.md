@@ -271,9 +271,25 @@ at the URL in its configuration. A contract with a port can also say who may cal
 module fails to compile, at the call. The contract's own module, the module that serves it and
 tests may always call it.
 
+Under `eye run`, an `impl` also serves other programs, on the contract's port. A request is read
+the way an Eyelang caller sends it, so the two sides agree without code of their own:
+
+- The operation's `@http` method and path pick it; one without `@http` is reached only from inside
+  the program. A path nothing answers gets 404, and a known path with another method 405.
+- Its arguments come from the path, the query parameters or the JSON body. One left out takes its
+  default, an `Option` left out is `None`, and anything else missing or of the wrong shape gets 400
+  with `{ "error": "…" }`. A command with `@key` gets 400 without its key header.
+- With `@auth`, a request without the secret gets 401 and reaches no code.
+- The reply is the result in the JSON shape above, with the status that `status:` gives its variant
+  (the lowest, when several do), else 200.
+- A fault answers 500 and changes nothing, so a caller's command comes back `Uncertain`, and
+  reconciling it sends it again with the same key.
+
+`eye run` keeps no replies of its own: a repeated key reaches the `impl` again, which finds what it
+already did through the entity the key names, as the `Invoice` named by the key does above.
+
 ::: info Not yet
-`eye run` doesn't accept HTTP requests yet, so an `impl` serves the program's own calls and its
-tests. Types generated from contracts for other languages are planned for v0.3.
+Types generated from contracts for other languages are planned for v0.3.
 :::
 
 **In another language,** a service that an Eyelang program calls needs to do what its contract

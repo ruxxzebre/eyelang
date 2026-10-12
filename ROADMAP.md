@@ -484,7 +484,7 @@ waits.
 | 6.10 `extern type` replaces `Handle`, and can't be saved (done) | [#62](https://github.com/ruxxzebre/eyelang/issues/62) |
 | 6.11 Enums: `T.variants()` and `T.parse(s)` (done) | [#63](https://github.com/ruxxzebre/eyelang/issues/63) |
 | 6.12 A test sees what a fake received (done) | [#64](https://github.com/ruxxzebre/eyelang/issues/64) |
-| 6.13 `eye run` serves a contract over HTTP on its `@port` | [#81](https://github.com/ruxxzebre/eyelang/issues/81) |
+| 6.13 `eye run` serves a contract over HTTP on its `@port` (done) | [#81](https://github.com/ruxxzebre/eyelang/issues/81) |
 
 What each task is, until its issue holds it:
 
@@ -599,11 +599,23 @@ What each task is, until its issue holds it:
   **Done when:** a test runs two Eyelang programs, one serving the lab's Notify contract on its
   port and one calling `notify.send!`, and shows the call, a repeat with the same key answered
   without a second send, and an unauthorised request refused.
+  Done on 2026-10-12: `interp/listen.go` serves each served contract on its port from `eye run`
+  (`interp/serve.go`), read the way `callHTTP` sends it; requests take the interpreter's lock and
+  are answered between steps and while runs wait. SPECS §17 "Serving over HTTP" and a
+  decision-log row settle the open points: `NOTIFY_PORT` moves the port (`0` for any free one),
+  401 for a missing `@auth` secret, the lowest status `status:` gives a result's variant, else
+  200, 400/404/405 with `{ "error": … }`, 500 for a fault, and no reply cache (the key reaches
+  the `impl`). `TestServeContractOverHTTP`, `TestCallServedContract`, `TestServeWhileARunWaits`
+  and `TestServeNeedsItsSecretAndPort` (`interp/listen_test.go`) cover routing, decoding,
+  statuses, auth, a fault's rollback, a request answered while a run waits, and start-up errors;
+  `TestServeNotifyBetweenPrograms` (`cmd/eye/serve_test.go`) runs the lab's notifier and a caller
+  as two `eye run`s. Still open: `@allow` isn't enforced at the port (6.5), and an operation
+  without `@http` has no route.
 
-Order (6.2, 6.10, 6.11 and 6.12 are done): 6.1 any time; the interpreter loads C libraries
+Order (6.2, 6.10, 6.11, 6.12 and 6.13 are done): 6.1 any time; the interpreter loads C libraries
 without cgo, as `eye` stays free of it. 6.5 now that 6.2 is done. 6.4, then 6.6; 6.4's round
-trip to an Eyelang `impl` needs `eye run` to serve a contract over HTTP on its `@port`, which
-no task holds yet ("What's next"). 6.3 any time. 6.7 now that function types state their
+trip to an Eyelang `impl` can use `eye run` serving the contract on its `@port` (6.13). 6.3 any
+time. 6.7 now that function types state their
 effects, then 6.8. 6.9 any time, and early: the lab's tests need it. Pipelines compiled to SQL
 are not part of this phase ("What's next").
 

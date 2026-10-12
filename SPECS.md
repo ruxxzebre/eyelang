@@ -91,6 +91,7 @@ construct that also works outside that domain.
 | Values as JSON | **One JSON shape everywhere**: records are objects, a variant is an object tagged with `"kind"`, a type of fieldless variants is a string, a wrapped value is the value, `None` is null (section 17) | Requests, replies, recordings, model schemas and the generated TypeScript and Go types agree, and a tagged union reads naturally as a discriminated union in TypeScript |
 | Contracts over HTTP | **Attributes map a contract to HTTP**: `@http("POST /v1/send", status: {202: Pending})` on an operation, `@http(names: snake)` and `@auth(…)` on the contract, the key's header and body field on `@key`; addresses and credentials come from the environment | The real APIs the lab calls (Notify, Miniflux) are described without code; a request that never went out is retried, and only a lost reply is `Uncertain`. From the lab: Notify's 200 and 202 answers and its idempotency header |
 | Serving contracts | **A program serves a contract with `impl Contract { … }`**: one function per operation, with the contract's types and defaults, run as one transaction; a command with `@key` takes the key last | A service written in Eyelang shares one contract with its callers, and a key can name an entity, so repeats need no dedupe table. From the lab: Notify, written in Eyelang |
+| Serving over HTTP | **`eye run` serves each contract a program serves on its `@port`, read the way a caller sends it**: the `@http` route picks the operation, arguments and replies are in the one JSON shape, `@auth` is checked before any code runs (401), each request is one transaction, and a result has the status `status:` gives its variant, else 200. `NOTIFY_PORT` moves the port, `0` to any free one (section 17) | Callers and servers agree because both read the same attributes, and the key, not a cache of replies, makes a repeat safe, as for any service. From the lab: Notify written in Eyelang must answer the lab's other programs |
 | Ports and callers | **`@port` is where a service listens, and `@allow` who may reach it, checked at compile time.** A contract a program serves must declare `@port`; a contract without one is a service outside the network, reached at its configured URL, that any module may call. `@allow(m, …)` lists the modules that may call its operations (besides its own module, the modules that serve it, and tests); each name is a module the program can import; `@allow(nobody)` lets no module call it; `@allow` needs `@port` (section 17) | The lab's own Notify has a port and four callers, which network policy can be written from, while Telegram, Miniflux and NetBird are outside services with no port of ours to guard: a rule that every called contract declares a port would have given them made-up ones. Callers get the port from the contract, so a call can't go to a wrong one |
 | Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
@@ -1366,6 +1367,30 @@ type Delivery =
   A program finds a contract's service at the URL in the environment variable named after its
   module (`NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify`). A program that serves a
   contract itself calls its own implementation, unless that variable is set.
+- **Serving over HTTP.** `eye run` serves each contract the program serves on the contract's
+  port, on every network interface, and runs until it is stopped. It names the port when it
+  starts: `eye run: serving notify.Notify on :3001`. `NOTIFY_PORT`, named after the module as
+  `NOTIFY_URL` is, serves it on another port instead, and `0` on any free one, so tests can run a
+  server and its callers side by side. A request is read the way a caller sends it, so both sides
+  follow the same attributes:
+  - The operation's `@http` method and path pick it. An operation without `@http` is reached only
+    from inside the program. A path nothing answers gets 404, and a known path with another method
+    405.
+  - Arguments come from the path, the query parameters or the JSON body, in the shape above. One
+    left out takes its default, an `Option` left out is `None`, and anything else missing or of the
+    wrong shape gets 400. A command with `@key` reads its key from the key's header, or from its
+    body `field:`, and gets 400 without one. A refusal's body is `{ "error": "…" }`.
+  - With `@auth`, a request without the secret, as a caller sends it, gets 401 and reaches no
+    code. `eye run` reads the secret when it starts, and doesn't start without it.
+  - The reply is the result in the shape above. A result whose variant `status:` names has that
+    status, the lowest when several name it (Notify's `Refused` is 400); any other result has 200.
+  - Each request runs its operation as one transaction, and the jobs it starts run after it
+    commits, among the program's other runs. A fault answers 500 and changes nothing, so the
+    caller's command is `Uncertain` and reconciles. The runtime keeps no replies: a repeated key
+    reaches the `impl` again, which finds the work it already did through an entity the key
+    names, as Notify's `Message(key)` does.
+  - Requests are answered one at a time, between the program's steps and while its runs wait for
+    a timer or another service.
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
   error, unless it is marked `@unwitnessed("why")`. A recording is a JSON file per contract module,
@@ -2077,7 +2102,6 @@ operator. All binary operators associate to the left except `??`, which associat
     serves `impl Notify` on its `@port` and one that calls `notify.send!`, with `@allow` and
     port errors at compile time and the calls visible as they cross. In the page, the caller's
     `@http` calls could go to the other program's handler in memory; from the command line, two
-    `eye run`s on real ports. Both need what isn't built yet: `eye run` serving a program's
-    `impl Contract` over HTTP on its port (today a served contract is only called from the same
-    program). Is the playground worth building before v1.0, and should it share its examples
-    with the docs site and the tour?
+    `eye run`s on real ports, which works since 2026-10-12, when `eye run` started serving a
+    program's `impl Contract` on its port (section 17). Is the playground worth building before
+    v1.0, and should it share its examples with the docs site and the tour?

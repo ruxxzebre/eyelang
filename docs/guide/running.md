@@ -147,6 +147,7 @@ nothing yet.)
 | Variable | What it sets | Read by |
 |---|---|---|
 | `<MODULE>_URL` | The base URL of the service behind a contract module: `NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify` | Every call to that contract |
+| `<MODULE>_PORT` | The port a contract the program serves listens on instead of its `@port`: `NOTIFY_PORT=8081`; `0` takes any free port | `eye run`, when it starts |
 | `AI_URL` | The model gateway's base URL, such as `http://gateway:8317/v1`; when set, it answers every model | `ai.generate` |
 | `ANTHROPIC_URL`, `OPENAI_URL` | Where Anthropic's and OpenAI's APIs are, if not at their usual addresses | `ai.generate` |
 | `AI_PRICES` | Prices of models for `@budget(usd:)`, in dollars per million tokens in and out: `gpt-5.5=1.25/10,…` | `@budget` |
@@ -182,6 +183,26 @@ main.eye:59:3: job triage: ai.generate asks Anthropic for claude-sonnet-5-5, and
 
 A program that serves a contract itself (with `impl`) calls its own implementation, unless that
 contract's `<MODULE>_URL` is set.
+
+## Serving a contract
+
+A program that serves a contract with `impl` answers other programs too: `eye run` listens on the
+contract's `@port`, on every network interface, and keeps running until it is stopped, even when
+no job is left to wait for. It says where when it starts:
+
+```text
+eye run: serving notify.Notify on :3001
+```
+
+Requests are routed by the contract's `@http` attributes, read and answered in the contract's JSON
+shape, and each runs its operation as one transaction. An operation without `@http` is reached
+only from inside the program. With `@auth`, `eye run` reads the secret when it starts, and won't
+start without it; a request without it gets 401. See
+[Talking to other services](/guide/contracts#implementing-the-other-side).
+
+`NOTIFY_PORT` (the module's name, as for `NOTIFY_URL`) moves the service to another port, and
+`NOTIFY_PORT=0` to any free one, which the line above names. Tests use it to run a server and its
+callers side by side.
 
 ## When a run fails
 
@@ -270,6 +291,7 @@ WantedBy=multi-user.target
 
 - Every service the program calls has its `<MODULE>_URL`, and every secret is set or in
   `$EYE_SECRETS`.
+- Every contract the program serves has its port free, and its callers can reach it.
 - `main` is safe to run on every start, and jobs it starts have keys.
 - Commands that change something have `@key`, so a step that runs again does nothing twice.
 - The journal is on a disk that survives a redeploy, and it is backed up.

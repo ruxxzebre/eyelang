@@ -295,6 +295,8 @@ func labServices(t *testing.T) *lab {
 		"FLARESOLVERR_URL": flare, "AI_URL": gateway + "/v1", "AI_KEY": "ai-secret",
 		"DIGEST_MODEL": "test-model", "AI_PRICES": "test-model=1/4",
 		"NOTIFY_URL": notify, "NOTIFY_TOKEN": "notify-secret",
+		// The lab serves Notify too (its notifier), on any free port.
+		"NOTIFY_PORT": "0",
 		// eye run reads the pages without a proxy through these, which
 		// refuse every request: the test reads no website.
 		"HTTP_PROXY": proxy, "HTTPS_PROXY": proxy,

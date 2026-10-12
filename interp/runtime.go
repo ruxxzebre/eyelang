@@ -61,6 +61,11 @@ type runtime struct {
 	sandbox bool
 	dir     string
 	rand    *rand.Rand
+	// kick wakes eye run's runner when a request to a served contract has
+	// committed, so the jobs it started run; stopped turns requests away
+	// once the runner has stopped (listen.go).
+	kick    chan struct{}
+	stopped bool
 }
 
 // event is a published event, saved as bytes.

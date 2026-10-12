@@ -91,6 +91,10 @@ Runs main, then keeps the program's jobs going: sleeping runs wake on time,
 schedules fire, and a restart carries on where the last run of eye stopped.
 It stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.
 
+A program that serves a contract with impl answers it over HTTP on the
+contract's @port until it is stopped. NOTIFY_PORT, named after the contract's
+module, serves it on another port; 0 picks a free one, which eye run names.
+
 State is kept in the program's journal, or with --store in a Postgres database,
 in the first schema of its search_path: postgres://…/db?search_path=lab gives
 a program its own schema. One eye run at a time writes a journal or a schema.

@@ -37,7 +37,9 @@ type RunOptions struct {
 // keeps going on the system clock: sleeping runs wake when their time comes,
 // schedules fire, and runs the store kept from before a restart carry on. It
 // returns when nothing is left that can happen (no schedule, and no run that
-// waits), or when ctx is done. The result is the exit status: 1 if main
+// waits), or when ctx is done. A program that serves a contract listens on
+// its port (listen.go) and returns only when ctx is done, or when it can't
+// listen. The result is the exit status: 1 if main
 // returned an Err or faulted, or a job's run faulted.
 func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in := New(prog, opts.Stdout, opts.Stderr)
@@ -80,12 +82,22 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	}
 	in.rt.restore()
 	runsBefore := in.rt.nextRun
-	if hasJobs(prog) {
+	served := servedContracts(prog)
+	keepGoing := hasJobs(prog) || len(served) > 0
+	if keepGoing {
 		program := ""
 		if len(opts.Args) > 0 {
 			program = opts.Args[0]
 		}
 		fmt.Fprintln(stderr, in.rt.startLine(program, opts.Store, memory))
+	}
+	if len(served) > 0 {
+		stop, err := in.listen(served, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "eye run: %v\n", err)
+			return 1
+		}
+		defer stop()
 	}
 	if main := prog.Root.Main; main != nil {
 		var argv []argVal
@@ -101,7 +113,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 			fmt.Fprintln(stderr, in.display(e.Vals[0])) // with its Show, as a Problem has
 			code = 1
 		}
-	} else if !hasJobs(prog) {
+	} else if !keepGoing {
 		fmt.Fprintln(stderr, "the program has no main function and no jobs: add `pub fn main(args: List(String))`")
 		return 1
 	}
@@ -114,11 +126,11 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		reported = len(in.rt.failures)
 	}
 	report()
-	if hasJobs(prog) && in.rt.nextRun == runsBefore {
+	if hasJobs(prog) && len(served) == 0 && in.rt.nextRun == runsBefore {
 		in.rt.nothingToDo(stderr, opts.Store)
 	}
-	if hasJobs(prog) {
-		if err := in.serve(ctx, report, stderr, opts.Inbox); err != nil {
+	if keepGoing {
+		if err := in.serve(ctx, report, stderr, opts.Inbox, len(served) > 0); err != nil {
 			code = 1
 		}
 	}
@@ -137,9 +149,10 @@ func hasJobs(prog *ir.Program) bool {
 
 // serve runs the program's jobs on the system clock until nothing is left
 // that can happen, or ctx is done, and publishes the answers that reach
-// inbox, if it has one. It returns early, with the error, if the store can
-// take no more commits.
-func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, inbox string) error {
+// inbox, if it has one. A program that serves contracts (listening) goes on
+// until ctx is done, answering requests while it waits. It returns early,
+// with the error, if the store can take no more commits.
+func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, inbox string, listening bool) error {
 	rt := in.rt
 	var pruned time.Time
 	for {
@@ -178,6 +191,8 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, in
 			run := rt.nextSleeper()
 			s, firing := rt.nextFiring()
 			switch {
+			case run == nil && s == nil && listening:
+				wait = time.Hour // until a request starts a run
 			case run == nil && s == nil:
 				return nil
 			case run == nil:
@@ -193,11 +208,23 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, in
 			}
 		}
 		timer := time.NewTimer(max(wait, 0))
+		if listening {
+			in.g.mu.Unlock() // requests are answered while the runner waits
+		}
+		stopped := false
 		select {
 		case <-ctx.Done():
-			timer.Stop()
-			return nil
+			stopped = true
 		case <-timer.C:
+		case <-rt.kick: // a request committed, and may have started runs
+		}
+		timer.Stop()
+		if listening {
+			in.g.mu.Lock()
+			in.g.current = nil
+		}
+		if stopped {
+			return nil
 		}
 		if err != nil {
 			_ = guard(rt.retryBlocked)

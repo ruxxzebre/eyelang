@@ -153,6 +153,30 @@ type Delivery =
   A program finds a contract's service at the URL in the environment variable named after its
   module (`NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify`). A program that serves a
   contract itself calls its own implementation, unless that variable is set.
+- **Serving over HTTP.** `eye run` serves each contract the program serves on the contract's
+  port, on every network interface, and runs until it is stopped. It names the port when it
+  starts: `eye run: serving notify.Notify on :3001`. `NOTIFY_PORT`, named after the module as
+  `NOTIFY_URL` is, serves it on another port instead, and `0` on any free one, so tests can run a
+  server and its callers side by side. A request is read the way a caller sends it, so both sides
+  follow the same attributes:
+  - The operation's `@http` method and path pick it. An operation without `@http` is reached only
+    from inside the program. A path nothing answers gets 404, and a known path with another method
+    405.
+  - Arguments come from the path, the query parameters or the JSON body, in the shape above. One
+    left out takes its default, an `Option` left out is `None`, and anything else missing or of the
+    wrong shape gets 400. A command with `@key` reads its key from the key's header, or from its
+    body `field:`, and gets 400 without one. A refusal's body is `{ "error": "…" }`.
+  - With `@auth`, a request without the secret, as a caller sends it, gets 401 and reaches no
+    code. `eye run` reads the secret when it starts, and doesn't start without it.
+  - The reply is the result in the shape above. A result whose variant `status:` names has that
+    status, the lowest when several name it (Notify's `Refused` is 400); any other result has 200.
+  - Each request runs its operation as one transaction, and the jobs it starts run after it
+    commits, among the program's other runs. A fault answers 500 and changes nothing, so the
+    caller's command is `Uncertain` and reconciles. The runtime keeps no replies: a repeated key
+    reaches the `impl` again, which finds the work it already did through an entity the key
+    names, as Notify's `Message(key)` does.
+  - Requests are answered one at a time, between the program's steps and while its runs wait for
+    a timer or another service.
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
   error, unless it is marked `@unwitnessed("why")`. A recording is a JSON file per contract module,

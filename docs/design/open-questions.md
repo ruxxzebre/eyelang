@@ -183,7 +183,6 @@ title: "Open questions"
     serves `impl Notify` on its `@port` and one that calls `notify.send!`, with `@allow` and
     port errors at compile time and the calls visible as they cross. In the page, the caller's
     `@http` calls could go to the other program's handler in memory; from the command line, two
-    `eye run`s on real ports. Both need what isn't built yet: `eye run` serving a program's
-    `impl Contract` over HTTP on its port (today a served contract is only called from the same
-    program). Is the playground worth building before v1.0, and should it share its examples
-    with the docs site and the tour?
+    `eye run`s on real ports, which works since 2026-10-12, when `eye run` started serving a
+    program's `impl Contract` on its port ([section 17](/reference/language/contracts-talking-to-other-services)). Is the playground worth building before
+    v1.0, and should it share its examples with the docs site and the tour?
