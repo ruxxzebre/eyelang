@@ -12,7 +12,9 @@ import (
 // as in Maranget's "Warnings for pattern matching": a type with finitely many
 // constructors (a variant type, Bool, (), a tuple or a record) is split into
 // them; a list into its lengths; and any other type needs a row that matches
-// anything. Arms with guards don't count.
+// anything. Constructors and lengths no row tests are decided together by the
+// rows that match anything, so the search stays linear in the patterns
+// written. Arms with guards don't count.
 
 // checkExhaustive reports a match that misses some value.
 func (c *checker) checkExhaustive(m *ir.Match, t typ) {
@@ -65,9 +67,35 @@ func (c *checker) missing(rows [][]ir.Pattern, types []typ, depth int) []string 
 	rest := types[1:]
 	prepend := func(head string, w []string) []string { return append([]string{head}, w...) }
 
+	// The default matrix: the rows whose head matches anything, without it.
+	// A constructor that no row tests is matched only by these rows, so all
+	// such constructors share one answer, found once, and their fields are
+	// never split (Maranget). Splitting them would make a type with two
+	// recursive fields, such as a tree, take exponential time.
+	var def [][]ir.Pattern
+	for _, r := range rows {
+		if wildLike(r[0]) {
+			def = append(def, r[1:])
+		}
+	}
+	defDone := false
+	var defMissing []string
+	missingDefault := func() []string {
+		if !defDone {
+			defMissing, defDone = c.missing(def, rest, depth+1), true
+		}
+		return defMissing
+	}
+
 	ctors, finite := c.constructors(t, rows)
 	if finite {
 		for _, k := range ctors {
+			if !k.tested(rows) {
+				if w := missingDefault(); w != nil {
+					return prepend(k.show(wilds(len(k.fields))), w)
+				}
+				continue
+			}
 			var spec [][]ir.Pattern
 			for _, r := range rows {
 				if sub, ok := k.specialize(r[0]); ok {
@@ -81,11 +109,19 @@ func (c *checker) missing(rows [][]ir.Pattern, types []typ, depth int) []string 
 		return nil
 	}
 	if elem, ok := c.listColumn(t, rows); ok {
-		longest := 0
+		longest, tested := 0, false
 		for _, r := range rows {
-			if l, isList := r[0].(ir.PList); isList && len(l.Pats) > longest {
-				longest = len(l.Pats)
+			if l, isList := r[0].(ir.PList); isList {
+				tested = true
+				longest = max(longest, len(l.Pats))
 			}
+		}
+		if !tested {
+			// No row looks inside the list, so its length doesn't matter.
+			if w := missingDefault(); w != nil {
+				return prepend("[]", w)
+			}
+			return nil
 		}
 		for n := 0; n <= longest+1; n++ {
 			var spec [][]ir.Pattern
@@ -109,16 +145,33 @@ func (c *checker) missing(rows [][]ir.Pattern, types []typ, depth int) []string 
 		return nil
 	}
 	// Infinitely many values: only rows that match anything help.
-	var def [][]ir.Pattern
-	for _, r := range rows {
-		if wildLike(r[0]) {
-			def = append(def, r[1:])
-		}
-	}
-	if w := c.missing(def, rest, depth+1); w != nil {
+	if w := missingDefault(); w != nil {
 		return prepend("_", w)
 	}
 	return nil
+}
+
+// tested reports whether some row's head tests for this constructor, rather
+// than matching anything.
+func (k ctor) tested(rows [][]ir.Pattern) bool {
+	for _, r := range rows {
+		if wildLike(r[0]) {
+			continue
+		}
+		if _, ok := k.specialize(r[0]); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// wilds is n wildcards, to show a constructor whose fields can be anything.
+func wilds(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = "_"
+	}
+	return out
 }
 
 func expandOr(r []ir.Pattern) [][]ir.Pattern {

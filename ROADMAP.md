@@ -509,7 +509,7 @@ They come before 7.5. Like the carry-overs, they have no phase issue.
 
 | Task | Issue |
 |---|---|
-| R.1 Exhaustiveness uses the default matrix when no row tests a column | [#101](https://github.com/ruxxzebre/eyelang/issues/101) |
+| R.1 Exhaustiveness uses the default matrix when no row tests a column (done) | [#101](https://github.com/ruxxzebre/eyelang/issues/101) |
 | R.2 Waking waiting runs is O(log n): a timer heap, an index by event, no event copy per commit | [#102](https://github.com/ruxxzebre/eyelang/issues/102) |
 | R.3 Replacing a map key's value and writing an entity are O(log n) | [#103](https://github.com/ruxxzebre/eyelang/issues/103) |
 | R.4 Building a string with `+=` is amortised O(1) | [#104](https://github.com/ruxxzebre/eyelang/issues/104) |
