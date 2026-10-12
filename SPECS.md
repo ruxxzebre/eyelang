@@ -2032,3 +2032,20 @@ operator. All binary operators associate to the left except `??`, which associat
     ever meets such limits could stop counting where it is written, and `eye fmt` would stop
     writing those effects into signatures. Is the clause worth keeping as a reader's hint, or
     should it go?
+34. **An online playground.** A page where you write Eyelang and check, test and run it, with the
+    editor support `eye lsp` gives (errors at their spans, completion, hover, formatting), and
+    examples to start from. The checker, interpreter, language server and parser are Go without
+    cgo and already build for WebAssembly (`GOOS=js GOARCH=wasm`), so the page could run them
+    with no server, behind an editor such as CodeMirror. What it would take: the checker reads
+    a program's files from `Options.Overlay` but still lists its directory on disk, so a
+    program held only in memory must be accepted; the language server needs an entry point that
+    takes text and a position instead of a stdio connection; `eye run`'s jobs need a clock that
+    yields to the page; and model calls need recorded fakes or a key the visitor brings.
+    Contracts are the case that shows the language best: two programs side by side, one that
+    serves `impl Notify` on its `@port` and one that calls `notify.send!`, with `@allow` and
+    port errors at compile time and the calls visible as they cross. In the page, the caller's
+    `@http` calls could go to the other program's handler in memory; from the command line, two
+    `eye run`s on real ports. Both need what isn't built yet: `eye run` serving a program's
+    `impl Contract` over HTTP on its port (today a served contract is only called from the same
+    program). Is the playground worth building before v1.0, and should it share its examples
+    with the docs site and the tour?
