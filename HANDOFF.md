@@ -72,15 +72,11 @@ Session eyelang-af did the cluster work in the stacks-homelab repository.
 
 ## Findings without an issue yet
 
-The core gaps that self-hosting needs (fixed-width integers, character literals as `Byte`,
-`iter`, `Type.f()` through a module, what a task captures) are listed in ROADMAP's "What's
-next", item 1. Open questions 32 to 34 (time-travel debugging, effects of stored functions, an
+The core gaps that self-hosting needs are issues now (G.1 to G.6, #84 to #89), and so is serving
+a contract over HTTP (6.13, #81). Open questions 32 to 34 (time-travel debugging, effects of stored functions, an
 online playground) are in SPECS.md.
 
 Runtime and tools:
-- `eye run` doesn't serve a program's `impl Contract` over HTTP on its `@port`: a served
-  contract is called only from inside its own program. 6.4's round trip and the playground's
-  contracts demo need it; no task holds it.
 - `http.get` and `ai.generate` should retry an unreachable service the way contract calls do
   (see the risk above).
 - `ai.generate` has no `reasoning_effort` parameter; the TypeScript digest sends "medium".

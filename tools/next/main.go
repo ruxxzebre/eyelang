@@ -1,12 +1,14 @@
 // Command next answers "what's next?" from what is true now, rather than
 // from notes that go stale: the last release and what landed since, the
-// priorities ROADMAP.md keeps by hand, the open issues, the gaps that
-// docs/reference/status.md lists, and the work in flight in every worktree.
-// Run it from the repository root with `task next`.
+// priorities ROADMAP.md keeps by hand, a checklist of ROADMAP.md's task
+// tables, the open issues, the gaps that docs/reference/status.md lists, and
+// the work in flight in every worktree. Run it from the repository root with
+// `task next`.
 //
-// With --check it prints nothing and fails if ROADMAP.md's "What's next" is
-// out of date: checked before the last release, or naming an issue that is
-// closed.
+// With --check it prints nothing and fails if ROADMAP.md is out of date:
+// "What's next" checked before the last release or naming an issue that is
+// closed, or a task row whose "(done)" disagrees with its issue. The issue
+// checks need gh; without it they are skipped.
 //
 // Sessions working at once say which paths they change with claims, kept in
 // the repository's git config, which every worktree shares and nothing
@@ -32,7 +34,7 @@ import (
 
 func main() {
 	check := flag.Bool("check", false, "fail if ROADMAP.md's What's next is out of date, and print nothing else")
-	all := flag.Bool("all", false, "list every gap in status.md, not only how many each section has")
+	all := flag.Bool("all", false, "list every gap in status.md and every finished phase's tasks, not only how many")
 	flag.Parse()
 	switch flag.Arg(0) {
 	case "claim":
@@ -60,11 +62,19 @@ func main() {
 		fail("run it from the repository root: %v", err)
 	}
 	next := section(string(roadmap), "## What's next")
+	ps := phases(string(roadmap))
 	if *check {
-		if problems := stale(next); len(problems) > 0 {
-			for _, p := range problems {
-				fmt.Fprintln(os.Stderr, "ROADMAP.md, What's next:", p)
-			}
+		problems := stale(next)
+		for i, p := range problems {
+			problems[i] = "What's next: " + p
+		}
+		for _, p := range untracked(ps) {
+			problems = append(problems, "task tables: "+p)
+		}
+		for _, p := range problems {
+			fmt.Fprintln(os.Stderr, "ROADMAP.md,", p)
+		}
+		if len(problems) > 0 {
 			os.Exit(1)
 		}
 		return
@@ -82,6 +92,12 @@ func main() {
 
 	heading("What's next (ROADMAP.md, kept by hand)")
 	fmt.Println(strings.TrimSpace(next))
+
+	heading("Roadmap (ROADMAP.md's task tables)")
+	checklist(ps, *all)
+	for _, p := range untracked(ps) {
+		fmt.Println("warning:", p)
+	}
 
 	heading("Open issues")
 	if out, err := exec.Command("gh", "issue", "list", "--state", "open", "--limit", "200").Output(); err == nil {
@@ -168,6 +184,105 @@ func stale(next string) []string {
 		}
 	}
 	return out
+}
+
+// A task is a row of one of ROADMAP.md's task tables, such as
+// "| 6.2 `@port` and `@allow` enforced (done) | [#54](…) |".
+type task struct {
+	id, title, issue string
+	done             bool
+}
+
+// A phase is a ### section under "## Phases" and its task rows.
+type phase struct {
+	name  string
+	tasks []task
+}
+
+var (
+	taskRow   = regexp.MustCompile(`^\| (\S+) (.+?) \| \[#(\d+)\]`)
+	issueLink = regexp.MustCompile(`\[(#\d+)\]\([^)]*\)`)
+)
+
+// phases reads the task tables of ROADMAP.md's "## Phases". A row says
+// "(done)" when its task is done; a row that says "moved to" points at the
+// task that replaced it, and is left out.
+func phases(roadmap string) []*phase {
+	var out []*phase
+	var cur *phase
+	for _, line := range strings.Split(section(roadmap, "## Phases"), "\n") {
+		if name, ok := strings.CutPrefix(line, "### "); ok {
+			cur = &phase{name: issueLink.ReplaceAllString(name, "$1")}
+			out = append(out, cur)
+			continue
+		}
+		m := taskRow.FindStringSubmatch(line)
+		if m == nil || cur == nil || strings.Contains(m[2], "moved to") {
+			continue
+		}
+		title := strings.TrimSuffix(m[2], " (done)")
+		cur.tasks = append(cur.tasks, task{id: m[1], title: title, issue: m[3], done: strings.Contains(m[2], "(done")})
+	}
+	return out
+}
+
+// checklist prints each phase's tasks with a box ticked for each one done.
+// A finished phase takes one line unless all is set.
+func checklist(ps []*phase, all bool) {
+	for _, p := range ps {
+		done := 0
+		for _, t := range p.tasks {
+			if t.done {
+				done++
+			}
+		}
+		if len(p.tasks) == 0 {
+			continue
+		}
+		if done == len(p.tasks) && !all {
+			fmt.Printf("done  %s: %d of %d\n", p.name, done, len(p.tasks))
+			continue
+		}
+		fmt.Printf("%s: %d of %d\n", p.name, done, len(p.tasks))
+		for _, t := range p.tasks {
+			box := "[ ]"
+			if t.done {
+				box = "[x]"
+			}
+			fmt.Printf("  %s %s %s #%s\n", box, t.id, t.title, t.issue)
+		}
+	}
+	if !all {
+		fmt.Println("(task next -- --all lists finished phases' tasks too)")
+	}
+}
+
+// untracked lists the task rows whose "(done)" disagrees with their issue's
+// state on GitHub. Without gh it says nothing.
+func untracked(ps []*phase) []string {
+	out, err := exec.Command("gh", "issue", "list", "--state", "all", "--limit", "1000",
+		"--json", "number,state", "-q", `.[] | "\(.number) \(.state)"`).Output()
+	if err != nil {
+		return nil
+	}
+	state := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if n, s, ok := strings.Cut(line, " "); ok {
+			state[n] = s
+		}
+	}
+	var problems []string
+	for _, p := range ps {
+		for _, t := range p.tasks {
+			switch s := state[t.issue]; {
+			case s == "CLOSED" && !t.done:
+				problems = append(problems, fmt.Sprintf("%s's issue #%s is closed, but its row doesn't say (done)", t.id, t.issue))
+			case s == "OPEN" && t.done:
+				problems = append(problems, fmt.Sprintf("%s says (done), but its issue #%s is open", t.id, t.issue))
+			}
+		}
+	}
+	return problems
 }
 
 // gaps prints the features status.md marks partial or not built, by section.

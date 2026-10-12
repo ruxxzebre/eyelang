@@ -50,27 +50,20 @@ yet.
 
 **Ahead, in order**
 
-1. The gaps in the core that self-hosting and phase 7 need, none with an issue yet (status.md
-   has each row):
-   - fixed-width integers and `Bytes`: `Int32.from`, `wrappingAdd`, the bit operations, a
-     literal too large for its type, and a character literal read as a `Byte`, so that list
-     patterns over `Bytes` work. The typed IR (7.1) now gives every value its type, which the
-     interpreter's fixed-width methods were waiting for;
-   - lazy `xs.iter()`;
-   - `Type.f()` called through another module (`lex.Lexer.new`) is refused by the checker;
-   - what a task captures in `parallelMap`, `both` and `race` isn't checked.
+1. The core gaps that self-hosting and phase 7 need (G.1 to G.6, under the phases): fixed-width
+   integers (#84), character literals as `Byte`s (#85), lazy `iter` (#86), `Type.f()` through
+   another module (#87), and two checker bugs, a type alias naming itself (#88) and an `impl`
+   for an entity that is ignored (#89).
 2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
-3. Phase 6 (v0.3): 6.2, 6.10, 6.11 and 6.12 are done; 6.1 and 6.3 to 6.9 are open, each with its
-   issue. Ready to start: 6.3, 6.7 (function types now state their effects), 6.9, 6.1, and 6.5
-   once the user names the policy format. 6.4's round trip needs `eye run` to serve a program's
-   `impl Contract` over HTTP on its `@port`, which no task holds yet: today a served contract is
-   called only from inside its own program, and tests stand in for services with Go handlers.
-   An online playground's contracts demo (open question 34) needs the same. The phase's exit
+3. Phase 6 (v0.3): 6.2, 6.10, 6.11 and 6.12 are done; 6.1, 6.3 to 6.9 and 6.13 are open, each
+   with its issue. Ready to start: 6.3, 6.7 (function types now state their effects), 6.9, 6.1, and 6.5
+   once the user names the policy format. 6.13 (#81), `eye run` serving a contract over HTTP on
+   its `@port`, comes before 6.4's round trip and the online playground (open question 34). The phase's exit
    test is 6.6 (Notify, with the user, in the homelab repository) and 6.8 (agents, after 6.7).
-4. Self-hosting's early start: an Eyelang lexer as a test program, checked by the conformance
-   suite. Not begun; it needs item 1's `Bytes` and character literals.
+4. Self-hosting's early start (#82): S.1 (#83), an Eyelang lexer as a test program, checked by
+   the conformance suite. Not begun; it needs G.1, G.2 and G.4.
 5. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2) and checkpoints in
    the interpreter (7.3) are done. Next is the C back end (7.4), then reference counting (7.5);
    the runner hosting compiled programs (7.6) waits on the user's choice of how it loads them
@@ -205,11 +198,11 @@ last Eyelang 1 commit, and no build output is committed.
 
 | Task | Issue |
 |---|---|
-| 0.1 Tag the last Eyelang 1 commit as `eyelang-1` | [#9](https://github.com/ruxxzebre/eyelang/issues/9) |
-| 0.2 Remove dead packages: `featureflags`, `assert`, `exploration`, `testing` | [#10](https://github.com/ruxxzebre/eyelang/issues/10) |
-| 0.3 Stop committing binaries: remove `bin/`, build releases in CI | [#11](https://github.com/ruxxzebre/eyelang/issues/11) |
-| 0.4 New layout and `eye` command skeleton | [#12](https://github.com/ruxxzebre/eyelang/issues/12) |
-| 0.5 CI: build, vet, lint and test the new layout | [#13](https://github.com/ruxxzebre/eyelang/issues/13) |
+| 0.1 Tag the last Eyelang 1 commit as `eyelang-1` (done) | [#9](https://github.com/ruxxzebre/eyelang/issues/9) |
+| 0.2 Remove dead packages: `featureflags`, `assert`, `exploration`, `testing` (done) | [#10](https://github.com/ruxxzebre/eyelang/issues/10) |
+| 0.3 Stop committing binaries: remove `bin/`, build releases in CI (done) | [#11](https://github.com/ruxxzebre/eyelang/issues/11) |
+| 0.4 New layout and `eye` command skeleton (done) | [#12](https://github.com/ruxxzebre/eyelang/issues/12) |
+| 0.5 CI: build, vet, lint and test the new layout (done) | [#13](https://github.com/ruxxzebre/eyelang/issues/13) |
 
 Order: 0.1 first, because later tasks delete code the tag preserves. The rest can run in any order.
 
@@ -220,15 +213,15 @@ in CI, and `eye fmt` gives the same output when run twice on the whole corpus.
 
 | Task | Issue |
 |---|---|
-| 1.1 tree-sitter grammar for the Eyelang 2 syntax | [#14](https://github.com/ruxxzebre/eyelang/issues/14) |
-| 1.2 tree-sitter external scanner: interpolation and the `!` marker | [#15](https://github.com/ruxxzebre/eyelang/issues/15) |
-| 1.3 Hand-written lexer with byte spans and trivia | [#16](https://github.com/ruxxzebre/eyelang/issues/16) |
-| 1.4 Hand-written lossless parser with Pratt expressions and error recovery | [#17](https://github.com/ruxxzebre/eyelang/issues/17) |
-| 1.5 Conformance suite: both parsers on `testdata/syntax` in CI | [#18](https://github.com/ruxxzebre/eyelang/issues/18) |
-| 1.6 `eye fmt` on the lossless tree | [#19](https://github.com/ruxxzebre/eyelang/issues/19) |
-| 1.7 Editor highlighting queries | [#20](https://github.com/ruxxzebre/eyelang/issues/20) |
-| 1.8 Syntax for the general-purpose core: `mut`, tuples, characters, ranges, `impl Type`, `where`, `extern` | [#39](https://github.com/ruxxzebre/eyelang/issues/39) |
-| 1.9 VS Code: TextMate grammar, `eye check`, and `eye lsp` (errors, formatting, outline, semantic tokens) | [#43](https://github.com/ruxxzebre/eyelang/issues/43) |
+| 1.1 tree-sitter grammar for the Eyelang 2 syntax (done) | [#14](https://github.com/ruxxzebre/eyelang/issues/14) |
+| 1.2 tree-sitter external scanner: interpolation and the `!` marker (done) | [#15](https://github.com/ruxxzebre/eyelang/issues/15) |
+| 1.3 Hand-written lexer with byte spans and trivia (done) | [#16](https://github.com/ruxxzebre/eyelang/issues/16) |
+| 1.4 Hand-written lossless parser with Pratt expressions and error recovery (done) | [#17](https://github.com/ruxxzebre/eyelang/issues/17) |
+| 1.5 Conformance suite: both parsers on `testdata/syntax` in CI (done) | [#18](https://github.com/ruxxzebre/eyelang/issues/18) |
+| 1.6 `eye fmt` on the lossless tree (done) | [#19](https://github.com/ruxxzebre/eyelang/issues/19) |
+| 1.7 Editor highlighting queries (done) | [#20](https://github.com/ruxxzebre/eyelang/issues/20) |
+| 1.8 Syntax for the general-purpose core: `mut`, tuples, characters, ranges, `impl Type`, `where`, `extern` (done) | [#39](https://github.com/ruxxzebre/eyelang/issues/39) |
+| 1.9 VS Code: TextMate grammar, `eye check`, and `eye lsp` (errors, formatting, outline, semantic tokens) (done) | [#43](https://github.com/ruxxzebre/eyelang/issues/43) |
 
 Order: the tree-sitter track (1.1 → 1.2) and the compiler track (1.3 → 1.4) can run in parallel.
 1.8 follows 1.4. 1.5 needs both tracks and 1.8, and 1.6 needs 1.8. 1.7 needs 1.8, and 1.9 needs 1.6.
@@ -240,14 +233,14 @@ all SPECS.md examples pass the checker.
 
 | Task | Issue |
 |---|---|
-| 2.1 Name resolution, modules, `import` and `pub` | [#21](https://github.com/ruxxzebre/eyelang/issues/21) |
-| 2.2 Type inference, generics and signature checking | [#22](https://github.com/ruxxzebre/eyelang/issues/22) |
-| 2.3 Exhaustive pattern matching and destructuring | [#23](https://github.com/ruxxzebre/eyelang/issues/23) |
-| 2.4 Result-only errors and total arithmetic | [#24](https://github.com/ruxxzebre/eyelang/issues/24) |
-| 2.5 Traits, methods, impls and derived traits | [#25](https://github.com/ruxxzebre/eyelang/issues/25) |
-| 2.6 Effect inference, `uses`, and the `!` and `Save` rules | [#26](https://github.com/ruxxzebre/eyelang/issues/26) |
-| 2.7 Diagnostics with spans, and a test per error class | [#27](https://github.com/ruxxzebre/eyelang/issues/27) |
-| 2.8 Mutation: `mut` parameters, places and the no-aliasing rule | [#40](https://github.com/ruxxzebre/eyelang/issues/40) |
+| 2.1 Name resolution, modules, `import` and `pub` (done) | [#21](https://github.com/ruxxzebre/eyelang/issues/21) |
+| 2.2 Type inference, generics and signature checking (done) | [#22](https://github.com/ruxxzebre/eyelang/issues/22) |
+| 2.3 Exhaustive pattern matching and destructuring (done) | [#23](https://github.com/ruxxzebre/eyelang/issues/23) |
+| 2.4 Result-only errors and total arithmetic (done) | [#24](https://github.com/ruxxzebre/eyelang/issues/24) |
+| 2.5 Traits, methods, impls and derived traits (done) | [#25](https://github.com/ruxxzebre/eyelang/issues/25) |
+| 2.6 Effect inference, `uses`, and the `!` and `Save` rules (done) | [#26](https://github.com/ruxxzebre/eyelang/issues/26) |
+| 2.7 Diagnostics with spans, and a test per error class (done) | [#27](https://github.com/ruxxzebre/eyelang/issues/27) |
+| 2.8 Mutation: `mut` parameters, places and the no-aliasing rule (done) | [#40](https://github.com/ruxxzebre/eyelang/issues/40) |
 
 Order: 2.1 → 2.2, then 2.3, 2.4, 2.5 and 2.8 in any order, then 2.6. Start 2.7 with 2.1 and extend it in
 every later task.
@@ -261,10 +254,10 @@ expressions and declarations.
 | Task | Issue |
 |---|---|
 | 3.1 Typed IR and lowering: moved to phase 7 as 7.1 | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
-| 3.2 Reference interpreter for the core language | [#29](https://github.com/ruxxzebre/eyelang/issues/29) |
-| 3.3 Standard library basics | [#30](https://github.com/ruxxzebre/eyelang/issues/30) |
-| 3.4 `eye run`, `eye test` and the REPL | [#31](https://github.com/ruxxzebre/eyelang/issues/31) |
-| 3.5 Structured concurrency on lightweight tasks | [#41](https://github.com/ruxxzebre/eyelang/issues/41) |
+| 3.2 Reference interpreter for the core language (done) | [#29](https://github.com/ruxxzebre/eyelang/issues/29) |
+| 3.3 Standard library basics (done) | [#30](https://github.com/ruxxzebre/eyelang/issues/30) |
+| 3.4 `eye run`, `eye test` and the REPL (done) | [#31](https://github.com/ruxxzebre/eyelang/issues/31) |
+| 3.5 Structured concurrency on lightweight tasks (done) | [#41](https://github.com/ruxxzebre/eyelang/issues/41) |
 | 3.6 `extern` functions: moved to phase 6 as 6.1 | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
 
 Order: 3.2 → 3.4. 3.3 can start alongside 3.2. 3.5 needs 3.2. The interpreter runs on the untyped IR
@@ -278,13 +271,13 @@ state is serialised to bytes and restored at each checkpoint.
 
 | Task | Issue |
 |---|---|
-| 4.1 Entities: state, atomic methods, `Ref`, virtual lifecycle | [#32](https://github.com/ruxxzebre/eyelang/issues/32) |
-| 4.2 `Store` trait and the in-memory store, written in Eyelang | [#33](https://github.com/ruxxzebre/eyelang/issues/33) |
-| 4.3 Jobs as resumable state machines, saved at every `!` | [#34](https://github.com/ruxxzebre/eyelang/issues/34) |
-| 4.4 Waiting library and controllable clock | [#35](https://github.com/ruxxzebre/eyelang/issues/35) |
-| 4.5 Views and triggers, schedules with time zones | [#36](https://github.com/ruxxzebre/eyelang/issues/36) |
-| 4.6 Entity versions and `migrate from N` | [#37](https://github.com/ruxxzebre/eyelang/issues/37) |
-| 4.7 Tour example end to end, and the v0.1 release | [#38](https://github.com/ruxxzebre/eyelang/issues/38) |
+| 4.1 Entities: state, atomic methods, `Ref`, virtual lifecycle (done) | [#32](https://github.com/ruxxzebre/eyelang/issues/32) |
+| 4.2 `Store` trait and the in-memory store, written in Eyelang (done) | [#33](https://github.com/ruxxzebre/eyelang/issues/33) |
+| 4.3 Jobs as resumable state machines, saved at every `!` (done) | [#34](https://github.com/ruxxzebre/eyelang/issues/34) |
+| 4.4 Waiting library and controllable clock (done) | [#35](https://github.com/ruxxzebre/eyelang/issues/35) |
+| 4.5 Views and triggers, schedules with time zones (done) | [#36](https://github.com/ruxxzebre/eyelang/issues/36) |
+| 4.6 Entity versions and `migrate from N` (done) | [#37](https://github.com/ruxxzebre/eyelang/issues/37) |
+| 4.7 Tour example end to end, and the v0.1 release (done) | [#38](https://github.com/ruxxzebre/eyelang/issues/38) |
 
 Order: 4.2 first, then 4.1 and 4.3 together. 4.4 needs 4.3. 4.5 needs 4.1 and 4.3. 4.6 needs 4.1.
 4.7 comes last.
@@ -301,15 +294,15 @@ journal, which `eye run` already uses.
 
 | Task | Issue |
 |---|---|
-| 5.1 `dyn Trait` as a type of its own | [#45](https://github.com/ruxxzebre/eyelang/issues/45) |
-| 5.2 The Postgres store, chosen when a program starts | [#46](https://github.com/ruxxzebre/eyelang/issues/46) |
-| 5.3 Durable runs on Postgres survive restarts of the runner and the database | [#47](https://github.com/ruxxzebre/eyelang/issues/47) |
-| 5.4 Typed model calls: providers and `@budget` | [#48](https://github.com/ruxxzebre/eyelang/issues/48) |
-| 5.5 Task groups, `spawn` and bounded channels | [#49](https://github.com/ruxxzebre/eyelang/issues/49) |
-| 5.6 `@memory` and `@priority` enforced at run time | [#50](https://github.com/ruxxzebre/eyelang/issues/50) |
-| 5.7 `approval!` reaches people | [#51](https://github.com/ruxxzebre/eyelang/issues/51) |
-| 5.8 `!` on every outside call in a job | [#52](https://github.com/ruxxzebre/eyelang/issues/52) |
-| 5.9 The morning digest on Postgres, and the v0.2 release | [#53](https://github.com/ruxxzebre/eyelang/issues/53) |
+| 5.1 `dyn Trait` as a type of its own (done) | [#45](https://github.com/ruxxzebre/eyelang/issues/45) |
+| 5.2 The Postgres store, chosen when a program starts (done) | [#46](https://github.com/ruxxzebre/eyelang/issues/46) |
+| 5.3 Durable runs on Postgres survive restarts of the runner and the database (done) | [#47](https://github.com/ruxxzebre/eyelang/issues/47) |
+| 5.4 Typed model calls: providers and `@budget` (done) | [#48](https://github.com/ruxxzebre/eyelang/issues/48) |
+| 5.5 Task groups, `spawn` and bounded channels (done) | [#49](https://github.com/ruxxzebre/eyelang/issues/49) |
+| 5.6 `@memory` and `@priority` enforced at run time (done) | [#50](https://github.com/ruxxzebre/eyelang/issues/50) |
+| 5.7 `approval!` reaches people (done) | [#51](https://github.com/ruxxzebre/eyelang/issues/51) |
+| 5.8 `!` on every outside call in a job (done) | [#52](https://github.com/ruxxzebre/eyelang/issues/52) |
+| 5.9 The morning digest on Postgres, and the v0.2 release (done) | [#53](https://github.com/ruxxzebre/eyelang/issues/53) |
 
 Order: 5.1 → 5.2 → 5.3. 5.4, 5.5, 5.6, 5.7 and 5.8 can run in any order, alongside them; 5.4 and
 5.6 both add run-time faults, so they share the code that ends a run. 5.9 comes last.
@@ -442,6 +435,23 @@ Also owed, found while preparing the digest's deploy. Each is small enough to be
   other list copies first. A set's `add` and a map's `insert` of a new key work the same way
   (`interp/value.go`, `shelf`).
 
+### Core gaps: what self-hosting and phase 7 need from the core
+
+Gaps in the general-purpose core, found since v0.2 by writing real programs and by checking
+status.md against the code on 2026-10-12. Like the carry-overs, they have no phase issue.
+
+| Task | Issue |
+|---|---|
+| G.1 Fixed-width integers: `wrappingAdd`, `checkedAdd`, bit operations, `Int32.from` | [#84](https://github.com/ruxxzebre/eyelang/issues/84) |
+| G.2 A character literal is a `Byte` where one is expected, so list patterns over `Bytes` work | [#85](https://github.com/ruxxzebre/eyelang/issues/85) |
+| G.3 Lazy `xs.iter()` and `Iter(a)` | [#86](https://github.com/ruxxzebre/eyelang/issues/86) |
+| G.4 `Type.f()` called through another module (`lex.Lexer.new`) | [#87](https://github.com/ruxxzebre/eyelang/issues/87) |
+| G.5 A type alias that names itself is an error, with a hint for a one-variant type | [#88](https://github.com/ruxxzebre/eyelang/issues/88) |
+| G.6 `impl Trait` for an entity or `Ref(Entity)` is refused, not ignored | [#89](https://github.com/ruxxzebre/eyelang/issues/89) |
+
+Each issue says what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
+self-hosted lexer; G.1 before 7.4 too.
+
 ### Phase 6: Contracts — [#7](https://github.com/ruxxzebre/eyelang/issues/7) · v0.3
 
 Done when one real lab boundary (for example Notify) is generated from its contract, a call to an
@@ -466,6 +476,7 @@ waits.
 | 6.10 `extern type` replaces `Handle`, and can't be saved (done) | [#62](https://github.com/ruxxzebre/eyelang/issues/62) |
 | 6.11 Enums: `T.variants()` and `T.parse(s)` (done) | [#63](https://github.com/ruxxzebre/eyelang/issues/63) |
 | 6.12 A test sees what a fake received (done) | [#64](https://github.com/ruxxzebre/eyelang/issues/64) |
+| 6.13 `eye run` serves a contract over HTTP on its `@port` | [#81](https://github.com/ruxxzebre/eyelang/issues/81) |
 
 What each task is, until its issue holds it:
 
@@ -571,6 +582,15 @@ What each task is, until its issue holds it:
   (`testdata/programs/events`, `TestFakeCalls`), and the digest's tests ask the fake what was
   sent instead of `Day.sent`. Still open: `fakes(…)` returns the plain `Handler` type, so
   `.calls(op)` on a clock fails only at run time.
+- **6.13 `eye run` serves a contract over HTTP.** A program that serves a contract with `impl`
+  answers it only from inside itself: `eye run` doesn't listen on the contract's `@port`, and the
+  lab's tests stand in for services with Go handlers. `eye run` listens on each served contract's
+  port, routes requests to the `impl` by the contract's `@http` attributes in the JSON shape of
+  SPECS §17, checks `@auth`, and runs each operation as one transaction. 6.4's round trip and the
+  online playground (open question 34) need it.
+  **Done when:** a test runs two Eyelang programs, one serving the lab's Notify contract on its
+  port and one calling `notify.send!`, and shows the call, a repeat with the same key answered
+  without a second send, and an unauthorised request refused.
 
 Order (6.2, 6.10, 6.11 and 6.12 are done): 6.1 any time; the interpreter loads C libraries
 without cgo, as `eye` stays free of it. 6.5 now that 6.2 is done. 6.4, then 6.6; 6.4's round
@@ -674,12 +694,18 @@ whole-program specialisation, and jobs resuming from saved frames.
 Order: 7.1, then 7.3, both in v0.3. 7.2 after 7.1, then 7.4, then 7.5. 7.6 last, after 7.3 and
 7.5.
 
-### After v0.4: Self-hosting
+### After v0.4: Self-hosting — [#82](https://github.com/ruxxzebre/eyelang/issues/82)
 
 Done when the Eyelang compiler, written in Eyelang, builds itself, and the second build's output
 matches the first (SPECS.md §22). It starts early: once phase 3 runs programs, an Eyelang lexer and
 parser are written as a test program and checked by the conformance suite. Then come the
 formatter, `eye doc` and the checker.
+
+| Task | Issue |
+|---|---|
+| S.1 An Eyelang lexer as a test program, checked by the conformance suite | [#83](https://github.com/ruxxzebre/eyelang/issues/83) |
+
+Later tasks are added when phase 7 is close to done.
 
 ## Working agreements
 
