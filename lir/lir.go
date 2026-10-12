@@ -30,6 +30,10 @@ type Program struct {
 	// Dyn lists, for each type converted to a dyn Trait, the instances that
 	// answer the trait's methods: a dyn value's table.
 	Dyn []*DynTable
+	// MainErrShow is the instance of Show that writes main's error, when
+	// main returns a Result whose error type has an impl of Show; without
+	// one, the error is written in its derived form (SPECS.md §13).
+	MainErrShow *Func
 }
 
 // Kind says what a function instance is, which the runtime needs to know.
@@ -242,6 +246,11 @@ type (
 		Dst  *Value
 		Init *Func
 	}
+	// At marks where in the source the instructions after it come from,
+	// until the next At: a fault there names this position, and the C back
+	// end writes a #line directive for it. Every block whose instructions
+	// can fault starts with one. Fprint leaves it out.
+	At struct{ Pos ir.Pos }
 )
 
 func (*Const) isInstr()       {}
@@ -268,6 +277,7 @@ func (*IsVariant) isInstr()   {}
 func (*Update) isInstr()      {}
 func (*SetPlace) isInstr()    {}
 func (*Global) isInstr()      {}
+func (*At) isInstr()          {}
 
 // Absent is the value a call passes for a parameter it leaves out.
 type Absent struct{}
@@ -353,6 +363,9 @@ func FprintFunc(w io.Writer, f *Func) {
 	for _, b := range f.Blocks {
 		fmt.Fprintf(w, "b%d:\n", b.ID)
 		for _, in := range b.Instrs {
+			if _, at := in.(*At); at {
+				continue
+			}
 			fmt.Fprintf(w, "  %s\n", instrString(in))
 		}
 		fmt.Fprintf(w, "  %s\n", termString(b.Term))
@@ -472,6 +485,8 @@ func instrString(in Instr) string {
 		return "set " + path + " = " + x.Src.String()
 	case *Global:
 		return dst(x.Dst) + "global " + x.Init.Name
+	case *At:
+		return "at " + x.Pos.String()
 	}
 	return fmt.Sprintf("%T", in)
 }

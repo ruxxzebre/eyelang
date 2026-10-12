@@ -68,6 +68,15 @@ func Lower(prog *ir.Program) (*Program, []error) {
 			b.request(r.fn, subst{}, r.kind, nil, r.fn.Pos)
 		}
 	}
+	if m := prog.Root.Main; m != nil && m.Sig != nil && isResult(m.Sig.Ret) {
+		// main's error is written with its type's Show (SPECS.md §13).
+		errTy := m.Sig.Ret.(*ir.TCon).Args[1]
+		if tr := prog.Prelude.Traits["Show"]; tr != nil && !generic(errTy) {
+			if f := b.implMethod(tr, "show", errTy); f != nil && f.Body != nil {
+				b.out.MainErrShow = b.instanceAt(f, &ir.TFun{Params: []ir.Ty{errTy}, Ret: tyStr}, KindFunc, nil, m.Pos)
+			}
+		}
+	}
 	for len(b.queue) > 0 {
 		in := b.queue[0]
 		b.queue = b.queue[1:]

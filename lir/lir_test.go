@@ -96,3 +96,44 @@ func TestEveryProgramLowers(t *testing.T) {
 		}
 	}
 }
+
+// TestErrorsBecomeProblems lowers `?` into a function whose error type is
+// Problem, and `.context(…)`, to code that builds the Problem, showing the
+// error; and checks that a fault's block says where it is.
+func TestErrorsBecomeProblems(t *testing.T) {
+	prog, diags := check.Program("../testdata/programs/core")
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	low, errs := Lower(prog)
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	for _, f := range low.Funcs {
+		problems := 0
+		for _, b := range f.Blocks {
+			for _, in := range b.Instrs {
+				switch x := in.(type) {
+				case *Builtin:
+					if x.Name == "context" {
+						t.Errorf("%s calls the built-in context; it should be lowered", f.Name)
+					}
+				case *MakeVariant:
+					if x.Variant.Name == "Problem" {
+						problems++
+					}
+				}
+			}
+			if _, stop := b.Term.(*Stop); stop {
+				if len(b.Instrs) == 0 {
+					t.Errorf("%s: b%d stops without saying where", f.Name, b.ID)
+				} else if _, at := b.Instrs[0].(*At); !at {
+					t.Errorf("%s: b%d stops, and doesn't start with its position", f.Name, b.ID)
+				}
+			}
+		}
+		if f.Name == "total" && problems != 2 {
+			t.Errorf("total makes %d Problems, want 2: one for ? on a String error, one for context", problems)
+		}
+	}
+}

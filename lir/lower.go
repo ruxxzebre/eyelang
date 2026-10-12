@@ -21,13 +21,16 @@ type fnb struct {
 	durable bool // the call being lowered is a `!` step
 	after   []*SetPlace
 	unitV   *Value
+	pos     ir.Pos            // where the expression being lowered is
+	marked  map[*Block]ir.Pos // the position each block's last At gives
 }
 
 type loopBlocks struct{ next, exit *Block }
 
 func (b *builder) lowerInstance(in *instance) {
-	x := &fnb{b: b, in: in, f: in.fn, sub: in.sub, slots: map[int]*Value{}}
+	x := &fnb{b: b, in: in, f: in.fn, sub: in.sub, slots: map[int]*Value{}, marked: map[*Block]ir.Pos{}}
 	src := in.src
+	x.pos = src.Pos
 	x.cur = x.newBlock()
 
 	var params []ir.Ty
@@ -138,12 +141,29 @@ func (x *fnb) emit(in Instr) {
 	if x.cur == nil {
 		x.cur = x.newBlock() // after a jump: code nothing reaches
 	}
+	x.mark()
 	x.cur.Instrs = append(x.cur.Instrs, in)
+}
+
+// mark starts the current block's instructions from the position being
+// lowered with an At, unless its last At gives that position already.
+func (x *fnb) mark() {
+	if x.pos.File == nil {
+		return
+	}
+	if p, ok := x.marked[x.cur]; ok && p.File == x.pos.File && p.Offset == x.pos.Offset {
+		return
+	}
+	x.marked[x.cur] = x.pos
+	x.cur.Instrs = append(x.cur.Instrs, &At{Pos: x.pos})
 }
 
 func (x *fnb) term(t Term) {
 	if x.cur == nil {
 		x.cur = x.newBlock()
+	}
+	if _, stop := t.(*Stop); stop {
+		x.mark() // a fault says where it happened
 	}
 	x.cur.Term = t
 	x.cur = nil
@@ -286,6 +306,11 @@ func (x *fnb) coerce(v *Value, want ir.Ty) *Value {
 // ---------------------------------------------------------------- expressions
 
 func (x *fnb) expr(e ir.Expr) *Value {
+	if p := e.Position(); p.File != nil {
+		saved := x.pos
+		x.pos = p
+		defer func() { x.pos = saved }()
+	}
 	switch e := e.(type) {
 	case *ir.Lit:
 		return x.constant(e.Value, x.ty(e))
@@ -655,7 +680,7 @@ func (x *fnb) call(e *ir.Call) *Value {
 		case ir.Builtin:
 			args, names := x.args(e.Args)
 			v := x.value("", t)
-			x.emit(&Builtin{Dst: v, Name: d.Name, Args: args, Names: names, Durable: durable})
+			x.builtin(&Builtin{Dst: v, Name: d.Name, Args: args, Names: names, Durable: durable})
 			return v
 		case *ir.Variant:
 			args := make([]*Value, len(d.Fields))
@@ -717,7 +742,7 @@ func (x *fnb) methodCall(e *ir.MethodCall) *Value {
 		recv := x.expr(e.Recv)
 		args, names := x.args(e.Args)
 		v := x.value("", t)
-		x.emit(&Builtin{Dst: v, Name: target.Name, Args: append([]*Value{recv}, args...), Names: append([]string{""}, names...), Durable: durable})
+		x.builtin(&Builtin{Dst: v, Name: target.Name, Args: append([]*Value{recv}, args...), Names: append([]string{""}, names...), Durable: durable})
 		return v
 	case ir.RuntimeMethod:
 		recv := x.expr(e.Recv)
@@ -725,7 +750,7 @@ func (x *fnb) methodCall(e *ir.MethodCall) *Value {
 		v := x.value("", t)
 		op, what := runtimeMethod(recv.Ty, e.Name)
 		if op == "" {
-			x.emit(&Builtin{Dst: v, Name: e.Name, Args: append([]*Value{recv}, args...), Names: append([]string{""}, names...), Durable: durable})
+			x.builtin(&Builtin{Dst: v, Name: e.Name, Args: append([]*Value{recv}, args...), Names: append([]string{""}, names...), Durable: durable})
 			return v
 		}
 		x.emit(&Runtime{Dst: v, Op: op, Target: what, Args: append([]*Value{recv}, args...), Names: append([]string{""}, names...), Durable: durable})
@@ -1173,7 +1198,12 @@ func (x *fnb) try(e *ir.Try) *Value {
 		if rc, ok := x.f.Result.(*ir.TCon); ok && len(rc.Args) == 2 {
 			want = rc.Args[1]
 		}
-		if e.Wrap != nil && want != nil && typeKey(want) != typeKey(errTy) {
+		problem := pre["Problem"]
+		switch {
+		case e.Wrap != nil && problem != nil && e.Wrap == problem.Type && want != nil && typeKey(want) != typeKey(errTy):
+			// Any error with Show becomes a Problem, shown.
+			err = x.problem(err, nil)
+		case e.Wrap != nil && want != nil && typeKey(want) != typeKey(errTy):
 			for _, vr := range e.Wrap.Variants {
 				if len(vr.Fields) == 1 && texprFits(vr.Fields[0].Type, errTy) {
 					w := x.value("", want)
@@ -1213,6 +1243,81 @@ func (x *fnb) orElse(e *ir.Default) *Value {
 	x.into(r, x.expr(e.Or), join)
 	x.cur = join
 	return r
+}
+
+// builtin emits a built-in's call. The built-ins that show values are
+// partly lowered here, since showing a value of a type with an impl of
+// Show calls that impl: print and log's functions get each argument
+// shown, and context is lowered whole.
+func (x *fnb) builtin(in *Builtin) {
+	switch {
+	case in.Name == "context" && len(in.Args) == 2 && isResult(in.Args[0].Ty) && isResult(in.Dst.Ty):
+		x.context(in)
+		return
+	case in.Name == "print" || strings.HasPrefix(in.Name, "log."):
+		for i, a := range in.Args {
+			in.Args[i] = x.show(a)
+		}
+	}
+	x.emit(in)
+}
+
+func isResult(t ir.Ty) bool {
+	c, ok := t.(*ir.TCon)
+	return ok && c.Name == "Result" && len(c.Args) == 2
+}
+
+// context is `r.context(what)`: r as it is when it is Ok, and otherwise its
+// error as a Problem with the line what before its context.
+func (x *fnb) context(in *Builtin) {
+	r, what := in.Args[0], in.Args[1]
+	pre := x.b.prog.Prelude.Variants
+	okV, errV := pre["Ok"], pre["Err"]
+	rc := r.Ty.(*ir.TCon)
+	is := x.value("", tyBool)
+	x.emit(&IsVariant{Dst: is, Src: r, Variant: okV})
+	good, bad, join := x.newBlock(), x.newBlock(), x.newBlock()
+	x.term(&Branch{Cond: is, Then: good, Else: bad})
+	x.cur = good
+	inner := x.value("", rc.Args[0])
+	x.emit(&Payload{Dst: inner, Src: r, Variant: okV, Index: 0})
+	x.emit(&MakeVariant{Dst: in.Dst, Variant: okV, Args: []*Value{inner}})
+	x.term(&Jump{To: join})
+	x.cur = bad
+	e := x.value("", rc.Args[1])
+	x.emit(&Payload{Dst: e, Src: r, Variant: errV, Index: 0})
+	p := x.problem(e, what)
+	x.emit(&MakeVariant{Dst: in.Dst, Variant: errV, Args: []*Value{p}})
+	x.term(&Jump{To: join})
+	x.cur = join
+}
+
+// problem makes the error e a Problem (SPECS.md §10), with the line what,
+// if not nil, before its context: a Problem keeps its context and gains the
+// line, and any other error becomes one, shown.
+func (x *fnb) problem(e, what *Value) *Value {
+	pv := x.b.prog.Prelude.Variants["Problem"]
+	strs := &ir.TCon{Name: "List", Args: []ir.Ty{tyStr}}
+	var line []*Value
+	if what != nil {
+		line = []*Value{what}
+	}
+	head := x.value("", strs)
+	x.emit(&MakeList{Dst: head, Elems: line})
+	ctx, msg := head, (*Value)(nil)
+	if c, ok := e.Ty.(*ir.TCon); ok && c.Decl == pv.Type {
+		old := x.value("", strs)
+		x.emit(&Payload{Dst: old, Src: e, Variant: pv, Index: 0})
+		ctx = x.value("", strs)
+		x.emit(&Op{Dst: ctx, Op: "+", Args: []*Value{head, old}})
+		msg = x.value("", tyStr)
+		x.emit(&Payload{Dst: msg, Src: e, Variant: pv, Index: 1})
+	} else {
+		msg = x.show(e)
+	}
+	p := x.value("", &ir.TCon{Name: pv.Type.Name, Decl: pv.Type})
+	x.emit(&MakeVariant{Dst: p, Variant: pv, Args: []*Value{ctx, msg}})
+	return p
 }
 
 // ---------------------------------------------------------------- patterns
