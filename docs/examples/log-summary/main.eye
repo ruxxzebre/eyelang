@@ -145,7 +145,8 @@ test "a line is read into a request, or says what is wrong with it" {
 test "percentile works on anything that can be ordered" {
   expect(percentile([30, 10, 20, 40], 50) == Some(30))
   expect(percentile(["b", "a", "c"], 0) == Some("a"))
-  expect(percentile([], 95) == None)
+  let none: List(Int) = []
+  expect(percentile(none, 95) == None)
 }
 
 test "requests are summed up per path, busiest first" {
