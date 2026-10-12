@@ -104,6 +104,25 @@ func (e *fn) builtin(in *lir.Builtin) {
 	set := func(expr string) { e.assign(dst, expr) }
 	name := in.Name
 
+	if in.InPlace {
+		// The update's last use of its first argument: it takes it, and
+		// changes it in place when it holds the only reference.
+		switch {
+		case name == "concat":
+			set(fmt.Sprintf("eyo_concat(%s, %d, %s)", e.v(in.Args[0]), len(in.Args)-1, e.array(in.Args[1:])))
+		case name == "add" && k0 == "List":
+			set(fmt.Sprintf("eyo_list_add(%s, %s)", v(0), v(1)))
+		case name == "add" && k0 == "Set":
+			set(fmt.Sprintf("eyo_set_add(%s, %s)", v(0), v(1)))
+		case name == "insert" && k0 == "Map":
+			set(fmt.Sprintf("eyo_map_insert(%s, %s, %s)", v(0), v(1), v(2)))
+		case name == "remove" && (k0 == "Map" || k0 == "Set"):
+			set(fmt.Sprintf("eyo_map_remove(%s, %s)", v(0), v(1)))
+		default:
+			e.unsupported("the update " + name + " of " + arg(0).Ty.String() + " in place")
+		}
+		return
+	}
 	if w, ok := widths[k0]; ok {
 		if e.fixed(in, w.bits, w.signed, a) {
 			return
@@ -373,7 +392,7 @@ func (e *fn) builtin(in *lir.Builtin) {
 		if name == "max" {
 			op = "<"
 		}
-		e.borrowed(dst, fmt.Sprintf("ey_cmp(%s, %s, %s) %s 0 ? %s : %s", e.g.desc(arg(0).Ty), v(0), v(1), op, v(1), v(0)))
+		e.dupped(dst, fmt.Sprintf("ey_cmp(%s, %s, %s) %s 0 ? %s : %s", e.g.desc(arg(0).Ty), v(0), v(1), op, v(1), v(0)))
 	case "abs":
 		switch k0 {
 		case "Int":
@@ -453,7 +472,7 @@ func (e *fn) builtin(in *lir.Builtin) {
 		case "Float":
 			set(fmt.Sprintf("eyb_float_to_int(ey_v2f(%s), %s)", v(0), rt()))
 		case "Int":
-			e.borrowed(dst, v(0))
+			e.dupped(dst, v(0))
 		default:
 			e.unsupported("toInt of " + arg(0).Ty.String())
 		}
@@ -594,16 +613,16 @@ func (e *fn) mapVariant(in *lir.Builtin) {
 	e.printf("if (EY_AGG(%s)->tag == 0) {", e.v(x))
 	e.printf("ey_v r_ = ey_call(%s, &EY_AGG(%s)->f[0]);", e.v(f), e.v(x))
 	e.printf("ey_agg *a_ = ey_agg_new(%s, 0, 1); a_->f[0] = r_;", e.g.desc(in.Dst.Ty))
-	e.printf("ey_drop(%s); %s = EY_V(a_);", e.v(in.Dst), e.v(in.Dst))
+	e.printf("%s = EY_V(a_);", e.v(in.Dst))
 	e.printf("} else {")
 	if c, ok := rep(in.Dst.Ty).(*ir.TCon); ok && c.Name == "Result" {
 		e.printf("ey_agg *a_ = ey_agg_new(%s, 1, 1); a_->f[0] = EY_AGG(%s)->f[0];", e.g.desc(in.Dst.Ty), e.v(x))
 		if len(c.Args) == 2 && counted(c.Args[1]) {
 			e.printf("ey_dup(a_->f[0]);")
 		}
-		e.printf("ey_drop(%s); %s = EY_V(a_);", e.v(in.Dst), e.v(in.Dst))
+		e.printf("%s = EY_V(a_);", e.v(in.Dst))
 	} else {
-		e.printf("ey_drop(%s); %s = ey_none(%s);", e.v(in.Dst), e.v(in.Dst), e.g.desc(in.Dst.Ty))
+		e.printf("%s = ey_none(%s);", e.v(in.Dst), e.g.desc(in.Dst.Ty))
 	}
 	e.printf("}")
 }

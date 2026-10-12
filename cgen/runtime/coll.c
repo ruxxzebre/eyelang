@@ -147,6 +147,27 @@ ey_v ey_map_new(const ey_type *ty, int64_t n, const ey_v *keys, const ey_v *vals
 	return EY_V(m);
 }
 
+/* A literal's collection, which takes the elements it is given: a key
+ * given twice keeps its last value, and the rest is dropped. */
+ey_v ey_list_from(const ey_type *ty, int64_t n, const ey_v *items) {
+	ey_list *l = list_alloc(ty, n);
+	if (n > 0) memcpy(l->items, items, sizeof(ey_v) * (size_t)n);
+	l->len = n;
+	return EY_V(l);
+}
+
+ey_v ey_set_from(const ey_type *ty, int64_t n, const ey_v *items) {
+	ey_map *m = map_alloc(ty, n);
+	for (int64_t i = 0; i < n; i++) map_put(m, items[i], 0);
+	return EY_V(m);
+}
+
+ey_v ey_map_from(const ey_type *ty, int64_t n, const ey_v *keys, const ey_v *vals) {
+	ey_map *m = map_alloc(ty, n);
+	for (int64_t i = 0; i < n; i++) map_put(m, keys[i], vals[i]);
+	return EY_V(m);
+}
+
 static ey_map *map_copy(ey_map *src, int64_t extra) {
 	ey_map *m = map_alloc(src->h.ty, src->len + extra);
 	for (int64_t i = 0; i < src->len; i++) put_dup(m, src->keys[i], src->vals ? src->vals[i] : 0);
@@ -283,6 +304,38 @@ ey_v eyo_map_insert(ey_v m, ey_v k, ey_v v) {
 	}
 	put_dup(EY_MAP(m), k, v);
 	return m;
+}
+
+ey_v eyo_set_union(ey_v s, ey_v other) {
+	if (!alone(s) || s == other) {
+		ey_v r = eyb_set_union(s, other);
+		ey_drop(s);
+		return r;
+	}
+	ey_map *b = EY_MAP(other);
+	for (int64_t i = 0; i < b->len; i++) put_dup(EY_MAP(s), b->keys[i], 0);
+	return s;
+}
+
+ey_v eyo_map_remove(ey_v mv, ey_v k) {
+	if (!alone(mv)) {
+		ey_v r = eyb_map_remove(mv, k);
+		ey_drop(mv);
+		return r;
+	}
+	ey_map *m = EY_MAP(mv);
+	int64_t i = ey_map_find(m, k);
+	if (i < 0) return mv;
+	const ey_type *ty = m->h.ty;
+	ey_drop_as(ty->args[0], m->keys[i]);
+	memmove(m->keys + i, m->keys + i + 1, sizeof(ey_v) * (size_t)(m->len - i - 1));
+	if (m->vals) {
+		ey_drop_as(ty->args[1], m->vals[i]);
+		memmove(m->vals + i, m->vals + i + 1, sizeof(ey_v) * (size_t)(m->len - i - 1));
+	}
+	m->len--;
+	index_build(m);
+	return mv;
 }
 
 ey_v eyb_map_remove(ey_v mv, ey_v k) {

@@ -33,6 +33,21 @@ func (e *fn) op(x *lir.Op) {
 	b := x.Args[1]
 	kb := kind(b)
 	va, vb := e.v(a), e.v(b)
+	if x.InPlace {
+		// `+` takes its first operand, which it appends to in place when
+		// it holds the only reference.
+		switch ka {
+		case "String":
+			set("eyo_str_append(%s, %s)", va, vb)
+		case "List":
+			set("eyo_list_concat(%s, %s)", va, vb)
+		case "Set":
+			set("eyo_set_union(%s, %s)", va, vb)
+		default:
+			e.unsupported("the operator + on " + a.Ty.String() + " in place")
+		}
+		return
+	}
 	if cmpOps[x.Op] {
 		e.compare(x, ka, va, vb)
 		return

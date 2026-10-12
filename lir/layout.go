@@ -183,6 +183,10 @@ var (
 type Layouts struct {
 	byKey     map[string]*Layout
 	recursive map[*ir.Type]bool
+	// CountedBy, when set, decides which types are counted instead of
+	// their layouts: a back end whose values aren't laid out by type yet
+	// counts by its own rule.
+	CountedBy func(ir.Ty) bool
 }
 
 // NewLayouts is an empty table of layouts.
@@ -201,7 +205,12 @@ func (ls *Layouts) Of(t ir.Ty) *Layout {
 }
 
 // Counted reports whether values of t are counted.
-func (ls *Layouts) Counted(t ir.Ty) bool { return ls.shallow(t).Counted }
+func (ls *Layouts) Counted(t ir.Ty) bool {
+	if ls.CountedBy != nil {
+		return ls.CountedBy(t)
+	}
+	return ls.shallow(t).Counted
+}
 
 // shallow is the layout of t, leaving a box's fields for Of: a box is a
 // word whatever it holds, and a recursive type's fields may name ever

@@ -91,6 +91,8 @@ ey_v eyo_list_concat(ey_v l, ey_v other);
 ey_v eyo_list_add(ey_v l, ey_v x);
 ey_v eyo_set_add(ey_v s, ey_v x);
 ey_v eyo_map_insert(ey_v m, ey_v k, ey_v v);
+ey_v eyo_set_union(ey_v s, ey_v other);
+ey_v eyo_map_remove(ey_v m, ey_v k);
 /* The slot of element i of the list *p points at, for an assignment to
  * it, `xs[i] = v` (SPECS.md §7): *p is made unique first, copied if it is
  * shared, and an index out of range is a fault. */

@@ -183,7 +183,7 @@ have kept `eye` small.
 ### The C back end as built
 
 Task 7.4 (2026-10-12) built the back end for the core language: package `cgen` and
-`eye build`. It is what this section describes, as it stands before reference counting (7.5).
+`eye build`. It is what this section describes, with what 7.14 and 7.5 (counting) changed since.
 
 **What `eye build` does.** It checks the program, lowers it to low IR (`lir.Lower`), and writes
 C11: one file per module (`m_main.c`, `m_tally.c`, …), `program.h` with every prototype and
@@ -212,8 +212,8 @@ the pinned zig (`internal/zig`) as a separate process; `eye` itself has no cgo.
   `internal/zig` pins, rather than shipped inside the release archives.
 
 **Values.** Every value is one 64-bit word, `ey_v` (`cgen/runtime/eye.h`). Section 2, "Values
-laid out by type", is the design that replaces this (7.13), and "Reference counting in the low
-IR" the counting below (7.5); the low IR has both, and the back end switches to them next.
+laid out by type", is the design that replaces this (7.13); the low IR chooses the layouts, and
+the back end switches to them next. It prints the low IR's counting already ("Counting" below).
 
 - scalars are their bits: `Bool`, `Char`, `Byte` and the fixed-width integers (signed ones
   sign-extended), `Float`, `Duration` (ns), `Size`, `Date` (days since 1970), `Time` (seconds
@@ -244,27 +244,29 @@ methods. A closure is its code and its captures.
 | `time.c` | instants, dates and zones; the zone tables come from Go's zone database, written into `program.c` for the zones the program names |
 | `sys.c` | the `fs`, `process` and `stdio` primitives; in a test binary, relative paths are inside a directory of the test's own |
 
-**Counting.** Counts are simple and not atomic, since a program runs on one thread. Each C
-variable of the low IR owns one reference, dropped when the variable is set again and when the
-function returns; arguments are borrowed and results owned. A parameter the function sets takes
-a reference of its own first. Faults in a test `longjmp` out and leak what was live, as the plan
-for faults (section 2) allows until runs get regions. A variant without fields (`None`, `Leaf`,
+**Counting.** Counts are not atomic, since a program runs on one thread. Since 7.5 the back end
+prints the low IR's counting (section 2, "Reference counting in the low IR"): `lir.Count` runs
+in `Generate`, with the back end's rule for which values are counted, and each `Dup` and `Drop`
+becomes `ey_dup` and `ey_drop`; an instruction marked `inplace` calls the runtime's in-place
+form (`eyo_list_add`, `eyo_map_insert`, `eyo_concat`, …), which takes its operand; a field
+`take`n is moved out of its record and left empty when the record is unique; a closure's
+trampoline and a `dyn` method's wrapper dup the arguments of parameters the function owns.
+Nothing else in the back end decides a count. Faults in a test `longjmp` out and leak what was
+live, as the plan for faults (section 2) allows until runs get regions. A variant without fields (`None`, `Leaf`,
 an enum's cases) is one static, immortal value per type, which counting leaves alone.
 
 **Counts of objects.** The runtime counts the objects it makes and frees. With `EYE_ALLOCS` set,
 a binary writes `allocs N frees M faulted K` to stderr when it exits, after dropping its globals;
 `K` is what failing tests left behind.
 
-**Updates in place.** Simple counts already make the common loops linear. A variable updated by
-itself (`s += t`, `s = "{s}…"`, `xs += ys`, `xs = xs.add(x)`, `seen = seen.add(x)`,
-`m = m.insert(k, v)`) becomes one call that takes the variable's value and changes it in place
-when its count is one, growing strings and lists by doubling, and copies it first otherwise. A
-record's field assignment does the same through `ey_agg_own`. Measured on 2026-10-12 against the
-interpreter's quadratic cases (performance review, section 1.1): 100k string appends take 18 ms
-(18 s interpreted), 20k map updates over 10k keys 2 ms (10.8 s), 1M field updates 10 ms.
-R.3 and R.4 have since made the interpreter linear on both (about 90 ms and 45 ms).
-Precise counting (7.5, section 2) extends this to values whose last use is a call, not an
-assignment.
+**Updates in place.** An update whose operand's last use it is (`s += t`, `s = "{s}…"`,
+`xs += ys`, `xs = xs.add(x)`, `m = m.insert(k, v)`, a set's `add`, `remove`, `{ r with … }`)
+takes the operand and changes it in place when its count is one, growing strings and lists by
+doubling, and copies it first otherwise; a field assignment makes its record unique through
+`ey_agg_own`. Before 7.5 only six exact `v = op(v, …)` shapes were in place; now the shape
+around the update doesn't matter: the native plan's slow loops (an append through a helper, a
+map insert through a `let`, `p = { p with items: p.items.add(i) }`) take 8 ms for 1M appends,
+7 ms for 100k inserts and 12 ms for 1M updates, and grow linearly.
 
 **Not compiled yet.** Entities, jobs, views and contracts (the runner hosts them, 7.6),
 durable `!` steps, `with` in tests, foreign code (`@library`), and the clock and fakes of tests.
@@ -276,8 +278,9 @@ A program that declares one gets an error that names what it declares and says `
 tests, one of in-place updates and one of slow updates), at both `-O0 -g` and `-O2`, runs them,
 and checks the output is `eye test`'s line for line (durations aside); a program joins as soon
 as it compiles. It also builds core for all five targets and runs a `main`. `cgen/updates_test.go`
-times the update loops that still copy natively (an append through a helper, a map insert through
-a `let`, a record updated from its own list) at two sizes and records them as quadratic until 7.5. Valgrind can't check for
+times the update loops that copied natively until 7.5 (an append through a helper, a map insert
+through a `let`, a record updated from its own list) at two sizes and fails if one grows
+quadratically again. Valgrind can't check for
 leaks, since it doesn't see the heap of a static musl binary; instead `cgen/alloc_test.go` runs
 the test binaries of core, traits, the lexer and cgen's programs, and a `main`, with `EYE_ALLOCS`,
 and checks that every object is freed by exit except those a failing test left.

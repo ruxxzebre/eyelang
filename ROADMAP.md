@@ -814,7 +814,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.2 Low IR and specialisation (done) | [#75](https://github.com/ruxxzebre/eyelang/issues/75) |
 | 7.3 Jobs as state machines, resuming from saved frames (done in the interpreter) | [#76](https://github.com/ruxxzebre/eyelang/issues/76) |
 | 7.4 The C back end and the core runtime (done) | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
-| 7.5 Reference counting in the low IR: drop after last use, in place when unique | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
+| 7.5 Reference counting in the low IR: drop after last use, in place when unique (done) | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
 | 7.6 The runner hosts compiled programs, and the digest runs natively | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
 | 7.7 Benchmarks against Go: native code faster and leaner, checked (done) | [#110](https://github.com/ruxxzebre/eyelang/issues/110) |
 | 7.8 Native code checked against the interpreter at both levels, and stale numbers fixed (done) | [#111](https://github.com/ruxxzebre/eyelang/issues/111) |
@@ -912,12 +912,19 @@ whole-program specialisation, and jobs resuming from saved frames.
   a `let`) run in linear time; 7.8's counting allocator finds as many frees as allocations in
   every program `eye build` compiles; `eye check --lir` prints the new instructions, with golden
   tests.
-  The low IR's side is in (2026-10-12, compilation.md section 2, "Reference counting in the low
-  IR"): `lir.Count` inserts `dup` and `drop` from liveness, infers borrowed and owned
-  parameters over the whole program, marks updates `inplace` and fields `take`n from a record
-  about to be rebuilt, which makes the three slow loops' updates in place in the low IR;
-  `eye check --lir` prints them (`testdata/ir/counting`), and `lir.CheckCounts` checks that the
-  counts balance on every path of every repository program. The C back end doesn't use it yet.
+  Done on 2026-10-12 (compilation.md section 2, "Reference counting in the low IR"):
+  `lir.Count` inserts `dup` and `drop` from liveness, infers borrowed and owned parameters over
+  the whole program, marks updates `inplace` and fields `take`n from a record about to be
+  rebuilt; `eye check --lir` prints them (`testdata/ir/counting`), and `lir.CheckCounts` checks
+  that the counts balance on every path of every repository program. The C back end prints
+  them and decides no count itself. The slow loops are linear (`TestSlowLoops`): an append
+  through a helper 8 ms at 1M and 30 ms at 4M, a map insert through a `let` 7 ms at 100k and
+  32 ms at 400k, `p = { p with items: p.items.add(i) }` 12 ms at 1M and 48 ms at 4M (before:
+  0.26 s, 2.4 s and 0.25 s at 10k). `cgen/alloc_test.go` finds as many frees as allocations
+  in every compilable program but what failing tests leave. Against Go, measured back to back
+  with dev on the same machine: fib 3.53× → 1.66×, trees 0.82× → 0.44× (25 → 10 MB),
+  records 4.58× → 0.94×, maps 3.65× → 3.37×, lexer 3.80× → 1.45×, lists' memory 42 → 23 MB;
+  the geometric mean 1.75× → 1.09× Go's time.
 - **7.6 The runner hosts compiled programs.** The Go runner calls a compiled program's interface
   (run `main`, run a test, call an entity method, step a job, encode and decode saved types).
   Hosting is B′ (decided 2026-10-12): the runner is the program's `main`, and `eye build` links

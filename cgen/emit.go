@@ -64,21 +64,14 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 	e.pos = f.Src.Pos
 	e.line(e.pos)
 	fmt.Fprintf(&e.b, "%s {\n", g.signature(f))
-	var owned []*lir.Value
+	// Every local starts empty: zero, which drops to nothing. The low IR
+	// says where each value is dup'ed and dropped (lir.Count).
 	for _, v := range locals {
 		fmt.Fprintf(&e.b, "\tey_v v%d = 0;\n", v.ID)
-		if counted(v.Ty) {
-			owned = append(owned, v)
-		}
 	}
-	// A parameter is borrowed from the caller; one the function sets, as
-	// the code that gives a left-out parameter its default does, takes a
-	// reference of its own first, which it drops when it returns.
-	set := map[*lir.Value]bool{}
 	for _, b := range f.Blocks {
 		for _, in := range b.Instrs {
 			if d := lir.Dst(in); d != nil {
-				set[d] = true
 				e.defs[d]++
 			}
 			if c, ok := in.(*lir.Call); ok {
@@ -88,51 +81,16 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 			}
 		}
 	}
-	for _, p := range f.Params {
-		if set[p] && !e.mut[p] && counted(p.Ty) {
-			fmt.Fprintf(&e.b, "\tey_dup(v%d);\n", p.ID)
-			owned = append(owned, p)
-		}
-	}
 	if hasDefaults(f) {
 		e.b.WriteString("\t(void)absent;\n")
 	}
-	reads := map[*lir.Value]int{}
-	for _, b := range f.Blocks {
-		for _, in := range b.Instrs {
-			for _, r := range lir.Reads(in) {
-				reads[r]++
-			}
-		}
-		switch t := b.Term.(type) {
-		case *lir.Branch:
-			reads[t.Cond]++
-		case *lir.Return:
-			reads[t.Value]++
-		}
-	}
 	for _, b := range f.Blocks {
 		fmt.Fprintf(&e.b, "b%d:;\n", b.ID)
-		for i := 0; i < len(b.Instrs); i++ {
-			j := i + 1 // the next instruction that isn't an At
-			for j < len(b.Instrs) {
-				if _, at := b.Instrs[j].(*lir.At); !at {
-					break
-				}
-				j++
-			}
-			if j < len(b.Instrs) && e.inPlace(b.Instrs[i], b.Instrs[j], reads) {
-				e.flush()
-				for _, at := range b.Instrs[i+1 : j] {
-					e.instr(at)
-				}
-				i = j
-				continue
-			}
-			e.instr(b.Instrs[i])
+		for _, in := range b.Instrs {
+			e.instr(in)
 			e.flush()
 		}
-		e.term(b.Term, owned)
+		e.term(b.Term)
 		e.flush()
 	}
 	e.b.WriteString("}\n\n")
@@ -145,15 +103,23 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 func (e *fn) extras() {
 	g, f := e.g, e.f
 	name := g.names[f]
+	// A closure and a dyn table lend their arguments; one a parameter owns
+	// is dup'ed for it.
 	call := func(first []string, from string, skip int) string {
 		args := append([]string(nil), first...)
 		for i := skip; i < len(f.Params); i++ {
 			args = append(args, fmt.Sprintf("%s[%d]", from, i-skip))
 		}
+		var dups strings.Builder
+		for i, a := range args {
+			if i < len(f.Modes) && f.Modes[i] == lir.Owned && counted(f.Params[i].Ty) {
+				fmt.Fprintf(&dups, "\tey_dup(%s);\n", a)
+			}
+		}
 		if hasDefaults(f) {
 			args = append(args, "0")
 		}
-		return fmt.Sprintf("%s(%s)", name, strings.Join(args, ", "))
+		return fmt.Sprintf("%s\treturn %s(%s);\n", dups.String(), name, strings.Join(args, ", "))
 	}
 	if g.tramps[f] {
 		n := captures(f)
@@ -161,10 +127,10 @@ func (e *fn) extras() {
 		for i := 0; i < n; i++ {
 			caps = append(caps, fmt.Sprintf("self->cap[%d]", i))
 		}
-		fmt.Fprintf(&e.b, "ey_v %s_tr(ey_fn *self, const ey_v *a) {\n\t(void)self;\n\t(void)a;\n\treturn %s;\n}\n\n", name, call(caps, "a", n))
+		fmt.Fprintf(&e.b, "ey_v %s_tr(ey_fn *self, const ey_v *a) {\n\t(void)self;\n\t(void)a;\n%s}\n\n", name, call(caps, "a", n))
 	}
 	if g.methods[f] {
-		fmt.Fprintf(&e.b, "ey_v %s_dm(ey_v self, const ey_v *a) {\n\t(void)a;\n\treturn %s;\n}\n\n", name, call([]string{"self"}, "a", 1))
+		fmt.Fprintf(&e.b, "ey_v %s_dm(ey_v self, const ey_v *a) {\n\t(void)a;\n%s}\n\n", name, call([]string{"self"}, "a", 1))
 	}
 	if f.Kind == lir.KindGlobal {
 		// A global's instance says () for its result; what it returns has
@@ -257,27 +223,24 @@ func (e *fn) absent(x *lir.Value) bool {
 	return is
 }
 
-// assign sets dst to expr, a value the expression owns: the old value of a
-// counted dst is dropped.
+// assign sets dst to expr. The low IR has dropped or passed on what dst
+// held before (lir.Count), so dst is empty here; what expr gives, an owned
+// result or a value borrowed from elsewhere, the low IR says.
 func (e *fn) assign(dst *lir.Value, expr string) {
 	if dst == nil {
 		e.printf("(void)(%s);", expr)
 		return
 	}
-	if counted(dst.Ty) {
-		e.printf("{ ey_v t_ = %s; ey_drop(%s); %s = t_; }", expr, e.v(dst), e.v(dst))
-		return
-	}
 	e.printf("%s = %s;", e.v(dst), expr)
 }
 
-// borrowed sets dst to a value it reads from elsewhere, which it dups.
-func (e *fn) borrowed(dst *lir.Value, expr string) {
+// dupped sets dst to a part of an argument, which a built-in gives as its
+// own result (min, max): a reference of its own.
+func (e *fn) dupped(dst *lir.Value, expr string) {
+	e.assign(dst, expr)
 	if counted(dst.Ty) {
-		e.printf("{ ey_v t_ = %s; ey_dup(t_); ey_drop(%s); %s = t_; }", expr, e.v(dst), e.v(dst))
-		return
+		e.printf("ey_dup(%s);", e.v(dst))
 	}
-	e.printf("%s = %s;", e.v(dst), expr)
 }
 
 // array is a C compound literal of values, or NULL for none.
@@ -300,7 +263,15 @@ func (e *fn) instr(in lir.Instr) {
 	case *lir.Const:
 		e.constant(x)
 	case *lir.Move:
-		e.borrowed(x.Dst, e.v(x.Src))
+		e.assign(x.Dst, e.v(x.Src))
+	case *lir.Dup:
+		if counted(x.V.Ty) {
+			e.printf("ey_dup(%s);", e.v(x.V))
+		}
+	case *lir.Drop:
+		if counted(x.V.Ty) {
+			e.printf("ey_drop(%s);", e.v(x.V))
+		}
 	case *lir.Call:
 		e.call(x)
 	case *lir.Builtin:
@@ -335,11 +306,12 @@ func (e *fn) instr(in lir.Instr) {
 	case *lir.MakeTuple:
 		e.makeAgg(x.Dst, e.g.desc(x.Dst.Ty), 0, x.Elems, nil)
 	case *lir.MakeList:
-		e.assign(x.Dst, fmt.Sprintf("ey_list_new(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.array(x.Elems)))
+		// The new collection takes its elements.
+		e.assign(x.Dst, fmt.Sprintf("ey_list_from(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.array(x.Elems)))
 	case *lir.MakeSet:
-		e.assign(x.Dst, fmt.Sprintf("ey_set_new(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.array(x.Elems)))
+		e.assign(x.Dst, fmt.Sprintf("ey_set_from(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.array(x.Elems)))
 	case *lir.MakeMap:
-		e.assign(x.Dst, fmt.Sprintf("ey_map_new(%s, %d, %s, %s)", e.g.desc(x.Dst.Ty), len(x.Keys), e.array(x.Keys), e.array(x.Values)))
+		e.assign(x.Dst, fmt.Sprintf("ey_map_from(%s, %d, %s, %s)", e.g.desc(x.Dst.Ty), len(x.Keys), e.array(x.Keys), e.array(x.Values)))
 	case *lir.MakeClosure:
 		e.closure(x.Dst, x.Fn, x.Captures)
 	case *lir.MakeDyn:
@@ -348,22 +320,25 @@ func (e *fn) instr(in lir.Instr) {
 			name = fmt.Sprintf("ey_dt%d", len(e.g.dynTab))
 			e.g.dynTab[x.Table] = name
 		}
-		e.printf("{ ey_dyn *d_ = ey_alloc(sizeof(ey_dyn), &%s_d); d_->methods = %s; d_->val = %s;", name, name, e.v(x.Src))
-		if counted(x.Src.Ty) {
-			e.printf("  ey_dup(d_->val);")
-		}
-		e.printf("  ey_drop(%s); %s = EY_V(d_); }", e.v(x.Dst), e.v(x.Dst))
+		e.printf("{ ey_dyn *d_ = ey_alloc(sizeof(ey_dyn), &%s_d); d_->methods = %s; d_->val = %s; %s = EY_V(d_); }", name, name, e.v(x.Src), e.v(x.Dst))
 	case *lir.Field:
 		i := e.fieldIndex(x.Src.Ty, x.Name)
-		e.borrowed(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), i))
-	case *lir.TupleGet:
-		e.borrowed(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), x.Index))
-	case *lir.Payload:
-		if newtype(x.Variant) {
-			e.borrowed(x.Dst, e.v(x.Src))
+		if x.Take {
+			// Moved out of a record about to be rebuilt: left empty when
+			// the record is unique, which the update then fills.
+			e.printf("{ ey_agg *a_ = EY_AGG(%s); %s = a_->f[%d]; if (a_->h.rc == 1) a_->f[%d] = 0; else ey_dup(%s); }",
+				e.v(x.Src), e.v(x.Dst), i, i, e.v(x.Dst))
 			return
 		}
-		e.borrowed(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), x.Index))
+		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), i))
+	case *lir.TupleGet:
+		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), x.Index))
+	case *lir.Payload:
+		if newtype(x.Variant) {
+			e.assign(x.Dst, e.v(x.Src))
+			return
+		}
+		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), x.Index))
 	case *lir.IsVariant:
 		if newtype(x.Variant) {
 			e.assign(x.Dst, "1")
@@ -371,91 +346,33 @@ func (e *fn) instr(in lir.Instr) {
 		}
 		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->tag == %d", e.v(x.Src), variantIndex(x.Variant)))
 	case *lir.Update:
-		e.printf("{ ey_v u_ = %s; ey_dup(u_); ey_agg_own(&u_);", e.v(x.Src))
+		// In place, the update takes its record and changes it when it is
+		// unique; otherwise it borrows the record and copies it. Either
+		// way it takes the new fields and drops the ones they replace.
+		if x.InPlace {
+			e.printf("{ ey_v u_ = %s;", e.v(x.Src))
+		} else {
+			e.printf("{ ey_v u_ = %s; ey_dup(u_);", e.v(x.Src))
+		}
+		e.printf("  ey_agg_own(&u_);")
 		for i, n := range x.Names {
 			k := e.fieldIndex(x.Src.Ty, n)
-			ft := lir.Resolve(fieldType(x.Src.Ty, n))
-			if counted(ft) {
-				e.printf("  ey_drop(EY_AGG(u_)->f[%d]); ey_dup(%s);", k, e.v(x.Fields[i]))
+			if counted(fieldType(x.Src.Ty, n)) {
+				e.printf("  ey_drop(EY_AGG(u_)->f[%d]);", k)
 			}
 			e.printf("  EY_AGG(u_)->f[%d] = %s;", k, e.v(x.Fields[i]))
 		}
-		e.printf("  ey_drop(%s); %s = u_; }", e.v(x.Dst), e.v(x.Dst))
+		e.printf("  %s = u_; }", e.v(x.Dst))
 	case *lir.SetPlace:
 		e.setPlace(x)
 	case *lir.Global:
-		e.borrowed(x.Dst, e.g.names[x.Init]+"_g()")
+		e.assign(x.Dst, e.g.names[x.Init]+"_g()")
 	default:
 		e.errorf("the C back end can't compile %T yet", in)
 	}
 }
 
-// inPlace writes a variable's update by itself, an operation on the
-// variable whose result only goes back into it (`s += t`, `xs += [x]`,
-// `xs = xs.add(x)`, `m = m.insert(k, v)`, `s = s.add(x)`, `s = "{s}…"`), as
-// one call that takes the variable's value and changes it in place when
-// the variable holds its only reference. It reports whether in and next
-// are such a pair. Counting stays simple (7.5 makes it precise): the
-// variable owns a reference, so a count of one means no one else sees the
-// change.
-func (e *fn) inPlace(in, next lir.Instr, reads map[*lir.Value]int) bool {
-	set, ok := next.(*lir.SetPlace)
-	if !ok || len(set.Path) > 0 || set.Src != lir.Dst(in) || reads[set.Src] != 1 {
-		return false
-	}
-	v := set.Var
-	rs := lir.Reads(in)
-	if len(rs) == 0 || rs[0] != v {
-		return false
-	}
-	for _, r := range rs[1:] {
-		if r == v { // `xs += xs`: the variable is read after it is taken
-			return false
-		}
-	}
-	var call string
-	switch x := in.(type) {
-	case *lir.Op:
-		if x.Op != "+" || len(x.Args) != 2 || x.Args[0] != v {
-			return false
-		}
-		switch kind(v) {
-		case "String":
-			call = fmt.Sprintf("eyo_str_append(o_, %s)", e.v(x.Args[1]))
-		case "List":
-			call = fmt.Sprintf("eyo_list_concat(o_, %s)", e.v(x.Args[1]))
-		default:
-			return false
-		}
-	case *lir.Builtin:
-		if x.Durable || len(x.Args) == 0 || x.Args[0] != v {
-			return false
-		}
-		for _, n := range x.Names {
-			if n != "" {
-				return false
-			}
-		}
-		switch {
-		case x.Name == "concat" && kind(v) == "String":
-			call = fmt.Sprintf("eyo_concat(o_, %d, %s)", len(x.Args)-1, e.array(x.Args[1:]))
-		case x.Name == "add" && len(x.Args) == 2 && kind(v) == "List":
-			call = fmt.Sprintf("eyo_list_add(o_, %s)", e.v(x.Args[1]))
-		case x.Name == "add" && len(x.Args) == 2 && kind(v) == "Set":
-			call = fmt.Sprintf("eyo_set_add(o_, %s)", e.v(x.Args[1]))
-		case x.Name == "insert" && len(x.Args) == 3 && kind(v) == "Map":
-			call = fmt.Sprintf("eyo_map_insert(o_, %s, %s)", e.v(x.Args[1]), e.v(x.Args[2]))
-		default:
-			return false
-		}
-	default:
-		return false
-	}
-	e.printf("{ ey_v o_ = %s; %s = 0; %s = %s; }", e.v(v), e.v(v), e.v(v), call)
-	return true
-}
-
-func (e *fn) term(t lir.Term, locals []*lir.Value) {
+func (e *fn) term(t lir.Term) {
 	switch x := t.(type) {
 	case *lir.Jump:
 		e.printf("goto b%d;", x.To.ID)
@@ -463,18 +380,12 @@ func (e *fn) term(t lir.Term, locals []*lir.Value) {
 		e.printf("if (%s) goto b%d;", e.v(x.Cond), x.Then.ID)
 		e.printf("goto b%d;", x.Else.ID)
 	case *lir.Return:
+		// The returned value is owned: the low IR dup'ed it if it had to.
 		r := "0"
 		if x.Value != nil {
 			r = e.v(x.Value)
 		}
-		e.printf("{ ey_v r_ = %s;", r)
-		if x.Value != nil && counted(x.Value.Ty) {
-			e.printf("  ey_dup(r_);")
-		}
-		for _, v := range locals {
-			e.printf("  ey_drop(v%d);", v.ID)
-		}
-		e.printf("  return r_; }")
+		e.printf("return %s;", r)
 	case *lir.Stop:
 		e.printf("ey_fault(%s, %s);", e.at, cstring(x.Why))
 	default:
@@ -626,7 +537,7 @@ func (e *fn) fieldIndex(t ir.Ty, name string) int {
 }
 
 // makeAgg sets dst to a new record, variant or tuple, with fields in
-// order, each dup'ed.
+// order, which it takes.
 func (e *fn) makeAgg(dst *lir.Value, desc string, tag int, fields []*lir.Value, order []int) {
 	e.printf("{ ey_agg *a_ = ey_agg_new(%s, %d, %d);", desc, tag, len(fields))
 	for i, f := range fields {
@@ -634,12 +545,9 @@ func (e *fn) makeAgg(dst *lir.Value, desc string, tag int, fields []*lir.Value, 
 		if order != nil {
 			k = order[i]
 		}
-		if f != nil && counted(f.Ty) {
-			e.printf("  ey_dup(%s);", e.v(f))
-		}
 		e.printf("  a_->f[%d] = %s;", k, e.v(f))
 	}
-	e.printf("  ey_drop(%s); %s = EY_V(a_); }", e.v(dst), e.v(dst))
+	e.printf("  %s = EY_V(a_); }", e.v(dst))
 }
 
 func (e *fn) makeRecord(x *lir.MakeRecord) {
@@ -661,7 +569,7 @@ func (e *fn) makeRecord(x *lir.MakeRecord) {
 
 func (e *fn) makeVariant(x *lir.MakeVariant) {
 	if newtype(x.Variant) {
-		e.borrowed(x.Dst, e.v(x.Args[0]))
+		e.assign(x.Dst, e.v(x.Args[0]))
 		return
 	}
 	if len(x.Args) == 0 {
@@ -672,23 +580,21 @@ func (e *fn) makeVariant(x *lir.MakeVariant) {
 	e.makeAgg(x.Dst, e.g.desc(x.Dst.Ty), variantIndex(x.Variant), x.Args, nil)
 }
 
-// closure sets dst to a closure of fn with its captures.
+// closure sets dst to a closure of fn with its captures, which it takes.
 func (e *fn) closure(dst *lir.Value, f *lir.Func, caps []*lir.Value) {
 	e.printf("{ ey_fn *c_ = ey_fn_new(%s, %s_tr, %d);", e.g.closureDesc(f), e.g.names[f], len(caps))
 	for i, c := range caps {
-		if counted(c.Ty) {
-			e.printf("  ey_dup(%s);", e.v(c))
-		}
 		e.printf("  c_->cap[%d] = %s;", i, e.v(c))
 	}
-	e.printf("  ey_drop(%s); %s = EY_V(c_); }", e.v(dst), e.v(dst))
+	e.printf("  %s = EY_V(c_); }", e.v(dst))
 }
 
-// setPlace writes a variable, or a field inside it: each record on the
-// path is made uniquely owned first, copied if it is shared.
+// setPlace writes a variable, or a field or element inside it, with the
+// value it takes: each record and list on the path is made uniquely owned
+// first, copied if it is shared, and what the place held is dropped.
 func (e *fn) setPlace(x *lir.SetPlace) {
 	if len(x.Path) == 0 {
-		e.borrowed(x.Var, e.v(x.Src))
+		e.assign(x.Var, e.v(x.Src))
 		return
 	}
 	e.printf("{ ey_v *p_ = &%s;", e.v(x.Var))
@@ -697,8 +603,13 @@ func (e *fn) setPlace(x *lir.SetPlace) {
 		if s.Index != nil {
 			if kind(&lir.Value{Ty: t}) == "Map" {
 				// A map's value is the last step (SPECS.md §7): insert or
-				// replace it, in place when the map is unique.
-				e.printf("  *p_ = eyo_map_insert(*p_, %s, %s); }", e.v(s.Index), e.v(x.Src))
+				// replace it, in place when the map is unique. The map
+				// keeps references of its own.
+				e.printf("  *p_ = eyo_map_insert(*p_, %s, %s);", e.v(s.Index), e.v(x.Src))
+				if counted(x.Src.Ty) {
+					e.printf("  ey_drop(%s);", e.v(x.Src))
+				}
+				e.printf("}")
 				return
 			}
 			e.printf("  p_ = eyo_list_slot(%s, p_, %s);", e.at, e.v(s.Index))
@@ -710,7 +621,7 @@ func (e *fn) setPlace(x *lir.SetPlace) {
 		t = fieldType(t, s.Field)
 	}
 	if counted(x.Src.Ty) {
-		e.printf("  ey_dup(%s); ey_drop(*p_);", e.v(x.Src))
+		e.printf("  ey_drop(*p_);")
 	}
 	e.printf("  *p_ = %s; }", e.v(x.Src))
 }

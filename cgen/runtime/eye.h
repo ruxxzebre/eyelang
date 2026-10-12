@@ -14,10 +14,12 @@
  * A type with one variant of one field, named like the type (a newtype,
  * such as the prelude's Offset), is represented as its field.
  *
- * Counting is simple for now: each variable owns one reference, dropped
- * when it is overwritten and when its function returns; arguments are
- * borrowed and results owned. 7.5 makes it precise (Perceus). Counts are
- * not atomic: a program runs on one thread.
+ * The low IR says where each value is dup'ed and dropped (lir.Count, 7.5):
+ * a value is dropped after its last use, a parameter a function only reads
+ * is borrowed, and an update whose operand dies there takes it (the eyo_
+ * functions) and changes it in place when it holds the only reference.
+ * Built-ins borrow their arguments and give owned results. Counts are not
+ * atomic: a program runs on one thread.
  */
 #ifndef EYE_H
 #define EYE_H
@@ -426,6 +428,10 @@ ey_v ey_list_new(const ey_type *ty, int64_t n, const ey_v *items); /* dups items
 ey_v ey_list_take(const ey_type *ty, int64_t n, ey_v *items);      /* takes items and the array */
 ey_v ey_set_new(const ey_type *ty, int64_t n, const ey_v *items);
 ey_v ey_map_new(const ey_type *ty, int64_t n, const ey_v *keys, const ey_v *vals);
+/* The same, taking what they are given: a literal's collection. */
+ey_v ey_list_from(const ey_type *ty, int64_t n, const ey_v *items);
+ey_v ey_set_from(const ey_type *ty, int64_t n, const ey_v *items);
+ey_v ey_map_from(const ey_type *ty, int64_t n, const ey_v *keys, const ey_v *vals);
 int64_t ey_map_find(ey_map *m, ey_v key);
 int64_t ey_coll_size(ey_v c);
 /* Iter values (iter.c) */

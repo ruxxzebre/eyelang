@@ -105,6 +105,13 @@ func Generate(prog *ir.Program, low *lir.Program, opts Options) ([]File, error) 
 	if len(g.errs) > 0 {
 		return nil, joinErrors(g.errs)
 	}
+	// The low IR says where values are dup'ed and dropped (7.5), by this
+	// back end's rule for which values are counted.
+	if low.Layouts == nil {
+		low.Layouts = lir.NewLayouts()
+	}
+	low.Layouts.CountedBy = counted
+	lir.Count(low)
 	g.roots()
 	if len(g.errs) > 0 {
 		return nil, joinErrors(g.errs)
@@ -796,9 +803,13 @@ func (g *gen) entry() string {
 		m := g.main
 		b.WriteString("static void ey_run_main(void) {\n")
 		var args []string
+		// main owns its arguments' list when it keeps it, and borrows it
+		// otherwise, which leaves it to be dropped here.
+		dropArgs := false
 		if len(m.Params) > 0 {
 			fmt.Fprintf(&b, "\tey_v args = ey_args(%s);\n", g.desc(m.Params[0].Ty))
 			args = append(args, "args")
+			dropArgs = len(m.Modes) == 0 || m.Modes[0] != lir.Owned
 		}
 		if hasDefaults(m) {
 			args = append(args, "0")
@@ -807,13 +818,17 @@ func (g *gen) entry() string {
 		if c, ok := rep(m.Result).(*ir.TCon); ok && c.Name == "Result" && len(c.Args) == 2 {
 			show := fmt.Sprintf("ey_show(%s, EY_AGG(r)->f[0])", g.desc(c.Args[1]))
 			if s := g.low.MainErrShow; s != nil && g.reach[s] {
-				show = g.names[s] + "(EY_AGG(r)->f[0])"
+				arg := "EY_AGG(r)->f[0]"
+				if len(s.Modes) > 0 && s.Modes[0] == lir.Owned && counted(c.Args[1]) {
+					arg = "(ey_dup(EY_AGG(r)->f[0]), EY_AGG(r)->f[0])"
+				}
+				show = g.names[s] + "(" + arg + ")"
 				if hasDefaults(s) {
-					show = g.names[s] + "(EY_AGG(r)->f[0], 0)"
+					show = g.names[s] + "(" + arg + ", 0)"
 				}
 			}
 			fmt.Fprintf(&b, "\tif (EY_AGG(r)->tag == 1) {\n\t\tey_v s = %s;\n\t\tey_eprintln(s);\n\t\tey_drop(s);\n\t\tey_drop(r);\n", show)
-			if len(args) > 0 && args[0] == "args" {
+			if dropArgs {
 				b.WriteString("\t\tey_drop(args);\n")
 			}
 			b.WriteString("\t\texit(1);\n\t}\n")
@@ -824,7 +839,7 @@ func (g *gen) entry() string {
 		} else {
 			b.WriteString("\t(void)r;\n")
 		}
-		if len(args) > 0 && args[0] == "args" {
+		if dropArgs {
 			b.WriteString("\tey_drop(args);\n")
 		}
 		b.WriteString("}\n")

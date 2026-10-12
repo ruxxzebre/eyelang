@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"eyelang/ir"
 )
 
 // CheckCounts checks what Count promises, by following each function's
@@ -94,7 +96,9 @@ func checkFunc(f *Func, ls *Layouts) []string {
 			}
 			switch x := in.(type) {
 			case *Const:
-				static[d] = true
+				if _, at := x.Value.(ir.Instant); !at {
+					static[d] = true
+				}
 			case *Move:
 				if x.Borrow {
 					if static[x.Src] {

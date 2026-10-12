@@ -12,26 +12,26 @@ import (
 // slowLoops are the loops of testdata/updates whose update's last use is
 // a call, a `let` or a record that still holds the old value: the slow
 // cases of the native plan (docs/internals/reviews/native-plan-2026-10-12.md,
-// section 2). The interpreter runs each in linear time. The C back end
-// decides counting while it prints C and updates in place only six exact
-// `v = op(v, …)` shapes, so each step of these loops copies the whole
-// list or map, and the loop is quadratic.
+// section 2). The interpreter runs each in linear time. Until 7.5 the C
+// back end decided counting while it printed C and updated in place only
+// six exact `v = op(v, …)` shapes, so each step of these loops copied the
+// whole list or map, and the loop was quadratic. Since 7.5 the low IR
+// counts precisely (lir.Count): each update is the last use of its
+// operand, so it is in place, and every loop is linear.
 //
-// quadratic records what TestSlowLoops measures, not what is wanted: the
-// three slow loops are known quadratic until 7.5 (counting in the low IR)
-// makes them linear. When a change makes one linear, the test fails and
-// says to set quadratic: false for it here. From then on the test keeps it
-// linear, as it keeps "add", the in-place append that shows the timing
-// tells the two apart.
+// quadratic records what TestSlowLoops measures, not what is wanted. When
+// a change makes a quadratic loop linear, the test fails and says to set
+// quadratic: false for it here; from then on the test keeps it linear, as
+// it keeps "add", the in-place append that was linear first.
 var slowLoops = []struct {
 	loop         string // the loop's name on updates' command line
 	small, large int    // the two sizes timed; large is 4 × small
 	quadratic    bool
 }{
-	{"add", 1_000_000, 4_000_000, false}, // xs = xs.add(i), in place since 7.4: the control
-	{"append", 2_500, 10_000, true},      // xs = push(xs, i), fn push(xs, x) = xs.add(x)
-	{"insert", 1_000, 4_000, true},       // let next = m.insert(i, i); m = next
-	{"with", 2_500, 10_000, true},        // p = { p with items: p.items.add(i) }
+	{"add", 1_000_000, 4_000_000, false},    // xs = xs.add(i), in place since 7.4: the control
+	{"append", 1_000_000, 4_000_000, false}, // xs = push(xs, i), fn push(xs, x) = xs.add(x); linear since 7.5
+	{"insert", 100_000, 400_000, false},     // let next = m.insert(i, i); m = next; linear since 7.5
+	{"with", 1_000_000, 4_000_000, false},   // p = { p with items: p.items.add(i) }; linear since 7.5
 }
 
 // TestSlowLoops builds testdata/updates' main at -O2, times each slow loop
@@ -41,10 +41,11 @@ var slowLoops = []struct {
 // leaves room for the noise of a shared machine. testdata/updates' tests check the
 // loops' results on both engines; this test checks only their growth.
 //
-// Recorded on 2026-10-12 on a 4-core Xeon at 2.1 GHz, native at -O2: append
-// 37 ms at 5k, 260 ms at 10k, 1.1 s at 20k; insert 0.49 s at 5k, 2.4 s at
-// 10k, 10.6 s at 20k; with 45 ms at 5k, 248 ms at 10k, 1.07 s at 20k. The
-// interpreter takes a few ms for each at these sizes.
+// Recorded on 2026-10-12 on a 4-core Xeon at 2.1 GHz, native at -O2. Before
+// 7.5: append 37 ms at 5k, 260 ms at 10k, 1.1 s at 20k; insert 0.49 s at
+// 5k, 2.4 s at 10k, 10.6 s at 20k; with 45 ms at 5k, 248 ms at 10k, 1.07 s
+// at 20k. After: append 8 ms at 1M and 30 ms at 4M; insert 7 ms at 100k and
+// 32 ms at 400k; with 12 ms at 1M and 48 ms at 4M.
 func TestSlowLoops(t *testing.T) {
 	needZig(t)
 	if HostTarget() == "" {

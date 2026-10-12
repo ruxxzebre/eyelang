@@ -339,7 +339,13 @@ func (c *counter) classifyDef(in Instr) {
 	}
 	switch x := in.(type) {
 	case *Const:
-		inf.cls = clsStatic
+		// A constant is static, except a time, which is worked out
+		// when it runs and is counted where it is an object.
+		if _, at := x.Value.(ir.Instant); at {
+			inf.cls = clsOwned
+		} else {
+			inf.cls = clsStatic
+		}
 	case *Global:
 		inf.cls = clsBorrowed
 	case *Field:
