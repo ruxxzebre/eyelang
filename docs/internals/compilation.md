@@ -77,10 +77,12 @@ without its tests. The parts that matter for compilation:
   `*Set` and `*Map` over Go slices, with sets and maps keeping insertion order; `*Record` with
   its field names; `*Variant`; `*Closure` with copied captures.
 - **No reference counts.** Most updates make a new value: `Record.with` copies, and so does
-  replacing a key's value in a `Map`, so a loop that updates one map, or builds a string with
-  `+=`, is quadratic (ROADMAP R.3, R.4). Appending to a list and adding a new key to a map or set
-  share a backing array and are amortised O(1). The store keeps runs in buckets of 64 to keep
-  each commit's copy small (`check/runtime/store.eye`).
+  `+` on strings, so a loop that builds a string with `+=` is quadratic (ROADMAP R.4). Appending
+  to a list and adding a new key to a map or set share a backing array and are amortised O(1).
+  A map keeps its values in a persistent vector (`interp/vec.go`), so replacing a key's value
+  copies one path of 32-way nodes, O(log n), and so does an entity write, which replaces a row
+  in the store's map of its type. The store keeps runs in buckets of 64
+  (`check/runtime/store.eye`).
 - **A record knows its type** since 7.1 (2026-10-11): the checker writes it into the typed IR,
   and the interpreter no longer guesses it from field names.
 - **`mut` is copy in, copy out.** The callee returns the changed value and the caller writes it

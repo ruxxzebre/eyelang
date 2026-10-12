@@ -100,7 +100,7 @@ func (in *Interp) cursor(v Value, at ir.Pos) cursor {
 				return nil, false
 			}
 			i++
-			return &Tuple{Elems: []Value{c.Keys[i-1], c.Vals[i-1]}}, true
+			return &Tuple{Elems: []Value{c.Keys[i-1], c.val(i - 1)}}, true
 		}
 	}
 	es := in.elems(v, at)

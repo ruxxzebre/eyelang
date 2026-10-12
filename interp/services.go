@@ -434,7 +434,7 @@ func (in *Interp) httpGet(target string, params map[string]Value, at ir.Pos) Val
 	headers := http.Header{}
 	if m, ok := params["headers"].(*Map); ok {
 		for i, k := range m.Keys {
-			headers.Set(show(k), show(m.Vals[i]))
+			headers.Set(show(k), show(m.val(i)))
 		}
 	}
 	client := httpClient

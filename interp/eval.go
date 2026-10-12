@@ -1294,8 +1294,9 @@ func (in *Interp) forOver(f *frame, x *ir.For, iter Value) {
 			}
 		}
 	case *Map:
+		vals := it.values()
 		for i, k := range it.Keys {
-			if each(&Tuple{Elems: []Value{k, it.Vals[i]}}) {
+			if each(&Tuple{Elems: []Value{k, vals[i]}}) {
 				return
 			}
 		}

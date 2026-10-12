@@ -2,6 +2,7 @@ package interp
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -50,10 +51,13 @@ func TestWithKeepsMaps(t *testing.T) {
 	a := newMap([]Value{"one"}, []Value{int64(1)})
 	b := a.with("two", int64(2))   // in place
 	c := a.with("two", int64(22))  // "two" is past a's length: copies
-	d := b.with("one", int64(11))  // replaces: copies
+	d := b.with("one", int64(11))  // replaces: shares b's shelf
 	e := b.with("three", int64(3)) // in place after b
 	if _, ok := a.get("two"); ok {
 		t.Errorf("a sees a key added after it")
+	}
+	if d.shelf != b.shelf {
+		t.Errorf("replacing a value copied the keys")
 	}
 	for _, check := range []struct {
 		m    *Map
@@ -71,6 +75,62 @@ func TestWithKeepsMaps(t *testing.T) {
 	}
 	if v, _ := c.get("two"); v != int64(22) {
 		t.Errorf("c's two is %v", v)
+	}
+}
+
+// TestReplacingKeepsMaps replaces values in maps that share their keys and
+// values, then changes the older maps too, in both orders: no map may see a
+// change made to another, and each keeps its keys in insertion order.
+func TestReplacingKeepsMaps(t *testing.T) {
+	for _, n := range []int{3, 100, 5_000} { // values in the tail, and in the tree
+		var keys, vals []Value
+		for i := range n {
+			keys, vals = append(keys, fmt.Sprint("k", i)), append(vals, int64(i))
+		}
+		a := newMap(keys, vals)
+		want := func(m *Map, changed map[int]Value, extra ...string) {
+			t.Helper()
+			var b strings.Builder
+			b.WriteString("{ ")
+			for i := range n {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				v, ok := changed[i]
+				if !ok {
+					v = int64(i)
+				}
+				fmt.Fprintf(&b, "%q: ", fmt.Sprint("k", i))
+				writeShow(&b, v, true)
+			}
+			for _, e := range extra {
+				b.WriteString(", " + e)
+			}
+			b.WriteString(" }")
+			if got := show(m); got != b.String() {
+				t.Errorf("n = %d: got %.200s, want %.200s", n, got, b.String())
+			}
+		}
+		last := n - 1
+		b := a.with("k0", int64(-1))            // replace in the oldest map
+		c := a.with(fmt.Sprint("k", last), "x") // replace again from the same map
+		d := b.with("k1", "y")                  // replace in the newer map
+		e := a.with("new", int64(7))            // the oldest map grows: fills the shared shelf
+		f := b.with("new", int64(8))            // so b's growth copies
+		g := e.with("k0", "z")                  // and replacing in the grown map leaves e alone
+		want(a, nil)
+		want(b, map[int]Value{0: int64(-1)})
+		want(c, map[int]Value{last: "x"})
+		want(d, map[int]Value{0: int64(-1), 1: "y"})
+		want(e, nil, `"new": 7`)
+		want(f, map[int]Value{0: int64(-1)}, `"new": 8`)
+		want(g, map[int]Value{0: "z"}, `"new": 7`)
+		if equal(a, b) || !equal(a, newMap(keys, vals)) || keyOf(b) == keyOf(a) {
+			t.Errorf("n = %d: equality sees a replaced value wrongly", n)
+		}
+		if v, ok := a.get("new"); ok {
+			t.Errorf("n = %d: a sees a key added after it: %v", n, v)
+		}
 	}
 }
 

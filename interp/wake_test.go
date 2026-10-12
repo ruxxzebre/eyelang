@@ -3,13 +3,10 @@ package interp
 import (
 	"encoding/json"
 	"io"
-	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 
-	"eyelang/check"
 	"eyelang/ir"
 )
 
@@ -37,14 +34,7 @@ job sleeper(id: Int) {
 // waiting for an hour on the test clock.
 func startSleepers(tb testing.TB, n int) *Interp {
 	tb.Helper()
-	dir := tb.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "main.eye"), []byte(sleepers), 0o644); err != nil {
-		tb.Fatal(err)
-	}
-	prog, diags := check.Program(dir)
-	for _, d := range diags {
-		tb.Fatal(d)
-	}
+	prog := checkSource(tb, sleepers)
 	in := New(prog, io.Discard, io.Discard)
 	job := prog.Root.Jobs["sleeper"]
 	for i := range n {
@@ -55,8 +45,8 @@ func startSleepers(tb testing.TB, n int) *Interp {
 
 // TestWakingManyRuns starts 10,000 runs that sleep, and wakes them all.
 // Each wake used to sort every waiting run's id and copy the store's whole
-// event list, which took 25 s; now it takes a second or two, most of it in
-// the store's commits.
+// event list, which took 25 s; then each commit copied the run's bucket map
+// to replace the run in it, which took 1.5 to 2 s; now it takes under one.
 func TestWakingManyRuns(t *testing.T) {
 	if testing.Short() {
 		t.Skip("starts 10,000 runs")

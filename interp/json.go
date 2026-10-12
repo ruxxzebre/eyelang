@@ -77,17 +77,17 @@ func (in *Interp) toWire(v Value, snake bool) any {
 	case Empty:
 		return []any{}
 	case *Map:
-		obj := map[string]any{}
+		obj, vals := map[string]any{}, x.values()
 		for i, k := range x.Keys {
 			key, ok := in.toWire(k, snake).(string)
 			if !ok {
 				pairs := make([]any, len(x.Keys))
 				for j := range x.Keys {
-					pairs[j] = []any{in.toWire(x.Keys[j], snake), in.toWire(x.Vals[j], snake)}
+					pairs[j] = []any{in.toWire(x.Keys[j], snake), in.toWire(vals[j], snake)}
 				}
 				return pairs
 			}
-			obj[key] = in.toWire(x.Vals[i], snake)
+			obj[key] = in.toWire(vals[i], snake)
 		}
 		return obj
 	case *Record:

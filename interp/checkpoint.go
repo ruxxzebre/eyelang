@@ -442,9 +442,9 @@ func (in *Interp) loopElems(iter Value, at ir.Pos) ([]Value, bool) {
 	case *Set:
 		return it.Elems, true
 	case *Map:
-		out := make([]Value, len(it.Keys))
+		out, vals := make([]Value, len(it.Keys)), it.values()
 		for i, k := range it.Keys {
-			out[i] = &Tuple{Elems: []Value{k, it.Vals[i]}}
+			out[i] = &Tuple{Elems: []Value{k, vals[i]}}
 		}
 		return out, true
 	case *EntitySet:

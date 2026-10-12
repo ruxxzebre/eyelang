@@ -90,7 +90,7 @@ func (in *Interp) writeValue(b *bytes.Buffer, v Value, at ir.Pos) {
 	case *Map:
 		b.WriteByte('M')
 		in.writeValues(b, x.Keys, at)
-		in.writeValues(b, x.Vals, at)
+		in.writeValues(b, x.values(), at)
 	case *Record:
 		// A record of a declared type is saved with its type's name, so it
 		// keeps its Show and operators when it is read back.

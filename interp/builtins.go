@@ -159,9 +159,10 @@ func builtinTable() map[string]*BuiltinFn {
 			return newSet(out)
 		case *Map:
 			var keys, vals []Value
+			cvals := c.values()
 			for i, e := range c.Keys {
 				if keyOf(e) != k {
-					keys, vals = append(keys, e), append(vals, c.Vals[i])
+					keys, vals = append(keys, e), append(vals, cvals[i])
 				}
 			}
 			return newMap(keys, vals)
@@ -431,7 +432,7 @@ func builtinTable() map[string]*BuiltinFn {
 	add("values", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "values", at)
 		if m, ok := args[0].(*Map); ok {
-			return &List{Elems: append([]Value(nil), m.Vals...)}
+			return &List{Elems: m.values()}
 		}
 		return &List{}
 	})
@@ -787,9 +788,9 @@ func (in *Interp) elems(v Value, at ir.Pos) []Value {
 	case *Tuple:
 		return c.Elems
 	case *Map:
-		out := make([]Value, len(c.Keys))
+		out, vals := make([]Value, len(c.Keys)), c.values()
 		for i, k := range c.Keys {
-			out[i] = &Tuple{Elems: []Value{k, c.Vals[i]}}
+			out[i] = &Tuple{Elems: []Value{k, vals[i]}}
 		}
 		return out
 	case Empty:

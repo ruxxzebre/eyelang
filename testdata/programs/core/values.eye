@@ -260,6 +260,26 @@ test "a set or map grown from another leaves the other as it was" {
   expect(m["two"] == None && n["two"] == Some(2) && o["two"] == Some(22))
 }
 
+test "replacing a map's value leaves every other copy as it was" {
+  var m: Map(Int, Int) = {}
+  for i in 0..100 {
+    m = m |> insert(i, i)
+  }
+  let old = m
+  m = m |> insert(5, 50) |> insert(99, 990)
+  let other = old |> insert(5, -5) |> insert(100, 100)
+  m = m |> insert(100, 1000)
+  expect(old[5] == Some(5) && old[99] == Some(99) && old[100] == None)
+  expect(m[5] == Some(50) && m[99] == Some(990) && m[100] == Some(1000))
+  expect(other[5] == Some(-5) && other[99] == Some(99) && other[100] == Some(100))
+  expect(m |> keys == other |> keys && old |> keys == (0..100) |> toList)
+  var fresh: Map(Int, Int) = {}
+  for i in 0..100 {
+    fresh = fresh |> insert(i, i)
+  }
+  expect(old == fresh && m != old && "{old}" == "{fresh}")
+}
+
 test "a whole number scales a duration or a size from either side" {
   let k = 4
   expect(3 * 5 min == 15 min && 5 min * 3 == 15 min)
