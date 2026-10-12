@@ -309,7 +309,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   aren't part of the string. One or two quotes inside are text; escapes and interpolation work as in other
   strings.
 
-  ```eye
+  ```eye context=lexical
   let prompt = """
     You write a morning briefing for {reader}.
       - this line keeps two spaces
@@ -342,7 +342,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   braces no statement can end, so line breaks there are ordinary spaces (until a lambda's block
   starts a new list of statements). `;` separates statements on one line.
 
-  ```eye
+  ```eye context=lexical
   let ready = worlds
     |> filter(fn w: w.phase == Running)      # continues: the line starts with |>
     |> size
@@ -425,7 +425,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   parameter, a field, a return type or an annotation. With no type expected, the compiler asks for
   one:
 
-  ```eye
+  ```eye context=records
   fn make() -> User = { name: "Ann", age: 3 }    # a User: the return type says so
   let u: User = { name: "Bo", age: 4 }
   let x = { name: "Cy", age: 5 }                 # error: which record type? write `let x: User = …`
@@ -518,14 +518,14 @@ fn double(n) = n * 2                                     # private: inferred
 
 Inside a function body:
 
-```eye
+```eye context=bindings
 let x = 5                    # immutable, block-scoped; a later `let x` shadows it
 var total = 0                # mutable local; closures can't capture a `var` (section 7)
 total += x
 
 let inc = fn n: n + 1                                    # lambdas
 let add = fn (a, b): a + b
-let show = fn item {
+let show = fn (item: Item) {
   let label = item.name
   "<{label}>"
 }
@@ -538,7 +538,7 @@ let small = if n < 2 then n else fib(n - 1) + fib(n - 2)   # if is an expression
 if n > limit then log.warn("{n} is over the limit")       # `then` for one expression
 if retries > 3 {                                           # braces for several statements
   log.warn("giving up")
-  return Err(TooManyRetries)
+  log.info("tried {retries} times")
 }
 for item in items { log.info(item.name) }
 for (i, item) in items |> enumerate { log.info("{i}: {item.name}") }
@@ -613,7 +613,7 @@ fn tally(times: List(Instant)) -> Counter {
 
 ## 8. Methods and generics
 
-```eye
+```eye context=lexer
 pub opaque type Lexer = { src: Bytes, pos: Int, tokens: List(Token) }
 
 impl Lexer {
@@ -663,16 +663,16 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
 - **`dyn Trait`** (from v0.2) is a value of some type that implements the trait, chosen at run
   time. Calls on it look up the implementation, and `dyn` in the type says so:
 
-  ```eye
+  ```eye context=dyn
   fn notifier(config: Config) -> dyn Notifier =
     if config.telegram then Telegram.new(config.token) else Console.new()
 
-  let handlers: List(dyn Handler) = [Logger.new(), Metrics.new(port: 9100)]
+  let sinks: List(dyn Sink) = [Logger.new(), Metrics.new(port: 9100)]
   ```
 
   - A value converts to `dyn Trait` where one is expected, if its type implements the trait:
     `expected dyn Notifier, found Email: Email doesn't implement Notifier` otherwise. Since values
-    never alias, a `List(Logger)` is also a `List(dyn Handler)`. Nothing converts back.
+    never alias, a `List(Logger)` is also a `List(dyn Sink)`. Nothing converts back.
   - A `dyn Trait` has its trait's methods and nothing else: no `Show`, `Eq` or `Save`, so it can't
     be printed, compared, or live across a `!` (its type, which saving needs, is known only at run
     time).
@@ -685,16 +685,16 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
 
 ## 9. Pattern matching
 
-```eye
+```eye context=matching
 match grant {
   Admitted(revision) => use(revision)
-  Pending(receipt) if receipt.age > 1 h => escalate(receipt)
+  Pending(receipt) if waited(receipt) > 1 h => escalate(receipt)
   Pending(receipt) => wait(receipt)
   Refused(..) => report(grant)
 }
 
 let { name, age } = user                     # destructuring
-let [first, ..rest] = items else { return Err(Empty) }
+let [first, ..rest] = items else { return }
 let (key, value) = entry
 
 match rest {                                 # rest: Bytes
@@ -730,11 +730,13 @@ it a compile error, which is how a new outcome from another service reaches ever
   `.mapErr(Variant)?` or `.mapErr(fn e: …)?`.
 
   ```eye
-  type CountError = | Usage | Unreadable(FsError) | BadNumber(ParseError)
+  import fs
+
+  type CountError = | Usage | Unreadable(fs.FsError) | BadNumber(String)
 
   fn count(path: String) -> Result(Int, CountError) uses {fs} {
-    let text = fs.readText(path)?        # an FsError becomes Unreadable(…)
-    let n = parseInt(text)?              # a ParseError becomes BadNumber(…)
+    let text = fs.readText(path)?        # an fs.FsError becomes Unreadable(…)
+    let n = parseInt(text)?              # parseInt's message becomes BadNumber(…)
     Ok(n)
   }
   ```
@@ -752,7 +754,7 @@ it a compile error, which is how a new outcome from another service reaches ever
   automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows
   IEEE 754, so dividing by zero gives an infinity rather than a failure.
 
-  ```eye
+  ```eye context=division
   let avg = total / 3
   match nonzero(count) {
     Some(n) => total / n
@@ -782,12 +784,12 @@ it a compile error, which is how a new outcome from another service reaches ever
 
 ## 11. Traits
 
-```eye
+```eye context=named
 trait Named {
   fn name(self) -> String
 }
 
-impl Named for Player {
+impl Named for Account {
   fn name(self) = self.nick
 }
 
@@ -822,7 +824,7 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   such as a pressed button, is then matched as a variant, so a misspelt name or a forgotten choice
   is a compile error:
 
-  ```eye
+  ```eye context=admission
   type Admission = Guest | Member | Refuse
 
   fn admit(choice: String, user: UserId) -> Step =
@@ -832,7 +834,7 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
       Some(Refuse) | None => Reject(user)
     }
 
-  let buttons = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+  let buttons: List(Button) = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
   ```
 
   `parse` takes the variant's name, which is what the derived `Show` writes, so
@@ -847,10 +849,11 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   right-hand type and the result, and a type implements it at most once per right-hand type, so
   the result is always known from the operands:
 
-  ```eye
-  trait Add(rhs, out) {
-    fn add(self, other: rhs) -> out
-  }
+  ```eye context=money
+  # The prelude declares:
+  #   trait Add(rhs, out) {
+  #     fn add(self, other: rhs) -> out
+  #   }
 
   type Money = { cents: Int }
 
@@ -886,7 +889,7 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 The compiler infers what each function touches. Public signatures state it with `uses`, so a new
 permission always shows up in the diff.
 
-```eye
+```eye context=llm
 pub fn summarise(items: List(Item)) -> String uses {wait, net Llm.complete} {
   llm.complete!(prompt(items))
 }
@@ -935,8 +938,10 @@ has those effects instead of `ffi`.
   is pure, and `paths |> map(fs.readText)` uses `fs`:
 
   ```eye
-  pub fn sizes(paths: List(String)) -> List(Int) uses {fs} =
-    paths |> map(fn p: fs.readText(p) |> size)    # fs comes from the lambda, not from map
+  import fs
+
+  pub fn missing(paths: List(String)) -> List(String) uses {fs} =
+    paths |> filter(fn p: !fs.exists(p))    # fs comes from the lambda, not from filter
   ```
 
   So `retry`, `timeout`, `race`, `parallelMap` and `reserve!` work with any function, and every
@@ -1011,7 +1016,7 @@ inside a function that returns what can be saved, and that function is called as
 `this durable step's result is recorded, and a Secret can't be saved: use it in a function that
 returns what can be, and call that with !`.
 
-```eye
+```eye context=bus
 import bus
 
 job ping(day: Date) {
@@ -1030,7 +1035,7 @@ directly, without `!`, and nothing about it is durable.
 ```eye
 import fs
 
-pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
+pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
   for path in args |> drop(1) {
     let text = fs.readText(path)?
     print("{path}: {text |> lines |> size} lines")
@@ -1104,7 +1109,7 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
 **Concurrency** is structured. Tasks start inside one call, and all of them finish (or are
 cancelled) before that call returns, so no task outlives the code that started it.
 
-```eye
+```eye context=concurrency
 let pages = urls |> parallelMap(fn u: http.get(u), limit: 8)    # results in input order
 let (user, orders) = both(fn { users.get(id) }, fn { orders.list(id) })
 let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
@@ -1129,14 +1134,14 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
   group starts tasks with `spawn` and returns only when all of them have finished. A channel has a
   fixed capacity, and `put` parks while it is full, so a fast producer can't fill memory:
 
-  ```eye
+  ```eye context=concurrency
   taskGroup(fn group {
     let (send, receive) = channel(capacity: 64)
     group.spawn(fn {
-      for line in fs.lines(path) { send.put(line) }
+      for url in feeds { send.put(fetch(url)) }
       send.close()
     })
-    for line in receive { handle(line) }
+    for page in receive { handle(page) }
   })
   ```
 
@@ -1160,7 +1165,7 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
 
 ## 14. Entities
 
-```eye
+```eye context=players
 @version(3)
 entity Player(id: PlayerId) {
   state name: String = ""                    # v3: renamed from nick
@@ -1197,7 +1202,7 @@ entity Player(id: PlayerId) {
   entity Ping(id: String) {
     state n: Int = 0
 
-    pub fn ping() -> Int {
+    pub fn ping() -> Int uses {entity Ping, entity Pong} {
       n += 1
       let before = n   # 1
       Pong(id).pong()  # comes back to bump, which sees n == 1 and makes it 2
@@ -1208,7 +1213,7 @@ entity Player(id: PlayerId) {
   }
 
   entity Pong(id: String) {
-    pub fn pong() { Ping(id).bump() }
+    pub fn pong() uses {entity Ping} { Ping(id).bump() }
   }
   ```
 
@@ -1319,7 +1324,7 @@ entity Player(id: PlayerId) {
 A job is a durable function: it can pause for any length of time and holds no thread while paused,
 only its saved record.
 
-```eye
+```eye context=notify,jobs
 @on(daily(07:40, in: "Europe/Dublin"))
 @priority(background)
 @memory(64 MiB)
@@ -1415,7 +1420,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   errors that name the wait to write, since `!` marks a call as a step and never changes which
   function a name means. A timeout is a run that sleeps:
 
-  ```eye
+  ```eye context=notify,jobs
   job ask(what: String) -> Decision { approval!(what, from: operator, within: 3 days) }
 
   job timer(d: Duration) -> Decision {
@@ -1467,7 +1472,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   - **An `Approval` says what was approved and by whom**: `ok.what` and `ok.by`, for audit logs.
     It is still made only by `approval!`.
 
-  ```eye
+  ```eye context=notify,jobs
   import approvals
 
   @on(event(approvals.requested))
@@ -1488,7 +1493,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   caught where it happens, so code that must report one starts the work as a child run and joins
   it:
 
-  ```eye
+  ```eye context=notify,jobs
   fn written(day: Date) -> Result(Article, DigestError) =
     match write.start!(day).join!() {
       Completed(result) => result
@@ -1536,7 +1541,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
 ## 16. Views and triggers
 
-```eye
+```eye context=worlds
 view idleWorlds = World.all
   |> filter(fn w: w.phase == Running && w.players == {})
 
@@ -1559,13 +1564,13 @@ by eyelang and the Go, TypeScript, Rust and Python code that implements or calls
 trait (an interface of operations) plus the facts needed to deploy it: port, allowed callers, keys and
 how to reconcile.
 
-```eye
+```eye context=contracts
 @port(3001)
 @allow(digest, inbox, welcome)          # who may call; everyone else is denied
 contract Notify {
   @key(required)
   @reconcile(receipt)
-  command send(to: UserId, text: String) -> Delivery
+  command send(to: UserId, text: String, priority: Priority = Normal) -> Delivery
 
   query receipt(key: Key) -> Option(Delivery)
   query identity(user: UserId) -> Identity
@@ -1605,7 +1610,7 @@ type Delivery =
     reaches it (the network policy that `eye gen policy` writes). A service outside the network
     has no port to guard.
 
-  ```eye
+  ```eye context=allow
   # notify/notify.eye
   @port(3001)
   @allow(digest, approving)
@@ -1613,8 +1618,10 @@ type Delivery =
     query identity(user: UserId) -> Identity
   }
 
-  # trains/trains.eye: an error, since trains isn't in Notify's @allow
-  fn whoIs(user: UserId) -> Identity = notify.identity(user)
+  # trains/trains.eye
+  import notify.{Identity, UserId}
+
+  fn whoIs(user: UserId) -> Identity = notify.identity(user)    # error: trains isn't in @allow
   ```
 - **`eye gen policy DIR` writes the network policy** that `@port` and `@allow` describe, as
   Kubernetes `NetworkPolicy` objects (`networking.k8s.io/v1`), one per contract with `@port`.
@@ -1699,7 +1706,7 @@ type Delivery =
   `Approval`, so a program calls the command only after a person said yes. On a function it adds
   the same parameter, which is how a model's tool asks for a person (section 19).
 
-  ```eye
+  ```eye context=shelves
   # shelves/shelves.eye
   pub type Shelf = { id: String, items: List(String), version: Version }
 
@@ -1734,7 +1741,13 @@ type Delivery =
       if rack.version != basedOn { return Stale }
       Cleared(count: Rack(id).empty())
     }
-    # and fn shelf(id), fn burn(id, approval)
+
+    fn shelf(id) {
+      let rack = Rack(id).read()
+      { id, items: rack.items, version: rack.version }
+    }
+
+    fn burn(id, approval) = Burned(count: Rack(id).burn())
   }
   ```
 - **A contract's operations are its module's functions.** A module that declares one contract offers
@@ -1747,9 +1760,9 @@ type Delivery =
   start jobs and publish events. A key can name an entity, so a
   repeated command finds the work it already did:
 
-  ```eye
+  ```eye context=serving
   impl notify.Notify {
-    fn send(to, text, key) = Message(key).queue({ text, to })
+    fn send(to, text, priority, key) = Message(key).queue({ text, to, priority })
     fn receipt(key) = Message(key).delivery()
   }
   ```
@@ -1777,15 +1790,14 @@ type Delivery =
 - **Over HTTP.** Attributes say how a contract's operations go over HTTP. The address and the
   credentials come from the configuration, never from the code:
 
-  ```eye
+  ```eye context=notifyhttp
   @http(names: snake)                       # dedupeKey is dedupe_key, Normal is "normal"
   @auth(bearer: "notify-token")             # Authorization: Bearer <secret("notify-token")>
   contract Notify {
     @http("POST /v1/send", status: { 200: Accepted, 202: Pending, 400: Refused, 403: Refused })
     @key(required, header: "X-Actions-Idempotency-Key", field: "dedupe_key")
     @reconcile(send)
-    command send(event: String, title: String, priority: Priority = Normal,
-      to: Option(List(UserId)) = None) -> Delivery
+    command send(to: UserId, text: String, priority: Priority = Normal) -> Delivery
   }
   ```
 
@@ -1861,7 +1873,7 @@ type Delivery =
   command again, adds a call too. So a test checks what a program sent without the program
   keeping a record of it:
 
-  ```eye
+  ```eye context=notify,briefing
   test "the morning's briefing goes at 07:40, for the Irish day" {
     let sent = fakes(notify, from: "recordings/")
     with sent
@@ -2049,7 +2061,7 @@ strings (section 4).
 that type, the provider is asked for structured output matching it, and the reply is checked and
 decoded into an Eyelang value. Code never sees unchecked text.
 
-```eye
+```eye context=news
 import ai
 
 ## How one morning's news is summarised.
@@ -2064,7 +2076,7 @@ type Topic = { name: String, items: List(String) }
 type Urgency = | Calm | Busy | Breaking(reason: String)
 
 @budget(usd: 0.50)
-job summarise(items: List(Item)) -> Result(Digest, AiError) {
+job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   ai.generate!(
     model: "claude-sonnet-5-5",
     system: """
@@ -2121,7 +2133,9 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
 parameter types give its input schema and its `##` comment its description, and the runtime runs
 the function when the model calls it and sends back what it returns.
 
-```eye
+```eye context=triage
+import ai
+
 ## Find open issues that mention a phrase.
 fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub.search} {
   github.search(phrase, limit)
@@ -2135,7 +2149,7 @@ fn label(issue: IssueId, name: String) uses {net GitHub.label} {
 
 type Triage = { duplicateOf: Option(IssueId), labels: List(String) }
 
-job triage(report: String) -> Result(Triage, AiError) {
+job triage(report: String) -> Result(Triage, ai.AiError) {
   ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label],
     approve: fn call: approval!(call, from: maintainer, within: 1 day))
 }
@@ -2184,7 +2198,7 @@ minutes or hours, asks for permission and can be interrupted. `agents` drives th
 SDKs as sessions that a job owns. The job holds only the session's ID, so it waits without holding
 memory and picks the session up again after a restart.
 
-```eye
+```eye context=review fails=6.8
 import agents.{claude, codex}
 
 type Review = { verdict: Verdict, findings: List(Finding) }
@@ -2194,7 +2208,7 @@ type Finding = { file: String, line: Int, message: String }
 @on(event(github.pullRequestOpened))
 @budget(usd: 5)
 @deadline(2 h)
-job review(pr: PullRequest) -> Result(Review, AgentError) {
+job review(pr: PullRequest) -> Result(Review, agents.AgentError) {
   let session = claude.start!(
     prompt: "Review {pr.url}. Report real bugs only.",
     workdir: checkout!(pr.head),
@@ -2202,8 +2216,9 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
   )
   let review: Review = session.result!()?
   if review.findings != [] {
-    codex.start!(prompt: "Fix these: {review.findings}", workdir: checkout!(pr.head),
-      tools: [editFiles, runTests]).result!()?
+    let fixed: String = codex.start!(prompt: "Fix these: {review.findings}",
+      workdir: checkout!(pr.head), tools: [editFiles, runTests]).result!()?
+    log.info("codex: {fixed}")
   }
   Ok(review)
 }
@@ -2388,7 +2403,10 @@ A readable summary of [`tree-sitter-eyelang/grammar.js`](tree-sitter-eyelang/gra
 the definition. `sep` is `;` or a newline that ends a statement (section 4); `{` marked *block* is
 the brace that opens a block. Lists in `( )`, `[ ]` and literal braces allow a trailing comma.
 Every `eye` example in this document is a whole file or the statements of a function body, and CI
-parses each one with both parsers.
+parses each one with both parsers and checks it. An example that uses names it doesn't declare is
+checked as one more file of the program in `testdata/specctx/NAME`, which its fence names
+(`context=NAME`); one that shows what a ROADMAP task will build says so (`fails=TASK`), and must
+check once that task is done.
 
 ```ebnf
 file       = { sep } [ item { sep item } { sep } ] ;

@@ -4,9 +4,9 @@ fn example() {
   taskGroup(fn group {
     let (send, receive) = channel(capacity: 64)
     group.spawn(fn {
-      for line in fs.lines(path) { send.put(line) }
+      for url in feeds { send.put(fetch(url)) }
       send.close()
     })
-    for line in receive { handle(line) }
+    for page in receive { handle(page) }
   })
 }

@@ -10,7 +10,10 @@ A readable summary of [`tree-sitter-eyelang/grammar.js`](https://github.com/ruxx
 the definition. `sep` is `;` or a newline that ends a statement ([section 4](/reference/language/lexical-structure)); `{` marked *block* is
 the brace that opens a block. Lists in `( )`, `[ ]` and literal braces allow a trailing comma.
 Every `eye` example in this document is a whole file or the statements of a function body, and CI
-parses each one with both parsers.
+parses each one with both parsers and checks it. An example that uses names it doesn't declare is
+checked as one more file of the program in `testdata/specctx/NAME`, which its fence names
+(`context=NAME`); one that shows what a ROADMAP task will build says so (`fails=TASK`), and must
+check once that task is done.
 
 ```ebnf
 file       = { sep } [ item { sep item } { sep } ] ;

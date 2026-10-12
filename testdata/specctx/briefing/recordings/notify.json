@@ -1,0 +1,3 @@
+{ "contract": "Notify",
+  "exchanges": [{ "op": "send", "key": "ireland-2026-10-12",
+                  "result": { "kind": "Accepted", "receipt": "r-41", "at": "2026-10-12T06:40:02Z" } }] }

@@ -228,12 +228,18 @@ func (c *checker) parse(path, dir string, files []*ir.File) *module {
 			}
 		}
 	}
-	for _, f := range files {
-		if len(f.Tree.Diagnostics) > 0 {
-			continue
-		}
-		for _, d := range f.Tree.Root.Children {
-			c.collect(m, f, d)
+	// Impls last, so that the type, trait or contract an impl names is
+	// known wherever in the module it is declared.
+	for _, impls := range []bool{false, true} {
+		for _, f := range files {
+			if len(f.Tree.Diagnostics) > 0 {
+				continue
+			}
+			for _, d := range f.Tree.Root.Children {
+				if (d.Kind == syntax.ImplDeclaration) == impls {
+					c.collect(m, f, d)
+				}
+			}
 		}
 	}
 	m.loading = false

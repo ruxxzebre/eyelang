@@ -3,7 +3,7 @@ trait Named {
   fn name(self) -> String
 }
 
-impl Named for Player {
+impl Named for Account {
   fn name(self) = self.nick
 }
 

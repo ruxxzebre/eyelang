@@ -11,7 +11,7 @@ trait Named {
   fn name(self) -> String
 }
 
-impl Named for Player {
+impl Named for Account {
   fn name(self) = self.nick
 }
 
@@ -56,7 +56,7 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
       Some(Refuse) | None => Reject(user)
     }
 
-  let buttons = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+  let buttons: List(Button) = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
   ```
 
   `parse` takes the variant's name, which is what the derived `Show` writes, so
@@ -72,9 +72,10 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   the result is always known from the operands:
 
   ```eye
-  trait Add(rhs, out) {
-    fn add(self, other: rhs) -> out
-  }
+  # The prelude declares:
+  #   trait Add(rhs, out) {
+  #     fn add(self, other: rhs) -> out
+  #   }
 
   type Money = { cents: Int }
 

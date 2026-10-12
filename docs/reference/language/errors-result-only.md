@@ -14,11 +14,13 @@ title: "Errors: Result only"
   `.mapErr(Variant)?` or `.mapErr(fn e: …)?`.
 
   ```eye
-  type CountError = | Usage | Unreadable(FsError) | BadNumber(ParseError)
+  import fs
+
+  type CountError = | Usage | Unreadable(fs.FsError) | BadNumber(String)
 
   fn count(path: String) -> Result(Int, CountError) uses {fs} {
-    let text = fs.readText(path)?        # an FsError becomes Unreadable(…)
-    let n = parseInt(text)?              # a ParseError becomes BadNumber(…)
+    let text = fs.readText(path)?        # an fs.FsError becomes Unreadable(…)
+    let n = parseInt(text)?              # parseInt's message becomes BadNumber(…)
     Ok(n)
   }
   ```

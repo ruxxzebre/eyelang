@@ -740,6 +740,22 @@ fn named(a: t) -> String = a.name()`, []string{
 			"2:28: t + … needs t: Add",
 			"3:28: t may be any type, so it has no method name",
 		}},
+		{"a lambda's parameter may state its type", `type Item = { name: String }
+fn f() {
+  let show = fn (item: Item) { "<{item.name}>" }
+  let n = fn (a: Int, b): a + b
+  let names = [1, 2] |> map(fn (i: String): i)
+}`, []string{"5:29: expected Int, found String"}},
+		{"a type variable times an Int is what its bound says",`fn double(n: t) -> t where t: Mul(Int, t) = n * 2
+fn twice(n: t) -> t where t: Add(t, t) = n + n
+fn half(n: t) -> t where t: Mul(Int, t) = n * 0.5
+fn more(n: t) -> t = n * 2
+let a = double(21)
+let b = double(1.5)`, []string{
+			"3:43: expected Int, found Float",
+			"4:22: t * … needs t: Mul",
+			"6:9: double needs t: Mul(Int, Float), and t is Float here, which has no Mul",
+		}},
 		{"where names a type variable and a trait", `type Shape = | Dot
 fn f(x: a) -> a where b: Ord, a: Shape = x`, []string{
 			"2:23: where names b, which isn't a type variable of f",

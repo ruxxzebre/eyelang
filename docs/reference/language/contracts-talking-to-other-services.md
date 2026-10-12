@@ -17,7 +17,7 @@ how to reconcile.
 contract Notify {
   @key(required)
   @reconcile(receipt)
-  command send(to: UserId, text: String) -> Delivery
+  command send(to: UserId, text: String, priority: Priority = Normal) -> Delivery
 
   query receipt(key: Key) -> Option(Delivery)
   query identity(user: UserId) -> Identity
@@ -65,8 +65,10 @@ type Delivery =
     query identity(user: UserId) -> Identity
   }
 
-  # trains/trains.eye: an error, since trains isn't in Notify's @allow
-  fn whoIs(user: UserId) -> Identity = notify.identity(user)
+  # trains/trains.eye
+  import notify.{Identity, UserId}
+
+  fn whoIs(user: UserId) -> Identity = notify.identity(user)    # error: trains isn't in @allow
   ```
 - **`eye gen policy DIR` writes the network policy** that `@port` and `@allow` describe, as
   Kubernetes `NetworkPolicy` objects (`networking.k8s.io/v1`), one per contract with `@port`.
@@ -186,7 +188,13 @@ type Delivery =
       if rack.version != basedOn { return Stale }
       Cleared(count: Rack(id).empty())
     }
-    # and fn shelf(id), fn burn(id, approval)
+
+    fn shelf(id) {
+      let rack = Rack(id).read()
+      { id, items: rack.items, version: rack.version }
+    }
+
+    fn burn(id, approval) = Burned(count: Rack(id).burn())
   }
   ```
 - **A contract's operations are its module's functions.** A module that declares one contract offers
@@ -201,7 +209,7 @@ type Delivery =
 
   ```eye
   impl notify.Notify {
-    fn send(to, text, key) = Message(key).queue({ text, to })
+    fn send(to, text, priority, key) = Message(key).queue({ text, to, priority })
     fn receipt(key) = Message(key).delivery()
   }
   ```
@@ -236,8 +244,7 @@ type Delivery =
     @http("POST /v1/send", status: { 200: Accepted, 202: Pending, 400: Refused, 403: Refused })
     @key(required, header: "X-Actions-Idempotency-Key", field: "dedupe_key")
     @reconcile(send)
-    command send(event: String, title: String, priority: Priority = Normal,
-      to: Option(List(UserId)) = None) -> Delivery
+    command send(to: UserId, text: String, priority: Priority = Normal) -> Delivery
   }
   ```
 

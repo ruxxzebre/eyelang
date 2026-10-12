@@ -1148,6 +1148,8 @@ func (l *lowerer) lambda(n *syntax.Node) ir.Expr {
 		for _, p := range ps.NamedChildren() {
 			nameNode := p.ChildByField(syntax.FieldName)
 			param := &ir.Param{Name: l.text(nameNode), Mut: hasToken(l.f, p, "mut")}
+			// `fn (item: Item) { … }` states the parameter's type.
+			param.Type = l.c.typeExpr(l.m, l.f, p.ChildByField(syntax.FieldType), nil)
 			if nameNode.Kind == syntax.Wildcard {
 				param.Slot = inner.newSlot()
 			} else {

@@ -5,6 +5,5 @@ contract Notify {
   @http("POST /v1/send", status: { 200: Accepted, 202: Pending, 400: Refused, 403: Refused })
   @key(required, header: "X-Actions-Idempotency-Key", field: "dedupe_key")
   @reconcile(send)
-  command send(event: String, title: String, priority: Priority = Normal,
-    to: Option(List(UserId)) = None) -> Delivery
+  command send(to: UserId, text: String, priority: Priority = Normal) -> Delivery
 }

@@ -8,7 +8,7 @@ type Finding = { file: String, line: Int, message: String }
 @on(event(github.pullRequestOpened))
 @budget(usd: 5)
 @deadline(2 h)
-job review(pr: PullRequest) -> Result(Review, AgentError) {
+job review(pr: PullRequest) -> Result(Review, agents.AgentError) {
   let session = claude.start!(
     prompt: "Review {pr.url}. Report real bugs only.",
     workdir: checkout!(pr.head),
@@ -16,8 +16,9 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
   )
   let review: Review = session.result!()?
   if review.findings != [] {
-    codex.start!(prompt: "Fix these: {review.findings}", workdir: checkout!(pr.head),
-      tools: [editFiles, runTests]).result!()?
+    let fixed: String = codex.start!(prompt: "Fix these: {review.findings}",
+      workdir: checkout!(pr.head), tools: [editFiles, runTests]).result!()?
+    log.info("codex: {fixed}")
   }
   Ok(review)
 }

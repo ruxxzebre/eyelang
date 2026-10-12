@@ -9,13 +9,13 @@ title: "Pattern matching"
 ```eye
 match grant {
   Admitted(revision) => use(revision)
-  Pending(receipt) if receipt.age > 1 h => escalate(receipt)
+  Pending(receipt) if waited(receipt) > 1 h => escalate(receipt)
   Pending(receipt) => wait(receipt)
   Refused(..) => report(grant)
 }
 
 let { name, age } = user                     # destructuring
-let [first, ..rest] = items else { return Err(Empty) }
+let [first, ..rest] = items else { return }
 let (key, value) = entry
 
 match rest {                                 # rest: Bytes

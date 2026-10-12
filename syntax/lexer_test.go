@@ -280,7 +280,7 @@ func specExamples(tb testing.TB) []string {
 		tb.Fatal(err)
 	}
 	var out []string
-	block := regexp.MustCompile("(?ms)^[ \t]*```eye\n(.*?)^[ \t]*```")
+	block := regexp.MustCompile("(?ms)^[ \t]*```eye(?: [^\n]*)?\n(.*?)^[ \t]*```")
 	for _, m := range block.FindAllStringSubmatch(string(spec), -1) {
 		out = append(out, m[1])
 	}

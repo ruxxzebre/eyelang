@@ -8,4 +8,4 @@ fn admit(choice: String, user: UserId) -> Step =
     Some(Refuse) | None => Reject(user)
   }
 
-let buttons = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+let buttons: List(Button) = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })

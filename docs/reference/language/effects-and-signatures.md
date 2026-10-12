@@ -58,8 +58,10 @@ has those effects instead of `ffi`.
   is pure, and `paths |> map(fs.readText)` uses `fs`:
 
   ```eye
-  pub fn sizes(paths: List(String)) -> List(Int) uses {fs} =
-    paths |> map(fn p: fs.readText(p) |> size)    # fs comes from the lambda, not from map
+  import fs
+
+  pub fn missing(paths: List(String)) -> List(String) uses {fs} =
+    paths |> filter(fn p: !fs.exists(p))    # fs comes from the lambda, not from filter
   ```
 
   So `retry`, `timeout`, `race`, `parallelMap` and `reserve!` work with any function, and every

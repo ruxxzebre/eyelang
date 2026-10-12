@@ -1,7 +1,8 @@
 # SPECS.md section 11, example 3.
-trait Add(rhs, out) {
-  fn add(self, other: rhs) -> out
-}
+# The prelude declares:
+#   trait Add(rhs, out) {
+#     fn add(self, other: rhs) -> out
+#   }
 
 type Money = { cents: Int }
 

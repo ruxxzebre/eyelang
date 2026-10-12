@@ -13,7 +13,7 @@ type Topic = { name: String, items: List(String) }
 type Urgency = | Calm | Busy | Breaking(reason: String)
 
 @budget(usd: 0.50)
-job summarise(items: List(Item)) -> Result(Digest, AiError) {
+job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   ai.generate!(
     model: "claude-sonnet-5-5",
     system: """

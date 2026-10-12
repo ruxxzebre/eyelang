@@ -33,5 +33,11 @@ impl shelves.Shelves {
     if rack.version != basedOn { return Stale }
     Cleared(count: Rack(id).empty())
   }
-  # and fn shelf(id), fn burn(id, approval)
+
+  fn shelf(id) {
+    let rack = Rack(id).read()
+    { id, items: rack.items, version: rack.version }
+  }
+
+  fn burn(id, approval) = Burned(count: Rack(id).burn())
 }

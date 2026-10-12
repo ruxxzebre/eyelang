@@ -1,3 +1,5 @@
 # SPECS.md section 12, example 2.
-pub fn sizes(paths: List(String)) -> List(Int) uses {fs} =
-  paths |> map(fn p: fs.readText(p) |> size)    # fs comes from the lambda, not from map
+import fs
+
+pub fn missing(paths: List(String)) -> List(String) uses {fs} =
+  paths |> filter(fn p: !fs.exists(p))    # fs comes from the lambda, not from filter

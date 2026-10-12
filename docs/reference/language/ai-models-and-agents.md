@@ -31,7 +31,7 @@ type Topic = { name: String, items: List(String) }
 type Urgency = | Calm | Busy | Breaking(reason: String)
 
 @budget(usd: 0.50)
-job summarise(items: List(Item)) -> Result(Digest, AiError) {
+job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   ai.generate!(
     model: "claude-sonnet-5-5",
     system: """
@@ -89,6 +89,8 @@ parameter types give its input schema and its `##` comment its description, and 
 the function when the model calls it and sends back what it returns.
 
 ```eye
+import ai
+
 ## Find open issues that mention a phrase.
 fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub.search} {
   github.search(phrase, limit)
@@ -102,7 +104,7 @@ fn label(issue: IssueId, name: String) uses {net GitHub.label} {
 
 type Triage = { duplicateOf: Option(IssueId), labels: List(String) }
 
-job triage(report: String) -> Result(Triage, AiError) {
+job triage(report: String) -> Result(Triage, ai.AiError) {
   ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label],
     approve: fn call: approval!(call, from: maintainer, within: 1 day))
 }
@@ -161,7 +163,7 @@ type Finding = { file: String, line: Int, message: String }
 @on(event(github.pullRequestOpened))
 @budget(usd: 5)
 @deadline(2 h)
-job review(pr: PullRequest) -> Result(Review, AgentError) {
+job review(pr: PullRequest) -> Result(Review, agents.AgentError) {
   let session = claude.start!(
     prompt: "Review {pr.url}. Report real bugs only.",
     workdir: checkout!(pr.head),
@@ -169,8 +171,9 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
   )
   let review: Review = session.result!()?
   if review.findings != [] {
-    codex.start!(prompt: "Fix these: {review.findings}", workdir: checkout!(pr.head),
-      tools: [editFiles, runTests]).result!()?
+    let fixed: String = codex.start!(prompt: "Fix these: {review.findings}",
+      workdir: checkout!(pr.head), tools: [editFiles, runTests]).result!()?
+    log.info("codex: {fixed}")
   }
   Ok(review)
 }

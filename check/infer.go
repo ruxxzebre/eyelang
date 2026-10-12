@@ -2099,8 +2099,11 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Exp
 			return l
 		}
 	}
+	lv, _ := lt.(*tvar)
 	switch {
-	case ln == "Int" || rn == "Int" && ln == "":
+	case ln == "Int" || rn == "Int" && ln == "" && (lv == nil || !lv.rigid):
+		// A function's own type variable times an Int is what its bounds
+		// say, below: `where t: Mul(Int, t)`.
 		if rn == "Duration" || rn == "Size" {
 			if op == "*" {
 				return rt
@@ -2409,10 +2412,26 @@ func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 		}
 	}
 	params := e.Func.Params
+	for _, p := range params {
+		if p.Type != nil {
+			inner.slots[p.Slot] = c.fromExpr(p.Type, x.env, true)
+		}
+	}
 	w, _ := prune(orNil(want)).(*tfun)
+	given := make([]typ, len(params)) // what a parameter takes, where it differs from its slot
 	switch {
 	case w != nil && len(w.params) == len(params):
 		for i, p := range params {
+			if p.Type != nil {
+				// A type written on the parameter must be what the lambda
+				// is given. The body still sees the written type, and the
+				// lambda's own type takes the given one, so that the call
+				// doesn't report the mismatch a second time.
+				if !x.expect(e.Pos, w.params[i].t, inner.slots[p.Slot]) {
+					given[i] = w.params[i].t
+				}
+				continue
+			}
 			inner.slots[p.Slot] = w.params[i].t
 		}
 		f.ret = w.ret
@@ -2429,8 +2448,12 @@ func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 		inner.check(e.Func.Body, f.ret)
 		return f
 	}
-	for _, p := range params {
-		f.params = append(f.params, fparam{name: p.Name, t: inner.slots[p.Slot]})
+	for i, p := range params {
+		t := inner.slots[p.Slot]
+		if given[i] != nil {
+			t = given[i]
+		}
+		f.params = append(f.params, fparam{name: p.Name, t: t})
 	}
 	ret := f.ret
 	if r, ok := prune(ret).(*tcon); ok && r.name == "()" && r.decl == nil {

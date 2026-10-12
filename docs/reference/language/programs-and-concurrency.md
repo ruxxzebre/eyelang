@@ -12,7 +12,7 @@ directly, without `!`, and nothing about it is durable.
 ```eye
 import fs
 
-pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
+pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
   for path in args |> drop(1) {
     let text = fs.readText(path)?
     print("{path}: {text |> lines |> size} lines")
@@ -115,10 +115,10 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
   taskGroup(fn group {
     let (send, receive) = channel(capacity: 64)
     group.spawn(fn {
-      for line in fs.lines(path) { send.put(line) }
+      for url in feeds { send.put(fetch(url)) }
       send.close()
     })
-    for line in receive { handle(line) }
+    for page in receive { handle(page) }
   })
   ```
 

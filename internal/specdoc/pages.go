@@ -179,6 +179,11 @@ func (r rewriter) text(md string) string {
 	fence := false
 	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			if _, ok := eyeFence(line); ok && !fence {
+				// context= and fails= are for the test that checks the
+				// spec's examples, not for readers.
+				lines[i] = line[:len(line)-len(strings.TrimLeft(line, " "))] + "```eye"
+			}
 			fence = !fence
 			continue
 		}

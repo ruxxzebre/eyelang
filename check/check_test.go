@@ -278,6 +278,25 @@ func TestImportsAcrossModules(t *testing.T) {
 	}
 }
 
+// An impl may come before the type and the trait it names, in the same file
+// or in another file of the module.
+func TestImplBeforeItsType(t *testing.T) {
+	dir := t.TempDir()
+	impls := "impl Named for Account {\n  fn name(self) = self.nick\n}\n\nimpl Account {\n  fn new() -> Account = { nick: \"ann\" }\n}\n"
+	for name, src := range map[string]string{
+		"a.eye": impls,
+		"b.eye": "trait Named {\n  fn name(self) -> String\n}\n\nfn label(x: Named) -> String = \"<{x.name()}>\"\n",
+		"c.eye": "type Account = { nick: String }\n\nlet ann = label(Account.new())\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, diags := Program(dir); len(diags) != 0 {
+		t.Errorf("diagnostics: %v", diags)
+	}
+}
+
 // TestAmbiguousVariants checks that a variant two imported modules declare
 // is named with its module where nothing else says which it is.
 func TestAmbiguousVariants(t *testing.T) {

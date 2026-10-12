@@ -333,7 +333,7 @@ each names the closed issue it continues.
 | C.4 `NonZero` divisors checked (from 2.4) (done) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
 | C.5 `eye fmt` writes public functions' `uses` clauses (from 2.6) (done) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
 | C.6 10,000 waiting tasks within a memory budget (from 3.5) (done) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
-| C.7 Every SPECS.md example passes the checker (phase 2's exit test) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
+| C.7 Every SPECS.md example passes the checker (phase 2's exit test) (done) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
 | C.8 Approvals answered by id, and only by the person asked (done) | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
 | C.9 `!` on publishing and starting child runs; every effect inferred (done) | [#72](https://github.com/ruxxzebre/eyelang/issues/72) |
 | C.10 A job changed under a paused run faults instead of replaying (done) | [#73](https://github.com/ruxxzebre/eyelang/issues/73) |
@@ -418,6 +418,20 @@ What each task is, until its issue holds it:
   per section, or a header naming what an example assumes) before the test can exist.
   **Done when:** a test checks every example in SPECS.md, each in its context, and fails on an
   example that doesn't check.
+  Done on 2026-10-12: `internal/specdoc/check_test.go` checks all 45 examples. A fence names the
+  example's context, `eye context=NAME`: the program in `testdata/specctx/NAME`, which declares
+  what the example uses and doesn't show, and the example is checked as one more file of its
+  module (statements as a function body, as SPECS §23 says; a block that shows several files,
+  `# notify/notify.eye`, as those files). A line whose comment says `error` must have one, and
+  no other line may. `fails=TASK` marks an example that shows what a task will build: it must
+  fail until ROADMAP marks the task done, and check after, so the mark comes off with the task;
+  only §19's agents example (6.8) has one. The examples with real errors that the spec review
+  found are fixed (`dyn Sink`, `fs.FsError`, `parseInt`'s message, `Account.nick`, a typed
+  `buttons`, `waited(receipt)`, `fs.exists`, a channel of feeds, a typed `codex` result, one
+  Notify contract), as are those G.7 to G.10 made wrong (`uses {entity …}` on Ping and Pong).
+  The checker learned three things the examples showed: an `impl` may come before the type it
+  names, a lambda's parameter may state its type, and a function's type variable times an `Int`
+  is what its `where` bound says.
 - **C.8 Approvals by id (#51, 5.7; open question 17).** `approvals.Answer` names its request's
   `id` instead of `what`. The runtime matches answers by id and refuses one whose `by` isn't the
   request's `from`, logging it. `eye approve TEXT` and `eye decline TEXT` answer the one waiting

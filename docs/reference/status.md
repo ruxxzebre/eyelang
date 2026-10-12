@@ -12,6 +12,9 @@ Each feature has three columns:
 
 - **Parses**: both parsers accept it. The conformance suite checks that they agree on every file in
   `testdata/syntax/valid` and on the tree-sitter corpus, and every example in the spec is one of those files.
+  Every example also passes the checker, in the program from `testdata/specctx` that its fence
+  names, apart from the one marked as waiting for a task (6.8, the `agents` module); see
+  [specdoc's check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/internal/specdoc/check_test.go#L26).
 - **Checks**: `eye check` resolves and type-checks it, or reports a specific error when it is misused.
 - **Runs**: the reference interpreter runs it, and a passing test shows that.
 
@@ -84,7 +87,7 @@ along with the test that reports it.
 |---|---|---|---|---|
 | Public functions with full signatures; private ones inferred, and generic where their bodies leave types open | ✓ | ✓ (each call decides the open types, and must give the operators and traits the body uses) | ✓ | [core](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L151), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L261) |
 | `let`, `var`, shadowing | ✓ | ✓ | ✓ | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L83) |
-| Lambdas: one expression, a block, several parameters, none | ✓ | ✓ | ✓ | [core: closures](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L147) |
+| Lambdas: one expression, a block, several parameters, none | ✓ | ✓ (a parameter may state its type, `fn (item: Item) { … }`, which must be what the lambda is given) | ✓ | [core: closures](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L147), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L718) |
 | Data-first pipes and `_` | ✓ | ✓ | ✓ | [core: pipes](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L134) |
 | `?` after a piped call | ✓ | ✓ | ✓ | [core](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L52) |
 | `if` as an expression, `then`, blocks | ✓ | ✓ | ✓ | [core](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L30) |

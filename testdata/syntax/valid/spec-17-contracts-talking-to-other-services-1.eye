@@ -4,7 +4,7 @@
 contract Notify {
   @key(required)
   @reconcile(receipt)
-  command send(to: UserId, text: String) -> Delivery
+  command send(to: UserId, text: String, priority: Priority = Normal) -> Delivery
 
   query receipt(key: Key) -> Option(Delivery)
   query identity(user: UserId) -> Identity

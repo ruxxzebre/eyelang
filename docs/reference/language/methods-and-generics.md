@@ -60,12 +60,12 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   fn notifier(config: Config) -> dyn Notifier =
     if config.telegram then Telegram.new(config.token) else Console.new()
 
-  let handlers: List(dyn Handler) = [Logger.new(), Metrics.new(port: 9100)]
+  let sinks: List(dyn Sink) = [Logger.new(), Metrics.new(port: 9100)]
   ```
 
   - A value converts to `dyn Trait` where one is expected, if its type implements the trait:
     `expected dyn Notifier, found Email: Email doesn't implement Notifier` otherwise. Since values
-    never alias, a `List(Logger)` is also a `List(dyn Handler)`. Nothing converts back.
+    never alias, a `List(Logger)` is also a `List(dyn Sink)`. Nothing converts back.
   - A `dyn Trait` has its trait's methods and nothing else: no `Show`, `Eq` or `Save`, so it can't
     be printed, compared, or live across a `!` (its type, which saving needs, is known only at run
     time).
