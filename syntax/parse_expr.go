@@ -492,6 +492,9 @@ func (p *parser) lambda() *Node {
 		b.field(FieldBody, p.block())
 	default:
 		p.errorExpected("':' or '{'")
+		// The diagnostic may point past the lambda's last token. Keep the
+		// missing body in its tree so tools can recognise it as incomplete.
+		b.field(FieldBody, newNode(ErrorNode, nil, p.prevEnd()))
 	}
 	return b.done(p)
 }

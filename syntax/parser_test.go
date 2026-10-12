@@ -50,6 +50,23 @@ func TestCorpus(t *testing.T) {
 	}
 }
 
+func TestIncompleteLambdaHasError(t *testing.T) {
+	for _, src := range []string{"let f = fn x 1\n", "let f = fn x\nfn good() = 1\n"} {
+		f := Parse([]byte(src))
+		if len(f.Diagnostics) == 0 || !f.Root.Children[0].HasError() {
+			t.Fatalf("incomplete lambda wasn't marked as broken: %s", f.Root.SExpr(f.Src, SExprOptions{}))
+		}
+		if got := string(f.Root.Source(f.Src)); got != src {
+			t.Fatalf("tree source = %q, want %q", got, src)
+		}
+		for _, d := range f.Root.Children[1:] {
+			if d.Kind == FunctionDeclaration && d.HasError() {
+				t.Fatal("the following function was marked as broken")
+			}
+		}
+	}
+}
+
 // TestErrorRecovery checks that independent errors are each reported once and
 // that the parser keeps going after each.
 func TestErrorRecovery(t *testing.T) {
