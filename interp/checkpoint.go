@@ -25,7 +25,7 @@ import (
 // every minute, keeps a record the size of its variables and of one turn of
 // its loop, however long it runs.
 //
-// A variable that holds what can't be saved, as a function, isn't kept: the
+// A variable that holds what can't be saved, as a Secret, isn't kept: the
 // checker refuses one live across a `!`, so nothing reads it after the
 // checkpoint. A loop over what can't be saved takes no checkpoints inside;
 // the run replays from the one before it. A checkpoint names the statement
@@ -497,9 +497,10 @@ func (in *Interp) checkpoint(f *frame, s ir.Expr) {
 		}
 		b, ok := in.tryEncode(plain(v))
 		if !ok {
-			// A function or a Secret: no value that can't be saved is live
-			// across a `!` (SPECS.md §15), and the run took a step since its
-			// last checkpoint, so nothing reads this one again.
+			// A Secret, or a function that captured one: no value that
+			// can't be saved is live across a `!` (SPECS.md §15), and the
+			// run took a step since its last checkpoint, so nothing reads
+			// this one again.
 			lost = append(lost, i)
 			continue
 		}

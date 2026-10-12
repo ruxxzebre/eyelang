@@ -55,9 +55,33 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   (section 22); the interpreter, which replays the function instead, keeps the same rule so that
   a program checks the same however it runs. `fn post(token: Secret(String)) uses {wait} {
   sleep!(1 min); send!(token) }` is an error at `token`, which says that a `Secret` can't be
-  saved and that `token` is still needed after a waiting call. A function
-  value can't be saved either, so a waiting function can't call a callback it was given after a
-  `!` (open question 42).
+  saved and that `token` is still needed after a waiting call.
+- **A function is saved as its code and what it captured.** It can be live across a `!` when the
+  checker sees where it came from: a lambda written in the job or waiting function, whose
+  captures can be saved; a function declared with `fn`; or a waiting function's parameter. A
+  waiting function that keeps a parameter of function type across a `!` is given only such
+  functions, which its callers check:
+
+  ```eye
+  fn retry(times: Int, call: fn() -> Bool) -> Bool uses {wait} {
+    var tries = 0
+    var ok = call()
+    while !ok && tries < times {
+      sleep!(1 min)
+      tries += 1
+      ok = call()
+    }
+    ok
+  }
+  ```
+
+  `retry!(3, fn: ping(host))` is fine when `host` is a `String`; given a lambda that captures a
+  `Secret`, the call is an error at the lambda: `retry keeps call across a waiting call, so the
+  function given for it is saved with the run, and this one can't be, since it captures token,
+  which is a Secret: give it a function that captures only what can be saved`. A function from anywhere else, such as a record's field or another call's
+  result, can't be live across a `!`. Functions still have no `Save`, so a job's argument, a
+  step's result and an entity's state never hold one. A run paused while it holds a lambda whose
+  code has changed since faults when it resumes, as it does for a changed statement.
 - **A job reads stored state only in steps.** A resumed run must see what it saw, so every read
   of entities in a job is a recorded step: `w.read!()` gives one entity's snapshot, and
   `idleWorlds.read!()` a view's snapshots, as a list, as `World.all.read!()` gives every

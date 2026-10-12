@@ -134,6 +134,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§15", "what can't be saved held across a !", "what can't be saved isn't held across a !"},
 	{"§15", "what can't be saved, bound before a loop that waits and read in it", "what can't be saved isn't held across a ! on the next turn of a loop"},
 	{"§12, §15", "what can't be saved held across a ! in a waiting function, its parameters included", "a waiting function holds nothing that can't be saved across a !"},
+	{"§15", "a function that can't be saved given to a waiting function that keeps it across a !", "a waiting function holds nothing that can't be saved across a !"},
 	{"§18", "a value of an extern type saved, shown or compared", "foreign code owns an extern type's values"},
 	{"§18", "an extern fn without @library or @host, or with both", "an extern fn names where its code is, and takes what can cross"},
 	{"§18", "a C function's parameter or result that can't cross to C", "an extern fn names where its code is, and takes what can cross"},

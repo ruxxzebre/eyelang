@@ -189,12 +189,21 @@ eye run runs main every time it starts, and kick starts ring without a key, so e
 ## What can't be held across a `!`
 
 A job's state is saved at every `!`, so everything it still needs after a `!` must be something
-that can be saved. A `Secret`, a function or a value of an `extern type`, which foreign code owns,
-can't. The same goes for a waiting function, whose variables, parameters included, are part of
-the run's state:
+that can be saved. A `Secret` or a value of an `extern type`, which foreign code owns, can't. The
+same goes for a waiting function, whose variables, parameters included, are part of the run's
+state:
 
 ```text
 main.eye:94:11: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`
+```
+
+A function is saved as its code and what it captured, so a lambda written in the job, or a
+function declared with `fn`, can be held across a `!` as long as what it captures can be saved.
+A waiting function can keep a callback it is given, such as `retry!(3, fn: ping(host))`; the
+call is an error when the lambda captures what can't be saved:
+
+```text
+main.eye:14:64: retry keeps call across a waiting call, so the function given for it is saved with the run, and this one can't be, since it captures token, which is a Secret: give it a function that captures only what can be saved
 ```
 
 A job's arguments are saved too:

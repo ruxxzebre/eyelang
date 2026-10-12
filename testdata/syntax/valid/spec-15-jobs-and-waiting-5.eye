@@ -1,12 +1,6 @@
 # SPECS.md section 15, example 5.
-job brew(cups: Int) -> Int {
-  sleep!(4 min)
-  cups
-}
-
-test "a brew is ready after four minutes" {
-  let run = brew.start(2)
-  expect(run.outcome() == None)
-  advance(5 min)
-  expect(run.outcome() == Some(Completed(2)))
-}
+fn written(day: Date) -> Result(Article, DigestError) =
+  match write.start!(day).join!() {
+    Completed(result) => result
+    Failed(fault) => Err(Faulted(fault))
+  }

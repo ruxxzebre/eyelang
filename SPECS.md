@@ -135,7 +135,8 @@ Words this document uses in one sense, and names that mean different things in d
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Effects at the boundary | **Public entity methods and public jobs state their effects as public functions do, and starting a job is an effect, `start J`.** The key rule for `main` follows calls through it: a function or method `main` calls that starts a job without a key is refused. `eye fmt` writes the clauses (section 12) | A method that starts a job, or a job that reads files, does as much as a function that does, and a reviewer needs to see it in the same place. Starting a job is a change to the outside of the call: in a job a function that starts one is a recorded step, and a helper could otherwise hide from `main`'s key rule a start that repeats on every restart. From the spec review of 2026-10-12 |
 | Reading entities in jobs | **A job reads stored state only in recorded steps**: `w.read!()`, and `idleWorlds.read!()` or `World.all.read!()`, which give a list of snapshots. In a job or a waiting function, `w.phase`, a view and `World.all` read any other way are errors that name the step; outside jobs `w.phase` is short for `w.read().phase`, and a reference's identity reads anywhere (sections 14 and 15) | A resumed run must see the values it saw, and an unrecorded read in a replayed statement sees the entity as it is now. Making the reads errors, rather than quietly recording them, keeps every step visible as a `!`. From the spec review of 2026-10-12: a job read `w.phase`, slept, and recorded a value the test had changed meanwhile |
-| Waiting functions | **A function whose body has `!` steps is a waiting function**: it has `wait` in its effects, and jobs and other waiting functions call it with `!`, but `main` and tests can't. Its steps are the job's, so it follows a job's rules for them: every outside call is a `!` step in it, `env.get!(…)` included. Its frame is part of the run's saved state, so what can't be saved can't be live across a `!` in it either, its parameters included. **Outside a job a wait blocks**: `sleep(1 s)` in `main` holds it, and the call keeps `wait` in the caller's effects; a job can't call a function that waits that way (section 12) | Every wait in a run is a recorded step, so a job can't block on a sleep a helper hides. Outside jobs blocking is what a script expects, and `wait` in a signature shows that a call can hold its caller up. From the spec review of 2026-10-12: `pub fn pause() { sleep(1 s) }` passed as pure. The environment is input too: a proxy read without `!` in the lab's `web.page` chose the branch, and a replay after the variable changed would have taken another (an unrecorded mark for configuration was weighed and left out, since pinning runs to their code, open question 41, removes what it was for). A `Secret` parameter held across a `!` in a waiting function passed until 2026-10-12, though compiled jobs save that frame (open question 42) |
+| Waiting functions | **A function whose body has `!` steps is a waiting function**: it has `wait` in its effects, and jobs and other waiting functions call it with `!`, but `main` and tests can't. Its steps are the job's, so it follows a job's rules for them: every outside call is a `!` step in it, `env.get!(…)` included. Its frame is part of the run's saved state, so what can't be saved can't be live across a `!` in it either, its parameters included. **Outside a job a wait blocks**: `sleep(1 s)` in `main` holds it, and the call keeps `wait` in the caller's effects; a job can't call a function that waits that way (section 12) | Every wait in a run is a recorded step, so a job can't block on a sleep a helper hides. Outside jobs blocking is what a script expects, and `wait` in a signature shows that a call can hold its caller up. From the spec review of 2026-10-12: `pub fn pause() { sleep(1 s) }` passed as pure. The environment is input too: a proxy read without `!` in the lab's `web.page` chose the branch, and a replay after the variable changed would have taken another (an unrecorded mark for configuration was weighed and left out, since pinning runs to their code, open question 41, removes what it was for). A `Secret` parameter held across a `!` in a waiting function passed until 2026-10-12, though compiled jobs save that frame |
+| Functions across a `!` | **A function value is saved as the name of its code and what it captured**, so it can be live across a `!` when the checker sees both: a lambda written in the job or waiting function whose captures can be saved, a function declared with `fn`, or a waiting function's parameter, whose callers give it one of those when it keeps the parameter across a `!`. A function from anywhere else, such as a field or another call's result, can't be. Functions still have no `Save`: they are never a job's argument, a step's result or an entity's state (section 15) | A waiting helper that takes a callback, such as `retry!(3, fn: notify.send!(…))`, is ordinary code, not a built-in. Compiled frames already name a waiting lambda's code statically and save its captures; the same holds for any function a frame keeps. Function types don't say what a closure captured, so the check follows where the value came from instead of adding captures to types (open question 42, decided 2026-10-12) |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps, and is used only in jobs and in the waiting functions they call. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
 | Callbacks and stored functions | **A parameter's function type without `uses` takes a callback; every other function type states its effects.** A callback may do anything, and its effects count where it is given. A lambda or named function kept in a field, a collection or a result does no more than that type states, and a callback can't be kept in data without its parameter's type stating its effects (section 12) | Higher-order functions stay generic over effects without effect variables, and a stored function can't do behind its caller's back what the caller's signature doesn't show |
@@ -1512,9 +1513,33 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   (section 22); the interpreter, which replays the function instead, keeps the same rule so that
   a program checks the same however it runs. `fn post(token: Secret(String)) uses {wait} {
   sleep!(1 min); send!(token) }` is an error at `token`, which says that a `Secret` can't be
-  saved and that `token` is still needed after a waiting call. A function
-  value can't be saved either, so a waiting function can't call a callback it was given after a
-  `!` (open question 42).
+  saved and that `token` is still needed after a waiting call.
+- **A function is saved as its code and what it captured.** It can be live across a `!` when the
+  checker sees where it came from: a lambda written in the job or waiting function, whose
+  captures can be saved; a function declared with `fn`; or a waiting function's parameter. A
+  waiting function that keeps a parameter of function type across a `!` is given only such
+  functions, which its callers check:
+
+  ```eye
+  fn retry(times: Int, call: fn() -> Bool) -> Bool uses {wait} {
+    var tries = 0
+    var ok = call()
+    while !ok && tries < times {
+      sleep!(1 min)
+      tries += 1
+      ok = call()
+    }
+    ok
+  }
+  ```
+
+  `retry!(3, fn: ping(host))` is fine when `host` is a `String`; given a lambda that captures a
+  `Secret`, the call is an error at the lambda: `retry keeps call across a waiting call, so the
+  function given for it is saved with the run, and this one can't be, since it captures token,
+  which is a Secret: give it a function that captures only what can be saved`. A function from anywhere else, such as a record's field or another call's
+  result, can't be live across a `!`. Functions still have no `Save`, so a job's argument, a
+  step's result and an entity's state never hold one. A run paused while it holds a lambda whose
+  code has changed since faults when it resumes, as it does for a changed statement.
 - **A job reads stored state only in steps.** A resumed run must see what it saw, so every read
   of entities in a job is a recorded step: `w.read!()` gives one entity's snapshot, and
   `idleWorlds.read!()` a view's snapshots, as a list, as `World.all.read!()` gives every
@@ -2974,16 +2999,9 @@ operator. All binary operators associate to the left except `??`, which associat
     resumes from its variables if the statement still reads the same, or ending and starting
     itself again with its state. What does `eye runs` show of the versions, and when is an old one
     dropped?
-42. **Callbacks across a `!`.** A waiting function's parameters are part of its frame, and a
-    function value can't be saved, so `fn retry(times: Int, call: fn() -> Result(a, e)) uses
-    {wait}` can't call `call` again after its `sleep!` between tries (section 15). Jobs already
-    can't hold a lambda across a `!`, and nothing in the repository writes such a helper yet;
-    `poll!`, `reserve!` and `lock!` take functions because the runtime keeps their state. A
-    compiled frame names a waiting lambda's code statically and saves its captures (compilation.md,
-    section 4), so a closure whose captures can be saved could be saved as its code's name and
-    its captures, with the same check of the code under a paused run as a checkpoint's statement.
-    Should function values whose captures can be saved be saveable, or should such helpers be
-    built-ins?
+42. **Callbacks across a `!`.** **Decided** (see the decision log, row "Functions across a
+    `!`"): a function is saved as its code and what it captured, when the checker sees both, so
+    a waiting helper such as `retry` can call a callback after a `!` (section 15).
 43. **Byte-level code.** Eyelang's lexer written in Eyelang (S.1, `testdata/programs/lexer`)
     reads well, and asked for five things the language lacks. Which earn syntax, and which a
     function?

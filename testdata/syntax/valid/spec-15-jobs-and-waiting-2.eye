@@ -1,17 +1,11 @@
 # SPECS.md section 15, example 2.
-job ask(what: String) -> Decision { approval!(what, from: operator, within: 3 days) }
-
-job timer(d: Duration) -> Decision {
-  sleep!(d)
-  Expired
-}
-
-job ship(build: String) -> Result((), fs.FsError) {
-  match firstDone!([ask.start!("ship {build}?"), timer.start!(1 h)]) {
-    Completed(Approved(ok)) => deploy!(build, ok)
-    Completed(_) | Failed(_) => {
-      log.info("{build} wasn't approved within the hour")
-      Ok(())
-    }
+fn retry(times: Int, call: fn() -> Bool) -> Bool uses {wait} {
+  var tries = 0
+  var ok = call()
+  while !ok && tries < times {
+    sleep!(1 min)
+    tries += 1
+    ok = call()
   }
+  ok
 }

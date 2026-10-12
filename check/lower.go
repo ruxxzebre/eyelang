@@ -1184,6 +1184,7 @@ func (l *lowerer) lambda(n *syntax.Node) ir.Expr {
 		fn:     &ir.Func{Name: "lambda", Module: l.m.mod, Pos: l.pos(n)},
 		scopes: []map[string]local{{}},
 	}
+	l.m.mod.Lambdas = append(l.m.mod.Lambdas, inner.fn)
 	if p := n.ChildByField(syntax.FieldParameter); p != nil {
 		param := &ir.Param{Name: l.text(p)}
 		if p.Kind == syntax.Wildcard {

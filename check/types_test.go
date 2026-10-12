@@ -614,13 +614,19 @@ job j(xs: List(Int)) {
 		}},
 		{"a job's arguments are saved", `job j(token: Secret(String)) { sleep!(1 min) }`,
 			[]string{"1:1: j's argument token is a Secret, which can't be saved"}},
-		{"what can't be saved isn't held across a !", `job j() {
-  let f = fn x: x + 1
+		{"what can't be saved isn't held across a !", `fn adder(n: Int) -> fn(Int) -> Int = fn x: x + n
+fn double(n: Int) -> Int = n * 2
+job j() {
+  let f = adder(1)
+  let g = fn x: x + 1
+  let h = double
+  let k = fn x: g(x) + h(x)
   sleep!(1 min)
-  log.info("{f(1)}")
-}`, []string{"4:14: f is a function, which can't be saved, and it is still needed after a waiting call"}},
-		{"what can't be saved isn't held across a ! on the next turn of a loop", `job j() {
-  let pick = fn x: x * 2
+  log.info("{f(1)} {k(1)}")
+}`, []string{"9:14: f is a function that can't be saved, since only a lambda written here or a function declared with fn can be, and it is still needed after a waiting call"}},
+		{"what can't be saved isn't held across a ! on the next turn of a loop", `fn adder(n: Int) -> fn(Int) -> Int = fn x: x + n
+job j() {
+  let pick = adder(2)
   var n = 0
   while n < 3 {
     n = n + pick(1)
@@ -634,7 +640,7 @@ job fine() {
     n = n + pick(1)
     sleep!(1 min)
   }
-}`, []string{"5:13: pick is a function, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop"}},
+}`, []string{"6:13: pick is a function that can't be saved, since only a lambda written here or a function declared with fn can be, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop"}},
 		{"a waiting function holds nothing that can't be saved across a !", `fn send(t: Secret(String)) -> Int = 1
 fn late(t: Secret(String)) -> Int uses {wait} {
   sleep!(1 min)
@@ -661,10 +667,25 @@ fn walk(xs: List(Int)) uses {wait} {
 fn main(t: Secret(String)) -> Int uses {wait} {
   sleep(1 min)
   send(t)
-}`, []string{
+}
+fn once(call: fn() -> Int) -> Int uses {wait} {
+  let n = call()
+  sleep!(1 s)
+  n
+}
+fn again(call: fn() -> Int) -> Int uses {wait} = retry!(2, call)
+fn make() -> fn() -> Int = fn: 1
+fn one() -> Int = 1
+fn callers(t: Secret(String)) -> Int uses {wait} {
+  let first = once!(fn: send(t))
+  let n = 2
+  first + retry!(3, fn: n) + again!(one) + again!(make())
+}
+fn leaks(t: Secret(String)) -> Int uses {wait} = retry!(3, fn: send(t))`, []string{
 			"4:8: t is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`",
-			"14:13: call is a function, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop",
 			"20:28: this loop walks an Iter, which can't be saved, and its body waits, so a resumed run couldn't find its place: collect it with toList before the loop",
+			"41:60: retry keeps call across a waiting call, so the function given for it is saved with the run, and this one can't be, since it captures t, which is a Secret: give it a function that captures only what can be saved",
+			"39:51: again keeps call across a waiting call, so the function given for it is saved with the run, and this one can't be, since only a lambda written here or a function declared with fn can be",
 		}},
 		{"/ and % take a NonZero divisor", `fn a(t: Int, n: Int) -> Int = t / n
 fn b(t: Int) -> Int = t % 0
@@ -1313,7 +1334,6 @@ job k() {
 			"1:33: print needs Show, and fn() -> Int has no Show: a function has none of Eq, Ord, Show, Hash, Save and Schema",
 			"2:51: comparing with == needs Eq, and fn() -> Int has no Eq",
 			"3:1: j's argument f is a function, which can't be saved",
-			"7:14: f is a function, which can't be saved, and it is still needed after a waiting call",
 		}},
 		{"an enum's parse gives an Option of its variants, matched exhaustively", `type Admission = Guest | Member | Refuse
 fn groups(s: String) -> Int = match Admission.parse(s) {

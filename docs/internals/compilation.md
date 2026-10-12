@@ -463,17 +463,20 @@ The checker already knows which functions wait: a function whose effects include
    frame is saved as the name of its code, its state number and its live variables, encoded with
    `Save`.
 3. **Lambdas that wait are waiting functions too.** `reserve!(256 MiB, fn { summarise!(items) })`
-   and `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` take functions that wait. A
-   function value can't be saved, but a frame doesn't save a function value: it names the code
-   statically, and its captures are live variables.
+   and `poll!(every: 1 min, within: 6 h, fn { miniflux.ready!() })` take functions that wait.
+   A lambda's own frame names its code statically, and its captures are live variables. A
+   function value a frame keeps across a `!`, such as a callback a waiting function was given,
+   is saved the same way: the name of its code and its captures. The checker lets one be kept
+   only when it sees both (SPECS §15); the interpreter's checkpoints save it so too, naming a
+   lambda by its module and a hash of its typed IR.
 4. **Waiting built-ins are states of the runtime:** a timer for `sleep!` and `sleepUntil!`, an
    event sequence number for `next!`, a request for `approval!`, the outcome for `poll!`, a
    grant for `reserve!`, a child run for `join!`.
 
 What makes this possible is already checked: only values with `Save` may be live across a `!`
 in a job or a waiting function, parameters included (`checkSave` in `check/effects.go`), so
-every frame can be encoded. A callback given to a waiting function is the open case: a function
-value can't be saved, so one can't be called after a `!` (SPECS open question 42). One hole matters here: a value
+every frame can be encoded; a function is saved as its code and its captures (point 3). One hole
+matters here: a value
 of an `extern type` can be held across a `!` today, while a `Handle` can't. **Decided
 2026-10-11** (open question 21): `Handle` goes, and a program's `extern type` can't be saved, so
 the hole closes when the checker enforces it (see [Proposals](/internals/proposals)).

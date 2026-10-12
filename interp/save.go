@@ -3,6 +3,8 @@ package interp
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
+	"hash/fnv"
 	"math"
 	"math/big"
 	"time"
@@ -10,8 +12,10 @@ import (
 	"eyelang/ir"
 )
 
-// encode saves a value as bytes: entity state, job arguments and recorded
-// steps are stored this way. Functions can't be saved.
+// encode saves a value as bytes: entity state, job arguments, recorded
+// steps and checkpoints are stored this way. A function is saved as the name
+// of its code and what it captured; the checker lets one be saved only in a
+// checkpoint (SPECS.md §15).
 func (in *Interp) encode(v Value, at ir.Pos) []byte {
 	var b bytes.Buffer
 	in.writeValue(&b, v, at)
@@ -122,6 +126,14 @@ func (in *Interp) writeValue(b *bytes.Buffer, v Value, at ir.Pos) {
 		b.WriteByte('A')
 		putString(b, x.What)
 		putString(b, x.By)
+	case *Closure:
+		name, ok := in.funcName(x.Fn)
+		if !ok {
+			in.faultf(at, "%s is an extern fn, which foreign code runs, and can't be saved", x.Fn.Name)
+		}
+		b.WriteByte('C')
+		putString(b, name)
+		in.writeValues(b, x.Captured, at)
 	case *RangeVal:
 		b.WriteByte('g')
 		var flags byte
@@ -271,6 +283,17 @@ func (in *Interp) readValue(r *bytes.Reader, at ir.Pos) Value {
 			in.faultf(at, "saved value names entity %s, which the program no longer declares", name)
 		}
 		return &EntityRef{Entity: e, ID: in.readValue(r, at)}
+	case 'C':
+		name := in.readString(r, at)
+		fn, ok := in.funcByName(name)
+		if !ok {
+			in.faultf(at, "saved value holds a function whose code changed or is gone (%s): end the run, or put the code back", name)
+		}
+		c := &Closure{Fn: fn, Captured: in.readValues(r, at)}
+		if len(c.Captured) != len(fn.Captures) {
+			in.faultf(at, "saved value holds a function whose code changed (%s): end the run, or put the code back", name)
+		}
+		return c
 	case 'r':
 		return &RunVal{ID: in.readVarint(r, at)}
 	case 'A':
@@ -288,4 +311,58 @@ func (in *Interp) readValue(r *bytes.Reader, at ir.Pos) Value {
 	}
 	in.faultf(at, "corrupt saved value")
 	return nil
+}
+
+// funcName names fn's code for a saved function value: a named function by
+// its module and name, and a lambda by its module and a hash of its typed
+// IR, so that a lambda whose code changed under a paused run isn't found.
+// Two lambdas with the same code are the same function. An extern fn has no
+// code here to name.
+func (in *Interp) funcName(fn *ir.Func) (string, bool) {
+	in.nameFuncs()
+	name, ok := in.funcs.names[fn]
+	return name, ok
+}
+
+// funcByName finds the code a saved function value names.
+func (in *Interp) funcByName(name string) (*ir.Func, bool) {
+	in.nameFuncs()
+	fn, ok := in.funcs.byName[name]
+	return fn, ok
+}
+
+func (in *Interp) nameFuncs() {
+	in.funcs.namesOnce.Do(func() {
+		names, byName := map[*ir.Func]string{}, map[string]*ir.Func{}
+		add := func(fn *ir.Func, name string) {
+			names[fn] = name
+			if _, dup := byName[name]; !dup {
+				byName[name] = fn
+			}
+		}
+		for _, m := range in.prog.Modules {
+			for name, fn := range m.Funcs {
+				if fn.Body != nil {
+					add(fn, "fn "+m.Path+"."+name)
+				}
+			}
+			for _, fn := range m.Lambdas {
+				add(fn, "lambda "+m.Path+"."+lambdaHash(fn))
+			}
+		}
+		in.funcs.names, in.funcs.byName = names, byName
+	})
+}
+
+// lambdaHash names a lambda by its typed IR and the slots its captures go
+// in.
+func lambdaHash(fn *ir.Func) string {
+	var b bytes.Buffer
+	ir.Fprint(&b, fn)
+	for _, c := range fn.Captures {
+		fmt.Fprintf(&b, "capture #%d\n", c.Slot)
+	}
+	sum := fnv.New64a()
+	sum.Write(b.Bytes())
+	return fmt.Sprintf("%016x", sum.Sum64())
 }

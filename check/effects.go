@@ -83,6 +83,12 @@ func (c *checker) checkEffects() {
 	for f := range c.ts.lambdaCallees {
 		f.Effects = sortedEffects(c.srcEffects(fxSrc{fn: f, lambda: true}, all))
 	}
+	frames := map[*ir.Func]*saveFrame{}
+	keep := func(f *saveFrame) {
+		if f != nil {
+			frames[f.fn] = f
+		}
+	}
 	for _, m := range c.prog.Modules {
 		kinds := map[*ir.Func]fnKind{}
 		for _, j := range m.Jobs {
@@ -109,15 +115,16 @@ func (c *checker) checkEffects() {
 				// A waiting function's steps are the job's (SPECS.md §12).
 				c.checkSteps(f, "in a waiting function", all)
 				// Its frame is part of the run's saved state (SPECS.md §15).
-				c.checkSave(f)
+				keep(c.checkSave(f, true))
 			}
 		}
 		for _, j := range m.Jobs {
 			c.checkSteps(j.Func, "in a job", all)
 			c.checkJobArgs(j)
-			c.checkSave(j.Func)
+			keep(c.checkSave(j.Func, false))
 		}
 	}
+	c.checkFnPasses(frames)
 }
 
 // allEffects computes every function's effects: its own and those of the
@@ -1149,19 +1156,86 @@ func (c *checker) checkJobArgs(j *ir.Job) {
 	}
 }
 
+// saveFrame is what the Save check found in a job's or a waiting
+// function's frame.
+type saveFrame struct {
+	fn    *ir.Func
+	slots []typ
+	// saved are the slots holding a function that can be saved: a lambda
+	// written in the frame whose captures can be saved, a function declared
+	// with fn, or a waiting function's parameter, which its callers check.
+	saved map[int]bool
+	// held are the parameters of function type the frame keeps across a
+	// `!`, by index, and passes the function values it gives waiting
+	// functions with `!`.
+	held   map[int]bool
+	passes []fnPass
+}
+
+// fnPass is a function value a frame gives a waiting function's parameter.
+type fnPass struct {
+	callee *ir.Func
+	param  int
+	arg    ir.Expr
+}
+
+// isFn reports whether t is a function type.
+func isFn(t typ) bool {
+	_, ok := prune(t).(*tfun)
+	return ok
+}
+
+// fnUnsaved says why the function e gives can't be saved in frame f, or ""
+// if it can: it is saved as the name of its code and what it captured
+// (SPECS.md §15).
+func (c *checker) fnUnsaved(f *saveFrame, e ir.Expr) string {
+	switch e := e.(type) {
+	case *ir.Lambda:
+		for _, capt := range e.Func.Captures {
+			l, ok := capt.From.(*ir.Local)
+			if !ok || l.Slot >= len(f.slots) {
+				return "it captures self"
+			}
+			t := f.slots[l.Slot]
+			if isFn(t) {
+				if !f.saved[l.Slot] {
+					return fmt.Sprintf("it captures %s, a function that can't be saved", l.Name)
+				}
+				continue
+			}
+			if what := c.unsaveable(t); what != "" {
+				return fmt.Sprintf("it captures %s, which is %s", l.Name, withArticle(what))
+			}
+		}
+		return ""
+	case *ir.Ref:
+		if g, ok := e.Decl.(*ir.Func); ok && g.Body != nil && g.Module != nil && g.Module.Funcs[g.Name] == g {
+			return ""
+		}
+	case *ir.Local:
+		if e.Slot < len(f.slots) && isFn(f.slots[e.Slot]) && f.saved[e.Slot] {
+			return ""
+		}
+	}
+	return "only a lambda written here or a function declared with fn can be"
+}
+
 // checkSave reports a value that can't be saved but is still needed after
 // a `!` in a job or a waiting function, whose frames are the run's saved
-// state (SPECS.md §15). A parameter is one of its frame's variables. Uses
-// are found in source order; a value needed again on a later turn of a
-// loop isn't seen yet.
-func (c *checker) checkSave(fn *ir.Func) {
+// state (SPECS.md §15). A parameter is one of its frame's variables; a
+// waiting function's parameter of function type is checked where it is
+// called instead (checkFnPasses). Uses are found in source order.
+func (c *checker) checkSave(fn *ir.Func, waiting bool) *saveFrame {
 	slots := c.ts.saveSlots[fn]
 	if slots == nil {
-		return
+		return nil
 	}
+	f := &saveFrame{fn: fn, slots: slots, saved: map[int]bool{}, held: map[int]bool{}}
 	defined := map[int]int{} // slot → where it is bound
-	for _, p := range fn.Params {
+	params := map[int]int{}  // slot → the parameter's index
+	for i, p := range fn.Params {
 		defined[p.Slot] = -1
+		params[p.Slot] = i
 	}
 	// A value is needed after a waiting call when one comes between where
 	// it is bound and where it is read, or when it is bound before a loop,
@@ -1177,24 +1251,42 @@ func (c *checker) checkSave(fn *ir.Func) {
 	var uses []use
 	var loops []loop
 	var fors []*ir.For
+	sets := map[int][]ir.Expr{} // what each slot is set to; nil when a pattern takes it apart
+	setAll := func(p ir.Pattern, v ir.Expr) {
+		if b, ok := p.(ir.PBind); ok {
+			sets[b.Slot] = append(sets[b.Slot], v)
+			return
+		}
+		for _, s := range bound(p) {
+			sets[s] = append(sets[s], nil)
+		}
+	}
 	visit := func(e ir.Expr, waiting bool) {
 		switch e := e.(type) {
 		case *ir.While:
 			loops = append(loops, loop{e.Pos.Offset, e.Pos.End})
 		case *ir.Waiting:
 			waits = append(waits, e.Pos.End)
+			f.passes = append(f.passes, c.fnPasses(e)...)
 		case *ir.Let:
+			setAll(e.Pattern, e.Value)
 			for _, s := range bound(e.Pattern) {
 				defined[s] = e.Pos.Offset
+			}
+		case *ir.Assign:
+			if !e.Target.Self && len(e.Target.Path) == 0 {
+				sets[e.Target.Slot] = append(sets[e.Target.Slot], e.Value)
 			}
 		case *ir.For:
 			loops = append(loops, loop{e.Pos.Offset, e.Pos.End})
 			fors = append(fors, e)
+			setAll(e.Pattern, nil)
 			for _, s := range bound(e.Pattern) {
 				defined[s] = e.Pos.Offset
 			}
 		case *ir.Match:
 			for _, a := range e.Arms {
+				setAll(a.Pattern, nil)
 				for _, s := range bound(a.Pattern) {
 					defined[s] = e.Pos.Offset
 				}
@@ -1206,6 +1298,33 @@ func (c *checker) checkSave(fn *ir.Func) {
 		}
 	}
 	walkFrame(fn.Body, visit)
+	// A slot holds a function that can be saved when everything it is set
+	// to is one: start from every slot of function type and take out those
+	// set to anything else, until none changes.
+	for s, t := range slots {
+		if !isFn(t) {
+			continue
+		}
+		if _, isParam := params[s]; isParam {
+			f.saved[s] = waiting
+		} else {
+			f.saved[s] = len(sets[s]) > 0
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for s := range f.saved {
+			if _, isParam := params[s]; isParam || !f.saved[s] {
+				continue
+			}
+			for _, v := range sets[s] {
+				if v == nil || c.fnUnsaved(f, v) != "" {
+					f.saved[s], changed = false, true
+					break
+				}
+			}
+		}
+	}
 	waitsIn := func(start, end int) bool {
 		for _, w := range waits {
 			if w > start && w <= end {
@@ -1217,39 +1336,157 @@ func (c *checker) checkSave(fn *ir.Func) {
 	reported := map[int]bool{}
 	// A loop that waits keeps what it walks across the wait, to find its
 	// place when the run resumes.
-	for _, f := range fors {
-		what := c.unsaveable(c.ts.forIters[f])
-		body := f.Body.Position()
+	for _, l := range fors {
+		what := c.unsaveable(c.ts.forIters[l])
+		body := l.Body.Position()
 		if what == "" || !waitsIn(body.Offset, body.End) {
 			continue
 		}
 		fix := "walk what can be saved"
-		if t, ok := prune(c.ts.forIters[f]).(*tcon); ok && t.name == "Iter" && t.decl == nil {
+		if t, ok := prune(c.ts.forIters[l]).(*tcon); ok && t.name == "Iter" && t.decl == nil {
 			fix = "collect it with toList before the loop"
 		}
-		c.typeErrorf(f.Iter.Position(), "this loop walks %s, which can't be saved, and its body waits, so a resumed run couldn't find its place: %s", withArticle(what), fix)
-		if l, ok := f.Iter.(*ir.Local); ok {
-			reported[l.Slot] = true
+		c.typeErrorf(l.Iter.Position(), "this loop walks %s, which can't be saved, and its body waits, so a resumed run couldn't find its place: %s", withArticle(what), fix)
+		if loc, ok := l.Iter.(*ir.Local); ok {
+			reported[loc.Slot] = true
 		}
 	}
+	// why says why the value in slot s can't be saved.
+	why := func(s int, name string) string {
+		what := c.unsaveable(slots[s])
+		if !isFn(slots[s]) {
+			return fmt.Sprintf("%s is %s, which can't be saved", name, withArticle(what))
+		}
+		reason := "only a lambda written here or a function declared with fn can be"
+		for _, v := range sets[s] {
+			if v != nil {
+				if r := c.fnUnsaved(f, v); r != "" {
+					reason = r
+					break
+				}
+			}
+		}
+		return fmt.Sprintf("%s is a function that can't be saved, since %s", name, reason)
+	}
 	for _, u := range uses {
-		if u.slot >= len(slots) || reported[u.slot] {
+		if u.slot >= len(slots) || reported[u.slot] || c.unsaveable(slots[u.slot]) == "" {
 			continue
 		}
-		what := c.unsaveable(slots[u.slot])
-		if what == "" {
-			continue
-		}
-		if waitsIn(u.from, u.at-1) {
-			reported[u.slot] = true
-			c.typeErrorf(u.pos, "%s is %s, which can't be saved, and it is still needed after a waiting call: get it again after the `!`", u.name, withArticle(what))
-			continue
-		}
+		afterWait := waitsIn(u.from, u.at-1)
+		inLoop := false
 		for _, l := range loops {
 			if u.from < l.start && l.start <= u.at && u.at < l.end && waitsIn(l.start, l.end) {
-				reported[u.slot] = true
-				c.typeErrorf(u.pos, "%s is %s, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop", u.name, withArticle(what))
+				inLoop = true
 				break
+			}
+		}
+		if !afterWait && !inLoop {
+			continue
+		}
+		if isFn(slots[u.slot]) && f.saved[u.slot] {
+			if i, isParam := params[u.slot]; isParam {
+				f.held[i] = true
+			}
+			continue
+		}
+		reported[u.slot] = true
+		if afterWait {
+			c.typeErrorf(u.pos, "%s, and it is still needed after a waiting call: get it again after the `!`", why(u.slot, u.name))
+		} else {
+			c.typeErrorf(u.pos, "%s, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop", why(u.slot, u.name))
+		}
+	}
+	return f
+}
+
+// fnPasses lists the function values a `!` call gives a function's
+// parameters of function type.
+func (c *checker) fnPasses(w *ir.Waiting) []fnPass {
+	call, ok := w.Call.(*ir.Call)
+	if mc, isMethod := w.Call.(*ir.MethodCall); isMethod {
+		if fc, isFunc := mc.Target.(ir.FuncCall); isFunc {
+			call, ok = fc.Call, true
+		}
+	}
+	if !ok {
+		return nil
+	}
+	r, ok := call.Func.(*ir.Ref)
+	if !ok {
+		return nil
+	}
+	g, ok := r.Decl.(*ir.Func)
+	if !ok || g.Body == nil {
+		return nil
+	}
+	var out []fnPass
+	bound := make([]bool, len(g.Params))
+	next := 0
+	for _, a := range call.Args {
+		p := -1
+		if a.Name != "" {
+			for j, param := range g.Params {
+				if param.Name == a.Name {
+					p = j
+				}
+			}
+		} else {
+			for next < len(g.Params) && bound[next] {
+				next++
+			}
+			if next < len(g.Params) {
+				p = next
+			}
+		}
+		if p < 0 {
+			continue
+		}
+		bound[p] = true
+		out = append(out, fnPass{callee: g, param: p, arg: a.Value})
+	}
+	return out
+}
+
+// checkFnPasses reports a function value given to a waiting function that
+// keeps it across a `!`, where the value can't be saved. A waiting function
+// that passes its own parameter on keeps it as long as the callee does.
+func (c *checker) checkFnPasses(frames map[*ir.Func]*saveFrame) {
+	var all []*saveFrame
+	for _, f := range frames {
+		all = append(all, f)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].fn.Pos.Offset < all[j].fn.Pos.Offset })
+	keeps := func(p fnPass) bool {
+		g := frames[p.callee]
+		return g != nil && g.held[p.param]
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, f := range all {
+			for _, p := range f.passes {
+				l, ok := p.arg.(*ir.Local)
+				if !ok || !keeps(p) {
+					continue
+				}
+				for i, param := range f.fn.Params {
+					if param.Slot == l.Slot && f.saved[l.Slot] && !f.held[i] {
+						f.held[i], changed = true, true
+					}
+				}
+			}
+		}
+	}
+	for _, f := range all {
+		for _, p := range f.passes {
+			if !keeps(p) || p.param >= len(p.callee.Params) {
+				continue
+			}
+			if reason := c.fnUnsaved(f, p.arg); reason != "" {
+				fix := ""
+				if strings.HasPrefix(reason, "it captures") {
+					fix = ": give it a function that captures only what can be saved"
+				}
+				c.typeErrorf(p.arg.Position(), "%s keeps %s across a waiting call, so the function given for it is saved with the run, and this one can't be, since %s%s", p.callee.Name, p.callee.Params[p.param].Name, reason, fix)
 			}
 		}
 	}

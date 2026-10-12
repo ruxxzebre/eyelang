@@ -105,14 +105,14 @@ job wait(name: String) { steps!(name) }
 	}
 }
 
-// TestADeadFunctionDoesntStopCheckpoints keeps a function in a variable the
-// job no longer reads: checkpoints leave it out, since the checker refuses
-// one read after a `!`, and the run still keeps few steps.
-func TestADeadFunctionDoesntStopCheckpoints(t *testing.T) {
+// TestADeadIterDoesntStopCheckpoints keeps an Iter in a variable the job no
+// longer reads: checkpoints leave it out, since the checker refuses one read
+// after a `!`, and the run still keeps few steps.
+func TestADeadIterDoesntStopCheckpoints(t *testing.T) {
 	prog := load(t, `
 job count() -> Int {
-  let pick = fn x: x * 2
-  let k = pick(2)
+  let doubled = [1, 2] |> iter() |> map(fn x: x * 2)
+  let k = doubled |> toList() |> sum
   sleep!(1 min)
   var n = k
   while n < 50 {
@@ -162,4 +162,63 @@ func resumeIn(t *testing.T, src string, store Store, now time.Time) *Interp {
 	in.rt.now = now
 	in.rt.restore()
 	return in
+}
+
+// TestAClosureResumesFromItsCheckpoint holds a lambda and a named function
+// across a `!` and resumes the run in a new interpreter: the checkpoint
+// saved each as its code's name and what it captured (SPECS.md §15).
+func TestAClosureResumesFromItsCheckpoint(t *testing.T) {
+	src := `
+entity Out(id: String) {
+  state lines: List(String) = []
+  pub fn add(s: String) { lines += [s] }
+}
+
+fn double(n: Int) -> Int = n * 2
+
+job wait(name: String) {
+  let n = 3
+  let add = fn x: x + n
+  let twice = double
+  let start = now!()
+  sleep!(1 h)
+  Out("x").add!("{name} {add(1)} {twice(5)}")
+}
+`
+	store, at := pausedRun(t, src)
+	data, _ := store.Run(1)
+	if run := decodeRun(data); run.Checkpoint == nil || len(run.Checkpoint.Unsaved) != 0 {
+		t.Fatalf("the paused run has checkpoint %+v, want one that saved every variable", run.Checkpoint)
+	}
+	in := resumeIn(t, src, store, at)
+	in.rt.advance(ir.Duration(2 * time.Hour))
+	data, _ = in.rt.store.Run(1)
+	if run := decodeRun(data); run.Status != "done" {
+		t.Fatalf("the run is %s: %s", run.Status, run.Fault)
+	}
+	state, _, _ := in.rt.load(&EntityRef{Entity: in.prog.Root.Entities["Out"], ID: "x"}, ir.Pos{})
+	if lines, _ := state.get("lines"); show(lines) != `["a 4 10"]` {
+		t.Errorf("lines = %s, want the line the saved functions computed", show(lines))
+	}
+}
+
+// TestAChangedLambdaFaultsItsPausedRun changes a lambda a paused run holds:
+// the run faults when it resumes rather than call other code.
+func TestAChangedLambdaFaultsItsPausedRun(t *testing.T) {
+	v1 := `
+job wait(name: String) {
+  let add = fn x: x + 1
+  let start = now!()
+  sleep!(1 h)
+  print("{name} {add(1)}")
+}
+`
+	store, at := pausedRun(t, v1)
+	v2 := strings.Replace(v1, "fn x: x + 1", "fn x: x + 2", 1)
+	in := resumeIn(t, v2, store, at)
+	in.rt.advance(ir.Duration(2 * time.Hour))
+	data, _ := in.rt.store.Run(1)
+	if run := decodeRun(data); run.Status != "failed" || !strings.Contains(run.Fault, "holds a function whose code changed") {
+		t.Errorf("the run is %s with %q, want it failed because the lambda it holds changed", run.Status, run.Fault)
+	}
 }

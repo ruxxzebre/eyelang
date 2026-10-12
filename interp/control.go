@@ -50,6 +50,11 @@ type ctlInfo struct {
 type funcCache struct {
 	ctl      sync.Map // *ir.Func → *ctlInfo
 	closures sync.Map // *ir.Func → *Closure, the function as a value
+	// names are what a saved function value calls its code, worked out
+	// once (save.go).
+	namesOnce sync.Once
+	names     map[*ir.Func]string
+	byName    map[string]*ir.Func
 }
 
 // closure returns fn, a named function, as a value.

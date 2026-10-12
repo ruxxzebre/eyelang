@@ -77,6 +77,9 @@ type Module struct {
 	Impls     []*Impl // the module's `impl Trait for Type` blocks
 	Tests     []*Test
 	Main      *Func
+	// Lambdas are the lambdas written in the module, in the order they
+	// were lowered: a run's saved function value names one (SPECS.md §15).
+	Lambdas []*Func
 }
 
 // Trait is a trait declaration: the methods its implementations have, by
