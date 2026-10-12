@@ -34,7 +34,9 @@ remaining fields or elements; `..rest` binds the remaining elements.
 
 A variant pattern names a variant of the matched value's type, so a variant declared in an imported
 module needs no module prefix in a pattern, even when another module has a variant of the same name:
-`Refused(reason)` in the tour matches zeropod's `Refused`.
+`Refused(reason)` in the tour matches zeropod's `Refused`. Outside patterns an imported variant may
+be written alone too, `fn t() = Blocked`, when no other imported module has one of that name
+([section 13](/reference/language/programs-and-concurrency)).
 
 Every `match` must be exhaustive. Adding a variant to a type makes each `match` that doesn't handle
 it a compile error, which is how a new outcome from another service reaches every caller.

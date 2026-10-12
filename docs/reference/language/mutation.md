@@ -42,7 +42,8 @@ fn tally(times: List(Instant)) -> Counter {
   parameter is. A method that takes `mut self` can only be called on a `var` or a `mut` parameter.
 - **No aliasing.** The same variable can't be passed as `mut` twice in one call, or passed as `mut`
   and read in the same call: `swap(mut a, mut a)` is a compile error. Closures can't capture a
-  `var` or a `mut` parameter.
+  `var` or a `mut` parameter. An entity method's closures may read its state fields, though
+  ([section 14](/reference/language/entities)).
 - **No references.** A `mut` parameter lasts for the call; it can't be stored or returned. Nothing
   in the language is a pointer, so values can't form cycles, and reference counting reclaims
   everything without a garbage collector.

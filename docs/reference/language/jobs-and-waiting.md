@@ -22,7 +22,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 }
 ```
 
-- **`!` marks a checkpoint.** Every recorded step in a job is a `!` call ([section 12](/reference/language/effects-and-signatures)). A resumed
+- **`!` marks a step; a checkpoint is where a run resumes.** Every recorded step in a job is a
+  `!` call ([section 12](/reference/language/effects-and-signatures)). A checkpoint is the run's saved place. A resumed
   or restarted run continues from its last checkpoint: no recorded call runs again, and it sees
   the values it saw. The interpreter keeps a checkpoint at the start of each statement of the
   job's body, the statements inside its loops, ifs and matches included, once the run has taken
@@ -48,17 +49,18 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   than on its first. `eye runs` keeps the last 20 steps a checkpoint dropped, and counts the
   rest.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
-  file handle or `Secret` across a checkpoint is a compile error.
-- **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the
-  checkpoint, so they happen exactly once.
+  file handle or `Secret` across a `!` is a compile error.
+- **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction that
+  records the step in the run, so they happen exactly once.
 - **Where runs live.** Entities, runs and checkpoints are kept by a store, chosen when the program is
   started or embedded. The default store keeps them in memory and is itself written in Eyelang
   (`MemoryStore` in `check/runtime/store.eye`, part of every program): it is an immutable value, each
   transaction is a pure function from one store value to the next, and the runtime holds the only
   reference, so compiled code updates it in place. (The interpreter has no reference counts, so it
   copies what changes; the store keeps runs in buckets of 64 and rows by entity type to keep that
-  small.) Until traits are checked, `Store` is the Go interface the runtime calls, and
-  `MemoryStore` has the methods a `Store` trait will ask for. It is what tests, the REPL and
+  small.) The trait `Store(s)` in the same file says what a store does, and `MemoryStore`
+  implements it; the runtime, written in Go, calls the store through a Go interface with the
+  same methods. It is what tests, the REPL and
   embedders use; on its own it doesn't survive a restart. For one machine, the journal (question 9)
   appends each commit to a file and syncs it before the commit counts, which is what `eye run`
   uses by default. The Postgres store (`eye run --store postgres://…`, or `$EYE_STORE`) keeps the
@@ -173,6 +175,14 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
       Failed(fault) => Err(Faulted(fault))
     }
   ```
+
+  Every other fault the runtime meets ends the run as `Unreachable`, with a message that says
+  what happened: a request the service refused (a 4xx reply that `status:` doesn't name, section
+  17), a replayed step whose call differs from the recorded one, a call a test's fakes have no
+  exchange for, and a dollar `@budget` on a model whose price isn't known ([section 19](/reference/language/ai-models-and-agents)). These are
+  bugs in the program or its configuration, so like `unreachable` they fail the test they happen
+  in, while the other five faults come from a limit or a service, not a bug, and don't (section
+  20).
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
   is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't
@@ -186,7 +196,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   |---|---|
   | `@on(trigger)` | `daily(…)`, `weekdays(…)`, `every(15 min)`, `cron("…", in: zone)`, `enters(view)`, `leaves(view)`, `event(contract.event)`. A schedule passes the job the date of the firing in the schedule's zone, if the job takes one; a view, the entity's `Ref`; an event, the event |
   | `@memory(size)` | budget admitted before the run starts; the runtime enforces it |
-  | `@priority(p)` | `interactive`, `normal`, `background` or `batch`; under memory pressure, lower priorities pause at their next checkpoint |
+  | `@priority(p)` | `interactive`, `normal`, `background` or `batch`; under memory pressure, a run of a lower priority doesn't start or resume while one of a higher priority waits for memory, and a run that is executing isn't paused (open question 26) |
   | `@deadline(duration)`, `@deadline(13:40, in: zone)` | how long after its start, or by what time, a run must finish; after that it ends as `Failed(DeadlinePassed)`, even while it sleeps or waits |
   | `@concurrency(n, by: param)` | at most `n` runs at once, or per value of the parameter named. A run over the limit waits in a queue and begins when a run of its group finishes, in the order they were started; a waiting run keeps its place, so `@concurrency(1)` asks one question at a time, in order. A scheduled start that finds the limit reached is skipped, not queued |
   | `@limit(n, per: duration, by: param)` | at most `n` runs begin in any window of that length, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)`. A run over the rate waits until the window lets it begin |

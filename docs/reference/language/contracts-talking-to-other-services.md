@@ -36,8 +36,10 @@ type Delivery =
   are derived from it, so a wrong port or an unapproved caller is a compile error.
 - **`@port(n)` is where the service listens.** A program that serves a contract with `impl`
   serves it on that port, so a contract that a program serves must declare one: an `impl` of a
-  contract without `@port` is an error at the contract's name. Callers never write a port; they
-  get it from the contract, so no call can go to a wrong or undeclared one. A contract without
+  contract without `@port` is an error at the contract's name. Callers never write a port in
+  code: a call goes to the URL the configuration gives (below), and the network policy written
+  from `@port` lets callers through to that port only, so in a deployment a call configured for
+  another port reaches nothing. A contract without
   `@port` describes a service outside the program's network, such as Telegram or a hosted feed
   reader: the program reaches it at the URL its configuration gives (below), and any module may
   call it.
@@ -188,8 +190,9 @@ type Delivery =
   ```
 - **A contract's operations are its module's functions.** A module that declares one contract offers
   its commands and queries by name: `notify.send!(…)` for `contract Notify { command send … }`.
-- **Serving a contract.** A program written in Eyelang serves a contract with `impl Contract { … }`:
-  one function per operation, named after it, with its parameters in order and `key` last for a
+- **Serving a contract.** A program written in Eyelang serves a contract with `impl Contract { … }`,
+  in any of its modules ([section 11](/reference/language/traits)): one function per operation, named after it, with its
+  parameters in order and `key` last for a
   command with `@key`. Types and defaults come from the contract. Each runs as one transaction, as
   an entity method does, so it can't wait, and it may start jobs. A key can name an entity, so a
   repeated command finds the work it already did:
@@ -253,11 +256,15 @@ type Delivery =
   - `@auth(bearer: "secret")`, or `@auth(header: "X-Auth-Token", secret: "secret")`, sends a
     secret with every request.
   - A refused request (a 4xx that `status:` doesn't name) ends the run with a fault that shows the
-    reply: it is a bug in the program or its configuration, not an outcome to handle.
+    reply, `Unreachable` ([section 15](/reference/language/jobs-and-waiting)): it is a bug in the program or its configuration, not an
+    outcome to handle.
 
   A program finds a contract's service at the URL in the environment variable named after its
   module (`NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify`). A program that serves a
-  contract itself calls its own implementation, unless that variable is set.
+  contract itself calls its own implementation, unless that variable is set. The URL alone
+  decides where a call goes, port included; `@port`, and `NOTIFY_PORT` below, decide only where a
+  program that serves the contract listens. A server moved with `NOTIFY_PORT`, as in a test, is
+  reached by callers whose `NOTIFY_URL` names that port.
 - **Serving over HTTP.** `eye run` serves each contract the program serves on the contract's
   port, on every network interface, and runs until it is stopped. It names the port when it
   starts: `eye run: serving notify.Notify on :3001`. `NOTIFY_PORT`, named after the module as

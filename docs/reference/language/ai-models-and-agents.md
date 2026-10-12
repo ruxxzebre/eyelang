@@ -80,7 +80,7 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   models, and a deployment gives others in `AI_PRICES` (`"gpt-5.5=1.25/10"`: dollars per million
   tokens in and out); a provider that reports what a call cost is taken at its word. A budget in
   dollars for a model whose price isn't known isn't kept quietly by tokens instead: the call
-  stops with a fault that says to give the price. Recordings may say what a reply spent
+  stops with a fault, `Unreachable`, that says to give the price. Recordings may say what a reply spent
   (`"usage": {"input": 900, "output": 100}`), and tests count it.
 
 **Tools are functions.** Eyelang functions passed as `tools:` become the model's tools. A tool's

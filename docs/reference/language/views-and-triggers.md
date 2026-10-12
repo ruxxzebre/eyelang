@@ -18,4 +18,6 @@ job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
   commit.
 - `enters(view)` starts one run per entity that begins matching; `leaves(view)` starts one per
   entity that stops matching.
-- Over entity sets, pipelines compile to SQL. The same functions work on in-memory lists.
+- Over entity sets, pipelines run in memory today, over the entities the store holds, with the
+  same functions that work on lists. Compiling them to SQL waits for several runners on one
+  database (open question 28), since one runner already holds every entity in memory.

@@ -483,7 +483,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.8 A job reads entities and views only through recorded steps | [#91](https://github.com/ruxxzebre/eyelang/issues/91) |
 | G.9 A call tree that comes back to an entity shares its transaction's state | [#92](https://github.com/ruxxzebre/eyelang/issues/92) |
 | G.10 Effects at the boundary: entity methods, jobs, starting jobs, and calls that wait | [#93](https://github.com/ruxxzebre/eyelang/issues/93) |
-| G.11 One sweep of SPECS.md: stale text, unrecorded rules, contradictions, open questions, glossary | [#94](https://github.com/ruxxzebre/eyelang/issues/94) |
+| G.11 One sweep of SPECS.md: stale text, unrecorded rules, contradictions, open questions, glossary (done) | [#94](https://github.com/ruxxzebre/eyelang/issues/94) |
 | G.12 A `Result` or a command's outcome can't be dropped silently | [#95](https://github.com/ruxxzebre/eyelang/issues/95) |
 | G.13 A callback may read a `var` | [#96](https://github.com/ruxxzebre/eyelang/issues/96) |
 | G.14 A lambda's record literal takes its type from where the result goes | [#97](https://github.com/ruxxzebre/eyelang/issues/97) |

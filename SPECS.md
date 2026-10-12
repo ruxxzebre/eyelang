@@ -1,6 +1,7 @@
 # Eyelang 2 — language design (draft)
 
-Status: **draft**. These decisions come from design sessions on 2026-10-10. The build plan is in
+Status: **draft**. These decisions come from design sessions since 2026-10-10 and from the
+programs written in Eyelang since. The build plan is in
 [ROADMAP.md](ROADMAP.md). The syntax is implemented (phase 1), and a reference interpreter runs
 programs, the tour in section 3 included. `eye check` checks types, exhaustive matches and effects
 (a first slice of phase 2; ROADMAP.md says what is left). The lab's real workloads, written in
@@ -45,6 +46,26 @@ construct that also works outside that domain.
 23. [Grammar sketch](#23-grammar-sketch)
 24. [Open questions](#24-open-questions)
 
+## Glossary
+
+Words this document uses in one sense, and names that mean different things in different places.
+
+| Word | Meaning |
+|---|---|
+| run | One execution of a job, from its start to its outcome. Each start makes one, unless its key started one already; `Run(a)` is the value that names it (section 15). |
+| step | A `!` call in a job. It runs once, and its result is recorded in the run, so a resumed run gets the recorded result instead of calling again (section 12). |
+| checkpoint | A run's saved place: its live variables, the statement it is at, and where each loop around it is. The interpreter takes one at a statement of the job's body once steps have been taken since the last; a run that wakes restores the latest and replays only the steps since (section 15). `zeropod.checkpoint!` in the tour is an operation of a service, not this. |
+| transaction | What runs all or nothing: an entity method's call tree, a served operation, or a job's step that calls an entity. Jobs it starts and events it publishes happen only if it commits (section 14). |
+| key | An idempotency key, a `Key`: what tells one command, job start or event from a repeat of it, so the same key never does the work twice (`key:` on a call, `@key` on an operation or event). A map's keys are ordinary values. |
+| version | A snapshot's `version` is a `Version` that counts the transactions that changed the entity, and is what a `@fresh` command's `basedOn` takes (sections 14 and 17). `@version(N)` numbers the shape of an entity's stored state, for migrations. A state field can't be named `version`. |
+| handler | What `with` applies to the rest of a test's block: `fakes(…)`, `clock(…)`, of the built-in type `Handler` (section 20). A program may declare its own `Handler`, as section 12's example does; in its module the name is the program's. |
+| outcome | A run's `Outcome`, `Completed(value)` or `Failed(fault)` (section 15); a command's outcome is the variant its result is (section 17). |
+| fault | What ends a run that code can't catch, such as `DeadlinePassed` or `Unreachable` (section 15). An `Err` is a value, not a fault. |
+| `end` | In an entity's own method, `end(ok)` ends the entity (section 14). Elsewhere `s.end()` is a string's end position, and `r.end` a range's end. |
+| `start` | `j.start(…)` starts a run of job `j`, and `claude.start!(…)` an agent's session. `s.start()` is a string's first position, and `r.start` a range's start. |
+| `first` | `first(xs)` is a collection's first element, an `Option`. Waiting for whichever of several runs finishes first is `firstDone!`, and for all of them `allDone!`, named apart from `first` and `all` (section 15). |
+| `join` | `xs \|> join(", ")` joins strings; `run.join!()` waits for a run's outcome. |
+
 ## 1. Goals
 
 - **Good programs are the point.** A feature earns its place by the programs written with it:
@@ -77,7 +98,7 @@ construct that also works outside that domain.
 | Core model | **Entities** hold shared data; **jobs** are durable functions; **views** react to conditions across many entities | Data has a home, waiting has a home, and cross-entity conditions don't need polling |
 | Waiting | **Only jobs wait.** Entity methods are short atomic transactions | No state changes in the middle of a method; every method is all-or-nothing |
 | Wait marker | A **`!` suffix** on every durable step in a job, which is every call that may pause or has an outside effect: `sleep!(20 min)`, `notify.send!(…)` | Every save point is visible in code review |
-| Checkpoints | Every `!` call in a job is also a **checkpoint**: its result is saved and it runs once | No separate `step` keyword is needed |
+| Checkpoints | Every `!` call in a job is a recorded **step**: its result is saved and it runs once. A **checkpoint** is a run's saved place, its live variables and statement, taken at the statements of the job's body once steps have been taken; a run resumes from its latest and replays only the steps since (section 15) | No separate `step` keyword is needed |
 | Entity lifecycle | **Virtual**: an entity exists on first use. Ending one with protected state needs an `Approval` | No create/exists dance; deletion always involves a human |
 | Storage | An **embeddable engine** with backends behind a `Store` trait. The default backend keeps everything in memory and is written in Eyelang (`check/runtime/store.eye`); a journal file wraps it for durability on one machine (open question 9); **Postgres** is selectable | Programs, tests and embedders need no database; production picks durability; writing the default backend in Eyelang tests the language on real systems code |
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
@@ -93,16 +114,16 @@ construct that also works outside that domain.
 | Contracts over HTTP | **Attributes map a contract to HTTP**: `@http("POST /v1/send", status: {202: Pending})` on an operation, `@http(names: snake)` and `@auth(…)` on the contract, the key's header and body field on `@key`; addresses and credentials come from the environment | The real APIs the lab calls (Notify, Miniflux) are described without code; a request that never went out is retried, and only a lost reply is `Uncertain`. From the lab: Notify's 200 and 202 answers and its idempotency header |
 | Serving contracts | **A program serves a contract with `impl Contract { … }`**: one function per operation, with the contract's types and defaults, run as one transaction; a command with `@key` takes the key last | A service written in Eyelang shares one contract with its callers, and a key can name an entity, so repeats need no dedupe table. From the lab: Notify, written in Eyelang |
 | Serving over HTTP | **`eye run` serves each contract a program serves on its `@port`, read the way a caller sends it**: the `@http` route picks the operation, arguments and replies are in the one JSON shape, `@auth` is checked before any code runs (401), each request is one transaction, and a result has the status `status:` gives its variant, else 200. `NOTIFY_PORT` moves the port, `0` to any free one (section 17) | Callers and servers agree because both read the same attributes, and the key, not a cache of replies, makes a repeat safe, as for any service. From the lab: Notify written in Eyelang must answer the lab's other programs |
-| Ports and callers | **`@port` is where a service listens, and `@allow` who may reach it, checked at compile time.** A contract a program serves must declare `@port`; a contract without one is a service outside the network, reached at its configured URL, that any module may call. `@allow(m, …)` lists the modules that may call its operations (besides its own module, the modules that serve it, and tests); each name is a module the program can import; `@allow(nobody)` lets no module call it; `@allow` needs `@port` (section 17) | The lab's own Notify has a port and four callers, which network policy can be written from, while Telegram, Miniflux and NetBird are outside services with no port of ours to guard: a rule that every called contract declares a port would have given them made-up ones. Callers get the port from the contract, so a call can't go to a wrong one |
+| Ports and callers | **`@port` is where a service listens, and `@allow` who may reach it, checked at compile time.** A contract a program serves must declare `@port`; a contract without one is a service outside the network, reached at its configured URL, that any module may call. `@allow(m, …)` lists the modules that may call its operations (besides its own module, the modules that serve it, and tests); each name is a module the program can import; `@allow(nobody)` lets no module call it; `@allow` needs `@port` (section 17) | The lab's own Notify has a port and four callers, which network policy can be written from, while Telegram, Miniflux and NetBird are outside services with no port of ours to guard: a rule that every called contract declares a port would have given them made-up ones. Callers write no port: a call goes to the URL the configuration gives, and the policy opens only the contract's port, so a call configured for another port reaches nothing |
 | Fresh and destructive commands | **`@fresh` adds a `basedOn: Version` parameter and the outcomes `Stale` and `Expired`; `@destructive` adds an `approval: Approval` parameter.** Both come after the declared parameters, before `key`, and a served `impl` takes them too. `Stale` means the state changed since that version, `Expired` that what the command was based on is gone; `Expired` is the one `approval!` gives. A `Version` has `==` and no order; a snapshot's `version` is one. Over HTTP they travel as arguments, a reply of 409 is `Stale` and 410 `Expired`, and both outcomes are objects tagged with `"kind"` (section 17) | The check-then-act race is the usual bug in programs that act on another service's state, and the fix (send the version you read, let the service refuse) is easy to forget, so the contract asks for it and the match must handle the refusal. Two outcomes because a caller does different things: read again after `Stale`, give up after `Expired`. Reusing `approval!`'s `Expired` keeps one word for "too late" |
 | Network policy | **`eye gen policy` writes Kubernetes `NetworkPolicy` objects from the contracts**: for each contract with `@port`, the pods of the module that serves it (else of the contract's own module) accept TCP on that port only from the pods of the modules whose code calls it, among those `@allow` lets. Pods are labelled `eyelang.module: <module>`; the namespace is the `--namespace` flag (section 17) | The homelab deploys to Kubernetes, and a plain `NetworkPolicy` needs no CNI extension. The checker already knows who calls what, so the policy admits the callers the code has, not every name `@allow` lists: a module listed but not yet calling stays out until it does. The namespace is a deployment's choice, not the program's |
 | Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
-| Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
+| Queries | **Pipelines** (`filter`, `map`, …) over lists and entity sets alike. Over an entity set they run in memory today; compiling them to SQL waits for several runners on one database (open question 28) | The same code as for lists |
 | Reactions | **Views trigger jobs**: `@on(enters(view))`, `@on(leaves(view))` | Replaces most polling cron jobs |
 | Evolution | Adding a field with a default is automatic; anything else raises the entity's **`@version`** by one and adds a **`migrate from N`** function, from a row as it was stored at version N to the state at N+1. Migrations chain, with no gaps; `eye run` refuses to start if a stored row has no path to the current version | Stored data outlives code, and the shape of old data needs no declaration kept around: a migration reads the old row by name |
 | Mutation | **Mutable value semantics**: `var` locals, `mut` parameters and `mut self` methods, field assignment and `+=`. Callers write `mut` too: `unify(mut subst, a, b)`. Values never alias; there are no references or pointers | Systems code reads naturally, every place a value can change is visible in the diff, and without aliasing there are no cycles, so reference counting stays enough |
 | Generics and methods | Lower-case **type variables** (`List(a)`), requirements with `where a: Ord`, and methods on a type with `impl Type { … }` | Generic code without new brackets; types get their own operations |
-| Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing, saving and schemas are derived for data types whose parts have them. An impl lives in the module of the trait or of the type, and a type variable has only the traits its `where` gives it | One mechanism for generic code; a requirement written once is checked at every call, and two modules can't give one type two meanings of a trait |
+| Shared behaviour | **Traits** with explicit `impl`; equality, ordering, printing, hashing, saving and schemas are derived for data types whose parts have them. An impl lives in the module of the trait or of the type (an `impl` of a contract, which serves it, may go in any module), and a type variable has only the traits its `where` gives it | One mechanism for generic code; a requirement written once is checked at every call, and two modules can't give one type two meanings of a trait |
 | Declarations | **Typed attributes** (`@on`, `@memory`, `@priority`, …) on jobs, entities and contracts. Each attribute is declared with where it goes and what it takes, and the checker holds every use to that: `@concurency isn't an attribute; did you mean @concurrency?` | One general mechanism instead of special syntax per feature, and a program can't say "one at a time" and quietly get five. From the lab: a misspelt attribute was ignored, and `@concurrency(1)` wasn't enforced |
 | Starting jobs | **A run can be started with a key, and starts once per key**: `ring.start("kitchen", key: "kitchen")`. `main` runs on every start of `eye run`, so a job it starts must have a key | The obvious way to start long-lived work from `main` is also the right one, and an event or command that comes twice starts one run. From the lab: a restart started the morning's job a second time |
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps and is used only in jobs. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
@@ -118,10 +139,10 @@ construct that also works outside that domain.
 | Keywords | **Only statement and expression words are reserved.** Declaration words (`type`, `entity`, `state`, `job`, `view`, `test`, …) are keywords only where a declaration starts | Common names such as `state`, `view`, `type` and `test` stay usable |
 | Blocks | **Braces**, only where they hold several statements. A branch that is one expression or one assignment needs none: `if c then a else b`, `Pattern => value`, `Ok(t) => found += [t]`, `fn x: value`, `fn f() = value`. Layout is free; indentation means nothing | Keeps parsing simple and pasting safe, with no whitespace pitfalls, while one-liners stay light. From the lab: sorting results into lists in a `match` needed braces on every arm |
 | Strings | **One line, or `"""` for many lines.** A multi-line string starts with `"""` and a line break and ends with `"""` on a line of its own, apart from what follows it; that line's indentation is removed from every line (section 4) | Prompts and messages read as text in the code, an unclosed `"` still can't swallow a file, and the formatter re-indents code without changing a string. From the lab: the digest's 40-line prompt |
-| String positions | **A position in a string is an `Offset`, not an `Int`**, as Swift's `String.Index` is. `s.indexOf(part)` gives one, `s.slice(a..b)` takes a `Range(Offset)`, and `s.start()`, `s.end()`, `s.after(i)` and `s.before(i)` make and move them; `size`, `take` and `drop` count characters, in `Int`s | Scanning by position costs nothing per step and can't cut a character in two, and a count can't be passed where a position goes: with `Int` offsets, `s.slice(0..(s \|> size))` on `"Málaga"` quietly dropped the last letter. From the lab: the digest's HTML-to-text scanner (open question 32) |
+| String positions | **A position in a string is an `Offset`, not an `Int`**, as Swift's `String.Index` is. `s.indexOf(part)` gives one, `s.slice(a..b)` takes a `Range(Offset)`, and `s.start()`, `s.end()`, `s.after(i)` and `s.before(i)` make and move them; `size`, `take` and `drop` count characters, in `Int`s | Scanning by position costs nothing per step and can't cut a character in two, and a count can't be passed where a position goes: with `Int` offsets, `s.slice(0..(s \|> size))` on `"Málaga"` quietly dropped the last letter. From the lab: the digest's HTML-to-text scanner |
 | Arguments | **`name:` alone passes the variable of that name**: `send(key:)` is `send(key: key)` | Keys, priorities and recipients pass through several layers under their own names, and the label still shows at each call. From the lab: `key: key` and `priority: priority` in every layer of the digest and the reminders |
-| Statements | **A newline ends a statement** unless the next line starts with an operator, `.`, `,`, `:`, `=` or `else`. `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
-| Braces in expressions | A `{` after `if … `, `else`, `for`, `while`, a signature or a lambda's parameters opens a block; anywhere else it starts a record or map. After `=>` it opens a block unless `name:`, `name,` or `name with` follows, which only a record can start. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found with at most two tokens of lookahead, in both parsers; a match arm returns a record without extra parentheses |
+| Statements | **A newline ends a statement** unless the next line starts with a binary operator, `.`, `?`, `,`, `:`, `=`, `->` or `else` (section 4). `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
+| Braces in expressions | A `{` after `if … `, `else`, `for`, `while`, `let … else`, a signature, `test "…"` or a lambda's parameters opens a block; anywhere else it starts a record or map. After `=>` it opens a block unless `name:`, `name,` or `name with` follows, which only a record can start. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found with at most two tokens of lookahead, in both parsers; a match arm returns a record without extra parentheses |
 | Pipes | Data-first: `x |> f(a)` is `f(x, a)`; `_` places the value elsewhere: `x |> f(a, _)` | Matches method-call intuition |
 | Memory | Reference counting with in-place reuse of uniquely owned values; immutable values; entities referenced by ID | No GC pauses, and no reference cycles by construction |
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
@@ -402,9 +423,11 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   There is no null.
 - **Type variables** are lower-case names in types: `List(a)`, `Map(k, v)` (section 8).
 - **Ranges:** `0..n` counts up to but not including `n`, and `0..=n` includes it. Ranges drive `for`
-  loops, slices and patterns. A range is a value of type `Range(a)` with fields `start` and `end`.
-  A range of times of day may wrap midnight: `23:00..08:00` holds 23:30 and 07:00, as quiet hours
-  need.
+  loops, slices and patterns. A range is a value of type `Range(a)` with fields `start` and `end`,
+  which hold the bounds as written: `(0..5).end` and `(0..=5).end` are both 5, so `end` doesn't say
+  whether the range includes it. A range whose end comes before its start is empty: `5..2` holds
+  nothing, and a `for` over it runs no times. A range of times of day is the exception: it wraps
+  midnight, so `23:00..08:00` holds 23:30 and 07:00, as quiet hours need.
 - **Slices:** `xs[2..5]`, `xs[..n]` and `bytes[i..]` are views that share storage with what they
   come from. A slice is clamped to the elements that exist, so it never fails, while `xs[i]`
   returns an `Option`.
@@ -534,7 +557,8 @@ fn tally(times: List(Instant)) -> Counter {
   parameter is. A method that takes `mut self` can only be called on a `var` or a `mut` parameter.
 - **No aliasing.** The same variable can't be passed as `mut` twice in one call, or passed as `mut`
   and read in the same call: `swap(mut a, mut a)` is a compile error. Closures can't capture a
-  `var` or a `mut` parameter.
+  `var` or a `mut` parameter. An entity method's closures may read its state fields, though
+  (section 14).
 - **No references.** A `mut` parameter lasts for the call; it can't be stored or returned. Nothing
   in the language is a pointer, so values can't form cycles, and reference counting reclaims
   everything without a garbage collector.
@@ -567,7 +591,8 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
 }
 ```
 
-- **Methods** are declared in `impl Type { … }` in the module that defines the type, and called as
+- **Methods** are declared in `impl Type { … }` in the module that defines the type (an `impl` of a
+  contract goes anywhere, section 11), and called as
   `x.method(args)`. A function in the block without `self` is called on the type: `Lexer.new(src)`.
   Trait methods are called the same way (section 11).
 - **A field that holds a function is called like a method.** With `type Timer = { name: String,
@@ -576,7 +601,10 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   method named like a field that holds a function.
 - **Pipes and methods.** `x |> f(a)` calls an ordinary function with `x` first; `x.f(a)` calls a
   method. Collection operations in the standard library are functions, used with pipes, so the same
-  pipeline works on lists, iterators and entity sets.
+  pipeline works on lists, iterators and entity sets. The built-in functions can also be called as
+  methods today (`xs.first()` is `first(xs)`); calling any function whose first parameter takes
+  the value as `x.f(a)` was decided on 2026-10-12, and ROADMAP task G.15 builds it and writes the
+  rule here.
 - **Type variables** are lower-case names in types, as in Gleam: `fn first(xs: List(a)) -> Option(a)`,
   `type Pair(a, b) = { first: a, second: b }`. A lower-case name followed by `.` is a module:
   `notify.Delivery`.
@@ -641,7 +669,9 @@ remaining fields or elements; `..rest` binds the remaining elements.
 
 A variant pattern names a variant of the matched value's type, so a variant declared in an imported
 module needs no module prefix in a pattern, even when another module has a variant of the same name:
-`Refused(reason)` in the tour matches zeropod's `Refused`.
+`Refused(reason)` in the tour matches zeropod's `Refused`. Outside patterns an imported variant may
+be written alone too, `fn t() = Blocked`, when no other imported module has one of that name
+(section 13).
 
 Every `match` must be exhaustive. Adding a variant to a type makes each `match` that doesn't handle
 it a compile error, which is how a new outcome from another service reaches every caller.
@@ -710,7 +740,9 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   leave out their types, which come from the trait, as `fn name(self) = self.nick` does above.
 - **Coherence.** An impl lives in the module that declares the trait or the one that declares the
   type, so two modules can't give one type two meanings of a trait. A type implements a trait
-  once for each set of type arguments.
+  once for each set of type arguments. An `impl` of a contract is the exception: it gives no type
+  a trait, but says which module serves the contract, so it may go in any module, as the lab's
+  `notifier` serves `notify.Notify` (section 17).
 - `Eq`, `Ord`, `Show`, `Hash`, `Save` and `Schema` are derived automatically for records, variants and
   collections of types that have them. Derived `Ord` orders a type's variants as they are declared,
   then by their fields, and a record's fields in the order the type declares them, so
@@ -841,8 +873,9 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
 
   So `retry`, `timeout`, `race`, `parallelMap` and `reserve!` work with any function, and every
   public signature still lists everything its body can do.
-- **Functions stored in data state their effects.** A function type without `uses` is pure; one
-  kept in a field or a collection, and called later, says what it may do:
+- **Functions stored in data state their effects.** A function type without `uses` is pure,
+  except in a parameter's type, where it takes a callback (below). One kept in a field or a
+  collection, and called later, says what it may do:
 
   ```eye
   type Handler = { name: String, run: fn(Event) uses {net Notify.send} }
@@ -854,8 +887,10 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
   there may do no more: `{ name: "n", run: fn e: now() }` is an error, `this function uses clock,
   which its type here, fn(Event) uses {net Notify.send}, doesn't list`. The same holds for a
   lambda or a named function put in a list, returned, or passed where a parameter's function type
-  has a `uses` clause, which is then a limit. A parameter's function type without `uses`, as in
-  `map`'s `fn(a) -> b` or `race`'s `List(fn() -> a)`, takes a callback, which may do anything;
+  has a `uses` clause, which is then a limit. A function type without `uses` anywhere in a
+  parameter's type, as in `map`'s `fn(a) -> b` or inside `race`'s `List(fn() -> a)`, takes a
+  callback, which may do anything (the parameters and result of that function type keep the
+  general rule);
   so a callback can't be kept in data, nor can a lambda that calls one. To keep it, state its
   effects in the parameter's type: `fn register(run: fn(Event) uses {clock}) -> Handler`. A
   stored function given as a callback, as in `xs |> map(h.run)`, does what its type states, which
@@ -925,6 +960,10 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,
   `None` for an empty range), `random.float()`, `random.pick(xs)` and `random.shuffle(xs)` draw
   numbers. A relative path is relative to the directory the program was started in.
+- **Which standard modules need `import`.** `ai`, `approvals`, `fs`, `http`, `process` and
+  `random` are imported as a program's own modules are (`import fs`); without the import,
+  `fs.readText` is `undefined name fs`. `log` and `env` are built in, as `print` is, so
+  `log.info(…)` and `env.get(…)` need no import.
 - **`eye run` keeps a program's jobs going.** It runs `main`, if the program has one, every time
   it starts; then, if the program declares jobs, it stays up: sleeping runs wake when their time
   comes, schedules fire, and it stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.
@@ -1081,6 +1120,10 @@ entity Player(id: PlayerId) {
   function `add`, even in an entity that has a method of that name. The state is
   loaded before the call and saved when the transaction commits; nothing outside the method sees a
   change until the commit.
+  - **A method's closures may read state fields**, unlike a `var` (section 7):
+    `players |> filter(fn p: p != owner)`. A closure gets each field's value as it was when the
+    closure was made, as it gets a `let`'s, and can't change one: `a closure can't change the
+    entity's state`.
 - **Methods never wait.** They can't use `!`, so they can't call other services; those calls
   belong in jobs. A method can start a job (`wake.start(id)`), and the job begins only if the
   transaction commits.
@@ -1091,6 +1134,9 @@ entity Player(id: PlayerId) {
   `Version` that counts the transactions that changed the entity: 0 when it is new, then one more
   for each. Snapshots go stale, and commands can name the version they were based on (see
   `@fresh` in section 17). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
+  Since the snapshot's `version` is the transactions', a state field can't be named `version`:
+  `a snapshot's version counts the transactions that changed Doc, so a state field can't be
+  named version: name it revision, or what it counts`.
 - **Evolution:** `@version(N)` numbers the shape of an entity's stored state (1 without it), and
   every row records the version it was saved with; it isn't the snapshot's `version`, which counts
   transactions.
@@ -1128,7 +1174,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 }
 ```
 
-- **`!` marks a checkpoint.** Every recorded step in a job is a `!` call (section 12). A resumed
+- **`!` marks a step; a checkpoint is where a run resumes.** Every recorded step in a job is a
+  `!` call (section 12). A checkpoint is the run's saved place. A resumed
   or restarted run continues from its last checkpoint: no recorded call runs again, and it sees
   the values it saw. The interpreter keeps a checkpoint at the start of each statement of the
   job's body, the statements inside its loops, ifs and matches included, once the run has taken
@@ -1154,17 +1201,18 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   than on its first. `eye runs` keeps the last 20 steps a checkpoint dropped, and counts the
   rest.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
-  file handle or `Secret` across a checkpoint is a compile error.
-- **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction as the
-  checkpoint, so they happen exactly once.
+  file handle or `Secret` across a `!` is a compile error.
+- **Entity calls from jobs** (`World(w).markAsleep!()`) commit in the same store transaction that
+  records the step in the run, so they happen exactly once.
 - **Where runs live.** Entities, runs and checkpoints are kept by a store, chosen when the program is
   started or embedded. The default store keeps them in memory and is itself written in Eyelang
   (`MemoryStore` in `check/runtime/store.eye`, part of every program): it is an immutable value, each
   transaction is a pure function from one store value to the next, and the runtime holds the only
   reference, so compiled code updates it in place. (The interpreter has no reference counts, so it
   copies what changes; the store keeps runs in buckets of 64 and rows by entity type to keep that
-  small.) Until traits are checked, `Store` is the Go interface the runtime calls, and
-  `MemoryStore` has the methods a `Store` trait will ask for. It is what tests, the REPL and
+  small.) The trait `Store(s)` in the same file says what a store does, and `MemoryStore`
+  implements it; the runtime, written in Go, calls the store through a Go interface with the
+  same methods. It is what tests, the REPL and
   embedders use; on its own it doesn't survive a restart. For one machine, the journal (question 9)
   appends each commit to a file and syncs it before the commit counts, which is what `eye run`
   uses by default. The Postgres store (`eye run --store postgres://…`, or `$EYE_STORE`) keeps the
@@ -1279,6 +1327,14 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
       Failed(fault) => Err(Faulted(fault))
     }
   ```
+
+  Every other fault the runtime meets ends the run as `Unreachable`, with a message that says
+  what happened: a request the service refused (a 4xx reply that `status:` doesn't name, section
+  17), a replayed step whose call differs from the recorded one, a call a test's fakes have no
+  exchange for, and a dollar `@budget` on a model whose price isn't known (section 19). These are
+  bugs in the program or its configuration, so like `unreachable` they fail the test they happen
+  in, while the other five faults come from a limit or a service, not a bug, and don't (section
+  20).
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
   is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't
@@ -1292,7 +1348,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   |---|---|
   | `@on(trigger)` | `daily(…)`, `weekdays(…)`, `every(15 min)`, `cron("…", in: zone)`, `enters(view)`, `leaves(view)`, `event(contract.event)`. A schedule passes the job the date of the firing in the schedule's zone, if the job takes one; a view, the entity's `Ref`; an event, the event |
   | `@memory(size)` | budget admitted before the run starts; the runtime enforces it |
-  | `@priority(p)` | `interactive`, `normal`, `background` or `batch`; under memory pressure, lower priorities pause at their next checkpoint |
+  | `@priority(p)` | `interactive`, `normal`, `background` or `batch`; under memory pressure, a run of a lower priority doesn't start or resume while one of a higher priority waits for memory, and a run that is executing isn't paused (open question 26) |
   | `@deadline(duration)`, `@deadline(13:40, in: zone)` | how long after its start, or by what time, a run must finish; after that it ends as `Failed(DeadlinePassed)`, even while it sleeps or waits |
   | `@concurrency(n, by: param)` | at most `n` runs at once, or per value of the parameter named. A run over the limit waits in a queue and begins when a run of its group finishes, in the order they were started; a waiting run keeps its place, so `@concurrency(1)` asks one question at a time, in order. A scheduled start that finds the limit reached is skipped, not queued |
   | `@limit(n, per: duration, by: param)` | at most `n` runs begin in any window of that length, optionally per value of a parameter: `@limit(1, per: 1 s, by: chat)`. A run over the rate waits until the window lets it begin |
@@ -1323,7 +1379,9 @@ job sleepWhenIdle(w: Ref(World)) { sleep!(20 min) }   # full version in the tour
   commit.
 - `enters(view)` starts one run per entity that begins matching; `leaves(view)` starts one per
   entity that stops matching.
-- Over entity sets, pipelines compile to SQL. The same functions work on in-memory lists.
+- Over entity sets, pipelines run in memory today, over the entities the store holds, with the
+  same functions that work on lists. Compiling them to SQL waits for several runners on one
+  database (open question 28), since one runner already holds every entity in memory.
 
 ## 17. Contracts: talking to other services
 
@@ -1357,8 +1415,10 @@ type Delivery =
   are derived from it, so a wrong port or an unapproved caller is a compile error.
 - **`@port(n)` is where the service listens.** A program that serves a contract with `impl`
   serves it on that port, so a contract that a program serves must declare one: an `impl` of a
-  contract without `@port` is an error at the contract's name. Callers never write a port; they
-  get it from the contract, so no call can go to a wrong or undeclared one. A contract without
+  contract without `@port` is an error at the contract's name. Callers never write a port in
+  code: a call goes to the URL the configuration gives (below), and the network policy written
+  from `@port` lets callers through to that port only, so in a deployment a call configured for
+  another port reaches nothing. A contract without
   `@port` describes a service outside the program's network, such as Telegram or a hosted feed
   reader: the program reaches it at the URL its configuration gives (below), and any module may
   call it.
@@ -1509,8 +1569,9 @@ type Delivery =
   ```
 - **A contract's operations are its module's functions.** A module that declares one contract offers
   its commands and queries by name: `notify.send!(…)` for `contract Notify { command send … }`.
-- **Serving a contract.** A program written in Eyelang serves a contract with `impl Contract { … }`:
-  one function per operation, named after it, with its parameters in order and `key` last for a
+- **Serving a contract.** A program written in Eyelang serves a contract with `impl Contract { … }`,
+  in any of its modules (section 11): one function per operation, named after it, with its
+  parameters in order and `key` last for a
   command with `@key`. Types and defaults come from the contract. Each runs as one transaction, as
   an entity method does, so it can't wait, and it may start jobs. A key can name an entity, so a
   repeated command finds the work it already did:
@@ -1574,11 +1635,15 @@ type Delivery =
   - `@auth(bearer: "secret")`, or `@auth(header: "X-Auth-Token", secret: "secret")`, sends a
     secret with every request.
   - A refused request (a 4xx that `status:` doesn't name) ends the run with a fault that shows the
-    reply: it is a bug in the program or its configuration, not an outcome to handle.
+    reply, `Unreachable` (section 15): it is a bug in the program or its configuration, not an
+    outcome to handle.
 
   A program finds a contract's service at the URL in the environment variable named after its
   module (`NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify`). A program that serves a
-  contract itself calls its own implementation, unless that variable is set.
+  contract itself calls its own implementation, unless that variable is set. The URL alone
+  decides where a call goes, port included; `@port`, and `NOTIFY_PORT` below, decide only where a
+  program that serves the contract listens. A server moved with `NOTIFY_PORT`, as in a test, is
+  reached by callers whose `NOTIFY_URL` names that port.
 - **Serving over HTTP.** `eye run` serves each contract the program serves on the contract's
   port, on every network interface, and runs until it is stopped. It names the port when it
   starts: `eye run: serving notify.Notify on :3001`. `NOTIFY_PORT`, named after the module as
@@ -1774,7 +1839,7 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   models, and a deployment gives others in `AI_PRICES` (`"gpt-5.5=1.25/10"`: dollars per million
   tokens in and out); a provider that reports what a call cost is taken at its word. A budget in
   dollars for a model whose price isn't known isn't kept quietly by tokens instead: the call
-  stops with a fault that says to give the price. Recordings may say what a reply spent
+  stops with a fault, `Unreachable`, that says to give the price. Recordings may say what a reply spent
   (`"usage": {"input": 900, "output": 100}`), and tests count it.
 
 **Tools are functions.** Eyelang functions passed as `tools:` become the model's tools. A tool's
@@ -1925,27 +1990,8 @@ by joining the run.
 
 ## 21. What happens to Eyelang 1
 
-The current code was a testing ground. Little of it carries over, because Eyelang 2 changes the
-semantics, not just the syntax. Proposed handling:
-
-| Part | Size | Verdict | Reason |
-|---|---|---|---|
-| `featureflags/` | 5 lines | **Delete now** | Defines one constant that nothing uses |
-| `assert/` | 61 lines | **Delete now** | Only referenced by a commented-out import |
-| `exploration/` | 23 lines | **Delete now** | A scratch test about runes |
-| `testing/` | 17 lines | **Delete now** | Changes the working directory in `init()` so tests find `examples/`; tests should use `testdata/` instead |
-| `bin/` | 8.2 MB of binaries | **Delete now** | Build outputs don't belong in git; publish them as release assets from CI |
-| `parser/debug.go`, `parser/parser_tracer.go` | 59 lines | Delete with the parser | Commented-out code and a debug tracer called from 17 places |
-| `token/`, `lexer/` | ~420 lines | **Replace** | New tokens (units, dates, times, interpolation, `!`, `@`), byte-offset spans, keeping comments for the formatter |
-| `parser/`, `ast/` | ~1,100 lines | **Replace** | Needs a lossless syntax tree with error recovery (see section 22) |
-| `eval/`, `object/` | ~1,600 lines | **Replace** | The new reference interpreter runs typed IR with entities and jobs; the current evaluator can't be adapted to that |
-| `cli/`, `main.go` | ~120 lines | **Replace** | Becomes the `eye` command: `run`, `build`, `test`, `fmt`, `check`, `repl`, `why` |
-| `repl/lineedit.go` | 318 lines | **Keep** | The line editor and history work and aren't tied to the language |
-| `repl/repl.go` | 125 lines | Adapt | Reuse the loop around the new front end |
-| `examples/*.eye` | 6 files | Replace | Eyelang 1 syntax; Eyelang 2 examples double as test fixtures |
-| `.github/workflows/ci.yml`, `Taskfile.yml`, `go.mod` | — | Keep | Update tasks as the packages change |
-
-Before deleting anything, tag the current state as `eyelang-1` so it stays easy to find and run.
+Eyelang 1, the tree-walking interpreter that served as a testing ground, lives only at the tag
+`eyelang-1`. Its line editor, `repl/`, is the one piece carried over.
 
 ## 22. Implementation plan
 
@@ -1988,9 +2034,10 @@ diagnostics layer, and a conversion from its editor-oriented tree.
    no-aliasing rule for `mut`.
 5. An untyped, resolved IR (`ir/`), and a reference interpreter on it. Every name points at its
    declaration or a slot of its frame; entities, jobs, views and contracts are declarations of
-   the IR, which the interpreter runs directly. The interpreter resumes a job by running it again
-   from the start: each step it already took returns its recorded result, so nothing outside
-   happens twice, and output from those steps isn't printed again. Used by `eye run`, the REPL and
+   the IR, which the interpreter runs directly. The interpreter resumes a job from its latest
+   checkpoint and replays the steps since, each returning its recorded result, so nothing outside
+   happens twice, and output from those steps isn't printed again (section 15; until task 7.3 it
+   replayed every step from the start). Used by `eye run`, the REPL and
    tests, with entities and jobs on an in-memory store, structured concurrency on lightweight
    tasks, and `extern` functions from the Go host or from C libraries loaded at run time (without
    cgo).
@@ -2139,29 +2186,26 @@ operator. All binary operators associate to the left except `??`, which associat
 
 1. **Time conditions in views**, such as "idle for 20 minutes". Today that is `enters(view)` plus
    `sleep!`. Should views support `for 20 min` directly?
-2. **Trait coherence:** decided on 2026-10-11: no. An impl lives in the module of the trait or of
-   the type (section 11).
+2. **Trait coherence.** **Decided** (see the decision log, row "Shared behaviour"): an impl lives
+   in the module of the trait or of the type (section 11).
 3. **Exposing entities and jobs to other services:** a generated contract per entity, or explicit
    contracts only?
-4. **Job code upgrades:** decided on 2026-10-11: detect, and refuse. A paused run resumes only at
-   a resume point that still exists with the same live variables; `eye run` refuses to start
-   otherwise, and until runs have frames, replay faults a run whose recorded call differs from
-   the one it replays (section 15). Finishing old runs on old code is rejected, since entities
-   migrate forward. A `migrate` for a job's resume points waits for a program that needs it.
+4. **Job code upgrades.** **Decided** (see the decision log, row "Job code changes"): detect, and
+   refuse (section 15). Still open: a `migrate` for a job's resume points, once a program needs
+   one.
 5. **Packages:** `eye.toml` and an `eye.lock` that carries hashes (so Nix needs no placeholder
    hash); registry or git only? `eye.toml` marks a program's root and may list `modules`, more
    directories to find imports in (section 13); what it holds beyond that is open.
-6. **REPL behaviour for jobs:** decided on 2026-10-10: `eye repl` runs jobs against the in-memory
-   store on a clock that moves only when `:advance 20 min` says, as a test's does; `:runs` shows the
-   runs as `eye runs` does. The session keeps its entities, runs and bindings while declarations
-   change.
+6. **REPL behaviour for jobs.** **Decided** (section 13, `eye repl`): jobs run against the
+   in-memory store on a clock that moves only with `:advance`, as a test's does.
 7. **Metaprogramming after v1.0:** if real code keeps repeating the same patterns, add attribute
    macros (compile-time Eyelang functions that inspect a declaration's types and generate code).
    The built-in constructs could then be re-expressed with them, and grammar and editor support
    would stay unchanged because macros would only appear as attributes.
-8. **Multi-line strings:** decided on 2026-10-10: `"""`, with the closing line's indentation as
-   the margin (section 4).
-9. **Durability without a database:** decided on 2026-10-10: the journal. Each commit (entity
+8. **Multi-line strings.** **Decided** (see the decision log, row "Strings"): `"""`, with the
+   closing line's indentation as the margin (section 4).
+9. **Durability without a database.** **Decided** (see the decision log, rows "Storage" and "Long
+   runs"): the journal. Each commit (entity
    writes, runs, events, schedule firings, event keys seen, commands whose reply was lost) is one
    line of JSON appended to `.eye/journal` and synced before it counts. A commit that can't be
    written, on a full disk or otherwise, changes nothing: the journal is cut back, memory isn't
@@ -2171,17 +2215,10 @@ operator. All binary operators associate to the left except `??`, which associat
    finish. Events no unfinished run can still see are dropped, an event's key is forgotten after
    30 days, and a run that finished more than 7 days ago keeps a summary (job, arguments, outcome,
    times, step count) instead of its steps; waiting runs and unsettled lost commands are never
-   dropped. Still open:
-   - The retention times are fixed; should a program set them, and should `eye runs` show what
-     was summarised?
-   - A run that never ends, such as the lab's reminders watcher (`while true { …; sleep!(45 s) }`),
-     kept every step, four or more per loop, each wake replaying all of them. Decided and done on
-     2026-10-11: runs save their variables instead of their history, at the statements of the
-     job's body in the interpreter (ROADMAP task 7.3) and at each `!` in compiled code, and the
-     language gets no `continue`-as-new. `eye run` warns about a run that has taken 1,000 steps
-     since its checkpoint, as one whose loop is inside a function the job calls once.
-   - One process per journal (a file lock), and one per Postgres database and schema (an
-     advisory lock). Several runners on one database is question 28.
+   dropped. Runs save their variables, not their history (row "Long runs"), and `eye run` warns
+   about a run that has taken 1,000 steps since its checkpoint. One process writes a journal at a
+   time; several runners on one database is question 28. Still open: the retention times are
+   fixed; should a program set them, and should `eye runs` show what was summarised?
 10. **Streaming model output:** `ai.generate!` returns a whole, checked value. Interfaces that show
     a reply as it arrives want partial results; should `ai.stream` yield an `Iter` of partial
     values, checked as far as they go?
@@ -2197,66 +2234,55 @@ operator. All binary operators associate to the left except `??`, which associat
 14. **`if let`.** Writing the lab, `if let Some(a) = answer then return Err(Taken(a))` came to hand
     twice, where today a `match` with a `None => ()` arm does the same in four lines. `let … else`
     covers the opposite case. Is a third form worth it, or does `match` stay the one way?
-15. **Typed choices:** decided on 2026-10-11: a type whose variants have no fields gets
-    `T.variants()` and `T.parse(s)`, derived (section 11), so the answer is matched as a variant.
-    Contracts stay untyped over the choice, since Notify receives strings on the wire. Still open:
+15. **Typed choices.** **Decided** (see the decision log, row "Typed choices"): `T.variants()`
+    and `T.parse(s)`, derived (section 11). Still open:
     should a choice's label be its `##` comment, or its `Show`, with an impl where the text differs
     from the variant's name? `##` comments are documentation, and using them as text for people
     mixes two jobs; an impl of `Show` is the existing way to choose how a value is written. Until
     this is decided, a label is the variant's `Show`.
-16. **What a fake received:** decided on 2026-10-11: `fakes(…)` is a value that a test names and
-    applies with `with`, and `sent.calls(notify.send)` lists the calls the fakes answered, as
-    records of their arguments with defaults filled in and the key (section 17). The lab's digest
-    no longer keeps the keys it sent with in an entity. Whether a recording's unused exchanges
-    should fail a test is still open: one recording serves several tests.
-17. **Where approvals go:** decided on 2026-10-11: through the program. A run that waits at
-    `approval!` publishes `approvals.requested`; the program routes it with a job of its own (the
-    lab's `approving` module asks the operator on Notify) and answers with `approvals.answered`,
-    which `eye approve`, `eye decline` and tests also publish (section 15). And decided on
-    2026-10-11: an answer names its request's `id`, and an answer whose `by` isn't the request's
-    `from` is refused; text matches only from the command line and in tests, and is refused when
-    it matches more than one waiting approval; an `Approval` has `what` and `by` fields. Built on
-    2026-10-12, where tests and the command line also refuse text that matches no waiting
-    approval, and answer as the person asked when they name no one. Who may publish an answer
-    at all is question 35.
+16. **What a fake received.** **Decided** (see the decision log, row "What a fake received"):
+    `sent.calls(notify.send)` (section 17). Still open: should a recording's unused exchanges
+    fail a test, when one recording serves several tests?
+17. **Where approvals go.** **Decided** (see the decision log, row "Answering approvals"), and
+    built: through the program, which routes `approvals.requested` and answers with
+    `approvals.answered`, naming the request's `id`, from the person in `from:` (section 15). Who
+    may publish an answer at all is question 35.
 18. **Contracts shared by programs.** The lab is one program so that its modules share the Notify
     contract; separate programs would each need a copy. This belongs with packages (question 5).
-19. **Which actions are effects?** Decided on 2026-10-11: every effect in section 12's table is
-    inferred, `publish C.event`, `consume C.event`, `secret "name"` and `ffi` included, and `!`
-    marks every recorded step in a job, so publishing is `publish!` and starting a child run
-    `start!` (section 12). Logging is not an effect.
-20. **Collection functions' types:** decided on 2026-10-11, for v0.1: one function per operation,
-    with a rule for each kind of collection it takes (lists, sets, maps, ranges, `Option`s, and
-    strings where it makes sense), and a requirement where one is needed (`sort` needs `Ord`,
-    `toSet` `Hash`, `sum` `Add`). A `Collection` trait would need traits over type constructors,
-    which v0.1 doesn't have; reopen this if user-defined collections want the same pipelines.
-21. **`Handle(name)` and `extern type`:** decided on 2026-10-11: `Handle` goes, and `extern type`
-    is the one way to name what foreign code owns. A program's `extern type` has no `Save`,
-    `Show`, `Eq`, `Hash` or `Schema` (section 18).
-22. **Printing in jobs:** decided on 2026-10-11: output stays outside the `!` rule. `print` keeps
-    `stdio` for signatures but is not a step, logging is not an effect, and the interpreter keeps
-    a run quiet while it replays the steps since its checkpoint (section 12).
+19. **Which actions are effects?** **Decided** (see the decision log, row "Recorded steps"):
+    every effect in section 12's table is inferred, and `!` marks every recorded step in a job.
+20. **Collection functions' types.** **Decided** for v0.1 (section 18): one function per
+    operation, with a rule for each kind of collection it takes and a requirement where one is
+    needed (`sort` needs `Ord`). A `Collection` trait would need traits over type constructors;
+    reopen this if user-defined collections want the same pipelines. The built-ins also work as
+    methods, `xs.first()`; decided on 2026-10-12 to extend that to every function whose first
+    parameter takes the value (section 8, ROADMAP task G.15).
+21. **`Handle(name)` and `extern type`.** **Decided** (see the decision log, row "Foreign
+    values"): `extern type` is the one way to name what foreign code owns (section 18).
+22. **Printing in jobs.** **Decided** (see the decision log, row "Recorded steps"): output is not
+    a step, and logging is not an effect (section 12).
 23. **Where `!` goes on a helper.** Writing `fn stamp() = now()` and calling `stamp!()` makes the
     whole helper one recorded step; a helper that itself has `!` steps is called with `!` too, but
     then its steps are recorded one by one. The same mark means "record this call" in one case and
     "this call contains steps" in the other. Is one mark for both right, since either way the
     caller sees a point where the run may stop and resume, or should the difference show?
-24. **`dyn Store`, and traits that name their own type.** The decision log's own example of
-    `dyn` is choosing a store at run time, but the `Store` trait is `Store(s)`, whose `commit`
+24. **`dyn Store`, and traits that name their own type.** Choosing a store at run time is an
+    obvious use of `dyn`, but the `Store` trait is `Store(s)`, whose `commit`
     returns `s`, the store's own type, so a `dyn Store` would need to say which store it is. A
     trait has no name for "the type that implements me" (`Self`), and threads it through a
     parameter instead, as `Add(rhs, out)` does. Should traits get `Self`, with traits whose
     methods return `Self` kept out of `dyn` (as Rust does), or should a store's `commit` change
     the store in place (`mut self`) so the trait needs no type of its own?
-25. **Naming a record's type at its literal.** Records are nominal and a literal takes the type
-    its context expects. Where the context is a `dyn Trait`, or a list of them, nothing says
-    which type a literal is, so each implementation needs a constructor (`Square.new(2)`) or a
-    `let s: Square = { side: 2 }` first. Should a literal be able to name its type, as
-    `Square { side: 2 }` does elsewhere, or is a constructor the one obvious way?
+25. **Naming a record's type at its literal.** **Decided** (2026-10-12): no syntax at the
+    literal; a lambda's record literal takes its type from where the result goes, as other
+    literals do, so `users |> map(fn u: { name: u.name })` builds the record type the result is
+    used as. Built by ROADMAP task G.14. Still open: where the context is a `dyn Trait`, nothing
+    says which type a literal is, so each implementation needs a constructor (`Square.new(2)`)
+    or a `let s: Square = { side: 2 }` first. Is that enough?
 26. **What `@memory` measures.** A compiled job would count its process's memory. The reference
     interpreter runs one run at a time and counts what it keeps for a run: its saved state, with
-    every step's result. So "lower priorities pause at their next checkpoint" happens only in that
-    a run waiting for memory isn't overtaken; nothing is paused mid-run. Is saved state the right
+    every step's result. So `@priority` acts only in that a run waiting for memory isn't
+    overtaken by a lower one; nothing is paused mid-run. Is saved state the right
     measure until v0.4, and should `eye runs` show each run's against its `@memory`?
 27. **One flag for the store.** `eye run` takes `--journal file`, `--store postgres://…` and
     `--memory` (keep nothing), and now `--memory-limit`, which reads like the third. Should the
@@ -2329,3 +2355,23 @@ operator. All binary operators associate to the left except `??`, which associat
     runtime's own. The standard `approvals` module can't name the program's modules, so the
     program would need a place to say it, such as `eye.toml` or an attribute on the routing job
     (`@answers(approvals)`). Is a guard on publishing worth a new rule, and where does it go?
+36. **`@destructive` means two things.** On a command it adds an `Approval` parameter, which the
+    caller gets from `approval!` (section 17); on a function given to a model as a tool, it
+    pauses the job until someone approves that one call (section 19), though nothing says who is
+    asked, as `approval!`'s `from:` does. Should the tool form take the same `Approval`, or have a
+    name of its own and say whom it asks?
+37. **One shape for "time ran out".** `poll!` gives `false`, `next!` gives `None`, and
+    `approval!` gives `Expired` when their time runs out (section 15). Should every wait with a
+    limit end the same way, such as a variant `TimedOut` or an `Option`?
+38. **Slices and memory.** `xs[2..5]` and `bytes[i..]` share storage with what they come from
+    (section 5), so a 10-byte slice keeps a 100 MB `Bytes` alive, a cost nothing shows. What is a
+    slice's type, the type it was cut from or one of its own, and should keeping a small slice of
+    a large value copy it?
+39. **A module with two contracts.** A module that declares one contract offers its operations
+    and events by name, `notify.send` (section 17). With two contracts, two operations or events
+    could share a name. Should a module declare at most one contract, or should calls name the
+    contract, `notify.Notify.send`?
+40. **What `main` repeats.** `main` runs on every start of `eye run`, and the key rule stops it
+    starting a job twice (section 13), but its entity calls and publishes happen again on every
+    start: `pub fn main() { Ledger("x").credit(10) }` credits on each restart. Should `main` be
+    held to keyed work only, or should a program's setup move to something that runs once?

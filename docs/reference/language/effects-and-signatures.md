@@ -57,8 +57,9 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
 
   So `retry`, `timeout`, `race`, `parallelMap` and `reserve!` work with any function, and every
   public signature still lists everything its body can do.
-- **Functions stored in data state their effects.** A function type without `uses` is pure; one
-  kept in a field or a collection, and called later, says what it may do:
+- **Functions stored in data state their effects.** A function type without `uses` is pure,
+  except in a parameter's type, where it takes a callback (below). One kept in a field or a
+  collection, and called later, says what it may do:
 
   ```eye
   type Handler = { name: String, run: fn(Event) uses {net Notify.send} }
@@ -70,8 +71,10 @@ what reading a secret by a name that isn't a literal needs. An `extern fn` that 
   there may do no more: `{ name: "n", run: fn e: now() }` is an error, `this function uses clock,
   which its type here, fn(Event) uses {net Notify.send}, doesn't list`. The same holds for a
   lambda or a named function put in a list, returned, or passed where a parameter's function type
-  has a `uses` clause, which is then a limit. A parameter's function type without `uses`, as in
-  `map`'s `fn(a) -> b` or `race`'s `List(fn() -> a)`, takes a callback, which may do anything;
+  has a `uses` clause, which is then a limit. A function type without `uses` anywhere in a
+  parameter's type, as in `map`'s `fn(a) -> b` or inside `race`'s `List(fn() -> a)`, takes a
+  callback, which may do anything (the parameters and result of that function type keep the
+  general rule);
   so a callback can't be kept in data, nor can a lambda that calls one. To keep it, state its
   effects in the parameter's type: `fn register(run: fn(Event) uses {clock}) -> Handler`. A
   stored function given as a callback, as in `xs |> map(h.run)`, does what its type states, which

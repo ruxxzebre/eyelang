@@ -25,7 +25,9 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   leave out their types, which come from the trait, as `fn name(self) = self.nick` does above.
 - **Coherence.** An impl lives in the module that declares the trait or the one that declares the
   type, so two modules can't give one type two meanings of a trait. A type implements a trait
-  once for each set of type arguments.
+  once for each set of type arguments. An `impl` of a contract is the exception: it gives no type
+  a trait, but says which module serves the contract, so it may go in any module, as the lab's
+  `notifier` serves `notify.Notify` ([section 17](/reference/language/contracts-talking-to-other-services)).
 - `Eq`, `Ord`, `Show`, `Hash`, `Save` and `Schema` are derived automatically for records, variants and
   collections of types that have them. Derived `Ord` orders a type's variants as they are declared,
   then by their fields, and a record's fields in the order the type declares them, so

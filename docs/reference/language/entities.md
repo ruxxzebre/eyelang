@@ -59,6 +59,10 @@ entity Player(id: PlayerId) {
   function `add`, even in an entity that has a method of that name. The state is
   loaded before the call and saved when the transaction commits; nothing outside the method sees a
   change until the commit.
+  - **A method's closures may read state fields**, unlike a `var` ([section 7](/reference/language/mutation)):
+    `players |> filter(fn p: p != owner)`. A closure gets each field's value as it was when the
+    closure was made, as it gets a `let`'s, and can't change one: `a closure can't change the
+    entity's state`.
 - **Methods never wait.** They can't use `!`, so they can't call other services; those calls
   belong in jobs. A method can start a job (`wake.start(id)`), and the job begins only if the
   transaction commits.
@@ -69,6 +73,9 @@ entity Player(id: PlayerId) {
   `Version` that counts the transactions that changed the entity: 0 when it is new, then one more
   for each. Snapshots go stale, and commands can name the version they were based on (see
   `@fresh` in [section 17](/reference/language/contracts-talking-to-other-services)). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
+  Since the snapshot's `version` is the transactions', a state field can't be named `version`:
+  `a snapshot's version counts the transactions that changed Doc, so a state field can't be
+  named version: name it revision, or what it counts`.
 - **Evolution:** `@version(N)` numbers the shape of an entity's stored state (1 without it), and
   every row records the version it was saved with; it isn't the snapshot's `version`, which counts
   transactions.

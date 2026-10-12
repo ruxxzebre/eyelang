@@ -31,6 +31,10 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
   for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,
   `None` for an empty range), `random.float()`, `random.pick(xs)` and `random.shuffle(xs)` draw
   numbers. A relative path is relative to the directory the program was started in.
+- **Which standard modules need `import`.** `ai`, `approvals`, `fs`, `http`, `process` and
+  `random` are imported as a program's own modules are (`import fs`); without the import,
+  `fs.readText` is `undefined name fs`. `log` and `env` are built in, as `print` is, so
+  `log.info(…)` and `env.get(…)` need no import.
 - **`eye run` keeps a program's jobs going.** It runs `main`, if the program has one, every time
   it starts; then, if the program declares jobs, it stays up: sleeping runs wake when their time
   comes, schedules fire, and it stops when nothing is left to wait for, or on Ctrl-C or SIGTERM.

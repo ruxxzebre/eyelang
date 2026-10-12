@@ -28,7 +28,8 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
 }
 ```
 
-- **Methods** are declared in `impl Type { … }` in the module that defines the type, and called as
+- **Methods** are declared in `impl Type { … }` in the module that defines the type (an `impl` of a
+  contract goes anywhere, [section 11](/reference/language/traits)), and called as
   `x.method(args)`. A function in the block without `self` is called on the type: `Lexer.new(src)`.
   Trait methods are called the same way ([section 11](/reference/language/traits)).
 - **A field that holds a function is called like a method.** With `type Timer = { name: String,
@@ -37,7 +38,10 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   method named like a field that holds a function.
 - **Pipes and methods.** `x |> f(a)` calls an ordinary function with `x` first; `x.f(a)` calls a
   method. Collection operations in the standard library are functions, used with pipes, so the same
-  pipeline works on lists, iterators and entity sets.
+  pipeline works on lists, iterators and entity sets. The built-in functions can also be called as
+  methods today (`xs.first()` is `first(xs)`); calling any function whose first parameter takes
+  the value as `x.f(a)` was decided on 2026-10-12, and ROADMAP task G.15 builds it and writes the
+  rule here.
 - **Type variables** are lower-case names in types, as in Gleam: `fn first(xs: List(a)) -> Option(a)`,
   `type Pair(a, b) = { first: a, second: b }`. A lower-case name followed by `.` is a module:
   `notify.Delivery`.
