@@ -462,12 +462,12 @@ What each task is, until its issue holds it:
   `eye runs` shows each approval's id. The lab's `approving` asks on Notify with buttons again.
   Any module may still publish an answer with `by: r.from` (open question 35).
 - **C.9 Every recorded step marked (#52, 5.8, and #26, 2.6; open questions 19 and 22).** Done
-  on 2026-10-11, except `eye fix`: the call sites that needed `start!` were changed by hand. The
-  checker infers `publish T`, `consume T`, `secret S` and `ffi`, so a public function that
-  publishes, reads a secret or calls an extern must list it in `uses`; in a job it requires
-  `publish!`, `start!` on a child run and `!` on an extern call, and refuses `!` on them
-  elsewhere. `print` keeps `stdio` but is not a step; logging is not an effect. `eye fix` (or
-  the formatter) adds the `!` to existing code. SPECS §12 has the rules.
+  on 2026-10-11; the call sites that needed `start!` were changed by hand. The checker infers
+  `publish T`, `consume T`, `secret S` and `ffi`, so a public function that publishes, reads a
+  secret or calls an extern must list it in `uses`; in a job it requires `publish!`, `start!` on
+  a child run and `!` on an extern call, and refuses `!` on them elsewhere. `print` keeps `stdio`
+  but is not a step; logging is not an effect. `eye fix` adds the `!` to existing code (from
+  2026-10-12). SPECS §12 has the rules.
   **Done when:** `check/classes_test.go` has a test for each error with its span; the lab, the
   tour, the docs' programs and `testdata/programs` check with the new `!`.
 - **C.10 Changed jobs under paused runs (open question 4) (done).** `replay` in

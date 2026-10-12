@@ -28,6 +28,7 @@ attributes, each error at its exact line and column.
 | `eye test [--run text] [dir]` | runs a program's `test` blocks, each with a fresh in-memory store and its own clock |
 | `eye check [dir]` | reports errors in a program as `file:line:column: message`; `--syntax` checks only the syntax of any files |
 | `eye fmt [--check] [paths]` | formats files in the one canonical style |
+| `eye fix [--check] [dir]` | rewrites code the language changed under: adds the `!` a durable step in a job now needs |
 | `eye doc [--out dir] [dir]` | writes the API reference as Markdown, from `##` comments: the standard library, and a program's modules |
 | `eye parse [--sexp] files` | prints syntax trees |
 | `eye lsp` | the language server editors run |

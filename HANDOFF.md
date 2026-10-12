@@ -152,7 +152,6 @@ Checker:
 - `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.
 - Generic private functions: `double(2.5)` gives two errors where one would do. Calling itself
   at a bigger type is reported by `eye check --lir` (7.2), not by `eye check`.
-- `eye fix` doesn't add the `!` that `publish!` and `start!` now need in jobs.
 - `check/resolve_test.go`'s unresolvable list keeps `nick` and `nickname` on purpose: a
   migration reads the old row by name, which nothing declares.
 

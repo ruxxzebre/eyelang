@@ -12,6 +12,7 @@ title: The eye command
 |---|---|
 | [`eye parse`](#parse) | print the syntax tree of files |
 | [`eye fmt`](#fmt) | format source files |
+| [`eye fix`](#fix) | rewrite code the language changed under, such as a durable step without its ! |
 | [`eye doc`](#doc) | write the API reference as Markdown |
 | [`eye gen`](#gen) | write build output from a program's contracts: network policy, Go and TypeScript |
 | [`eye check`](#check) | report errors in a program: syntax, names, types and effects |
@@ -51,6 +52,21 @@ formatted for syntax only.
     	list files that aren't formatted and exit 1 if there are any, without changing them
   -syntax-only
     	format a directory's files without checking its program, leaving uses clauses as written
+```
+
+## eye fix {#fix}
+
+```text
+usage: eye fix [--check] [program-directory | file.eye]...
+
+Rewrites a program's code where the language changed under it, then formats
+the files it changed. Today it adds the ! that a durable step needs in a job or
+a waiting function: publish!(…), start!(…), an entity call, a contract's
+operation. It prints each change as file:line:column, and exits 1 if errors
+it can't fix are left; eye check lists them. With no paths, fixes the program
+in the current directory.
+  -check
+    	list what would change and exit 1 if anything would, without changing files
 ```
 
 ## eye doc {#doc}
