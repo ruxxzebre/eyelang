@@ -50,7 +50,8 @@ yet.
 **Ahead, in order**
 
 1. The core gaps (G.1 to G.17, under the phases). G.1 to G.6, lazy `iter` (G.3), the sweep of
-   SPECS.md (G.11) and `average`/`div` (G.16) are done; G.17 is a checker bug found since. Left from the spec review of 2026-10-12
+   SPECS.md (G.11) and `average`/`div` (G.16) are done; G.17 is a checker bug found since. Left
+   from the spec review of 2026-10-12
    ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)): four correctness
    bugs first (entity methods reaching outside, G.7; unrecorded reads in jobs, G.8; re-entrant
    entity calls losing a write, G.9; effects missing at the boundary, G.10), then the owner's
