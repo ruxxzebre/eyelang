@@ -1227,6 +1227,8 @@ func (in *Interp) forOver(f *frame, x *ir.For, iter Value) {
 				return
 			}
 		}
+	case *IterVal:
+		in.walk(it, x.Pos, func(v Value) bool { return !each(v) })
 	case Empty:
 	default:
 		in.faultf(x.Pos, "a for loop can't walk %s", kindName(iter))

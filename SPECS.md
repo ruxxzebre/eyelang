@@ -164,6 +164,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Lock expiry | **A run still waiting inside `lock!` when the lock runs out ends as `Failed(LockExpired(name))`** (section 15) | The expiry lets the next run take a lock a stuck holder keeps. Letting the old holder go on would run the guarded work twice at once, which is what the lock is for |
 | Naming the joins | **The waits for several runs are `allDone!` and `firstDone!`, not `all!` and `first!`**; `all` and `first` are only the collection functions, and `all!(runs)` or `first!(runs)` is an error that names the wait to write (section 15). Decided by the owner on 2026-10-12 | `!` only ever marks the same call as a step; it never changes which function a name means. With `all!` and `first!`, adding or dropping a `!` switched between a wait and a collection function, and a reader had to know both. From the spec review of 2026-10-12, design risk 11 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
 | Ending entities | **`end(ok)` in an entity's own method ends it for good**: `ok` must be an `Approval`, the state is removed, and the store keeps only when it ended and whose approval let it. Calling or reading an ended entity faults; its identity never starts again. In an entity's method `end` is the entity's; elsewhere it is a string's end (section 14) | Ending deletes data, so it takes a person's consent that the compiler checks. If a later call started the identity again from its defaults, a job holding an old reference would bring back what a person approved ending, silently. Resolving `end` by context keeps `s.end()` and the spec's `end(ok)` both |
+| Lazy iteration | **`xs.iter()` gives an `Iter(a)`, a value that describes a walk and runs it again each time it is walked.** Lists, sets, maps, `Int` ranges, strings and `Bytes` give one, and `s.chars()` is one; `map`, `filter`, `take`, `drop`, `enumerate`, `zip` and `flatMap` on an `Iter` give an `Iter`, and the other collection functions walk it. Its functions only compute; it has none of the derived traits, so it can't be live across a `!`; and there are no endless sources (section 5) | Walking twice gives the same elements because an `Iter` is a value, not a cursor a first walk would use up, which would be state shared by everyone holding it. Functions without effects make a second walk cost time and nothing else, wherever it happens. Sources that end keep `size`, `toList` and `sort` sure to finish |
 
 ## 3. A tour
 
@@ -444,9 +445,38 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   is no number to read from it, since it means something only in its own string; it shows as
   `byte 5`.
 - **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
-  characters (`s.chars()`) and any `Iter(a)`. `xs.iter()` gives a lazy `Iter(a)` whose pipelines
-  (`map`, `filter`, `take`, `enumerate`, `zip`) don't build intermediate lists; `toList` collects
-  one.
+  characters (`s.chars()`) and any `Iter(a)`.
+- **Lazy iteration:** `xs.iter()` gives an `Iter(a)`, a sequence computed as it is walked.
+  `map`, `filter`, `take`, `drop`, `enumerate`, `zip` and `flatMap` on an `Iter` give another
+  `Iter` and build no lists in between (`zip` does when either side is one); a `for` loop, or a
+  function that needs the elements, walks it, and `toList` collects it:
+
+  ```eye
+  let squares = (1..1_000_000_000).iter() |> map(fn n: n * n) |> filter(fn n: n % 3 == 1)
+  let few = squares |> take(3) |> toList    # [1, 4, 16]: squares four numbers, not a billion
+  for (i, c) in "héllo".chars() |> enumerate { print(i, c) }
+  ```
+
+  - **Sources.** Lists, sets, maps (their `(key, value)` pairs), ranges of `Int`, strings (their
+    characters) and `Bytes` have `iter()`; `s.chars()` is `s.iter()`, and an `Iter`'s `iter()`
+    is itself. Every source ends, so `size`, `toList` and `sort` on an `Iter` always finish; a
+    large range stands in for an endless count.
+  - **An `Iter` is a value.** Walking it twice gives the same elements: each walk starts again
+    from the source and runs the functions again. An `Iter` that a first walk used up would be a
+    cursor shared by everyone holding it, the shared state section 1 rules out. To walk once and
+    keep the results, `toList`.
+  - **Its functions only compute.** They run whenever and wherever the `Iter` is walked, so a
+    function given to `map`, `filter` or `flatMap` on an `Iter` has no effects: `print` belongs
+    in the loop that walks it. A callback parameter given to one states `uses {}` in its type,
+    as a function kept in a record does (section 12).
+  - **What walks it.** `toList`, `toSet`, `reduce`, `any`, `all`, `find`, `first`, `last`,
+    `size`, `isEmpty`, `count`, `contains`, `sum`, `join`, `sort`, `reverse` and `parallelMap`
+    walk an `Iter`, and `first`, `find`, `any`, `all`, `contains` and `isEmpty` stop at the
+    answer. An `Iter` has no positions, so `get`, `xs[i]` and slices don't take one.
+  - **It can't be kept.** It holds functions, so it has none of `Eq`, `Ord`, `Show`, `Hash`,
+    `Save` and `Schema`: it can't be compared, printed or saved, so it can't be live across a `!`,
+    and a job's `for` loop over one can't wait inside: collect it with `toList` first, so a
+    resumed run finds its place.
 - **Entity references:** `Ref(World)` is an ID, not a pointer. It can be stored, sent and saved
   anywhere, and it can't be confused with `Ref(Player)`.
 - **Special types:** `Secret(a)` (no printing, no saving), `Approval` (only a human approval flow

@@ -429,7 +429,7 @@ fn map(c: Collection(a), f: fn(a) -> b) -> List(b)
 ```
 
 Applies f to each element. On an Option or a Result, applies f to the value inside `Some` or
-`Ok`.
+`Ok`. On an Iter, gives an Iter that applies f as it is walked; f then only computes.
 
 ### filter {#filter}
 
@@ -437,8 +437,8 @@ Applies f to each element. On an Option or a Result, applies f to the value insi
 fn filter(c: Collection(a), keep: fn(a) -> Bool) -> List(a)
 ```
 
-The elements for which keep is true; a set stays a set. Over `Entity.all` in a view, the runtime
-keeps the result up to date.
+The elements for which keep is true; a set stays a set, and an Iter an Iter. Over `Entity.all` in
+a view, the runtime keeps the result up to date.
 
 ### find {#find}
 
@@ -494,7 +494,7 @@ Adds the elements: numbers, durations or sizes.
 fn enumerate(c: Collection(a)) -> List((Int, a))
 ```
 
-Pairs each element with its index, from 0.
+Pairs each element with its index, from 0; on an Iter, as it is walked.
 
 ### drop {#drop}
 
@@ -502,7 +502,7 @@ Pairs each element with its index, from 0.
 fn drop(c: Collection(a), n: Int) -> List(a)
 ```
 
-Everything after the first n elements.
+Everything after the first n elements; on an Iter, an Iter that skips them.
 
 ### take {#take}
 
@@ -510,7 +510,7 @@ Everything after the first n elements.
 fn take(c: Collection(a), n: Int) -> List(a)
 ```
 
-The first n elements.
+The first n elements; on an Iter, an Iter that stops after them.
 
 ### reverse {#reverse}
 
@@ -558,7 +558,7 @@ The key and value pairs.
 fn toList(c: Collection(a)) -> List(a)
 ```
 
-The elements as a list.
+The elements as a list: what collects an Iter.
 
 ### toSet {#toSet}
 
@@ -582,7 +582,7 @@ The shown elements, with separator between them.
 fn flatMap(c: Collection(a), f: fn(a) -> Collection(b)) -> List(b)
 ```
 
-Applies f to each element and joins the results.
+Applies f to each element and joins the results; on an Iter, as it is walked.
 
 ### zip {#zip}
 
@@ -590,7 +590,16 @@ Applies f to each element and joins the results.
 fn zip(a: Collection(a), b: Collection(b)) -> List((a, b))
 ```
 
-Pairs elements of a and b, as far as the shorter goes.
+Pairs elements of a and b, as far as the shorter goes; an Iter when either is one.
+
+### iter {#iter}
+
+```eye
+fn iter(c: Collection(a)) -> Iter(a)
+```
+
+A lazy sequence of the elements, an [`Iter`](./types#Iter): `xs.iter() |> map(f) |> take(3)` applies f to three
+elements, whatever the size of xs. A map gives its (key, value) pairs, a string its characters.
 
 ## Strings and numbers
 
@@ -671,10 +680,10 @@ words `["a", "b"]`.
 ### chars {#chars}
 
 ```eye
-fn chars(s: String) -> List(Char)
+fn chars(s: String) -> Iter(Char)
 ```
 
-The characters of s, in order: `for c in s.chars() { … }`.
+The characters of s, in order, as an [`Iter`](./types#Iter): `for c in s.chars() { … }`.
 
 ### bytes {#bytes}
 

@@ -125,6 +125,10 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("isEmpty", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "isEmpty", at)
+		if it, ok := args[0].(*IterVal); ok {
+			_, more := in.cursor(it, at)()
+			return !more
+		}
 		return len(in.elems(args[0], at)) == 0
 	})
 	add("add", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
@@ -187,12 +191,12 @@ func builtinTable() map[string]*BuiltinFn {
 				}
 			}
 		}
-		for _, e := range in.elems(args[0], at) {
-			if equal(e, args[1]) {
-				return true
-			}
-		}
-		return false
+		found := false
+		in.walk(args[0], at, func(e Value) bool {
+			found = equal(e, args[1])
+			return !found
+		})
+		return found
 	})
 	add("insert", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 3, "insert", at)
@@ -211,6 +215,12 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("first", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "first", at)
+		if it, ok := args[0].(*IterVal); ok {
+			if v, ok := in.cursor(it, at)(); ok {
+				return in.some(v)
+			}
+			return in.none()
+		}
 		es := in.elems(args[0], at)
 		if len(es) == 0 {
 			return in.none()
@@ -234,6 +244,9 @@ func builtinTable() map[string]*BuiltinFn {
 			}
 			return v
 		}
+		if it, ok := args[0].(*IterVal); ok {
+			return it.then(iterStep{op: iterMap, fn: args[1], at: at})
+		}
 		var out []Value
 		for _, e := range in.elems(args[0], at) {
 			out = append(out, in.callValue(args[1], at, e))
@@ -242,6 +255,9 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("filter", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "filter", at)
+		if it, ok := args[0].(*IterVal); ok {
+			return it.then(iterStep{op: iterFilter, fn: args[1], at: at})
+		}
 		var out []Value
 		for _, e := range in.elems(args[0], at) {
 			if in.truth(in.callValue(args[1], at, e), at) {
@@ -252,30 +268,36 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("find", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "find", at)
-		for _, e := range in.elems(args[0], at) {
+		var found Value
+		in.walk(args[0], at, func(e Value) bool {
 			if in.truth(in.callValue(args[1], at, e), at) {
-				return in.some(e)
+				found = e
+				return false
 			}
+			return true
+		})
+		if found == nil {
+			return in.none()
 		}
-		return in.none()
+		return in.some(found)
 	})
 	add("any", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "any", at)
-		for _, e := range in.elems(args[0], at) {
-			if in.truth(in.callValue(args[1], at, e), at) {
-				return true
-			}
-		}
-		return false
+		found := false
+		in.walk(args[0], at, func(e Value) bool {
+			found = in.truth(in.callValue(args[1], at, e), at)
+			return !found
+		})
+		return found
 	})
 	add("all", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "all", at)
-		for _, e := range in.elems(args[0], at) {
-			if !in.truth(in.callValue(args[1], at, e), at) {
-				return false
-			}
-		}
-		return true
+		every := true
+		in.walk(args[0], at, func(e Value) bool {
+			every = in.truth(in.callValue(args[1], at, e), at)
+			return every
+		})
+		return every
 	})
 	add("count", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		if len(args) == 1 {
@@ -312,6 +334,9 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("enumerate", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "enumerate", at)
+		if it, ok := args[0].(*IterVal); ok {
+			return it.then(iterStep{op: iterEnumerate, at: at})
+		}
 		var out []Value
 		for i, e := range in.elems(args[0], at) {
 			out = append(out, &Tuple{Elems: []Value{int64(i), e}})
@@ -324,6 +349,9 @@ func builtinTable() map[string]*BuiltinFn {
 		if s, ok := args[0].(string); ok { // characters, not bytes
 			return s[charOffset(s, n):]
 		}
+		if it, ok := args[0].(*IterVal); ok {
+			return it.then(iterStep{op: iterDrop, n: n, at: at})
+		}
 		es := in.elems(args[0], at)
 		if n > len(es) {
 			n = len(es)
@@ -335,6 +363,9 @@ func builtinTable() map[string]*BuiltinFn {
 		n := in.count(args[1], at)
 		if s, ok := args[0].(string); ok {
 			return s[:charOffset(s, n)]
+		}
+		if it, ok := args[0].(*IterVal); ok {
+			return it.then(iterStep{op: iterTake, n: n, at: at})
 		}
 		es := in.elems(args[0], at)
 		if n > len(es) {
@@ -406,6 +437,9 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("flatMap", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "flatMap", at)
+		if it, ok := args[0].(*IterVal); ok {
+			return it.then(iterStep{op: iterFlatMap, fn: args[1], at: at})
+		}
 		var out []Value
 		for _, e := range in.elems(args[0], at) {
 			out = append(out, in.elems(in.callValue(args[1], at, e), at)...)
@@ -414,12 +448,22 @@ func builtinTable() map[string]*BuiltinFn {
 	})
 	add("zip", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "zip", at)
+		_, lazyA := args[0].(*IterVal)
+		_, lazyB := args[1].(*IterVal)
+		if lazyA || lazyB {
+			return iterOf(args[0]).then(iterStep{op: iterZip, other: args[1], at: at})
+		}
 		a, b := in.elems(args[0], at), in.elems(args[1], at)
 		var out []Value
 		for i := 0; i < len(a) && i < len(b); i++ {
 			out = append(out, &Tuple{Elems: []Value{a[i], b[i]}})
 		}
 		return &List{Elems: out}
+	})
+
+	add("iter", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 1, "iter", at)
+		return iterOf(args[0])
 	})
 
 	// Strings and numbers.
@@ -706,6 +750,8 @@ func (in *Interp) elems(v Value, at ir.Pos) []Value {
 		return out
 	case Empty:
 		return nil
+	case *IterVal:
+		return in.collect(c, at)
 	case *EntitySet:
 		return in.rt.all(c.Entity, at).Elems
 	case *RangeVal:

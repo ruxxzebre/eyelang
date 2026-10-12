@@ -296,6 +296,61 @@ job j() -> List(Int) {
 			"4:5: a task in a job can only compute, since its steps couldn't be recorded: start a child run for this step instead",
 			"7:39: a task in a job can only compute, and stamp uses clock: start a child run for this step instead",
 		}},
+		{"an Iter's pipeline gives an Iter, and toList collects it", `fn a(xs: List(Int)) -> List(Int) = xs.iter() |> map(fn n: n + 1)
+fn b(xs: List(Int)) -> List(Int) = xs.iter() |> map(fn n: n + 1) |> toList
+fn c(s: String) -> List(Char) = s.chars()
+fn d(xs: List(Int)) -> Iter((Int, String)) = zip(xs, ["a"].iter()) |> filter(fn (n, _): n > 0)
+fn e(xs: List(Int)) -> Iter((Int, Int)) = (0..10).iter() |> take(3) |> drop(1) |> enumerate
+fn f(xs: List(Int)) -> Option(Int) = xs.iter() |> get(0)
+fn g() -> Iter(Float) = (1.0..2.0).iter()
+fn h(xs: List(Int)) -> Int {
+  let total = xs.iter() |> reduce(0, fn (acc, n): acc + n)
+  total + (xs.iter() |> sum) + (xs.iter() |> size)
+}`, []string{
+			"1:49: expected List(Int), found Iter(Int)",
+			"3:33: expected List(Char), found Iter(Char)",
+			"6:38: get takes a Map, a List or a Bytes, and this is Iter(Int)",
+			"7:26: expected Range(Int), found Range(Float)",
+		}},
+		{"an Iter's functions only compute", `fn a(xs: List(Int)) -> List(Int) uses {stdio} = xs.iter() |> map(fn n {
+  print(n)
+  n
+}) |> toList
+fn b(xs: List(Int), f: fn(Int) -> Int) -> Iter(Int) = xs.iter() |> map(f)
+fn c(xs: List(Int), f: fn(Int) -> Int uses {}) -> Iter(Int) = xs.iter() |> map(f)
+fn d(xs: List(Int), f: fn(Int) -> Int) -> Iter(Int) = xs.iter() |> filter(fn x: f(x) > 0)
+fn e(xs: List(Int)) uses {stdio} {
+  for n in xs.iter() |> map(fn n: n * 2) { print(n) }
+}`, []string{
+			"1:66: this function uses stdio, and an Iter's functions only compute, since they run each time it is walked, wherever that is: do it in the loop that walks the Iter, or collect it with toList first",
+			"5:72: expected fn(Int) -> Int uses {}, found fn(Int) -> Int: f is a function passed in, which may do anything, and an Iter's functions only compute, since they run each time it is walked: state that it only computes, as f: fn(…) uses {}",
+			"7:75: this function may call f, a function passed in, which may do anything, and an Iter's functions only compute, since they run each time it is walked: state that f only computes, as f: fn(…) uses {}",
+		}},
+		{"an Iter can't be compared, printed or kept across a wait", `fn a(xs: List(Int)) -> Bool = xs.iter() == xs.iter()
+fn p(xs: List(Int)) uses {stdio} { print(xs.iter()) }
+job one(xs: List(Int)) {
+  let it = xs.iter()
+  sleep!(1 min)
+  print(it |> toList)
+}
+job two(xs: List(Int)) {
+  let it = xs.iter()
+  for x in it {
+    sleep!(1 min)
+  }
+  for y in xs.iter() |> map(fn v: v + 1) {
+    sleep!(1 min)
+  }
+  for z in xs.iter() |> toList {
+    sleep!(1 min)
+  }
+}`, []string{
+			"1:31: comparing with == needs Eq, and Iter(Int) has no Eq: an Iter holds the functions of its pipeline, so it has none of Eq, Ord, Show, Hash, Save and Schema: collect it with toList",
+			"2:42: print needs Show, and Iter(Int) has no Show: an Iter holds the functions of its pipeline, so it has none of Eq, Ord, Show, Hash, Save and Schema: collect it with toList",
+			"6:9: it is an Iter, which can't be saved, and it is still needed after a waiting call: get it again after the `!`",
+			"10:12: this loop walks an Iter, which can't be saved, and its body waits, so a resumed run couldn't find its place: collect it with toList before the loop",
+			"13:25: this loop walks an Iter, which can't be saved, and its body waits, so a resumed run couldn't find its place: collect it with toList before the loop",
+		}},
 		{"a task group in a job only computes, in its spawned tasks too", `job j() -> Int {
   taskGroup(fn group {
     group.spawn(fn { sleep!(1 min) })

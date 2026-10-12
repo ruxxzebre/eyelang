@@ -84,8 +84,9 @@ pub extern type Map(k, v)
 ## Values without duplicates.
 pub extern type Set(a)
 
-## A lazy sequence: `xs.iter()` gives one whose pipelines build no lists in between, and `toList`
-## collects it.
+## A lazy sequence: `xs.iter()` gives one, and `map`, `filter`, `take`, `drop`, `enumerate`, `zip`
+## and `flatMap` on it give another without building lists in between. Each walk computes it
+## again from its source; `toList` collects it. It can't be saved, compared or printed.
 pub extern type Iter(a)
 
 ## The values from `start` up to `end`: `0..n` leaves `end` out and `0..=n` includes it.
@@ -130,8 +131,8 @@ pub extern type Sender(a)
 ## can't be saved.
 pub extern type Receiver(a)
 
-## What the collection functions take: any of List, Set, Map, Range, Option, and String where it
-## makes sense. It stands for those here; programs write the collection's own type.
+## What the collection functions take: any of List, Set, Map, Range, Iter, Bytes, Option, and String
+## where it makes sense. It stands for those here; programs write the collection's own type.
 pub extern type Collection(a)
 
 ## What `with` applies in a test, such as `clock(…)` or `fakes(…)`.
@@ -350,11 +351,11 @@ pub extern fn first(c: Collection(a)) -> Option(a)
 pub extern fn last(c: Collection(a)) -> Option(a)
 
 ## Applies f to each element. On an Option or a Result, applies f to the value inside `Some` or
-## `Ok`.
+## `Ok`. On an Iter, gives an Iter that applies f as it is walked; f then only computes.
 pub extern fn map(c: Collection(a), f: fn(a) -> b) -> List(b)
 
-## The elements for which keep is true; a set stays a set. Over `Entity.all` in a view, the runtime
-## keeps the result up to date.
+## The elements for which keep is true; a set stays a set, and an Iter an Iter. Over `Entity.all` in
+## a view, the runtime keeps the result up to date.
 pub extern fn filter(c: Collection(a), keep: fn(a) -> Bool) -> List(a)
 
 ## The first element for which test is true.
@@ -375,13 +376,13 @@ pub extern fn reduce(c: Collection(a), start: b, f: fn(b, a) -> b) -> b
 ## Adds the elements: numbers, durations or sizes.
 pub extern fn sum(c: Collection(a)) -> a
 
-## Pairs each element with its index, from 0.
+## Pairs each element with its index, from 0; on an Iter, as it is walked.
 pub extern fn enumerate(c: Collection(a)) -> List((Int, a))
 
-## Everything after the first n elements.
+## Everything after the first n elements; on an Iter, an Iter that skips them.
 pub extern fn drop(c: Collection(a), n: Int) -> List(a)
 
-## The first n elements.
+## The first n elements; on an Iter, an Iter that stops after them.
 pub extern fn take(c: Collection(a), n: Int) -> List(a)
 
 ## The elements in reverse order.
@@ -399,7 +400,7 @@ pub extern fn values(m: Map(k, v)) -> List(v)
 ## The key and value pairs.
 pub extern fn entries(m: Map(k, v)) -> List((k, v))
 
-## The elements as a list.
+## The elements as a list: what collects an Iter.
 pub extern fn toList(c: Collection(a)) -> List(a)
 
 ## The elements as a set, without duplicates.
@@ -408,11 +409,15 @@ pub extern fn toSet(c: Collection(a)) -> Set(a)
 ## The shown elements, with separator between them.
 pub extern fn join(c: Collection(a), separator: String) -> String
 
-## Applies f to each element and joins the results.
+## Applies f to each element and joins the results; on an Iter, as it is walked.
 pub extern fn flatMap(c: Collection(a), f: fn(a) -> Collection(b)) -> List(b)
 
-## Pairs elements of a and b, as far as the shorter goes.
+## Pairs elements of a and b, as far as the shorter goes; an Iter when either is one.
 pub extern fn zip(a: Collection(a), b: Collection(b)) -> List((a, b))
+
+## A lazy sequence of the elements, an [Iter]: `xs.iter() |> map(f) |> take(3)` applies f to three
+## elements, whatever the size of xs. A map gives its (key, value) pairs, a string its characters.
+pub extern fn iter(c: Collection(a)) -> Iter(a)
 
 # == Strings and numbers
 
@@ -445,8 +450,8 @@ pub extern fn replace(s: String, old: String, new: String) -> String
 ## words `["a", "b"]`.
 pub extern fn words(s: String) -> List(String)
 
-## The characters of s, in order: `for c in s.chars() { … }`.
-pub extern fn chars(s: String) -> List(Char)
+## The characters of s, in order, as an [Iter]: `for c in s.chars() { … }`.
+pub extern fn chars(s: String) -> Iter(Char)
 
 ## The bytes of s in UTF-8, for scanning text byte by byte: `src[i] == Some('"')`.
 pub extern fn bytes(s: String) -> Bytes

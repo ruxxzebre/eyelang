@@ -18,6 +18,9 @@ import (
 // (3.5) and dyn (v0.2).
 var errorClasses = []struct{ section, class, test string }{
 	{"§4, §23", "a syntax error", "syntax errors"},
+	{"§5", "an Iter used as a list, or a function an Iter doesn't take", "an Iter's pipeline gives an Iter, and toList collects it"},
+	{"§5", "a function with effects in an Iter's pipeline", "an Iter's functions only compute"},
+	{"§5, §15", "an Iter compared, or live across a `!`, or walked by a loop that waits", "an Iter can't be compared, printed or kept across a wait"},
 	{"§6", "a name nothing declares", "undefined names"},
 	{"§6", "a name declared twice", "duplicate declarations"},
 	{"§6", "_ outside a piped call", "_ goes in a piped call"},

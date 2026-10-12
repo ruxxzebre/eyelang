@@ -50,6 +50,11 @@ type (
 		// written without uses: the function passed in is a callback, whose
 		// effects count where it is given, so it may do anything.
 		callback string
+		// kept says what keeps a function of this type, when that is
+		// something other than data the program declares: keptByIter for
+		// the functions of an Iter's pipeline, which only compute. Errors
+		// say it.
+		kept string
 		// fx is set on the type of a function value, a lambda or a function
 		// named as a value: what it does is known once every effect is, and
 		// a function type that states its effects is checked against it

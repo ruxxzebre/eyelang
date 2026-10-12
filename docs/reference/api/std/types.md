@@ -195,8 +195,9 @@ Values without duplicates.
 type Iter(a)
 ```
 
-A lazy sequence: `xs.iter()` gives one whose pipelines build no lists in between, and `toList`
-collects it.
+A lazy sequence: `xs.iter()` gives one, and `map`, `filter`, `take`, `drop`, `enumerate`, `zip`
+and `flatMap` on it give another without building lists in between. Each walk computes it
+again from its source; `toList` collects it. It can't be saved, compared or printed.
 
 ## Range {#Range}
 
@@ -301,8 +302,8 @@ can't be saved.
 type Collection(a)
 ```
 
-What the collection functions take: any of List, Set, Map, Range, Option, and String where it
-makes sense. It stands for those here; programs write the collection's own type.
+What the collection functions take: any of List, Set, Map, Range, Iter, Bytes, Option, and String
+where it makes sense. It stands for those here; programs write the collection's own type.
 
 ## Handler {#Handler}
 

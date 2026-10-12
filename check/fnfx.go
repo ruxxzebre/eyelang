@@ -23,6 +23,11 @@ import (
 // states its effects, unify records a limit, and checkFnLimits checks each
 // one when effects are known.
 
+// keptByIter marks the function type of a stage of an Iter's pipeline, as
+// the function map takes on an Iter: it runs each time the Iter is walked,
+// wherever that is, so it only computes (SPECS.md §5).
+const keptByIter = "iter"
+
 // fxVar is what a function value may do: the functions whose effects it has.
 // Two function values that must have one type, as the branches of an if,
 // share one.
@@ -136,6 +141,8 @@ func (c *checker) unifyEffects(want, got *tfun) string {
 		c.limitFx(want.fx, got)
 	case got.fx != nil:
 		c.limitFx(got.fx, want)
+	case got.callback != "" && want.kept == keptByIter:
+		return fmt.Sprintf("%s is a function passed in, which may do anything, and an Iter's functions only compute, since they run each time it is walked: state that it only computes, as %s: fn(…) uses {}", got.callback, got.callback)
 	case got.callback != "":
 		return fmt.Sprintf("%s is a function passed in, whose effects count where it is given, so it can't be kept where a function type says what it does: state its effects in its parameter's type, as %s: fn(…) uses {…}", got.callback, got.callback)
 	default:
@@ -180,6 +187,10 @@ func (c *checker) checkFnLimits(all map[*ir.Func]map[string]bool) {
 	}
 	for _, l := range c.ts.fxLimits {
 		r := l.fx.root()
+		if r.callback != "" && l.t.kept == keptByIter {
+			report(r.callbackAt, "this function may call %s, a function passed in, which may do anything, and an Iter's functions only compute, since they run each time it is walked: state that %s only computes, as %s: fn(…) uses {}", r.callback, r.callback, r.callback)
+			continue
+		}
 		if r.callback != "" {
 			report(r.callbackAt, "this function may call %s, a function passed in, whose effects count where it is given, so it can't be kept where its type is %s: state %s's effects in its parameter's type, as %s: fn(…) uses {…}", r.callback, show(l.t), r.callback, r.callback)
 			continue
@@ -196,6 +207,10 @@ func (c *checker) checkFnLimits(all map[*ir.Func]map[string]bool) {
 			}
 			sort.Strings(extra)
 			list := strings.Join(extra, ", ")
+			if l.t.kept == keptByIter {
+				report(s.at, "%s uses %s, and an Iter's functions only compute, since they run each time it is walked, wherever that is: do it in the loop that walks the Iter, or collect it with toList first", s.name, list)
+				continue
+			}
 			report(s.at, "%s uses %s, which its type here, %s, doesn't list: a function kept in data does only what its type says, so add uses {%s} to the type", s.name, list, show(l.t), list)
 		}
 	}

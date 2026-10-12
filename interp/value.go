@@ -864,6 +864,8 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 		b.WriteString("fn " + x.Fn.Name)
 	case *BuiltinFn:
 		b.WriteString("fn " + x.Name)
+	case *IterVal:
+		b.WriteString("Iter(…)")
 	default:
 		fmt.Fprintf(b, "%v", v)
 	}
@@ -953,6 +955,8 @@ func kindName(v Value) string {
 		return "Sender"
 	case *ReceiverVal:
 		return "Receiver"
+	case *IterVal:
+		return "Iter"
 	}
 	return fmt.Sprintf("%T", v)
 }

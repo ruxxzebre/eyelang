@@ -183,11 +183,31 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	}
 	kind, elem := x.collection(coll)
 	x.collectionKind(name, kind, coll, b.pos[0].Value.Position())
+	// On an Iter, map, filter, take, drop, enumerate, zip and flatMap give
+	// an Iter, and their functions only compute, since they run each time
+	// it is walked (SPECS.md §5).
+	lazy := kind == "Iter"
+	seq := func(t typ) typ {
+		if lazy {
+			return con("Iter", t)
+		}
+		return list(t)
+	}
+	stage := func(ret typ, params ...typ) typ {
+		if !lazy {
+			return fn(ret, params...)
+		}
+		f := &tfun{ret: ret, kept: keptByIter, hasUses: true} // uses {}: it only computes
+		for _, p := range params {
+			f.params = append(f.params, fparam{t: p})
+		}
+		return f
+	}
 	same := func() typ {
 		if kind == "Set" {
 			return coll
 		}
-		return list(elem)
+		return seq(elem)
 	}
 	switch name {
 	case "size":
@@ -258,14 +278,14 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 				return result(out, k.args[1])
 			}
 		}
-		b.arg(1, fn(out, elem))
-		return list(out)
+		b.arg(1, stage(out, elem))
+		return seq(out)
 	case "flatMap":
 		out := c.fresh()
-		b.arg(1, fn(list(out), elem))
-		return list(out)
+		b.arg(1, stage(list(out), elem))
+		return seq(out)
 	case "filter":
-		b.arg(1, fn(tBool, elem))
+		b.arg(1, stage(tBool, elem))
 		return same()
 	case "find":
 		b.arg(1, fn(tBool, elem))
@@ -284,13 +304,13 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		x.require(elem, c.preludeTrait("Add"), []typ{elem, elem}, at, "sum")
 		return elem
 	case "enumerate":
-		return list(&ttuple{elems: []typ{tInt, elem}})
+		return seq(&ttuple{elems: []typ{tInt, elem}})
 	case "drop", "take":
 		b.arg(1, tInt)
 		if kind == "String" {
 			return tString
 		}
-		return list(elem)
+		return seq(elem)
 	case "reverse", "sort", "toList":
 		if name == "sort" {
 			x.requireNamed(elem, "Ord", at, "sort")
@@ -319,8 +339,20 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		return tString
 	case "zip":
 		other := b.arg(1, nil)
-		_, e2 := x.collection(orNil(other))
-		return list(&ttuple{elems: []typ{elem, e2}})
+		k2, e2 := x.collection(orNil(other))
+		if other != nil {
+			x.collectionKind(name, k2, other, b.pos[1].Value.Position())
+		}
+		pair := &ttuple{elems: []typ{elem, e2}}
+		if lazy || k2 == "Iter" {
+			return con("Iter", pair)
+		}
+		return list(pair)
+	case "iter":
+		if kind == "Range" {
+			x.expect(b.pos[0].Value.Position(), con("Range", tInt), coll)
+		}
+		return con("Iter", elem)
 	}
 	return c.fresh()
 }

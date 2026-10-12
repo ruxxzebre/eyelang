@@ -45,11 +45,7 @@ func stringBuiltins(add func(string, builtinFunc)) {
 		return &List{Elems: out}
 	})
 	add("chars", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
-		var out []Value
-		for _, r := range in.str(args, "chars", at) {
-			out = append(out, r)
-		}
-		return &List{Elems: out}
+		return &IterVal{Src: in.str(args, "chars", at)}
 	})
 	// Bytes are, for now, a list of Ints from 0 to 255: indexing, slicing,
 	// size and patterns work on them as on any list.

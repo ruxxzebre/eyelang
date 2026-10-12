@@ -98,9 +98,38 @@ title: "Values and types"
   is no number to read from it, since it means something only in its own string; it shows as
   `byte 5`.
 - **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
-  characters (`s.chars()`) and any `Iter(a)`. `xs.iter()` gives a lazy `Iter(a)` whose pipelines
-  (`map`, `filter`, `take`, `enumerate`, `zip`) don't build intermediate lists; `toList` collects
-  one.
+  characters (`s.chars()`) and any `Iter(a)`.
+- **Lazy iteration:** `xs.iter()` gives an `Iter(a)`, a sequence computed as it is walked.
+  `map`, `filter`, `take`, `drop`, `enumerate`, `zip` and `flatMap` on an `Iter` give another
+  `Iter` and build no lists in between (`zip` does when either side is one); a `for` loop, or a
+  function that needs the elements, walks it, and `toList` collects it:
+
+  ```eye
+  let squares = (1..1_000_000_000).iter() |> map(fn n: n * n) |> filter(fn n: n % 3 == 1)
+  let few = squares |> take(3) |> toList    # [1, 4, 16]: squares four numbers, not a billion
+  for (i, c) in "héllo".chars() |> enumerate { print(i, c) }
+  ```
+
+  - **Sources.** Lists, sets, maps (their `(key, value)` pairs), ranges of `Int`, strings (their
+    characters) and `Bytes` have `iter()`; `s.chars()` is `s.iter()`, and an `Iter`'s `iter()`
+    is itself. Every source ends, so `size`, `toList` and `sort` on an `Iter` always finish; a
+    large range stands in for an endless count.
+  - **An `Iter` is a value.** Walking it twice gives the same elements: each walk starts again
+    from the source and runs the functions again. An `Iter` that a first walk used up would be a
+    cursor shared by everyone holding it, the shared state [section 1](/design/goals) rules out. To walk once and
+    keep the results, `toList`.
+  - **Its functions only compute.** They run whenever and wherever the `Iter` is walked, so a
+    function given to `map`, `filter` or `flatMap` on an `Iter` has no effects: `print` belongs
+    in the loop that walks it. A callback parameter given to one states `uses {}` in its type,
+    as a function kept in a record does ([section 12](/reference/language/effects-and-signatures)).
+  - **What walks it.** `toList`, `toSet`, `reduce`, `any`, `all`, `find`, `first`, `last`,
+    `size`, `isEmpty`, `count`, `contains`, `sum`, `join`, `sort`, `reverse` and `parallelMap`
+    walk an `Iter`, and `first`, `find`, `any`, `all`, `contains` and `isEmpty` stop at the
+    answer. An `Iter` has no positions, so `get`, `xs[i]` and slices don't take one.
+  - **It can't be kept.** It holds functions, so it has none of `Eq`, `Ord`, `Show`, `Hash`,
+    `Save` and `Schema`: it can't be compared, printed or saved, so it can't be live across a `!`,
+    and a job's `for` loop over one can't wait inside: collect it with `toList` first, so a
+    resumed run finds its place.
 - **Entity references:** `Ref(World)` is an ID, not a pointer. It can be stored, sent and saved
   anywhere, and it can't be confused with `Ref(Player)`.
 - **Special types:** `Secret(a)` (no printing, no saving), `Approval` (only a human approval flow

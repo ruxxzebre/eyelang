@@ -671,6 +671,8 @@ func (c *checker) builtinHas(x *tcon, b cbound, seen map[*ir.Type]bool) (bool, s
 		return true, ""
 	case "Secret":
 		return false, "a Secret can't be shown, saved or compared, so it never leaks"
+	case "Iter":
+		return false, "an Iter holds the functions of its pipeline, so it has none of Eq, Ord, Show, Hash, Save and Schema: collect it with toList"
 	case "List", "Option", "Result":
 		return parts("an element")
 	case "Set", "Map", "Range":

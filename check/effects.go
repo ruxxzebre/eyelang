@@ -682,7 +682,7 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 	case *tcon:
 		if x.decl == nil && x.entity == nil {
 			switch x.name {
-			case "Secret", "TaskGroup", "Sender", "Receiver":
+			case "Secret", "TaskGroup", "Sender", "Receiver", "Iter":
 				return x.name
 			}
 		}
@@ -702,7 +702,7 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 				for i, n := range names {
 					if i < len(types) {
 						if s := unsaveable(fromDecl(d, types[i], x)); s != "" {
-							return fmt.Sprintf("%s (its field %s is a %s)", d.Name, n, s)
+							return fmt.Sprintf("%s (its field %s is %s)", d.Name, n, withArticle(s))
 						}
 					}
 				}
@@ -716,7 +716,7 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 			for _, v := range d.Variants {
 				for _, field := range v.Fields {
 					if s := unsaveable(fromDecl(d, field.Type, x)); s != "" {
-						return fmt.Sprintf("%s (%s holds a %s)", d.Name, v.Name, s)
+						return fmt.Sprintf("%s (%s holds %s)", d.Name, v.Name, withArticle(s))
 					}
 				}
 			}
@@ -724,7 +724,7 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 		if e := x.entity; e != nil {
 			for _, s := range e.States {
 				if what := unsaveable(fromDecl(nil, s.Type, x)); what != "" {
-					return fmt.Sprintf("%s (its state %s is a %s)", e.Name, s.Name, what)
+					return fmt.Sprintf("%s (its state %s is %s)", e.Name, s.Name, withArticle(what))
 				}
 			}
 		}
@@ -740,6 +740,14 @@ func (c *checker) unsaveableIn(t typ, seen map[*ir.Type]bool) string {
 		return "dyn " + x.trait.Name // its type, which saving needs, is known only at run time
 	}
 	return ""
+}
+
+// withArticle puts "a" or "an" before what unsaveable names.
+func withArticle(what string) string {
+	if what != "" && strings.ContainsRune("AEIOU", rune(what[0])) {
+		return "an " + what
+	}
+	return "a " + what
 }
 
 // checkSave reports a value that can't be saved but is still needed after
@@ -771,7 +779,7 @@ func (c *checker) checkStepResults(all map[*ir.Func]map[string]bool) {
 			reported = reported || d.Pos == s.w.Pos
 		}
 		if what := c.unsaveable(s.t); what != "" && !reported {
-			c.typeErrorf(s.w.Pos, "this durable step's result is recorded, and a %s can't be saved: use it in a function that returns what can be, and call that with !", what)
+			c.typeErrorf(s.w.Pos, "this durable step's result is recorded, and %s can't be saved: use it in a function that returns what can be, and call that with !", withArticle(what))
 		}
 	}
 }
@@ -784,7 +792,7 @@ func (c *checker) checkSave(j *ir.Job) {
 	for _, p := range j.Func.Params {
 		if p.Slot < len(slots) {
 			if what := c.unsaveable(slots[p.Slot]); what != "" {
-				c.typeErrorf(j.Pos, "%s's argument %s is a %s, which can't be saved, and a job's arguments are", j.Name, p.Name, what)
+				c.typeErrorf(j.Pos, "%s's argument %s is %s, which can't be saved, and a job's arguments are", j.Name, p.Name, withArticle(what))
 			}
 		}
 	}
@@ -805,6 +813,7 @@ func (c *checker) checkSave(j *ir.Job) {
 	var waits []int
 	var uses []use
 	var loops []loop
+	var fors []*ir.For
 	visit := func(e ir.Expr, waiting bool) {
 		switch e := e.(type) {
 		case *ir.While:
@@ -817,6 +826,7 @@ func (c *checker) checkSave(j *ir.Job) {
 			}
 		case *ir.For:
 			loops = append(loops, loop{e.Pos.Offset, e.Pos.End})
+			fors = append(fors, e)
 			for _, s := range bound(e.Pattern) {
 				defined[s] = e.Pos.Offset
 			}
@@ -842,6 +852,23 @@ func (c *checker) checkSave(j *ir.Job) {
 		return false
 	}
 	reported := map[int]bool{}
+	// A loop that waits keeps what it walks across the wait, to find its
+	// place when the run resumes.
+	for _, f := range fors {
+		what := c.unsaveable(c.ts.forIters[f])
+		body := f.Body.Position()
+		if what == "" || !waitsIn(body.Offset, body.End) {
+			continue
+		}
+		fix := "walk what can be saved"
+		if t, ok := prune(c.ts.forIters[f]).(*tcon); ok && t.name == "Iter" && t.decl == nil {
+			fix = "collect it with toList before the loop"
+		}
+		c.typeErrorf(f.Iter.Position(), "this loop walks %s, which can't be saved, and its body waits, so a resumed run couldn't find its place: %s", withArticle(what), fix)
+		if l, ok := f.Iter.(*ir.Local); ok {
+			reported[l.Slot] = true
+		}
+	}
 	for _, u := range uses {
 		if u.slot >= len(slots) || reported[u.slot] {
 			continue
@@ -852,13 +879,13 @@ func (c *checker) checkSave(j *ir.Job) {
 		}
 		if waitsIn(u.from, u.at-1) {
 			reported[u.slot] = true
-			c.typeErrorf(u.pos, "%s is a %s, which can't be saved, and it is still needed after a waiting call: get it again after the `!`", u.name, what)
+			c.typeErrorf(u.pos, "%s is %s, which can't be saved, and it is still needed after a waiting call: get it again after the `!`", u.name, withArticle(what))
 			continue
 		}
 		for _, l := range loops {
 			if u.from < l.start && l.start <= u.at && u.at < l.end && waitsIn(l.start, l.end) {
 				reported[u.slot] = true
-				c.typeErrorf(u.pos, "%s is a %s, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop", u.name, what)
+				c.typeErrorf(u.pos, "%s is %s, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop", u.name, withArticle(what))
 				break
 			}
 		}

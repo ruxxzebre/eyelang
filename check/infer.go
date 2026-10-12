@@ -45,6 +45,7 @@ type typeState struct {
 	exprs    []typedExpr
 	jobSlots map[*ir.Func][]typ // slot types of job bodies, for the Save check
 	steps    []stepResult       // a job's `!` calls and what they return, for the Save check
+	forIters map[*ir.For]typ    // the type of what each for loop walks, for the Save check
 	// inferred says how far a function whose types are inferred has got,
 	// and schemes holds the generic type each one has once it is checked.
 	inferred map[*ir.Func]inferState
@@ -162,7 +163,7 @@ func (c *checker) checkTypes() {
 	c.ts = &typeState{
 		params: map[*ir.Func][]typ{}, results: map[*ir.Func]typ{}, globals: map[*ir.Global]typ{},
 		checking: map[*ir.Global]bool{}, effects: map[*ir.Func]map[string]bool{},
-		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{},
+		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{}, forIters: map[*ir.For]typ{},
 		lambdaEffects: map[*ir.Func]map[string]bool{}, lambdaCallees: map[*ir.Func][]*ir.Func{},
 		sigs:     map[*ir.Func]*tfun{},
 		inferred: map[*ir.Func]inferState{}, schemes: map[*ir.Func]*scheme{},
@@ -734,7 +735,9 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.expect(e.Pos, target, result)
 		return tUnit
 	case *ir.For:
-		elem := x.elemOf(x.check(e.Iter, nil), e.Iter.Position())
+		walked := x.check(e.Iter, nil)
+		c.ts.forIters[e] = walked
+		elem := x.elemOf(walked, e.Iter.Position())
 		e.Pattern = x.bindPattern(e.Pattern, elem, e.Pos)
 		x.check(e.Body, discard)
 		return tUnit
