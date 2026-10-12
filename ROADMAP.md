@@ -322,7 +322,7 @@ each names the closed issue it continues.
 
 | Task | Issue |
 |---|---|
-| C.1 Entities: `end(ok)`, and tests of rollback and the single writer (from 4.1) | [#65](https://github.com/ruxxzebre/eyelang/issues/65) |
+| C.1 Entities: `end(ok)`, and tests of rollback and the single writer (from 4.1) (done) | [#65](https://github.com/ruxxzebre/eyelang/issues/65) |
 | C.2 Waiting: `lock!`, `all!` and `first!` (from 4.4) | [#66](https://github.com/ruxxzebre/eyelang/issues/66) |
 | C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) (done) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
 | C.4 `NonZero` divisors checked (from 2.4) (done) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
@@ -345,6 +345,13 @@ What each task is, until its issue holds it:
   **Done when:** `end(ok)` ends an entity and calling it without an `Approval` fails to compile;
   tests show a fault part way through a multi-entity call rolling back every entity, one writer
   at a time per entity, and a job started by a rolled-back method never running.
+  Done on 2026-10-12: `end(ok)` in an entity's own method ends it when the transaction commits;
+  every store keeps only that it ended, when, and whose approval let it (`Row.Ended`; Postgres
+  tables at version 2). It leaves its views, and calling or reading it faults: the identity
+  never starts again (SPECS §14). The checker's errors are in `check/types_test.go` ("ending an
+  entity needs an Approval"); `testdata/programs/entities` and `interp/entities_test.go`
+  (`TestAFaultRollsBackEveryEntity`, `TestOneWriterAtATimeOnTheSystemClock`,
+  `TestAnEndedEntityStaysEnded`) show the rest.
 - **C.2 Waiting (#35, 4.4).** `lock!` is undefined. `all!` and `first!` resolve to the collection
   functions `all` and `first`, and `eye check` refuses them with `!` ("all neither waits nor
   reaches outside the program"). So there is no test of `first!` between an approval and a

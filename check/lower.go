@@ -861,6 +861,13 @@ func (l *lowerer) callee(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir
 		l.c.use(l.pos(fnNode), l.method().entity.Methods[l.text(fnNode)])
 		return &ir.MethodCall{At: at, Recv: &ir.Self{At: at}, Name: l.text(fnNode), Args: args}
 	}
+	if fnNode.Kind == syntax.Ident && l.entityEnd(fnNode) {
+		// `end(ok)` in an entity's method ends the entity (SPECS.md §14):
+		// every entity has it, as if it were one of its methods.
+		mc := &ir.MethodCall{At: at, Recv: &ir.Self{At: at}, Name: "end", Args: args}
+		l.c.nameAt(mc, l.pos(fnNode))
+		return mc
+	}
 	callee := l.expr(fnNode)
 	if r, ok := callee.(*ir.Ref); ok {
 		l.checkDurable(n, r.Decl, waiting)
@@ -901,6 +908,21 @@ func (l *lowerer) ownMethod(n *syntax.Node) bool {
 	}
 	_, ok := m.entity.Methods[name]
 	return ok
+}
+
+// entityEnd reports whether n is `end` called in an entity's method, where
+// nothing nearer, a local, a state field or a method, has that name: it then
+// ends the entity, rather than being a string's end.
+func (l *lowerer) entityEnd(n *syntax.Node) bool {
+	m := l.method()
+	if l.text(n) != "end" || m.entity == nil || m.kind != ctxEntityMethod || l != m {
+		return false
+	}
+	if _, ok := l.lookupLocal("end", n); ok || l.selfField("end") {
+		return false
+	}
+	_, ok := m.entity.Methods["end"]
+	return !ok
 }
 
 // checkDurable reports a call that must be a durable step in a job but has no `!`.

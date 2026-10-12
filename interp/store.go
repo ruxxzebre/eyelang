@@ -47,6 +47,9 @@ type Row struct {
 	State   []byte
 	Version int64
 	Schema  int
+	// Ended marks what is left of an entity that `end(ok)` ended: State
+	// says when, and whose approval ended it (endRecord).
+	Ended bool
 }
 
 // Write saves an entity's state.
@@ -57,6 +60,9 @@ type Write struct {
 	// Schema is the entity's @version when the state was written; 0, in
 	// journals written before entities had versions, is 1.
 	Schema int `json:",omitempty"`
+	// Ended says `end(ok)` ended the entity: State is then an endRecord,
+	// and the row is kept so that the identity stays ended.
+	Ended bool `json:",omitempty"`
 }
 
 // RunWrite saves a job run.
@@ -239,7 +245,7 @@ func (s *memStore) Commit(c *Commit) {
 		if _, ok := s.rows[w.Key]; !ok {
 			s.kinds[w.Entity] = append(s.kinds[w.Entity], w.Key)
 		}
-		s.rows[w.Key] = Row{State: w.State, Version: w.Version, Schema: w.Schema}
+		s.rows[w.Key] = Row{State: w.State, Version: w.Version, Schema: w.Schema, Ended: w.Ended}
 	}
 	for _, r := range c.Runs {
 		if _, ok := s.runs[r.ID]; !ok {
@@ -268,7 +274,7 @@ func (s *memStore) snapshot() *Commit {
 	for _, e := range entities {
 		for _, key := range s.kinds[e] {
 			r := s.rows[key]
-			c.Writes = append(c.Writes, Write{Key: key, Entity: e, State: r.State, Version: r.Version, Schema: r.Schema})
+			c.Writes = append(c.Writes, Write{Key: key, Entity: e, State: r.State, Version: r.Version, Schema: r.Schema, Ended: r.Ended})
 		}
 	}
 	for _, id := range s.order {

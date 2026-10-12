@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"eyelang/check"
+	"eyelang/ir"
 )
 
 // testPostgres gives a test a schema of its own in the database
@@ -275,13 +276,19 @@ func TestPostgresStopsWhenMemoryMayNotMatch(t *testing.T) {
 	})
 }
 
-// The program tests of testdata/programs/jobs pass on every kind of store,
-// unchanged.
+// The program tests of testdata/programs/jobs and entities pass on every
+// kind of store, unchanged.
 func TestJobsOnEveryStore(t *testing.T) {
-	prog, diags := check.Program("../testdata/programs/jobs")
-	for _, d := range diags {
-		t.Fatal(d)
+	for _, program := range []string{"jobs", "entities"} {
+		prog, diags := check.Program("../testdata/programs/" + program)
+		for _, d := range diags {
+			t.Fatal(d)
+		}
+		t.Run(program, func(t *testing.T) { testOnEveryStore(t, prog) })
 	}
+}
+
+func testOnEveryStore(t *testing.T, prog *ir.Program) {
 	stores := map[string]func(t *testing.T) Store{
 		"journal": func(t *testing.T) Store {
 			j, err := OpenJournal(filepath.Join(t.TempDir(), "journal"))

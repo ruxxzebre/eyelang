@@ -20,10 +20,12 @@ import runtime.store
 ### Row {#Row}
 
 ```eye
-pub type Row = { state: String, version: Int, schema: Int }
+pub type Row = { state: String, version: Int, schema: Int, ended: Bool }
 ```
 
-An entity's saved state, and how many transactions have changed it.
+An entity's saved state, and how many transactions have changed it. An
+entity that ended keeps a row with ended true, whose state says how it
+ended, so that its identity stays ended.
 
 ### EventRecord {#EventRecord}
 
@@ -36,10 +38,18 @@ A published event: its name and its value as bytes.
 ### Write {#Write}
 
 ```eye
-pub type Write = { key: String, entity: String, state: String, version: Int, schema: Int }
+pub type Write = {
+  key: String,
+  entity: String,
+  state: String,
+  version: Int,
+  schema: Int,
+  ended: Bool,
+}
 ```
 
-An entity's new state, as a transaction writes it.
+An entity's new state, as a transaction writes it, or, when ended is true,
+what is kept of an entity that ended.
 
 ### RunWrite {#RunWrite}
 

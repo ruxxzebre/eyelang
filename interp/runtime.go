@@ -20,6 +20,7 @@ type runtime struct {
 	queue    []int64
 	draining bool
 	tx       *txn
+	selves   []*txRow // the entities whose methods are running, innermost last
 	nextRun  int64
 	members  map[*ir.View]map[string]bool
 	fakes    map[*ir.Contract]*fakeSet
@@ -135,16 +136,39 @@ type txRow struct {
 	orig    string
 	version int64
 	exists  bool
+	ended   *ApprovalVal // end(ok) ended it with this approval: the commit keeps only that
 }
 
 // load returns an entity's committed state, or its default state if it has
 // never been saved.
 func (rt *runtime) load(ref *EntityRef, at ir.Pos) (*Record, int64, bool) {
 	row, ok := rt.store.Load(entityKey(ref))
+	if ok && row.Ended {
+		rt.endedFault(ref, row, at)
+	}
 	if ok {
 		return rt.decodeRow(ref.Entity, row, at), row.Version, true
 	}
 	return rt.defaults(ref, at), 0, false
+}
+
+// endRecord is what is kept of an entity that ended: when, and the approval
+// that let it (SPECS.md §14).
+type endRecord struct {
+	At       int64 // Unix nanoseconds
+	What, By string
+}
+
+// endedFault stops a call on, or a read of, an entity that ended: its
+// identity stays ended, so nothing can bring it back by using it.
+func (rt *runtime) endedFault(ref *EntityRef, row Row, at ir.Pos) {
+	name := ref.Entity.Name + "(" + showValue(ref.ID) + ")"
+	var e endRecord
+	if json.Unmarshal(row.State, &e) != nil {
+		rt.in.faultf(at, "%s ended, so it can't be read or changed", name)
+	}
+	when := time.Unix(0, e.At).In(rt.now.Location()).Format("2006-01-02 15:04 MST")
+	rt.in.faultf(at, "%s ended at %s, approved by %s (%q), so it can't be read or changed", name, when, e.By, e.What)
 }
 
 func (rt *runtime) defaults(ref *EntityRef, at ir.Pos) *Record {
@@ -212,6 +236,9 @@ func (rt *runtime) begin() *txn {
 func (tx *txn) row(rt *runtime, ref *EntityRef, at ir.Pos) *txRow {
 	key := entityKey(ref)
 	if r, ok := tx.rows[key]; ok {
+		if r.ended != nil {
+			rt.in.faultf(at, "%s(%s) ended earlier in this transaction, so it can't be changed", ref.Entity.Name, showValue(ref.ID))
+		}
 		return r
 	}
 	state, version, exists := rt.load(ref, at)
@@ -265,19 +292,48 @@ func (rt *runtime) callIn(tx *txn, ref *EntityRef, m *ir.Func, args []argVal, at
 	row := tx.row(rt, ref, at)
 	prevRun := rt.in.run
 	rt.in.run = nil // entity methods never wait, even when a job calls them
-	defer func() { rt.in.run = prevRun }()
+	rt.selves = append(rt.selves, row)
+	defer func() {
+		rt.in.run = prevRun
+		rt.selves = rt.selves[:len(rt.selves)-1]
+	}()
 	result, self, _ := rt.in.callFunc(m, row.state, nil, args, at)
 	row.state = self.(*Record)
 	return result
+}
+
+// end ends the entity whose method is running: `end(ok)`. Its row is
+// removed when the transaction commits (SPECS.md §14).
+func (rt *runtime) end(args []argVal, at ir.Pos) {
+	pos, _ := split(args)
+	if len(pos) != 1 {
+		rt.in.faultf(at, "end(ok) takes an Approval")
+	}
+	ok, isApproval := pos[0].(*ApprovalVal)
+	if !isApproval {
+		rt.in.faultf(at, "end(ok) takes an Approval, and this is %s", kindName(pos[0]))
+	}
+	if len(rt.selves) == 0 {
+		rt.in.faultf(at, "end(ok) ran outside an entity's method")
+	}
+	rt.selves[len(rt.selves)-1].ended = ok
 }
 
 // commit saves a transaction, starts the jobs it started, and updates the
 // views over the entities it changed.
 func (rt *runtime) commit(tx *txn) {
 	c := &Commit{}
-	var changed []*txRow
+	var changed, gone []*txRow
 	for _, key := range tx.order {
 		r := tx.rows[key]
+		if r.ended != nil {
+			// The row stays, saying how the entity ended, so that its
+			// identity stays ended.
+			end, _ := json.Marshal(endRecord{At: rt.now.UnixNano(), What: r.ended.What, By: r.ended.By})
+			c.Writes = append(c.Writes, Write{Key: key, Entity: entityName(r.ref.Entity), State: end, Version: r.version + 1, Schema: entityVersion(r.ref.Entity), Ended: true})
+			gone = append(gone, r)
+			continue
+		}
 		isChanged := keyOf(r.state) != r.orig
 		if !isChanged && r.exists {
 			continue
@@ -302,6 +358,9 @@ func (rt *runtime) commit(tx *txn) {
 	}
 	for _, r := range changed {
 		rt.updateViews(r.ref, r.state, r.version)
+	}
+	for _, r := range gone {
+		rt.updateViews(r.ref, nil, 0) // it leaves every view
 	}
 	for _, e := range tx.events {
 		rt.deliver(e.event, e.value)
@@ -416,6 +475,9 @@ func (rt *runtime) all(e *ir.Entity, at ir.Pos) *List {
 	l := &List{}
 	for _, key := range rt.store.Keys(entityName(e)) {
 		row, _ := rt.store.Load(key)
+		if row.Ended {
+			continue
+		}
 		l.Elems = append(l.Elems, snapshotOf(rt.decodeRow(e, row, at), row.Version))
 	}
 	return l
@@ -447,7 +509,8 @@ func (rt *runtime) viewMembers(v *ir.View, at ir.Pos) *List {
 }
 
 // updateViews checks the views over an entity that changed, and starts the
-// jobs triggered by it entering or leaving them.
+// jobs triggered by it entering or leaving them. A nil state is an entity
+// that ended, which is in no view.
 func (rt *runtime) updateViews(ref *EntityRef, state *Record, version int64) {
 	key := entityKey(ref)
 	for _, m := range rt.in.prog.Modules {
@@ -455,7 +518,7 @@ func (rt *runtime) updateViews(ref *EntityRef, state *Record, version int64) {
 			if v.Entity != ref.Entity {
 				continue
 			}
-			member := rt.inView(v, snapshotOf(state, version))
+			member := state != nil && rt.inView(v, snapshotOf(state, version))
 			if rt.members[v] == nil {
 				rt.members[v] = map[string]bool{}
 			}

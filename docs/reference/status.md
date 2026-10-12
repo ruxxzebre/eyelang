@@ -22,8 +22,8 @@ compile-time errors it links to the checker's test cases. Every error class the 
 listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go),
 along with the test that reports it.
 
-**The biggest gaps today.** Some waits (`lock!`, `all!`, `first!`, ending an entity), coding
-agents and model tools, `@unwitnessed` recordings, and native compilation (v0.4).
+**The biggest gaps today.** Some waits (`lock!`, `allDone!`, `firstDone!`), coding agents and
+model tools, `@unwitnessed` recordings, and native compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
 
@@ -198,13 +198,14 @@ agents and model tools, `@unwitnessed` recordings, and native compilation (v0.4)
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
 | `entity` with `state` and defaults; exists on first use | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L5) |
-| Methods as atomic transactions; nested entity calls commit together | ✓ | ✓ | partial: methods run as transactions, but no test checks a rollback after a fault | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L41) |
+| Methods as atomic transactions; nested entity calls commit together | ✓ | ✓ | ✓ (an `Err` commits; a fault part way through a call rolls back every entity it changed, and the jobs it started never run) | [entities_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/entities_test.go#L63), [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L41) |
+| One writer at a time per entity | n/a | n/a | ✓ (tasks that call one entity's method at once lose no change, on a test's clock and on the system clock) | [programs/entities](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/entities/entities.eye#L21), [entities_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/entities_test.go#L175) |
 | `state` fields and methods named without `self` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L9) |
 | Methods never wait | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L49) |
 | A method starts a job when its transaction commits | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L12) |
 | The identity can't change | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L101) |
 | `read!()` snapshots with a `version`; `read()` outside jobs | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L36), [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
-| Ending an entity with `end(ok)` and an `Approval` | ✓ | — (`end` is undefined) | — | |
+| Ending an entity with `end(ok)` and an `Approval` | ✓ | ✓ (only in the entity's own methods, and only with an `Approval`) | ✓ (when the transaction commits the state is removed and every store keeps only when it ended and whose approval let it; the entity leaves its views, and a call on it or a read of it faults, after a restart too) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L63), [programs/entities](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/entities/entities.eye#L69), [entities_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/entities_test.go#L147) |
 | `@version` and `migrate from N`, chained, without gaps, pure | ✓ | ✓ | ✓ | [migrations_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/migrations_test.go#L14), [interp migrate_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/migrate_test.go#L15) |
 | `eye run` refuses rows no migration can bring up to date | n/a | n/a | ✓ | [cmd/eye migrate_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/migrate_test.go#L14) |
 

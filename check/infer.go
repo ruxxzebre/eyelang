@@ -1402,6 +1402,26 @@ func paramName(p fparam, i int) string {
 	return fmt.Sprintf("its argument %d", i+1)
 }
 
+// endEntity checks `end(ok)` in an entity's method, which ends the entity
+// when the transaction commits. It takes one Approval, which only approval!
+// makes, so an entity can't be ended without a person's consent (SPECS.md
+// §14).
+func (x *fnCheck) endEntity(e *ir.MethodCall) typ {
+	c := x.c
+	c.useName(e, GoText{File: "check/infer.go", Text: "func (x *fnCheck) endEntity"})
+	approval := con("Approval")
+	if len(e.Args) != 1 || e.Args[0].Name != "" {
+		x.inferArgs(e.Args)
+		c.typeErrorf(e.Pos, "ending an entity needs an Approval: end(ok), with ok from approval!(…) in the job that calls this method")
+		return tUnit
+	}
+	got := x.check(e.Args[0].Value, nil)
+	if c.unify(approval, got) != nil {
+		c.typeErrorf(e.Args[0].Value.Position(), "ending an entity needs an Approval, found %s: pass the one approval!(…) gave the job that calls this method", show(defaultLiteral(got)))
+	}
+	return tUnit
+}
+
 // methodCall checks `recv.name(args)`.
 func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 	c := x.c
@@ -1411,6 +1431,9 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			c.useMethod(e, m)
 			x.callee(m) // its effects count here
 			return x.applyFunc(m, nil, e.Args, e.Name, e.Pos)
+		}
+		if e.Name == "end" {
+			return x.endEntity(e)
 		}
 	}
 	switch r := prune(recv).(type) {
@@ -1432,6 +1455,9 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 					return x.applyFunc(m, nil, e.Args, s.entity.Name+"."+e.Name, e.Pos)
 				}
 				x.inferArgs(e.Args)
+				if e.Name == "end" {
+					return c.unknownf(e.Pos, "an entity ends itself, so end can't be called on another: give %s a method that calls end(ok), as pub fn retire(ok: Approval) { end(ok) }", s.entity.Name)
+				}
 				return c.unknownf(e.Pos, "%s has no method %s", s.entity.Name, e.Name)
 			}
 		case r.name == "Run" && r.decl == nil && e.Name == "join":

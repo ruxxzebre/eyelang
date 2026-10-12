@@ -85,6 +85,7 @@ func (s *eyeStore) Load(key string) (Row, bool) {
 		State:   []byte(field(r, "state").(string)),
 		Version: toInt64(field(r, "version")),
 		Schema:  int(toInt64(field(r, "schema"))),
+		Ended:   field(r, "ended") == true,
 	}, true
 }
 
@@ -145,8 +146,8 @@ func (s *eyeStore) Commit(c *Commit) {
 	}
 	writes := &List{}
 	for _, w := range c.Writes {
-		writes.Elems = append(writes.Elems, rec("Write", []string{"key", "entity", "state", "version", "schema"},
-			w.Key, w.Entity, string(w.State), w.Version, int64(w.Schema)))
+		writes.Elems = append(writes.Elems, rec("Write", []string{"key", "entity", "state", "version", "schema", "ended"},
+			w.Key, w.Entity, string(w.State), w.Version, int64(w.Schema), w.Ended))
 	}
 	runs := &List{}
 	for _, r := range c.Runs {
@@ -174,7 +175,7 @@ func (s *eyeStore) snapshot() *Commit {
 	for _, e := range s.strings(s.call("entities", s.current())) {
 		for _, key := range s.Keys(e) {
 			r, _ := s.Load(key)
-			c.Writes = append(c.Writes, Write{Key: key, Entity: e, State: r.State, Version: r.Version, Schema: r.Schema})
+			c.Writes = append(c.Writes, Write{Key: key, Entity: e, State: r.State, Version: r.Version, Schema: r.Schema, Ended: r.Ended})
 		}
 	}
 	for _, id := range s.Runs() {

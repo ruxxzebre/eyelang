@@ -139,6 +139,7 @@ construct that also works outside that domain.
 | Native code | **Compiled programs are C, built by the `zig cc` that `eye` ships**, with Perceus reference counting, whole-program specialisation and jobs resuming from saved frames ([docs/internals/compilation.md](docs/internals/compilation.md)). `eye` itself stays free of cgo: the interpreter loads C libraries at run time without it | The workload needs memory and resume time more than the best code, and C at `-O2` gives both; the bootstrap seed is C anyway; Koka and Lean 4 compile reference-counted functional code to C. Shipping `zig cc` cross-compiles to all five release targets from any host, with the same compiler everywhere |
 | Generic private functions | **A private function that leaves its types out is generic**: its body is checked on its own, and each call decides afresh what the body leaves open, so `fn twice(n) = n + n` works on `Int`s and `Float`s alike. A call that gives types without the operators or traits the body uses is an error at the call. Functions that call each other share one type while they are checked (section 6) | One type for the whole program made a helper's first caller decide it for every other, and the error appeared at the second caller, far from the cause. Let-polymorphism is what ML and Haskell do for the same reason, and compiled code specialises each use (section 22) |
 | Schedules | **`cron("…", in: zone)` takes the five standard fields** (values, names, ranges, lists and steps; either day field matches when both are given), and no extensions. **Daylight-saving changes are policies, `onGap: Shift \| Skip` and `onOverlap: First \| Second \| Both`**, prelude variants, defaulting to `Shift` and `First` (section 20) | A crontab line copied from elsewhere means what it meant there, and its errors show at the string; the extensions (`L`, `W`, `#`, seconds) are rare and differ between crons. The defaults are what `daily` did before the policies could be chosen, and they need no hour check; `Both` is for jobs that should run every hour of real time. Variants, not strings, so a misspelt policy fails to compile |
+| Ending entities | **`end(ok)` in an entity's own method ends it for good**: `ok` must be an `Approval`, the state is removed, and the store keeps only when it ended and whose approval let it. Calling or reading an ended entity faults; its identity never starts again. In an entity's method `end` is the entity's; elsewhere it is a string's end (section 14) | Ending deletes data, so it takes a person's consent that the compiler checks. If a later call started the identity again from its defaults, a job holding an old reference would bring back what a person approved ending, silently. Resolving `end` by context keeps `s.end()` and the spec's `end(ok)` both |
 
 ## 3. A tour
 
@@ -1048,6 +1049,28 @@ entity Player(id: PlayerId) {
   default state.
 - **Methods are atomic transactions.** One writer at a time per entity, all or nothing. A method
   may call methods on other entities, and the whole call tree commits or rolls back together.
+  An `Err` is a value like any other: a method that returns one commits what it changed. Only a
+  fault (section 15), such as `unreachable`, rolls the call tree back, and with it the jobs it
+  started and the events it published, which never happen.
+- **Ending an entity needs an Approval.** `end(ok)` in one of the entity's methods ends it when
+  the transaction commits. `ok` is an `Approval`, which only `approval!` makes (section 15), so
+  retiring an entity takes a person's consent, and `end` without one doesn't compile. The
+  `Approval` isn't matched against the entity: it shows that a person said yes, and the store
+  keeps its `what` and `by`, with when the entity ended, for the record.
+  - **`end` is resolved by context.** In an entity's own method, `end(…)` is the entity's, as its
+    methods are, unless a local, a state field or a method of that name is nearer. Elsewhere
+    `end` is a string's end position, `s.end()`. `end` can't be called on another entity, which
+    ends itself through a method of its own, such as `retire`; the checker says so.
+  - **What an ended entity is.** Its state is gone, and the store keeps only that it ended, when,
+    and the approval's `what` and `by`. It leaves every view, so `@on(leaves(…))` jobs start, and
+    `Player.all` no longer lists it. Its `Ref` stays a valid value whose identity can be read
+    (`p.id`), but calling a method on it or reading it (`read()`, a state field) faults:
+    `Player("ann") ended at 2026-10-12 09:00 UTC, approved by operator ("Retire ann?"), so it
+    can't be read or changed`. The identity stays ended: using it never starts the entity again,
+    so a job holding an old reference can't bring it back by mistake. A `leaves` job that the
+    end starts gets the reference; what it needs of the state is passed on before the end.
+  - What the method changes after `end(ok)` is dropped with the rest of the state, and a later
+    call on the entity in the same transaction faults.
 - **State and `mut self`:** an entity method is a `mut self` method over the entity's state
   (section 7). A `state` field such as `devices` is short for `self.devices`, and a method is
   called by its name too: `unpin(p)` in another method is `self.unpin(p)`, in the same

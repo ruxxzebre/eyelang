@@ -118,6 +118,9 @@ func (rt *runtime) checkVersions() error {
 			bad := map[int]int{}
 			for _, key := range rt.store.Keys(entityName(e)) {
 				row, _ := rt.store.Load(key)
+				if row.Ended {
+					continue // what is kept of an ended entity has no state to migrate
+				}
 				if v := schemaOf(row); v > current || v < oldest {
 					bad[v]++
 				}

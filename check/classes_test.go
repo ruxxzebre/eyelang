@@ -13,9 +13,9 @@ import (
 // or a test function. Each message says what was expected, what was found
 // and where (CLAUDE.md, "Writing").
 //
-// Not checked yet, and so not listed: the Approval that ending an entity
-// needs, recordings that lack a field the code reads (@unwitnessed), values
-// captured by structured concurrency's tasks (3.5) and dyn (v0.2).
+// Not checked yet, and so not listed: recordings that lack a field the code
+// reads (@unwitnessed), values captured by structured concurrency's tasks
+// (3.5) and dyn (v0.2).
 var errorClasses = []struct{ section, class, test string }{
 	{"§4, §23", "a syntax error", "syntax errors"},
 	{"§6", "a name nothing declares", "undefined names"},
@@ -109,6 +109,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§20", "with outside a test", "with only in tests"},
 	{"§13", "a job started from main without a key", "main starts a job once, by key"},
 	{"§14", "a change to an entity's identity", "state can change in entity methods, the identity can't"},
+	{"§14", "ending an entity without an Approval, or from outside its own methods", "ending an entity needs an Approval"},
 	{"§14", "a new version without its migration", "a new version needs a migration from the old one"},
 	{"§14", "a gap in the migrations", "no gaps"},
 	{"§14", "a migration to a version that doesn't exist", "migrations go to versions that exist"},

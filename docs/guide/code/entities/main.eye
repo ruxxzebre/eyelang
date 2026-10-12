@@ -136,6 +136,33 @@ test "a method starts a job when it commits" {
 }
 # endregion test-quota
 
+# region close
+## A team's access to the models. Closing it deletes its data, so it needs
+## a person's approval.
+entity Team(name: String) {
+  state members: List(String) = []
+
+  pub fn join(who: String) { members += [who] }
+
+  pub fn close(ok: Approval) { end(ok) }
+}
+
+job closeTeam(name: String) {
+  let decision = approval!("Close team {name}?", from: "finance", within: 2 days)
+  let Approved(ok) = decision else { return }
+  Team(name).close!(ok)
+}
+# endregion close
+
+# region test-close
+test "a team ends once finance approves" {
+  Team("ops").join("ann")
+  closeTeam.start("ops")
+  approve("Close team ops?")
+  expect(Team.all |> size == 0)
+}
+# endregion test-close
+
 # region all
 test "Wallet.all is every wallet" {
   Wallet("ops").topUp(50)

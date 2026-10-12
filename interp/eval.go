@@ -698,6 +698,10 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 			f.self = self
 			return r
 		}
+		if m.Name == "end" {
+			in.rt.end(args, m.Pos)
+			return ir.Unit{}
+		}
 	}
 	result, newRecv := in.method(recv, m.Name, args, m.Pos, false)
 	if newRecv != nil && m.RecvPlace != nil {
@@ -831,8 +835,8 @@ func (in *Interp) field(v Value, name string, at ir.Pos) Value {
 			return f
 		}
 	case *EntityRef:
-		if name == "id" {
-			return x.ID
+		if name == "id" || (x.Entity.ID != nil && name == x.Entity.ID.Name) {
+			return x.ID // the identity, which needs no load: an ended entity has it too
 		}
 		// Tests read an entity's committed state directly.
 		state := in.rt.current(x, at)

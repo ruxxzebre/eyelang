@@ -60,6 +60,22 @@ func TestTypeDiagnostics(t *testing.T) {
 	}{
 		{"a value of the wrong type", `fn f() -> Int = "seven"`,
 			[]string{"1:17: expected Int, found String"}},
+		{"ending an entity needs an Approval", `entity Player(id: String) {
+  state name: String = ""
+  pub fn retire(ok: Approval) { end(ok) }
+  pub fn quit() { end() }
+  pub fn leave(why: String) { end(why) }
+  pub fn rename(s: String) { name = s.slice(s.start()..s.end()) ?? "" }
+}
+job close(id: String, ok: Approval) {
+  end(ok)
+  Player(id).end!(ok)
+}`, []string{
+			"4:19: ending an entity needs an Approval: end(ok), with ok from approval!(…) in the job that calls this method",
+			"5:35: ending an entity needs an Approval, found String: pass the one approval!(…) gave the job that calls this method",
+			"9:3: end(ok) ends an entity, so only one of the entity's own methods can call it: call a method that does, as Player(id).retire!(ok)",
+			"10:3: an entity ends itself, so end can't be called on another: give Player a method that calls end(ok), as pub fn retire(ok: Approval) { end(ok) }",
+		}},
 		{"a schedule's time", `@on(daily("07:40", in: "Europe/Dublin"))
 job morning(day: Date) { log.info("{day}") }`,
 			[]string{"1:11: expected Time, found String"}},

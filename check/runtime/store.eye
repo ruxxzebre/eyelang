@@ -8,14 +8,24 @@
 # values are bytes; until the interpreter has Bytes values, they travel as
 # Strings, which hold any bytes.
 
-## An entity's saved state, and how many transactions have changed it.
-pub type Row = { state: String, version: Int, schema: Int }
+## An entity's saved state, and how many transactions have changed it. An
+## entity that ended keeps a row with ended true, whose state says how it
+## ended, so that its identity stays ended.
+pub type Row = { state: String, version: Int, schema: Int, ended: Bool }
 
 ## A published event: its name and its value as bytes.
 pub type EventRecord = { name: String, data: String }
 
-## An entity's new state, as a transaction writes it.
-pub type Write = { key: String, entity: String, state: String, version: Int, schema: Int }
+## An entity's new state, as a transaction writes it, or, when ended is true,
+## what is kept of an entity that ended.
+pub type Write = {
+  key: String,
+  entity: String,
+  state: String,
+  version: Int,
+  schema: Int,
+  ended: Bool,
+}
 
 ## A job run as saved.
 pub type RunWrite = { id: Int, data: String }
@@ -138,7 +148,7 @@ impl Store(MemoryStore) for MemoryStore {
         if !(s.kinds |> contains(w.entity)) { s.entities += [w.entity] }
         s.kinds = s.kinds |> insert(w.entity, (s.kinds[w.entity] ?? []) + [w.key])
       }
-      let row: Row = { state: w.state, version: w.version, schema: w.schema }
+      let row: Row = { state: w.state, version: w.version, schema: w.schema, ended: w.ended }
       s.rows = s.rows |> insert(w.entity, rows |> insert(w.key, row))
     }
     for r in c.runs {
@@ -163,8 +173,8 @@ fn bucket(id: Int) -> Int = id / 64
 test "a commit applies every write, and listings keep their order" {
   let c: Commit = {
     writes: [
-      { key: "World/a", entity: "World", state: "1", version: 1, schema: 1 },
-      { key: "World/b", entity: "World", state: "2", version: 1, schema: 1 },
+      { key: "World/a", entity: "World", state: "1", version: 1, schema: 1, ended: false },
+      { key: "World/b", entity: "World", state: "2", version: 1, schema: 1, ended: false },
     ],
     runs: [{ id: 2, data: "r2" }, { id: 1, data: "r1" }],
     events: [{ name: "e", data: "x" }],
@@ -178,7 +188,7 @@ test "a commit applies every write, and listings keep their order" {
   expect(s.run(2) == Some("r2") && s.run(99) == None)
   expect(s.metaKeys("fired/") == ["fired/j"])
   let later: Commit = {
-    writes: [{ key: "World/a", entity: "World", state: "3", version: 2, schema: 1 }],
+    writes: [{ key: "World/a", entity: "World", state: "3", version: 2, schema: 1, ended: false }],
     runs: [],
     events: [{ name: "f", data: "y" }],
     meta: [{ key: "fired/j", data: None }],
@@ -190,4 +200,29 @@ test "a commit applies every write, and listings keep their order" {
   expect(t.events() |> map(fn e: e.name) == ["f"])
   expect(t.metaKeys("") == [])
   expect(s.load("World", "World/a") |> map(fn r: r.state) == Some("1"))
+}
+
+test "an ended entity keeps its row, marked ended" {
+  let c: Commit = {
+    writes: [
+      { key: "World/a", entity: "World", state: "1", version: 1, schema: 1, ended: false },
+      { key: "World/b", entity: "World", state: "2", version: 1, schema: 1, ended: false },
+    ],
+    runs: [],
+    events: [],
+    meta: [],
+    dropEvents: 0,
+  }
+  let s = MemoryStore.empty().commit(c)
+  let end: Commit = {
+    writes: [{ key: "World/a", entity: "World", state: "ended", version: 1, schema: 1, ended: true }],
+    runs: [],
+    events: [],
+    meta: [],
+    dropEvents: 0,
+  }
+  let t = s.commit(end)
+  expect(t.load("World", "World/a") |> map(fn r: r.ended) == Some(true))
+  expect(t.load("World", "World/b") |> map(fn r: r.ended) == Some(false))
+  expect(t.keys("World") == ["World/a", "World/b"])
 }

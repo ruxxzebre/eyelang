@@ -30,6 +30,28 @@ entity Player(id: PlayerId) {
   default state.
 - **Methods are atomic transactions.** One writer at a time per entity, all or nothing. A method
   may call methods on other entities, and the whole call tree commits or rolls back together.
+  An `Err` is a value like any other: a method that returns one commits what it changed. Only a
+  fault ([section 15](/reference/language/jobs-and-waiting)), such as `unreachable`, rolls the call tree back, and with it the jobs it
+  started and the events it published, which never happen.
+- **Ending an entity needs an Approval.** `end(ok)` in one of the entity's methods ends it when
+  the transaction commits. `ok` is an `Approval`, which only `approval!` makes ([section 15](/reference/language/jobs-and-waiting)), so
+  retiring an entity takes a person's consent, and `end` without one doesn't compile. The
+  `Approval` isn't matched against the entity: it shows that a person said yes, and the store
+  keeps its `what` and `by`, with when the entity ended, for the record.
+  - **`end` is resolved by context.** In an entity's own method, `end(…)` is the entity's, as its
+    methods are, unless a local, a state field or a method of that name is nearer. Elsewhere
+    `end` is a string's end position, `s.end()`. `end` can't be called on another entity, which
+    ends itself through a method of its own, such as `retire`; the checker says so.
+  - **What an ended entity is.** Its state is gone, and the store keeps only that it ended, when,
+    and the approval's `what` and `by`. It leaves every view, so `@on(leaves(…))` jobs start, and
+    `Player.all` no longer lists it. Its `Ref` stays a valid value whose identity can be read
+    (`p.id`), but calling a method on it or reading it (`read()`, a state field) faults:
+    `Player("ann") ended at 2026-10-12 09:00 UTC, approved by operator ("Retire ann?"), so it
+    can't be read or changed`. The identity stays ended: using it never starts the entity again,
+    so a job holding an old reference can't bring it back by mistake. A `leaves` job that the
+    end starts gets the reference; what it needs of the state is passed on before the end.
+  - What the method changes after `end(ok)` is dropped with the rest of the state, and a later
+    call on the entity in the same transaction faults.
 - **State and `mut self`:** an entity method is a `mut self` method over the entity's state
   ([section 7](/reference/language/mutation)). A `state` field such as `devices` is short for `self.devices`, and a method is
   called by its name too: `unpin(p)` in another method is `self.unpin(p)`, in the same

@@ -136,6 +136,33 @@ outbox table and a relay process. Here the transaction covers both.
 `start` also takes `after:` (start later), `at:` (start at a time) and `key:` (start once per
 key). See [Jobs and waiting](/guide/jobs-and-waiting#starting-runs).
 
+## Ending an entity
+
+An entity lasts until one of its own methods calls `end(ok)`. `ok` is an `Approval`, which only
+[`approval!`](/guide/jobs-and-waiting#ways-to-wait) gives, so deleting an entity's data always
+takes a person's consent. The approval comes from a job, which passes it to the method:
+
+<<< ./code/entities/main.eye#close
+
+<<< ./code/entities/main.eye#test-close
+
+When the transaction commits, the entity's state is removed: `Team.all` no longer lists it, and it
+leaves every view, so jobs on `leaves(…)` start. The store keeps only that it ended, when, and
+whose approval let it. A reference to it is still a value whose identity you can read, but
+calling it or reading it stops the run with a fault, and the identity never starts again, so a job
+holding an old reference can't bring the team back by mistake:
+
+```text
+Team("ops") ended at 2026-10-12 09:00 UTC, approved by finance ("Close team ops?"), so it can't be read or changed
+```
+
+`end` without an `Approval` doesn't compile, and neither does calling it on another entity. Inside
+an entity's method, `end` is the entity's; elsewhere it is a string's end, `s.end()`.
+
+```text
+main.eye:9:7: ending an entity needs an Approval: end(ok), with ok from approval!(…) in the job that calls this method
+```
+
 ## Changing the shape of stored state
 
 Entities outlive the code that wrote them, so their state has a shape version. `@version(N)`

@@ -53,7 +53,7 @@ var pgTimeout = 15 * time.Second
 
 // pgSchema is the version of the tables this runtime writes. A later runtime
 // that changes them adds a step to pgMigrations.
-const pgSchema = 1
+const pgSchema = 2
 
 // pgMigrations are the SQL that brings the tables from each version to the
 // next; pgMigrations[0] makes them.
@@ -69,6 +69,8 @@ var pgMigrations = []string{
 	CREATE TABLE IF NOT EXISTS eye_runs (id bigint PRIMARY KEY, data bytea NOT NULL);
 	CREATE TABLE IF NOT EXISTS eye_events (seq bigserial PRIMARY KEY, name text NOT NULL, data bytea NOT NULL);
 	CREATE TABLE IF NOT EXISTS eye_meta (key text PRIMARY KEY, data bytea NOT NULL);`,
+	// Version 2: what is kept of an entity that end(ok) ended.
+	`ALTER TABLE eye_rows ADD COLUMN ended boolean NOT NULL DEFAULT false;`,
 }
 
 // IsPostgres reports whether a --store value names a Postgres database.
@@ -298,9 +300,9 @@ func pgRead(ctx context.Context, conn *pgx.Conn) (*memStore, int64, error) {
 		return nil, 0, pgReason(err)
 	}
 	c := &Commit{}
-	rows, _ := tx.Query(ctx, `SELECT key, entity, state, version, schema FROM eye_rows ORDER BY seq`)
+	rows, _ := tx.Query(ctx, `SELECT key, entity, state, version, schema, ended FROM eye_rows ORDER BY seq`)
 	var w Write
-	if _, err := pgx.ForEachRow(rows, []any{&w.Key, &w.Entity, &w.State, &w.Version, &w.Schema}, func() error {
+	if _, err := pgx.ForEachRow(rows, []any{&w.Key, &w.Entity, &w.State, &w.Version, &w.Schema, &w.Ended}, func() error {
 		c.Writes = append(c.Writes, w)
 		return nil
 	}); err != nil {
@@ -400,9 +402,9 @@ func pgApply(ctx context.Context, tx pgx.Tx, c *Commit, base int64) error {
 	}
 	b := &pgx.Batch{}
 	for _, w := range c.Writes {
-		b.Queue(`INSERT INTO eye_rows (key, entity, state, version, schema) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (key) DO UPDATE SET state = excluded.state, version = excluded.version, schema = excluded.schema`,
-			w.Key, w.Entity, w.State, w.Version, w.Schema)
+		b.Queue(`INSERT INTO eye_rows (key, entity, state, version, schema, ended) VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (key) DO UPDATE SET state = excluded.state, version = excluded.version, schema = excluded.schema, ended = excluded.ended`,
+			w.Key, w.Entity, w.State, w.Version, w.Schema, w.Ended)
 	}
 	for _, r := range c.Runs {
 		b.Queue(`INSERT INTO eye_runs (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = excluded.data`, r.ID, r.Data)

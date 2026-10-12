@@ -279,6 +279,9 @@ func (rt *runtime) restore() {
 			rt.members[v] = map[string]bool{}
 			for _, key := range rt.store.Keys(entityName(v.Entity)) {
 				row, _ := rt.store.Load(key)
+				if row.Ended {
+					continue // in no view
+				}
 				rt.members[v][key] = rt.inView(v, snapshotOf(rt.decodeRow(v.Entity, row, v.Pos), row.Version))
 			}
 		}

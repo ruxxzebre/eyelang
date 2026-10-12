@@ -102,6 +102,17 @@ func (x *fnCheck) builtin(name string, args []ir.Arg, want typ, at ir.Pos) typ {
 func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, at ir.Pos) typ {
 	c := x.c
 	x.builtinEffects(name, args)
+	if fn := c.builtins.funcs[name]; fn != nil && name == "end" && first == nil && len(args) == 1 && args[0].Name == "" {
+		// end(ok) with an Approval ends an entity, but only in its own
+		// methods, where the lowerer made it the entity's end.
+		got := x.check(args[0].Value, nil)
+		if t, ok := prune(got).(*tcon); ok && t.name == "Approval" && t.decl == nil {
+			c.typeErrorf(at, "end(ok) ends an entity, so only one of the entity's own methods can call it: call a method that does, as Player(id).retire!(ok)")
+			return tUnit
+		}
+		x.expect(args[0].Value.Position(), tString, got)
+		return c.funcType(fn, nil).ret
+	}
 	if fn := c.builtins.funcs[name]; fn != nil {
 		return x.declaredBuiltin(fn, args, first, at)
 	}
