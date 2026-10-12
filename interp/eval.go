@@ -920,18 +920,12 @@ func (in *Interp) expect(f *frame, c *ir.Call) Value {
 		if equal(l, r) == (b.Op == "==") {
 			return ir.Unit{}
 		}
-		in.faultf(c.Pos, "expected %s, but %s is %s", src, sourceOf(b.L), showNested(l))
+		in.faultf(c.Pos, "expected %s, but %s is %s", src, sourceOf(b.L), in.displayNested(l))
 	}
 	if !in.truth(in.eval(f, arg), c.Pos) {
 		in.faultf(c.Pos, "expected %s", src)
 	}
 	return ir.Unit{}
-}
-
-func showNested(v Value) string {
-	var b strings.Builder
-	writeShow(&b, v, true)
-	return b.String()
 }
 
 // sourceOf returns the source text of an expression, for messages.

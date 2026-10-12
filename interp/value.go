@@ -848,7 +848,18 @@ func show(v Value) string {
 	return b.String()
 }
 
-func writeShow(b *strings.Builder, v Value, nested bool) {
+func writeShow(b *strings.Builder, v Value, nested bool) { writeShowIn(b, v, nested, nil) }
+
+// writeShowIn writes v in its derived form; when custom isn't nil, it
+// writes each value inside v whose type has an impl of Show through that
+// impl (SPECS.md §11).
+func writeShowIn(b *strings.Builder, v Value, nested bool, custom func(Value) (string, bool)) {
+	if custom != nil {
+		if s, ok := custom(v); ok {
+			b.WriteString(s)
+			return
+		}
+	}
 	switch x := v.(type) {
 	case *SecretVal:
 		// The checker will refuse to show a secret; until then only its
@@ -903,7 +914,7 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			writeShow(b, e, true)
+			writeShowIn(b, e, true, custom)
 		}
 		b.WriteString("]")
 	case *Tuple:
@@ -912,7 +923,7 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			writeShow(b, e, true)
+			writeShowIn(b, e, true, custom)
 		}
 		b.WriteString(")")
 	case *Set:
@@ -925,7 +936,7 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			writeShow(b, e, true)
+			writeShowIn(b, e, true, custom)
 		}
 		b.WriteString("}")
 	case *Map:
@@ -939,9 +950,9 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			writeShow(b, k, true)
+			writeShowIn(b, k, true, custom)
 			b.WriteString(": ")
-			writeShow(b, vals[i], true)
+			writeShowIn(b, vals[i], true, custom)
 		}
 		b.WriteString(" }")
 	case *Record:
@@ -951,14 +962,14 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 				b.WriteString(", ")
 			}
 			b.WriteString(n + ": ")
-			writeShow(b, x.Vals[i], true)
+			writeShowIn(b, x.Vals[i], true, custom)
 		}
 		b.WriteString(" }")
 	case Empty:
 		b.WriteString("{}")
 	case *Variant:
 		if x.V.Type != nil && x.V.Type.Newtype() && len(x.Vals) == 1 {
-			writeShow(b, x.Vals[0], nested)
+			writeShowIn(b, x.Vals[0], nested, custom)
 			return
 		}
 		b.WriteString(x.V.Name)
@@ -973,12 +984,12 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 			if i < len(x.V.Fields) && x.V.Fields[i].Name != "" {
 				b.WriteString(x.V.Fields[i].Name + ": ")
 			}
-			writeShow(b, e, true)
+			writeShowIn(b, e, true, custom)
 		}
 		b.WriteString(")")
 	case *EntityRef:
 		b.WriteString(x.Entity.Name + "(")
-		writeShow(b, x.ID, true)
+		writeShowIn(b, x.ID, true, custom)
 		b.WriteString(")")
 	case *RunVal:
 		fmt.Fprintf(b, "Run(%d)", x.ID)

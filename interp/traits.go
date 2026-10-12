@@ -1,6 +1,10 @@
 package interp
 
-import "eyelang/ir"
+import (
+	"strings"
+
+	"eyelang/ir"
+)
 
 // Traits at run time: the checker has settled which impl each use means, and
 // the interpreter finds it again from the value. Operators on declared types
@@ -86,20 +90,43 @@ func (in *Interp) fits(t *ir.TypeExpr, v Value) bool {
 
 // display writes a value as `"{…}"` and print do: through its type's impl
 // of Show, if it has one, and otherwise in the derived form.
+// The values inside it, in a list, an Option, a record or a variant, are
+// written through their own impls of Show too.
 func (in *Interp) display(v Value) string {
-	if t := in.typeOf(v); t != nil {
-		for _, impl := range t.Impls {
-			if impl.Trait != nil && impl.Trait.Name == "Show" && impl.Trait.Module == in.prog.Prelude {
-				if fn := impl.Methods["show"]; fn != nil {
-					r, _ := in.callMethodFunc(fn, v, nil, fn.Pos)
-					if s, ok := r.(string); ok {
-						return s
-					}
+	switch v.(type) {
+	case string, rune:
+		return show(v)
+	}
+	var b strings.Builder
+	writeShowIn(&b, v, false, in.customShow)
+	return b.String()
+}
+
+// displayNested writes a value as expect's messages do: as display does,
+// but with strings in quotes.
+func (in *Interp) displayNested(v Value) string {
+	var b strings.Builder
+	writeShowIn(&b, v, true, in.customShow)
+	return b.String()
+}
+
+// customShow writes v through its type's impl of Show, if it has one.
+func (in *Interp) customShow(v Value) (string, bool) {
+	t := in.typeOf(v)
+	if t == nil {
+		return "", false
+	}
+	for _, impl := range t.Impls {
+		if impl.Trait != nil && impl.Trait.Name == "Show" && impl.Trait.Module == in.prog.Prelude {
+			if fn := impl.Methods["show"]; fn != nil {
+				r, _ := in.callMethodFunc(fn, v, nil, fn.Pos)
+				if s, ok := r.(string); ok {
+					return s, true
 				}
 			}
 		}
 	}
-	return show(v)
+	return "", false
 }
 
 // enumFn is `T.variants` or `T.parse`, derived on a type whose variants have
