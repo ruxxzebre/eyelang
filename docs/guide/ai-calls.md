@@ -123,11 +123,9 @@ Strict schemas have no maps and no fixed-length lists, so a map is asked for as 
 on. A time of day is text such as `"14:30"`. The reply is read back into the map, tuple or time
 your type says.
 
-::: info Not yet
-A type that refers to itself, such as a tree, and `()` pass `eye check` but have no schema, so
-asking for them stops the run at the call
-([#123](https://github.com/ruxxzebre/eyelang/issues/123)).
-:::
+A type that refers to itself, such as a tree, has no schema, since strict schemas can't be
+recursive; nor have `()`, `Char`, `Bytes` and the fixed-width integers. `eye check` says so at the
+call. Ask for a tree as a flat list whose items name their parent.
 
 ## Replies are checked
 

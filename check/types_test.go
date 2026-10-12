@@ -1022,6 +1022,20 @@ job j(login: Login) { sleep!(1 min) }`,
 job j() {
   let r: Result(Secret(String), ai.AiError) = ai.generate!(model: "m", prompt: "p")
 }`, []string{"3:47: ai.generate needs Schema, and Secret(String) has no Schema"}},
+		{"a model is asked for a type a schema can say", `import ai
+type Tree = { name: String, children: List(Tree) }
+type Expr = | Num(Int) | Add(Expr, Expr)
+type Pair(a) = { left: a, right: a }
+fn tree() -> Result(Tree, ai.AiError) = ai.generate!(model: "m", prompt: "p")
+fn expr() -> Result(Expr, ai.AiError) = ai.generate!(model: "m", prompt: "p")
+fn unit() -> Result((), ai.AiError) = ai.generate!(model: "m", prompt: "p")
+fn char() -> Result(Char, ai.AiError) = ai.generate!(model: "m", prompt: "p")
+fn pairs() -> Result(Pair(Pair(Int)), ai.AiError) = ai.generate!(model: "m", prompt: "p")`, []string{
+			"5:41: ai.generate needs Schema, and Tree has no Schema: Tree refers to itself, which a schema can't say",
+			"6:41: ai.generate needs Schema, and Expr has no Schema: Expr refers to itself, which a schema can't say",
+			"7:39: ai.generate needs Schema, and () has no Schema: a model can be asked for records, variants, tuples, lists, sets, maps, strings, numbers, booleans, dates and times",
+			"8:41: ai.generate needs Schema, and Char has no Schema: a model can be asked for records, variants, tuples, lists, sets, maps, strings, numbers, booleans, dates and times",
+		}},
 		{"a model is asked for a type something names", `import ai
 job j() {
   let r = ai.generate!(model: "m", prompt: "p")

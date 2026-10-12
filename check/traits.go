@@ -531,11 +531,26 @@ func (c *checker) has(t typ, b cbound, seen map[*ir.Type]bool) (bool, string) {
 			if x.decl.Extern {
 				return false, fmt.Sprintf("%s is an extern type, whose values foreign code owns, so it has none of Eq, Ord, Show, Hash, Save and Schema", x.decl.Name)
 			}
-			if seen[x.decl] {
+			if tr.Name == "Schema" {
+				// A schema says a type once, so a type that holds itself
+				// has none. The same generic type with other arguments,
+				// as in Option(Option(Int)), is another type.
+				key := show(x)
+				if c.schemaOpen[key] || len(c.schemaOpen) > 64 {
+					return false, fmt.Sprintf("%s refers to itself, which a schema can't say", x.decl.Name)
+				}
+				if c.schemaOpen == nil {
+					c.schemaOpen = map[string]bool{}
+				}
+				c.schemaOpen[key] = true
+				defer delete(c.schemaOpen, key)
+			} else if seen[x.decl] {
 				return true, "" // a recursive type: its parts are being checked
 			}
-			seen[x.decl] = true
-			defer delete(seen, x.decl)
+			if !seen[x.decl] {
+				seen[x.decl] = true
+				defer delete(seen, x.decl)
+			}
 			env := envOf(x)
 			if x.decl.Alias != nil {
 				for i, name := range x.decl.Alias.Fields {
@@ -567,6 +582,9 @@ func (c *checker) has(t typ, b cbound, seen map[*ir.Type]bool) (bool, string) {
 }
 
 func partWhy(part string, t typ, b cbound, why string) string {
+	if strings.Contains(why, "refers to itself") {
+		return why // the reason, wherever in the type it is found
+	}
 	s := fmt.Sprintf("%s is %s, which has no %s", part, show(t), b.trait.Name)
 	if why != "" && !strings.Contains(why, "has no") {
 		s += " (" + why + ")"
@@ -667,6 +685,9 @@ func (c *checker) builtinHas(x *tcon, b cbound, seen map[*ir.Type]bool) (bool, s
 	switch x.name {
 	case "Int", "Float", "Bool", "Char", "String", "Byte", "Bytes", "Int32", "Int64", "UInt32", "UInt64",
 		"Duration", "Size", "Date", "Time", "Instant", "Zone", "Key", "()", "NonZero":
+		if name == "Schema" && !schemaBuiltins[x.name] {
+			return false, "a model can be asked for records, variants, tuples, lists, sets, maps, strings, numbers, booleans, dates and times"
+		}
 		return true, ""
 	case "Secret":
 		return false, "a Secret can't be shown, saved or compared, so it never leaks"
@@ -689,6 +710,11 @@ func (c *checker) builtinHas(x *tcon, b cbound, seen map[*ir.Type]bool) (bool, s
 	}
 	return false, ""
 }
+
+// schemaBuiltins are the built-in types a model can be asked for: those a
+// JSON Schema has a shape for (interp's schemaOf).
+var schemaBuiltins = map[string]bool{"Int": true, "Float": true, "Bool": true, "String": true,
+	"Duration": true, "Size": true, "Date": true, "Time": true, "Instant": true, "Zone": true, "Key": true}
 
 func opOf(trait string) string {
 	for op, t := range opTraits {

@@ -207,6 +207,19 @@ func (env typeEnv) resolve(t *ir.TypeExpr) *ir.TypeExpr {
 	return t
 }
 
+// instanceString names a type with the arguments env gives its parameters.
+func instanceString(t *ir.TypeExpr, env typeEnv) string {
+	t = env.resolve(t)
+	if len(t.Args) == 0 {
+		return t.Name
+	}
+	var parts []string
+	for _, a := range t.Args {
+		parts = append(parts, instanceString(a, env))
+	}
+	return t.Name + "(" + strings.Join(parts, ", ") + ")"
+}
+
 // bind returns the environment for a declaration used with arguments.
 func bindParams(d *ir.Type, args []*ir.TypeExpr, outer typeEnv) typeEnv {
 	env := typeEnv{}
@@ -564,17 +577,22 @@ func prefix(path string) string {
 // schemaOf is the JSON Schema of a type's JSON shape, with `##` comments as
 // descriptions. It follows the strict subset model providers accept: every
 // field is required, an Option allows null, and no other fields are allowed.
-func (in *Interp) schemaOf(t *ir.TypeExpr, env typeEnv, seen map[*ir.Type]bool) (map[string]any, error) {
+//
+// seen holds the declared types being said, by name with their arguments: a
+// type met again inside itself has no schema, while the same generic type
+// with other arguments, as in Option(Option(Int)), is another type.
+func (in *Interp) schemaOf(t *ir.TypeExpr, env typeEnv, seen map[string]bool) (map[string]any, error) {
 	t = env.resolve(t)
 	if t == nil {
 		return nil, fmt.Errorf("no type to ask for")
 	}
 	if d := t.Decl; d != nil {
-		if seen[d] {
+		key := instanceString(t, env)
+		if seen[key] || len(seen) > 64 {
 			return nil, fmt.Errorf("%s refers to itself, which a schema can't say", d.Name)
 		}
-		seen[d] = true
-		defer delete(seen, d)
+		seen[key] = true
+		defer delete(seen, key)
 		s, err := in.declSchema(d, bindParams(d, t.Args, env), seen)
 		if err == nil && d.Doc != "" {
 			s["description"] = d.Doc
@@ -630,7 +648,7 @@ func (in *Interp) schemaOf(t *ir.TypeExpr, env typeEnv, seen map[*ir.Type]bool) 
 	return nil, fmt.Errorf("%s has no schema: a model can be asked for records, variants, tuples, lists, sets, maps, strings, numbers, booleans, dates and times", t.Name)
 }
 
-func (in *Interp) declSchema(d *ir.Type, env typeEnv, seen map[*ir.Type]bool) (map[string]any, error) {
+func (in *Interp) declSchema(d *ir.Type, env typeEnv, seen map[string]bool) (map[string]any, error) {
 	if d.Alias != nil && len(d.Variants) == 0 {
 		if d.Alias.Name == "record" {
 			return in.objectSchema(d.Alias.Fields, d.Alias.Args, d.FieldDocs, env, seen)
@@ -675,7 +693,7 @@ func (in *Interp) declSchema(d *ir.Type, env typeEnv, seen map[*ir.Type]bool) (m
 	return map[string]any{"anyOf": options}, nil
 }
 
-func (in *Interp) objectSchema(fields []string, types []*ir.TypeExpr, docs map[string]string, env typeEnv, seen map[*ir.Type]bool) (map[string]any, error) {
+func (in *Interp) objectSchema(fields []string, types []*ir.TypeExpr, docs map[string]string, env typeEnv, seen map[string]bool) (map[string]any, error) {
 	props := map[string]any{}
 	required := []any{}
 	for i, name := range fields {

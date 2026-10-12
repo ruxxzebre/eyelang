@@ -448,3 +448,28 @@ job plan() -> Result(Plan, ai.AiError) {
 		}
 	}
 }
+
+// TestGenerateAsksForANestedGenericType checks that a generic type inside
+// itself with other arguments isn't taken for a type that refers to itself.
+func TestGenerateAsksForANestedGenericType(t *testing.T) {
+	prog := load(t, `
+import ai
+
+type Pair(a) = { left: a, right: a }
+
+job pairs() -> Result(Pair(Pair(Int)), ai.AiError) {
+  ai.generate!(model: "m", prompt: "pairs")
+}
+`)
+	path := filepath.Join(t.TempDir(), "ai.json")
+	rec := `{"contract": "ai", "exchanges": [{"op": "generate", "result": {"left": {"left": 1, "right": 2}, "right": {"left": 3, "right": 4}}}]}`
+	if err := os.WriteFile(path, []byte(rec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := New(prog, io.Discard, io.Discard)
+	in.rt.aiReplies = in.loadReplies(path, ir.Pos{})
+	want := "Completed(Ok({ left: { left: 1, right: 2 }, right: { left: 3, right: 4 } }))"
+	if got := runJob(t, in, "pairs"); got != want {
+		t.Errorf("pairs = %s, want %s", got, want)
+	}
+}

@@ -260,7 +260,7 @@ func (in *Interp) toolDef(fn *ir.Func) (toolDef, error) {
 	props := map[string]any{}
 	required := []any{}
 	for _, p := range toolParams(fn) {
-		s, err := in.schemaOf(p.Type, typeEnv{}, map[*ir.Type]bool{})
+		s, err := in.schemaOf(p.Type, typeEnv{}, map[string]bool{})
 		if err != nil {
 			return toolDef{}, fmt.Errorf("its parameter %s: %v", p.Name, err)
 		}

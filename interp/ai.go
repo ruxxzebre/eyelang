@@ -25,7 +25,7 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 	if want == nil {
 		in.faultf(at, "ai.generate needs to know the type to ask for: write `let x: T = ai.generate!(…)`, or return it from a function that says its type")
 	}
-	schema, err := in.schemaOf(want, typeEnv{}, map[*ir.Type]bool{})
+	schema, err := in.schemaOf(want, typeEnv{}, map[string]bool{})
 	if err != nil {
 		in.faultf(at, "ai.generate can't ask for %s: %v", typeString(want), err)
 	}

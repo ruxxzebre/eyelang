@@ -52,7 +52,11 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   false` on every object and have no fixed-length arrays, so a model is asked for a map as a
   list of `{"key": …, "value": …}` entries and for a tuple as an object with fields `value1`,
   `value2`, …; reading a reply takes either shape. A type that holds a `Secret`, a value of a
-  program's `extern type` or a function has no `Schema`, so it can't be asked for.
+  program's `extern type` or a function has no `Schema`, so it can't be asked for. Nor has a
+  type that holds itself, such as a tree, since strict schemas don't take recursive ones; nor
+  `()`, which says nothing to ask for; nor `Char`, `Byte`, `Bytes` and the fixed-width integers,
+  which JSON has no shape for. `Option(Option(Int))` doesn't hold itself: the inner type is
+  another one.
 - **The expected type picks the schema.** `ai.generate` returns `Result(a, AiError) where a:
   Schema`, so the type comes from where the result goes: here, the job's return type. When nothing
   says, write it: `let d: Digest = ai.generate!(…)?`; a call whose type the function doesn't
@@ -129,7 +133,8 @@ job triage(report: String) -> Result(Triage, ai.AiError) {
 - **A tool is a function declared with `fn`, named where it is passed.** `tools:` is a
   `List(ai.Tool)`, and a named function converts to an `ai.Tool` where one is expected, as a
   value converts to `dyn Trait` ([section 11](/reference/language/traits)), so one list holds functions of different types.
-  Its parameters and its result must have `Schema`. The parameters give the input schema, one
+  Its parameters and its result must have `Schema`; a tool that returns `()` answers `null`.
+  The parameters give the input schema, one
   property each, required unless it has a default, and the `##` comment the description. A
   lambda, a function passed in, a generic function, an `extern fn`, a contract's operation and a
   built-in don't convert: a tool needs a name, a description and one schema. A `Tool` has no

@@ -79,7 +79,7 @@ func (x *fnCheck) tool(e ir.Expr, want typ) typ {
 		c.typeErrorf(r.Pos, "%s is generic, and what a tool returns goes back to the model as JSON: give its result a type without type variables", fn.Name)
 		ok = false
 	}
-	if ok {
+	if u, isCon := prune(f.ret).(*tcon); ok && (!isCon || u.name != "()" || u.decl != nil) { // a tool that only acts answers null
 		x.requireNamed(f.ret, "Schema", r.Pos, fmt.Sprintf("what %s returns, which goes back to the model as a tool's result,", fn.Name))
 	}
 	return want

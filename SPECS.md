@@ -200,6 +200,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Bytes that aren't text | **`fs.readBytes` and `fs.writeBytes` read and write a file's bytes, and `toBytes(xs)` makes `Bytes` of a `List(Byte)`** (sections 5 and 12). Accepted by the owner on 2026-10-12 | `Bytes` came only from a string, so a lexer couldn't be given, or tested on, a file that isn't UTF-8. `toBytes` is named as `toSet`, `toList` and `toText` are; with element assignment on a `List(Byte)` it is how bytes are built one at a time, while `Bytes` themselves stay unchanged values whose slices share storage |
 | A variant's number | **`v.index()`, derived on a type whose variants have no fields, is the variant's place in `T.variants()`, counting from 0** (section 11). Accepted by the owner on 2026-10-12 | Go's `int(kind)`: a table, a checksum or a foreign format numbers a choice, and building a `Map(Kind, Int)` at the start to find out was ceremony. A derived method, like `variants` and `parse`, not syntax; `index` is the word the library already uses for a place (`indexOf`, `xs[i]`), and a type's own `index` method is called instead |
 | Regular expressions | **A library module, not syntax: `regex.parse(pattern)` gives a `Result(Regex, RegexError)`, and patterns are RE2's, with no backreferences or lookaround. `re.matches(text)` asks about the whole text, `re.replace` replaces every match and `replaceFirst` the first, and a replacement names groups `$1` and `$<name>`** (section 5). From 2026-10-12 | The digest read links out of HTML with a loop of offsets for what a pattern says in a line. RE2 matches in time linear in the text, so a match's cost is bounded whatever the pattern, as section 1 asks; backreferences would make it exponential. A function rather than a literal, since a library covers it and only checking at compile time is lost (open question 44). `matches` on the whole text is what checking an id or a date means; `replace` replaces every match as a string's `replace` replaces every occurrence, so changing a string to a pattern doesn't change how many are replaced. `$<name>` because `${name}` is interpolation in an Eyelang string. A `Regex` holds its pattern, so it has `Eq`, `Show` and `Save` as a record does, and a job can keep one |
+| Schemas aren't recursive | **A type that holds itself, `()`, `Char`, `Byte`, `Bytes` and the fixed-width integers have no `Schema`**, so `eye check` refuses asking a model for them, at the call (section 19); a tool that returns `()` answers `null` | Anthropic's structured outputs take no recursive schema and OpenAI's strict mode limits them, so a `$ref` schema would work with one provider and not the other; the checker and the runtime now refuse the same types, where before the run faulted at the call. A tree is asked for as a flat list with parent names |
 
 ## 3. A tour
 
@@ -2477,7 +2478,11 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   false` on every object and have no fixed-length arrays, so a model is asked for a map as a
   list of `{"key": …, "value": …}` entries and for a tuple as an object with fields `value1`,
   `value2`, …; reading a reply takes either shape. A type that holds a `Secret`, a value of a
-  program's `extern type` or a function has no `Schema`, so it can't be asked for.
+  program's `extern type` or a function has no `Schema`, so it can't be asked for. Nor has a
+  type that holds itself, such as a tree, since strict schemas don't take recursive ones; nor
+  `()`, which says nothing to ask for; nor `Char`, `Byte`, `Bytes` and the fixed-width integers,
+  which JSON has no shape for. `Option(Option(Int))` doesn't hold itself: the inner type is
+  another one.
 - **The expected type picks the schema.** `ai.generate` returns `Result(a, AiError) where a:
   Schema`, so the type comes from where the result goes: here, the job's return type. When nothing
   says, write it: `let d: Digest = ai.generate!(…)?`; a call whose type the function doesn't
@@ -2554,7 +2559,8 @@ job triage(report: String) -> Result(Triage, ai.AiError) {
 - **A tool is a function declared with `fn`, named where it is passed.** `tools:` is a
   `List(ai.Tool)`, and a named function converts to an `ai.Tool` where one is expected, as a
   value converts to `dyn Trait` (section 11), so one list holds functions of different types.
-  Its parameters and its result must have `Schema`. The parameters give the input schema, one
+  Its parameters and its result must have `Schema`; a tool that returns `()` answers `null`.
+  The parameters give the input schema, one
   property each, required unless it has a default, and the `##` comment the description. A
   lambda, a function passed in, a generic function, an `extern fn`, a contract's operation and a
   built-in don't convert: a tool needs a name, a description and one schema. A `Tool` has no

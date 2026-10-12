@@ -93,6 +93,10 @@ func (c *checker) program(path string) (*ir.Program, []Diagnostic) {
 }
 
 type checker struct {
+	// schemaOpen holds the types whose Schema is being decided, by name
+	// with their arguments, so that one met again inside itself is found.
+	schemaOpen map[string]bool
+
 	root    string
 	prog    *ir.Program
 	prelude *module
