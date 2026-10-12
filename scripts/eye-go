@@ -1,0 +1,8 @@
+#!/bin/sh
+# Runs the Go toolchain this repository pins for programs that need the
+# runner (tools/gotool), fetching it into the user's cache the first time.
+# It isn't named go, so that it never stands in for the go on PATH.
+set -e
+root=$(cd "$(dirname "$0")/.." && pwd)
+(cd "$root" && go build -o bin/go-pinned ./tools/gotool)
+exec "$root/bin/go-pinned" "$@"

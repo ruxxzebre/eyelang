@@ -358,6 +358,118 @@ writing a Postgres client, an HTTP client with TLS, and time-zone handling befor
 compiled job runs. The runner moves into Eyelang after v0.4 (S.2), which is when a job program
 can have no Go in it and beat Go on memory.
 
+### Hosting compiled programs (7.6)
+
+**Built so far (the groundwork of 7.6).** `eye build --runner` builds a program as B′, for
+`linux/amd64`, `linux/arm64`, `darwin/amd64` and `darwin/arm64`. Without the flag nothing
+changes. It goes like this (`cgen/runner.go`):
+
+1. The program's C and the runtime's are compiled by zig into a static library,
+   `libeyeprogram.a`, with the program's `main` renamed `eye_main` (`-Dmain=eye_main`). The
+   objects are cached as for any build.
+2. `eye` writes a Go module into a temporary directory: a `main` package, and the runner's Go
+   source as the module `eyelang`, which `main` requires and replaces with that copy.
+3. The pinned Go (`internal/gotool`, which moves with `go.mod`'s `go` line) builds it with
+   `CGO_ENABLED=1` and `CC="zig cc -target …"`, linked externally. Linux binaries are static,
+   against musl (`-extldflags -static`). A macOS binary links `libSystem` and `libresolv`, as
+   every Go program on a Mac does. zig's macOS SDK doesn't describe `libresolv`, so the build
+   writes a small text stub of it. zig signs arm64 binaries, which macOS needs.
+4. The runner's `main` calls `eye_main(argc, argv)` through cgo, then ends the process with C's
+   `exit`. That flushes the program's buffered output and runs its `atexit` handlers, which Go's
+   `os.Exit` would skip.
+
+A first build for a target takes about 40 s, mostly compiling Go's standard library through
+cgo. After that it takes about 4 s. `go test ./cgen -run TestRunner` builds a program's `main`
+and its tests this way, and cross-builds for the other targets, checking each file's headers.
+
+**How the runner's Go source reaches a user's machine: inside `eye`.** `cgen` embeds the source
+(`//go:embed hosted/*.go`), and the build writes it out as the module `eyelang` beside the
+program's `main`, with `GOPROXY=off`, `GOTOOLCHAIN=local`, `GOWORK=off` and `GOENV=off`. A build
+fetches Go and zig, each once, and nothing else: no module proxy, no `GOPATH`, no settings from
+the user's `go env`. Today the embedded runner is the package `cgen/hosted`, which only calls
+`eye_main`. It is behind the build tag `eyehosted`, so `eye`'s own build, which has no cgo,
+skips it.
+
+When 7.6 hosts entities and jobs, the runner's packages (`interp` and the stores) and their
+dependencies are embedded the same way. The dependencies are vendored (`go mod vendor`) when
+`eye` is built, so the build runs with `-mod=vendor`, offline. Fetching the runner's module from
+a proxy instead would make a build depend on the network and on a published version matching
+`eye`'s. Embedding ties the runner a program links to the `eye` that compiled it, which is what
+the interface below needs.
+
+**The interface.** The interface is between the runner (Go) and a compiled program (C).
+Values cross it as opaque handles, so 7.13's layouts can change what a handle is without
+changing a signature. The declarations will live in `cgen/hosted/eye_host.h`. None of them is
+implemented yet: entity and job hosting needs 7.13's layouts and 7.9's core gaps.
+
+```c
+typedef struct eye_rt eye_rt;       // the runner's side of one call: its run, transaction
+                                    // and frame; C passes it back in every callback
+typedef uint64_t eye_val;           // a program value; what it holds is 7.13's (a tagged
+                                    // word or a pointer to a counted cell)
+typedef struct { const uint8_t *p; size_t n; } eye_bytes;  // bytes the caller owns
+typedef struct { uint8_t *p; size_t n; } eye_buf;          // bytes the callee allocated with
+                                                           // malloc; the caller frees them
+typedef enum { EYE_OK, EYE_FAULT, EYE_WAITING } eye_status;
+
+// What the program declares, by index: entities (their methods, identity and
+// state types), jobs, tests, saved types and host functions. The runner
+// matches them to the IR it already has by name.
+const struct eye_program *eye_program(void);
+
+// ---- entry points: compiled code, called by the runner
+int        eye_main(int argc, char **argv);   // built: main, or the tests of a --test build
+eye_status eye_run_main(eye_rt *, eye_val args);
+eye_status eye_run_test(eye_rt *, int32_t test);
+// Runs an entity method on a state in a transaction. *state is replaced by
+// the new state: in place when the runner held the only reference (7.5).
+eye_status eye_call_method(eye_rt *, int32_t entity, int32_t method, eye_val *state,
+                           const eye_val *args, int32_t nargs, eye_val *result);
+// Runs a job from its frame to its next `!` (EYE_WAITING, with the step to take
+// in *step and the new frame in *frame) or to its end (EYE_OK, with *result).
+// The first call has a frame of its arguments, and a later one has the
+// result of the step it waited for in `resumed`.
+eye_status eye_step_job(eye_rt *, int32_t job, eye_val *frame, eye_val resumed,
+                        struct eye_step *step, eye_val *result);
+// A saved type's encoding is the one the interpreter writes, so a journal
+// or a Postgres store moves between interpreted and native code.
+eye_status eye_encode(eye_rt *, int32_t type, eye_val, eye_buf *out);
+eye_status eye_decode(eye_rt *, int32_t type, eye_bytes in, eye_val *out);
+void       eye_retain(eye_val);
+void       eye_release(eye_val);
+const char *eye_fault(eye_rt *);           // the message of the last EYE_FAULT
+
+// ---- callbacks: the runner, called by compiled code (exported from Go with //export)
+eye_status eye_go_entity_call(eye_rt *, int32_t entity, eye_val id, int32_t method,
+                              const eye_val *args, int32_t nargs, eye_val *result);
+eye_status eye_go_entity_read(eye_rt *, int32_t entity, eye_val id, eye_val *snapshot);
+eye_status eye_go_start(eye_rt *, int32_t job, const eye_val *args, int32_t nargs,
+                        eye_val key, eye_val *run);
+eye_status eye_go_publish(eye_rt *, int32_t event, eye_val value);
+// A host function that doesn't wait (env.get, the clock, random, log): it
+// runs at once. One that waits is a `!` step, which eye_step_job returns instead.
+eye_status eye_go_host(eye_rt *, int32_t fn, const eye_val *args, int32_t nargs,
+                       eye_val *result);
+```
+
+The rules that go with it:
+
+- **Ownership.** Arguments are borrowed for the call. Results and replaced states are owned by
+  the receiver, which releases them with `eye_release`. A handle the runner keeps between calls
+  (an entity's state, a job's frame) is one it owns.
+- **The Go side works with encodings.** The runner never looks inside a handle. To read one, as
+  a contract operation's arguments or a store write, it calls `eye_encode`, in the shape the
+  interpreter uses. To make one, it calls `eye_decode`. 7.10 counted those crossings for a
+  digest morning: 114 encodes and 10 decodes, about 4 µs at B′'s 35 ns.
+- **Jobs return at each `!`.** A step is never a callback that blocks inside C. So a waiting
+  run holds no C stack and no thread, only its encoded frame, as section 4 needs. Entity calls,
+  reads, starts and publishing are callbacks, because they finish within the transaction.
+- **One thread at a time per `eye_rt`.** Compiled code runs on the goroutine that called it,
+  and its callbacks run there too. The runner already gives each transaction one goroutine.
+- **Faults.** A fault in compiled code returns `EYE_FAULT` up through every frame. The runner
+  rolls the transaction back, as it does for an interpreted fault. A fault inside a callback
+  returns `EYE_FAULT` to the compiled caller, which returns it on.
+
 ## 2. Values and memory
 
 ### Values laid out by type (7.13)

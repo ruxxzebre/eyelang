@@ -111,8 +111,8 @@ Go on every benchmark: maps per key type, strings and `Bytes` as views, the rest
    IR) is done and most of 7.13 (values laid out by type): native code now takes 0.85× Go's time
    on the geometric mean and 0.36× its memory, with records 0.53×, the lexer 0.65× (and a third
    of Go's memory) and trees 0.66×. Left of 7.13: maps (1.62×, probes specialised per key type)
-   and strings and `Bytes` as views. Next 7.9 (core gaps in C), with the groundwork of 7.6 under
-   way in parallel, and 7.6 with B′ hosting (one static binary, Go linked
+   and strings and `Bytes` as views. Next 7.9 (core gaps in C), and 7.6 with B′ hosting, whose
+   groundwork is done (a pinned Go, `eye build --runner`, the interface's signatures) (one static binary, Go linked
    through cgo); 7.11 (faster than Go, the owner's bar) throughout; 7.12 last; S.2 (the runner in
    Eyelang) after v0.4. 7.10 is done: a digest morning crosses between compiled code and the
    runner 214 times, about 7.5 µs under B′. G.20, the lexer's five language changes (element
@@ -963,6 +963,12 @@ whole-program specialisation, and jobs resuming from saved frames.
   toolchain it fetches as it fetches zig. One static binary per program; `eye` itself stays free
   of cgo; programs with no entities or jobs build with zig alone. The store and tasks stay in
   the runner.
+  **Progress (2026-10-12):** the groundwork is done. `internal/gotool` pins Go as
+  `internal/zig` pins zig. `eye build --runner` links a program's C into a Go `main` built by
+  that Go, static on Linux and cross-built for linux/arm64 and macOS; its `main` and tests run
+  (`cgen/runner_test.go`). The runner's Go source travels inside `eye`. The interface's
+  C signatures, with opaque value handles for 7.13's layouts, are in compilation.md, "Hosting
+  compiled programs". Hosting entities and jobs waits for the rest of 7.13 and for 7.9.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
   Crossings (7.10, counted by the interpreter with `eye run --crossings` on the journal, against

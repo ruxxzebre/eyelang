@@ -190,6 +190,11 @@ tasks:
     cmds:
       - go run ./tools/zig {{.CLI_ARGS}}
 
+  go-pinned:
+    desc: Run the Go toolchain eye build --runner pins (tools/gotool), fetching it once into the user's cache - task go-pinned -- version
+    cmds:
+      - go run ./tools/gotool {{.CLI_ARGS}}
+
   next:
     desc: Say what's next - the last release, ROADMAP.md's priorities, open issues, the gaps in status.md, and who works on what (--all lists every gap)
     cmds:

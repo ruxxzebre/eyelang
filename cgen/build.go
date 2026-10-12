@@ -77,6 +77,12 @@ type BuildOptions struct {
 	// EmitC, if set, is a directory to write the C into, instead of
 	// compiling it.
 	EmitC string
+	// Runner links the program into the Go runner (runner.go): the
+	// runner is the binary's main, and calls the program's C through cgo.
+	Runner bool
+	// Archive writes a static library to Out instead of a binary, its
+	// main renamed eye_main for the runner to call.
+	Archive bool
 	// Progress, if set, hears about fetching zig.
 	Progress io.Writer
 }
@@ -97,6 +103,9 @@ func Build(prog *ir.Program, opts BuildOptions) error {
 	files = append(Runtime(), files...)
 	if opts.EmitC != "" {
 		return WriteFiles(opts.EmitC, files)
+	}
+	if opts.Runner {
+		return buildRunner(files, opts)
 	}
 	return Compile(files, opts)
 }
@@ -149,6 +158,9 @@ func Compile(files []File, opts BuildOptions) error {
 	}
 	if triple != "" {
 		flags = append(flags, "-target", triple)
+	}
+	if opts.Archive {
+		flags = append(flags, "-Dmain=eye_main")
 	}
 	units := compileUnits(files, !opts.Debug)
 	for _, u := range units {
@@ -213,6 +225,15 @@ func Compile(files []File, opts BuildOptions) error {
 		return fmt.Errorf("%s", strings.Join(failures, "\n"))
 	}
 	out := opts.Out
+	if opts.Archive {
+		_ = os.Remove(out) // ar adds to an archive that is there
+		args := append([]string{"ar", "rcs", out}, objs...)
+		if outb, err := exec.Command(exe, args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("archiving %s: %v\n%s", out, err, outb)
+		}
+		prune(cache, objs)
+		return nil
+	}
 	if strings.HasPrefix(target, "windows/") && !strings.HasSuffix(out, ".exe") {
 		out += ".exe"
 	}

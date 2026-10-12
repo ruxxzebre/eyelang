@@ -306,7 +306,7 @@ go where eye run sends them, with the address and secret from the environment.
 ## eye build {#build}
 
 ```text
-usage: eye build [--test] [--target os/arch] [-o file] [-g] [--emit-c dir] [program-directory]
+usage: eye build [--test] [--target os/arch] [-o file] [-g] [--emit-c dir] [--runner] [program-directory]
 
 Compiles a program to a native binary: C from the low IR, built with the zig
 that eye pins, fetched into the user's cache the first time. Object files are
@@ -318,6 +318,8 @@ views and contracts still run in eye run.
   -g	compile without optimisation and with debug information (-O0 -g)
   -o string
     	the binary to write (default: the program's directory name, with .test for --test)
+  -runner
+    	link the program into the Go runner, built with the pinned Go: one binary, static on Linux (for linux and darwin targets)
   -target string
     	the platform to build for: darwin/amd64, darwin/arm64, linux/amd64, linux/arm64, windows/amd64 (default: this machine)
   -test
