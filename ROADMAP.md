@@ -34,9 +34,9 @@ yet.
   what is deployed and how to read its runs). Its first scheduled morning is 2026-10-12 07:40
   Europe/Dublin. The criterion closes after one good morning run; replacing the TypeScript
   digest is the user's decision.
-- Closed tasks whose exit tests weren't met: carry-over tasks C.1 to C.3, C.6 and C.7 under the
-  phases (`end(ok)`, `lock!`, `all!` and `first!`, `cron`, 10,000 waiting tasks, the spec's
-  examples through the checker).
+- Closed tasks whose exit tests weren't met: carry-over tasks C.1, C.2, C.6 and C.7 under the
+  phases (`end(ok)`, `lock!`, `all!` and `first!`, 10,000 waiting tasks, the spec's examples
+  through the checker). C.3 (`cron` and the schedule policies) is done.
 - Approvals answered by id and only by the person asked (C.8, #71), from the decisions of
   2026-10-11, deferred by the user: until then the lab answers approvals only with `eye approve`
   and `eye decline`, and its `approving` module tells the operator how.
@@ -57,11 +57,11 @@ yet.
 2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
-3. Phase 6 (v0.3): 6.2, 6.10, 6.11 and 6.12 are done; 6.1, 6.3 to 6.9 and 6.13 are open, each
-   with its issue. Ready to start: 6.3, 6.7 (function types now state their effects), 6.9, 6.1, and 6.5
-   once the user names the policy format. 6.13 (#81), `eye run` serving a contract over HTTP on
-   its `@port`, comes before 6.4's round trip and the online playground (open question 34). The phase's exit
-   test is 6.6 (Notify, with the user, in the homelab repository) and 6.8 (agents, after 6.7).
+3. Phase 6 (v0.3): 6.2, 6.10 to 6.13 are done; 6.1 and 6.3 to 6.9 are open, each with its
+   issue. The user chose plain Kubernetes NetworkPolicy, with pods labelled `eyelang.module`, for
+   6.5. Since 6.13, `eye run` serves a contract over HTTP on its `@port`, which 6.4's round trip
+   and the online playground (open question 34) build on. The phase's exit test is 6.6 (Notify,
+   with the user, in the homelab repository) and 6.8 (agents, after 6.7).
 4. Self-hosting's early start (#82): S.1 (#83), an Eyelang lexer as a test program, checked by
    the conformance suite. Not begun; it needs G.1, G.2 and G.4.
 5. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2) and checkpoints in
