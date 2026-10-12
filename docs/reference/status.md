@@ -263,7 +263,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@port`, `@allow` | ✓ | ✓: a served contract and one with `@allow` need `@port`; a call from a module `@allow` doesn't list, a name that isn't a module, and any call under `@allow(nobody)` are errors | ✓: `eye run` serves a served contract on its `@port` (`<MODULE>_PORT` moves it); `@allow` isn't enforced at the port until network policy (6.5) | [ports_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/ports_test.go#L41), [serve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/serve_test.go) |
 | `@fresh`, `@destructive` | ✓ | ✓ on commands; `@destructive` on a function adds `approval: Approval` | ✓ on commands, and on a model's tool | [fresh_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/fresh_test.go#L61), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L92) |
 | `@unwitnessed("why")` | ✓ | partial: only where it goes | — | |
-| `@library`, `@host` | ✓ | ✓ | partial: only the standard library's host functions exist | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L30) |
+| `@library`, `@host` | ✓ | ✓: a program's extern fn needs exactly one, and a C function's types must cross to C | ✓ (see "Calling C and Go" below) | [host_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/host/host_test.go), [clib_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/host/clib/clib_test.go) |
 
 ## [Views and triggers](/reference/language/views-and-triggers)
 
@@ -302,9 +302,9 @@ Runs column says whether the runtime does what the attribute says.
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| `extern fn` with a signature and no body | ✓ | ✓ (calling a program's own adds `ffi` unless it states its uses) | partial: only the standard library's own (`ai.generate`, `http.get`) | [std/http.eye](https://github.com/ruxxzebre/eyelang/blob/dev/check/std/http.eye) |
-| `@library`: C functions | ✓ | ✓ | — | |
-| `@host`: functions from a Go program that embeds Eyelang | ✓ | ✓ | — (no embedding API yet) | |
+| `extern fn` with a signature and no body | ✓ | ✓ (calling a program's own adds `ffi` unless it states its uses; a program's own needs exactly one of `@library` and `@host`, and a C function's parameter or result that can't cross to C is an error at its type) | ✓: the standard library's own (`ai.generate`, `http.get`), a program's `@host` and `@library` ones, and in a job each is a recorded step | [std/http.eye](https://github.com/ruxxzebre/eyelang/blob/dev/check/std/http.eye), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go) |
+| `@library`: C functions | ✓ | ✓ (no `Int`, no `Bytes` result; `Option` of an `extern type` for a pointer that may be NULL) | ✓: loaded at run time without cgo (`internal/ffi`, on purego); `Bool`, `Byte`, the fixed-width integers, `Float`, `String` and `Bytes` copied, `extern type` values as pointers; a missing library or symbol is reported before `main`, NULL without `Option` is a fault. The released `eye` for Linux is static and has no loader: build with `-tags clib` | [clib_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/host/clib/clib_test.go) (zlib's `crc32` and gzip functions) |
+| `@host`: functions from a Go program that embeds Eyelang | ✓ | ✓ (its types are checked by `Register`, against the Go function) | ✓: the embedding API, package `eyelang/host` (`Load`, `Register`, `Run`, `Test`); `Register` checks the Go function's type against the declaration; a host function nothing registered is reported before `main`; a panic is a fault | [host_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/host/host_test.go) |
 
 ## [AI models and agents](/reference/language/ai-models-and-agents)
 

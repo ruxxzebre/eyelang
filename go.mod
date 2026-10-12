@@ -3,6 +3,7 @@ module eyelang
 go 1.27.2
 
 require (
+	github.com/ebitengine/purego v0.11.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/yuin/goldmark v1.8.6

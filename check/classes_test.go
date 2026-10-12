@@ -125,6 +125,8 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§15", "what can't be saved held across a !", "what can't be saved isn't held across a !"},
 	{"§15", "what can't be saved, bound before a loop that waits and read in it", "what can't be saved isn't held across a ! on the next turn of a loop"},
 	{"§18", "a value of an extern type saved, shown or compared", "foreign code owns an extern type's values"},
+	{"§18", "an extern fn without @library or @host, or with both", "an extern fn names where its code is, and takes what can cross"},
+	{"§18", "a C function's parameter or result that can't cross to C", "an extern fn names where its code is, and takes what can cross"},
 	{"§15", "a declared type holding what can't be saved", "what a job saves has Save, field by field"},
 	{"§15", "an unknown or misplaced attribute", "attributes are declared"},
 	{"§15", "an attribute's wrong argument", "attribute arguments"},

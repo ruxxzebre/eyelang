@@ -574,7 +574,7 @@ test "t" {
 			"9:8: expected Handler, found Int",
 		}},
 		{"publishing, starting a run, secrets and foreign code are steps and effects", `import svc
-extern fn crc(data: String) -> Int
+@host("x.crc") extern fn crc(data: String) -> Int
 job child(n: Int) {}
 job j() {
   svc.pings.publish({ id: 1, text: "a" })
@@ -613,8 +613,8 @@ pub fn some(name: String) uses {secret, publish} {
 			"21:1: wait uses consume Svc.pings, which its uses clause doesn't list",
 		}},
 		{"foreign code owns an extern type's values", `extern type Db
-extern fn open(path: String) -> Db
-extern fn close(d: Db)
+@host("x.open") extern fn open(path: String) -> Db
+@library("x") extern fn close(d: Db)
 job j() {
   let d = open!("x")
   sleep!(1 min)
@@ -628,6 +628,31 @@ fn same(a: Db, b: Db) -> Bool = a == b`, []string{
 			"9:1: k's argument d is a Db, which can't be saved",
 			"10:24: print needs Show, and Db has no Show: Db is an extern type, whose values foreign code owns, so it has none of Eq, Ord, Show, Hash, Save and Schema",
 			"11:33: comparing with == needs Eq, and Db has no Eq",
+		}},
+		{"an extern fn names where its code is, and takes what can cross", `extern type GzFile
+type Crc = UInt64
+@library("z")
+extern fn crc32(crc: Crc, data: Bytes, length: UInt32) -> Crc
+@library("z")
+extern fn gzopen(path: String, mode: String) -> Option(GzFile)
+@library("z")
+extern fn gzclose(file: GzFile) -> Int32
+@library("z")
+extern fn adler(n: Int, xs: List(Byte)) -> Bytes
+@library("c")
+extern fn sorted(xs: row) -> Result(row, String)
+@host("lab.count")
+extern fn count(xs: List(Int)) -> Option(Int)
+extern fn nowhere() -> Int
+@library("z") @host("z.crc")
+extern fn both() -> Int32`, []string{
+			"10:20: C has no integer of Int's unbounded size: write Int64, or Int32 for a C int",
+			"10:29: List(Byte) can't cross to C: a C function takes and returns Bool, Byte, Int32, Int64, UInt32, UInt64, Float, String and extern types, takes Bytes, and takes and returns Option of an extern type for a pointer that may be NULL",
+			"10:44: a C function can't return Bytes: C doesn't say how many bytes a pointer points to; return an extern type instead",
+			"12:22: row can't cross to C: a C function takes and returns Bool, Byte, Int32, Int64, UInt32, UInt64, Float, String and extern types, takes Bytes, and takes and returns Option of an extern type for a pointer that may be NULL",
+			"12:30: Result(row, String) can't cross to C: a C function takes and returns Bool, Byte, Int32, Int64, UInt32, UInt64, Float, String and extern types, takes Bytes, and takes and returns Option of an extern type for a pointer that may be NULL",
+			`15:1: nowhere has no body, so it needs @library("…"), naming the C library it is in, or @host("…"), naming the function the Go program that embeds Eyelang provides`,
+			"16:1: both is both @library and @host: an extern fn is either a C function or one the Go program that embeds Eyelang provides",
 		}},
 		{"a type alias that names itself", `type WorldId = WorldId(String)
 type A = List(B)
@@ -791,7 +816,7 @@ impl svc.Svc {
 import fs
 import process
 import random
-extern fn crc(data: String) -> Int
+@host("x.crc") extern fn crc(data: String) -> Int
 fn stamp() -> Instant = now()
 fn pause() { sleep(1 s) }
 job later(n: Int) {}

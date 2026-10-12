@@ -294,6 +294,7 @@ func (c *checker) checkTypes() {
 	c.settleLiterals()
 	c.checkRowReads()
 	c.checkEffects()
+	c.checkExterns()
 	c.writeTypes()
 }
 

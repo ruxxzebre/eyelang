@@ -400,6 +400,9 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 		if args, _, ok := attribute(f, d, "host"); ok && len(args) == 1 {
 			fn.Host = c.stringArg(f, args[0])
 		}
+		if args, _, ok := attribute(f, d, "library"); ok && len(args) == 1 {
+			fn.Library = c.stringArg(f, args[0])
+		}
 		m.mod.Funcs[fn.Name] = fn
 		c.define(m, f, nameNode, fn.Name, fn)
 		// Its parameters and defaults; it has no body.

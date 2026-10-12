@@ -401,11 +401,13 @@ var hostFuncs = map[string]hostFunc{
 // when the package starts rather than in the table it is reached through.
 func init() { hostFuncs["ai.generate"] = hostGenerate }
 
-// callHost runs an extern fn with a host function.
+// callHost runs an extern fn: with a host function, the interpreter's own
+// or one the embedding program registered, or with a C function
+// (externs.go).
 func (in *Interp) callHost(fn *ir.Func, args []argVal, at ir.Pos) Value {
-	h, ok := hostFuncs[fn.Host]
-	if !ok {
-		in.faultf(at, "%s has no body, and the interpreter provides no host function %q", fn.Name, fn.Host)
+	h, err := in.externFunc(fn)
+	if err != nil {
+		in.faultf(at, "%v", err)
 	}
 	fr := &frame{fn: fn, slots: make([]Value, fn.Slots)}
 	in.bind(fn, fr, args, at)

@@ -19,7 +19,7 @@ func TestStoreInEyelang(t *testing.T) {
 		t.Fatal("the store has no tests")
 	}
 	for _, test := range prog.Store.Tests {
-		if r := runTest(prog, test); r.Failure != "" {
+		if r := runTest(prog, test, nil); r.Failure != "" {
 			t.Errorf("%s: %s", r.Name, r.Failure)
 		}
 	}

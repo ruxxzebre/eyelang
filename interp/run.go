@@ -23,6 +23,13 @@ type TestResult struct {
 // contain filter. Each test gets a fresh store and a clock that only moves
 // when the test advances it.
 func RunTests(prog *ir.Program, filter string) []TestResult {
+	return RunTestsWith(prog, filter, nil)
+}
+
+// RunTestsWith runs tests as RunTests does, with the host functions a Go
+// program that embeds Eyelang registered. A test that calls an extern fn
+// whose code can't be found fails at the call.
+func RunTestsWith(prog *ir.Program, filter string, hosts *Hosts) []TestResult {
 	var results []TestResult
 	for _, m := range prog.Modules {
 		if m != prog.Root && m.Dir == "" {
@@ -32,7 +39,7 @@ func RunTests(prog *ir.Program, filter string) []TestResult {
 			if !strings.Contains(t.Name, filter) {
 				continue
 			}
-			r := runTest(prog, t)
+			r := runTest(prog, t, hosts)
 			if m != prog.Root {
 				r.Name = m.Path + ": " + r.Name
 			}
@@ -46,9 +53,10 @@ func RunTests(prog *ir.Program, filter string) []TestResult {
 // runtime's own tests can run a program's tests on every kind of store.
 var newTestStore func() Store
 
-func runTest(prog *ir.Program, t *ir.Test) (res TestResult) {
+func runTest(prog *ir.Program, t *ir.Test, hosts *Hosts) (res TestResult) {
 	var log bytes.Buffer
 	in := New(prog, &log, &log)
+	in.hosts = hosts
 	if newTestStore != nil {
 		in.rt.useStore(newTestStore())
 	}

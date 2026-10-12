@@ -736,6 +736,9 @@ func writeShow(b *strings.Builder, v Value, nested bool) {
 		// The checker will refuse to show a secret; until then only its
 		// name is ever written.
 		b.WriteString("secret(" + strconv.Quote(x.name) + ")")
+	case *ForeignVal:
+		// The checker refuses to show one; a step's value in eye runs may.
+		b.WriteString("<" + x.Type.Name + ">")
 	case int64:
 		b.WriteString(strconv.FormatInt(x, 10))
 	case *big.Int:
@@ -906,6 +909,8 @@ func kindName(v Value) string {
 	switch x := v.(type) {
 	case *SecretVal:
 		return "Secret"
+	case *ForeignVal:
+		return x.Type.Name
 	case int64, *big.Int:
 		return "Int"
 	case float64:

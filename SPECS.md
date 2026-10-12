@@ -159,6 +159,8 @@ Words this document uses in one sense, and names that mean different things in d
 | Answering approvals | **An answer names its request's `id`, and only the person in `from:` may give it.** The runtime refuses any other answer and logs it. Text matches only from the command line and in tests, and is refused when it matches more than one waiting approval. An `Approval` has `what` and `by` fields (section 15) | An `Approval` is the one value that stands for a person's consent, so the obvious routing job must be the safe one: one that forgets to check who pressed the button can't grant it, and an answer can't reach a request it wasn't meant for. From the lab: two runs asking "Restart the router?" were answered by one press (open question 17) |
 | Recorded steps | **`!` marks every recorded step in a job**: every outside effect, every entity call, publishing an event (`bus.pinged.publish!(…)`) and starting a child run (`digest.start!(day)`). The effects of section 12's table are inferred, `publish C.event`, `consume C.event`, `secret "name"` and `ffi` included. A step's result is recorded, so it must be something that can be saved. Output is not a step: `print` keeps `stdio` for signatures, and logging is not an effect (section 12) | Every point where a run can pause or commit is visible, with no exception to remember; output is a side channel for people, and marking it would put `!` on every log line (open questions 19 and 22) |
 | Foreign values | **`extern type` is the one way to name a value foreign code owns**; `Handle(name)` is gone. A program's `extern type` has no `Save`, `Show`, `Eq`, `Hash` or `Schema`, so it can't be saved, live across a `!`, printed, compared or asked of a model (section 18) | One obvious way, a name the checker tells apart from every other, and the saving rule applied to it: an `extern type` could be held across a `!` while a `Handle` couldn't (open question 21) |
+| Loading C | **The interpreter loads `@library` functions with purego** (github.com/ebitengine/purego), which calls the system's `dlopen` and then C functions from Go without cgo; the loader is `internal/ffi`, which the Go runner can also load compiled programs with. **The released `eye` for Linux leaves the loader out**, since it makes a binary dynamically linked; `go build -tags clib` puts it in, and on macOS and Windows it is always in (section 18). Decided 2026-10-12 | Linux has no system call that loads a library: `dlopen` belongs to the C library, so the choice was a loader of our own, which would also have to start libc for each library it loads, or the system's. The lab runs `eye` on `scratch` images, which have no dynamic linker, so the release must stay static |
+| Host functions | **A `@host` function is any Go function whose types match its declaration**, checked when it is registered: `Int` is a Go `int`, `Result(T, String)` is `(T, error)`, and an `extern type` is any Go pointer, struct, map, channel, function or interface type (section 18). Decided 2026-10-12 | The embedding program writes ordinary Go, and a mismatch is an error at `Register` that names the parameter, not a wrong value at a call. Go's `int` and `error` are what Go code already has |
 | Long runs | **A run's saved state is its live variables, not its history.** The interpreter keeps a checkpoint at each statement of a job's body and replays only the steps since (from 2026-10-11); compiled code saves frames at each `!` from v0.4. The language gets no `continue`-as-new | A run that never ends, such as the lab's train watcher, costs the same on its tenth day as on its first, with no new syntax (open question 9) |
 | Job code changes | **A paused run resumes only at a resume point that still exists with the same live variables**: in the interpreter, the same statement of the job with the same typed code and as many variables. `eye run` refuses to start otherwise, as it does for entity rows it can't migrate, and names the job and its runs. Replaying the steps since a checkpoint compares each recorded step's call with the call it replays and faults the run on a difference | A code change under a paused run is an error with a message, not a wrong value found later; the old job keeps its name until its runs finish, and the new code takes a new one. Finishing old runs on old code is rejected, since entities migrate forward and old code would read new state (open question 4) |
 | Typed choices | **A type whose variants have no fields gets `T.variants()` and `T.parse(s)`, derived**: every variant in order, and `Some` of the variant named `s`, else `None` (section 11) | A person's choice, such as a button, is matched as a variant, so a misspelt or forgotten choice fails to compile, and the buttons come from the type the match uses. No syntax: they are calls on a type, as `Lexer.new` is (open question 15) |
@@ -1945,24 +1947,73 @@ type Delivery =
 @library("z")
 extern fn crc32(crc: UInt64, data: Bytes, length: UInt32) -> UInt64
 
+extern type GzFile                 # owned by foreign code: only extern functions make one
+@library("z")
+extern fn gzopen(path: String, mode: String) -> Option(GzFile)   # None for C's NULL
+
 @host("lab.desk")                  # provided by the Go program that embeds Eyelang
 extern fn showOnDesk(text: String) -> Result((), String)
 
-extern type Db                     # owned by foreign code: only extern functions make one
-@library("sqlite3")
+extern type Db
+@host("lab.sqlite")
 extern fn open(path: String) -> Result(Db, String)
 ```
 
 - An `extern fn` has a signature and no body. Calling one has the `ffi` effect, which public
-  signatures state like any other, and in a job the call is a `!` step: `open!(path)`
+  signatures state like any other, and in a job the call is a `!` step: `showOnDesk!(text)`
   (section 12).
-- `@library` links a C function by its symbol. The interpreter loads it from the library at run
-  time, without cgo, so `eye` itself needs no C toolchain; a compiled program calls it directly,
-  linked like any other symbol. `@host` names a function that the Go program embedding Eyelang
-  registers through the embedding API; the standard library's own primitives are provided the
-  same way.
-- Across the boundary go `Bool`, `Byte`, the fixed-width integers, `Float`, and `Bytes` and `String`
-  (copied), and values of an `extern type`.
+- Every `extern fn` of a program says where its code is, with exactly one of `@library` and
+  `@host`: `crc has no body, so it needs @library("…"), naming the C library it is in, or
+  @host("…"), naming the function the Go program that embeds Eyelang provides`.
+- `@library` links a C function by its symbol, the extern fn's name. The interpreter loads it
+  from the library at run time, without cgo, so `eye` itself needs no C toolchain; a compiled
+  program calls it directly, linked like any other symbol. `@library("z")` is found as the system
+  names libraries: `libz.so`, else the newest `libz.so.N`, on Linux, `libz.dylib` on macOS, and
+  `z.dll` on Windows; a file name or a path is used as given.
+- `@host` names a function that the Go program embedding Eyelang registers through the embedding
+  API, the Go package `eyelang/host`; the standard library's own primitives, such as `http.get`,
+  are `@host` functions too, which the interpreter provides.
+
+  ```go
+  p, err := host.Load("desk")
+  err = p.Register("lab.desk", func(text string) error { return desk.Show(text) })
+  code := p.Run(ctx, host.RunOptions{Stdout: os.Stdout, Stderr: os.Stderr})
+  ```
+
+- Across the boundary go these types. The checker reports any other in a `@library` function's
+  signature at its span; what a `@host` function takes depends on what provides it, so `Register`
+  checks it (the interpreter's own take any value):
+
+  | Eyelang | C (`@library`) | Go (`@host`) |
+  |---|---|---|
+  | `Bool` | `bool` | `bool` |
+  | `Byte`, `Int32`, `Int64`, `UInt32`, `UInt64` | `uint8_t`, `int32_t`, `int64_t`, `uint32_t`, `uint64_t` | `uint8`, `int32`, `int64`, `uint32`, `uint64` |
+  | `Int` | none: `C has no integer of Int's unbounded size` | `int`; a value that doesn't fit is a fault |
+  | `Float` | `double` | `float64` |
+  | `String` | `const char *`, copied and ended with NUL; a returned one is copied, not freed | `string` |
+  | `Bytes` | `const uint8_t *` to a copy, as a parameter only: pass its length too | `[]byte`, copied |
+  | an `extern type` | a pointer; NULL is a fault | any pointer, struct, map, channel, function or interface type |
+  | `Option` of an `extern type` | a pointer that may be NULL, which is `None` | none |
+  | `()` as the result | `void` | no result |
+  | `Result(T, String)` as the result | none | `(T, error)`, or `error` for `Result((), String)` |
+
+  A Go function may also take a `context.Context` first, which is done when the task that made
+  the call is cancelled.
+- What can be checked is checked before anything runs. `Register` compares the Go function's
+  type with each declaration of its name and returns an error naming the first difference:
+  `@host("lab.add") is add(a: Int32, b: Int32) -> Int32 at desk/main.eye:8:1: parameter a is
+  Int32, which Go holds as int32, and the Go function's parameter 1 is int64`. Before `main`
+  starts, running a program reports each `@host` function nothing registered, and each
+  `@library` function whose library or symbol can't be loaded; a test fails at such a call. A
+  host function that panics, a `Db` made by one host function passed to another that takes a
+  different Go type, and NULL where no `Option` allows it are faults at the call. C's parameter
+  types are recorded nowhere a loader can read, so a C function declared with the wrong ones gives
+  wrong values or crashes.
+- Loading C libraries needs the system's dynamic linker, so on Linux the C loader makes a binary
+  dynamically linked. The released `eye` for Linux stays static, so it runs on a `scratch` image,
+  and loads no C library; `go build -tags clib ./cmd/eye` builds one that does, and a Go program
+  that embeds Eyelang imports `eyelang/host/clib` for it. On macOS and Windows `eye` always has
+  it.
 - The compiler trusts an extern's signature. It can't check that the foreign side is total or that
   it has no other effects, which is why `ffi` shows up in every signature that depends on one.
 - **`extern type Db`** names a type whose values foreign code owns, and it is the one way to name

@@ -181,6 +181,7 @@ type TypeExpr struct {
 // Func is a function, method, lambda, job body, test body or initializer.
 type Func struct {
 	Host     string // for an extern fn: the host function that runs it, from @host("…")
+	Library  string // for an extern fn: the C library its symbol is in, from @library("…")
 	Name     string
 	Module   *Module
 	Params   []*Param

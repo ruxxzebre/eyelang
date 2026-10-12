@@ -175,6 +175,8 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `check/` | Loads a program's modules, resolves names, checks types, matches and effects, reports errors; `prelude.eye` and `std/` are the standard library written in Eyelang, and `runtime/store.eye` the in-memory store the runtime keeps every program's state in |
 | `ir/` | The resolved form programs are lowered to |
 | `interp/` | Reference interpreter and runtime: entities, views, jobs, events, schedules, clock, fakes; the journal store and the runner behind `eye run` and `eye runs` |
+| `host/` | The embedding API: a Go program loads an Eyelang program, registers its `@host` functions and runs it or its tests; `host/clib` gives the interpreter the C loader for `@library` (on Linux it makes a binary dynamic, so `eye` has it only with `-tags clib`) |
+| `internal/ffi/` | Loads C functions from shared libraries at run time without cgo, on purego: `@library` in the interpreter, and later compiled programs in the Go runner |
 | `testdata/programs/` | Programs whose tests `go test ./interp` runs; `tour/tour.eye` is generated from SPECS.md |
 | `testdata/lab/` | The homelab's real workloads in Eyelang (digest, Notify, train reminders, NetBird access): the programs that decide what the language needs |
 | `repl/` | Line editor with history, for `eye repl` |

@@ -38,6 +38,11 @@ type Interp struct {
 	// toolRun is set while durable calls ai.generate with tools: the call
 	// records each reply and each tool's result as a step of that run.
 	toolRun *jobRun
+	// hosts are the functions the embedding Go program registered for
+	// @host extern fns, and externs the code each extern fn called so far
+	// runs (externs.go).
+	hosts   *Hosts
+	externs map[*ir.Func]hostFunc
 }
 
 // New prepares to run prog, printing to out and logging to log.
@@ -171,10 +176,7 @@ func (in *Interp) callOnRow(fn *ir.Func, row *txRow, args []argVal, at ir.Pos) V
 func (in *Interp) callFrame(fr *frame, captured []Value, args []argVal, at ir.Pos) (Value, Value, []Value) {
 	fn := fr.fn
 	if fn.Body == nil {
-		if fn.Host != "" {
-			return in.callHost(fn, args, at), nil, make([]Value, len(args))
-		}
-		in.faultf(at, "%s has no body: extern functions arrive with task 3.6", fn.Name)
+		return in.callHost(fn, args, at), nil, make([]Value, len(args))
 	}
 	for i, c := range fn.Captures {
 		fr.slots[c.Slot] = captured[i]

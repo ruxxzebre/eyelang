@@ -30,6 +30,9 @@ type RunOptions struct {
 	// process runs in, or the host's memory when that is lower or there
 	// is none.
 	MemoryLimit int64
+	// Hosts are the functions the Go program that embeds Eyelang provides
+	// for the program's @host extern fns; nil provides none.
+	Hosts *Hosts
 }
 
 // Run runs a program as `eye run` does. main runs first, if the program has
@@ -78,6 +81,13 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	}
 	if err := in.rt.checkResumePoints(); err != nil {
 		fmt.Fprintf(stderr, "eye run: %v\n", err)
+		return 1
+	}
+	in.hosts = opts.Hosts
+	if missing := in.linkExterns(); len(missing) > 0 {
+		for _, m := range missing {
+			fmt.Fprintln(stderr, m)
+		}
 		return 1
 	}
 	in.rt.restore()

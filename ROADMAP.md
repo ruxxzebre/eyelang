@@ -532,7 +532,7 @@ waits.
 
 | Task | Issue |
 |---|---|
-| 6.1 `extern` functions: Go host functions and C libraries (from phase 3) | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
+| 6.1 `extern` functions: Go host functions and C libraries (from phase 3) (done) | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
 | 6.2 `@port` and `@allow` enforced (done) | [#54](https://github.com/ruxxzebre/eyelang/issues/54) |
 | 6.3 `@fresh` and `@destructive` (done) | [#55](https://github.com/ruxxzebre/eyelang/issues/55) |
 | 6.4 Go and TypeScript types, clients and server stubs from contracts (done) | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
@@ -547,6 +547,29 @@ waits.
 | 6.13 `eye run` serves a contract over HTTP on its `@port` (done) | [#81](https://github.com/ruxxzebre/eyelang/issues/81) |
 
 What each task is, until its issue holds it:
+
+- **6.1 `extern` functions.** `@host("name") extern fn …` runs a function the Go program that
+  embeds Eyelang registers, and `@library("z") extern fn …` a C function loaded at run time
+  without cgo. Across the boundary go `Bool`, `Byte`, the fixed-width integers, `Float`, `Bytes`
+  and `String` (copied), and values of an `extern type`, which foreign code owns.
+  **Done when:** a test embeds the interpreter in a Go program that registers a host function, and
+  another calls `crc32` from zlib; both check that a wrong signature is reported rather than
+  crashing where that is detectable; and holding a value of an `extern type` across a `!` is a
+  compile error.
+  Done on 2026-10-12: the embedding API is package `eyelang/host` (`Load`, `Register`, `Run`,
+  `Test`); `Register` checks a Go function's type against the declaration and names the first
+  difference, and `Run` reports a host function nothing registered, or a C library or symbol that
+  isn't there, before `main`. C functions are loaded by `internal/ffi`, on purego, which the Go
+  runner can reuse for compiled programs (#79). The checker requires exactly one of `@library`
+  and `@host` on a program's extern fn, and reports a C function's parameter or result that can't
+  cross at its type; SPECS §18 has the table of what crosses, and two decision-log rows ("Loading C", "Host
+  functions"). The released `eye` for Linux stays static, so it has no C loader; `go build -tags
+  clib ./cmd/eye` gives one that does, and on macOS and Windows `eye` always has it.
+  `TestEmbedHostFunctions` and its neighbours (`host/host_test.go`) and `TestZlib` and `TestWrongC`
+  (`host/clib/clib_test.go`) cover it, with the checker's "an extern fn names where its code is,
+  and takes what can cross" and "foreign code owns an extern type's values". Still open: no Linux
+  release of `eye` with the loader, C callbacks and structs, and the standard library's own host
+  functions still take interpreter values rather than Go types.
 
 - **6.2 `@port` and `@allow` enforced.** `@allow(digest, trains, access, approving)` on a contract
   lists the modules that may call its operations; a call from any other module is a compile
@@ -715,8 +738,7 @@ What each task is, until its issue holds it:
   as two `eye run`s. Still open: `@allow` isn't enforced at the port (6.5), and an operation
   without `@http` has no route.
 
-Order (6.2, 6.10, 6.11, 6.12 and 6.13 are done): 6.1 any time; the interpreter loads C libraries
-without cgo, as `eye` stays free of it. 6.5 now that 6.2 is done. 6.4, then 6.6; 6.4's round
+Order (6.1, 6.2, 6.10, 6.11, 6.12 and 6.13 are done): 6.5 now that 6.2 is done. 6.4, then 6.6; 6.4's round
 trip to an Eyelang `impl` can use `eye run` serving the contract on its `@port` (6.13). 6.3 any
 time. 6.7 now that function types state their
 effects, then 6.8. 6.9 any time, and early: the lab's tests need it. Pipelines compiled to SQL
