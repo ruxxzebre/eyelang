@@ -35,29 +35,50 @@ func HTML(src string) string {
 			f, prefix = wrapped, len(wrap)
 		}
 	}
-	h := &highlighter{src: f.Src, out: &strings.Builder{}, from: prefix, to: prefix + len(src)}
+	var out strings.Builder
+	h := &highlighter{from: prefix, to: prefix + len(src), span: func(start, end int, class string) {
+		text := html.EscapeString(string(f.Src[start:end]))
+		if class == "" {
+			out.WriteString(text)
+			return
+		}
+		out.WriteString(`<span class="` + class + `">` + text + `</span>`)
+	}}
 	h.walk(f.Root, nil, nil)
-	return h.out.String()
+	return out.String()
+}
+
+// Span is a part of a file of one of the classes above, in byte offsets.
+type Span struct {
+	Start, End int
+	Class      string
+}
+
+// Spans returns the parts of a whole file that HTML would wrap in spans, in
+// order: an editor's highlighting, from the same parser.
+func Spans(src []byte) []Span {
+	var out []Span
+	h := &highlighter{from: 0, to: len(src), span: func(start, end int, class string) {
+		if class != "" {
+			out = append(out, Span{start, end, class})
+		}
+	}}
+	h.walk(syntax.Parse(src).Root, nil, nil)
+	return out
 }
 
 type highlighter struct {
-	src      []byte
-	out      *strings.Builder
-	from, to int // the part of src that came from the caller
+	from, to int // the part of the source that came from the caller
+	span     func(start, end int, class string)
 }
 
-// emit writes src[start:end], clipped to the caller's text, in a span of class.
+// emit gives src[start:end], clipped to the caller's text, with its class.
 func (h *highlighter) emit(start, end int, class string) {
 	start, end = max(start, h.from), min(end, h.to)
 	if start >= end {
 		return
 	}
-	text := html.EscapeString(string(h.src[start:end]))
-	if class == "" {
-		h.out.WriteString(text)
-		return
-	}
-	h.out.WriteString(`<span class="` + class + `">` + text + `</span>`)
+	h.span(start, end, class)
 }
 
 func (h *highlighter) walk(n, parent, grand *syntax.Node) {

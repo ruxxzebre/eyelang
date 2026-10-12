@@ -17,6 +17,9 @@ hero:
     - theme: alt
       text: Tutorial
       link: /tutorial/
+    - theme: alt
+      text: Playground
+      link: /playground
 
 features:
   - title: Values, not shared objects

@@ -18,6 +18,8 @@ in the tutorial.
 The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/tree/dev/docs/guide/code/jobs-and-waiting)
 that the test suite checks and runs.
 
+[Open it in the playground](/playground#example=guide/jobs-and-waiting) to run it, test it and change it in your browser.
+
 ## A job is a durable function
 
 A reminder rings at its time, unless it is snoozed first:

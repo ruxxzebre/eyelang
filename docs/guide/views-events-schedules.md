@@ -22,6 +22,8 @@ The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/t
 that the test suite checks and runs. It watches disks: a monitoring service sends readings, a view
 finds the disks that are nearly full, and jobs page someone and wait for an answer.
 
+[Open it in the playground](/playground#example=guide/views-events-schedules) to run it, test it and change it in your browser.
+
 ## Views
 
 Each disk is an entity with its last reading:

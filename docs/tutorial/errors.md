@@ -10,6 +10,8 @@ customer, and takes an order from the shop's stock.
 
 The program is [`docs/tutorial/code/errors/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/errors/main.eye).
 
+[Open it in the playground](/playground#example=tutorial/errors) to run it, test it and change it in your browser.
+
 ## Result
 
 `Result(a, e)` is a built-in variant type, like `Option`: `Ok(value)` when the work succeeded, or

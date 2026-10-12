@@ -11,6 +11,8 @@ change, and methods that change it one transaction at a time.
 
 The program is [`docs/tutorial/code/an-entity/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/an-entity/main.eye).
 
+[Open it in the playground](/playground#example=tutorial/an-entity) to run it, test it and change it in your browser.
+
 ## A shelf
 
 Each item in the shop has a shelf: how many are in stock, and how many each order is holding.

@@ -45,6 +45,8 @@ contracts/
   recordings/                answers from the services, replayed by the tests
 ```
 
+[Open it in the playground](/playground#example=guide/contracts) to run it, test it and change it in your browser.
+
 ## A contract describes a service
 
 A contract lives in a module of its own, a directory, next to the types its operations use:

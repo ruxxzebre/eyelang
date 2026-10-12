@@ -20,6 +20,8 @@ The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/t
 a support desk where a model sorts each incoming message. Its tests run with
 `eye test docs/guide/code/ai-calls`.
 
+[Open it in the playground](/playground#example=guide/ai-calls) to run it, test it and change it in your browser.
+
 ## Ask for a type
 
 Start with the type you want. Write it as you would any other type, with a `##` comment on anything

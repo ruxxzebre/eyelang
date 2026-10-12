@@ -17,6 +17,8 @@ The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/t
 a shop's orders, a rule for when an order is late, and a job that tells the team about late orders
 every evening. Its tests run with `eye test docs/guide/code/effects`.
 
+[Open it in the playground](/playground#example=guide/effects) to run it, test it and change it in your browser.
+
 ## The effects
 
 | Effect | Comes from |

@@ -14,6 +14,8 @@ lasts fifteen minutes. If the order isn't paid for by then, the stock goes back 
 
 The program is [`docs/tutorial/code/a-job-that-waits/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/a-job-that-waits/main.eye).
 
+[Open it in the playground](/playground#example=tutorial/a-job-that-waits) to run it, test it and change it in your browser.
+
 ## The job
 
 <<< ./code/a-job-that-waits/main.eye#job

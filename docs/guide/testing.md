@@ -16,6 +16,8 @@ three days of waiting runs in a millisecond, and gives the same result every tim
 The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/tree/dev/docs/guide/code/testing)
 that the test suite checks and runs: a morning digest, sent through a chat service at 07:30.
 
+[Open it in the playground](/playground#example=guide/testing) to run it, test it and change it in your browser.
+
 ## Test blocks
 
 A `test` block is a declaration, next to the code it tests. It has a name and a body, and

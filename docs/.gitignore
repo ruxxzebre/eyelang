@@ -1,3 +1,5 @@
 node_modules/
 .vitepress/cache/
 .vitepress/dist/
+# Built by task playground.
+public/wasm/

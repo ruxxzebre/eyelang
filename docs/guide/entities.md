@@ -17,6 +17,8 @@ use entities well, and which mistakes they rule out. It assumes you have read
 The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/tree/dev/docs/guide/code/entities)
 that the test suite checks and runs.
 
+[Open it in the playground](/playground#example=guide/entities) to run it, test it and change it in your browser.
+
 ## An identity and its state
 
 A wallet holds a team's prepaid credit for model calls:

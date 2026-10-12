@@ -10,6 +10,8 @@ every case. The examples are tasks on a to-do list.
 
 The program is [`docs/tutorial/code/types-and-matching/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/types-and-matching/main.eye).
 
+[Open it in the playground](/playground#example=tutorial/types-and-matching) to run it, test it and change it in your browser.
+
 ## Records
 
 A record type lists its fields and their types:

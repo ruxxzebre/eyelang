@@ -37,6 +37,8 @@ ok    on weekday mornings the approver hears what is waiting (233µs)
 8 tests passed (5.837ms)
 ```
 
+[Open it in the playground](/playground#example=tutorial/approvals) to run it, test it and change it in your browser.
+
 The tests cover three days of waiting, a two-hour grant and a weekend, and they take a few
 milliseconds.
 

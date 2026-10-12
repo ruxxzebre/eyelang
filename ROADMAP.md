@@ -97,9 +97,10 @@ comes from its `##` comment or its `Show` (open question 15).
 Open questions 1–34 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
 `Self` (24) and what `@memory` measures (26) bear on phase 7. Time-travel debugging (32) is
 wanted, not yet a task: it builds on the checkpoints of 7.3, and `eye test --debug` on a failing
-test is the first step. An online playground (34) is wanted too, not yet a task: the core
-already builds for WebAssembly, and its contracts demo needs `eye run` to serve a contract over
-HTTP first.
+test is the first step. The online playground (34) is built: `docs/playground.md` checks, runs,
+tests and formats a program in the browser on the WebAssembly build of `cmd/eye-wasm`, with the
+tutorial's and the guide's programs as examples; its contracts demo, two programs calling each
+other in the page, is still to come.
 
 ## Versions
 

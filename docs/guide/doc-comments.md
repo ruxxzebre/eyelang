@@ -36,6 +36,8 @@ comment documents is always the code it touches.
 The code on this page is a [real program](https://github.com/ruxxzebre/eyelang/tree/dev/docs/guide/code/doc-comments)
 that the test suite checks and runs.
 
+[Open it in the playground](/playground#example=guide/doc-comments) to run it, test it and change it in your browser.
+
 ## Write the first sentence as the summary
 
 Doc comments are Markdown. Their first sentence is the summary: the API reference's index tables,

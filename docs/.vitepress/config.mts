@@ -108,6 +108,7 @@ export default defineConfig({
       { text: 'Learn', link: '/quickstart', activeMatch: '^/(why|quickstart|tutorial|guide)' },
       { text: 'Reference', link: '/reference/', activeMatch: '^/reference/' },
       { text: 'Design', link: '/design/', activeMatch: '^/(design|internals)/' },
+      { text: 'Playground', link: '/playground', activeMatch: '^/playground' },
     ],
     sidebar: {
       '/reference/': [

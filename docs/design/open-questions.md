@@ -154,22 +154,24 @@ title: "Open questions"
     ever meets such limits could stop counting where it is written, and `eye fmt` would stop
     writing those effects into signatures. Is the clause worth keeping as a reader's hint, or
     should it go?
-34. **An online playground.** A page where you write Eyelang and check, test and run it, with the
-    editor support `eye lsp` gives (errors at their spans, completion, hover, formatting), and
-    examples to start from. The checker, interpreter, language server and parser are Go without
-    cgo and already build for WebAssembly (`GOOS=js GOARCH=wasm`), so the page could run them
-    with no server, behind an editor such as CodeMirror. What it would take: the checker reads
-    a program's files from `Options.Overlay` but still lists its directory on disk, so a
-    program held only in memory must be accepted; the language server needs an entry point that
-    takes text and a position instead of a stdio connection; `eye run`'s jobs need a clock that
-    yields to the page; and model calls need recorded fakes or a key the visitor brings.
-    Contracts are the case that shows the language best: two programs side by side, one that
-    serves `impl Notify` on its `@port` and one that calls `notify.send!`, with `@allow` and
-    port errors at compile time and the calls visible as they cross. In the page, the caller's
-    `@http` calls could go to the other program's handler in memory; from the command line, two
-    `eye run`s on real ports, which works since 2026-10-12, when `eye run` started serving a
-    program's `impl Contract` on its port ([section 17](/reference/language/contracts-talking-to-other-services)). Is the playground worth building before
-    v1.0, and should it share its examples with the docs site and the tour?
+34. **An online playground.** **Decided, and built** on 2026-10-12: the docs site's playground
+    (`docs/playground.md`) is a page where you write Eyelang and check, test, run and format it,
+    with the editor support `eye lsp` gives (errors at their spans, hover, completion, go to
+    definition, formatting) and highlighting from the parser. Nothing runs on a server: the
+    checker, interpreter, formatter and language server are built for WebAssembly (`cmd/eye-wasm`,
+    `GOOS=js GOARCH=wasm`) and run in a web worker, behind CodeMirror. A program held only in
+    memory is accepted: the checker takes a directory that exists only in `Options.Overlay`, the
+    language server answers through `lsp.Workspace` with no connection, and the fakes read
+    recordings from memory. `eye run`'s jobs run on a virtual clock (`interp.RunOptions.Virtual`):
+    once `main` has run, sleeping runs wake and schedules fire at once, in time order, up to a day
+    of clock time or a thousand wakes, and nothing listens on a port. A run that doesn't end is
+    stopped after ten seconds, or with Stop. Its examples are the tutorial's and the guide's
+    programs, which the Go tests and the playground's browser test run there, and each of those
+    pages links to its program in the playground. A program can be shared as a link that holds its
+    files. Still open: the contracts demo, two programs side by side, one serving `impl Notify` on
+    its `@port` and one calling `notify.send!`, with the calls visible as they cross, which needs
+    the caller's `@http` calls sent to the other program's handler in memory; and model calls with
+    a key the visitor brings, which today only replay recordings.
 35. **Who may publish an event.** `@allow` names the modules that may call a contract's
     commands and queries, but any module may publish any of its events. For
     `approvals.answered` that matters: the runtime checks that `by` is the request's `from`

@@ -7,6 +7,12 @@ title: Quickstart
 This page gets the `eye` command onto your machine, runs a first program, and sets up your
 editor. It takes about five minutes.
 
+::: tip Nothing to install
+The [playground](/playground#example=tutorial/hello) runs this page's program, and every program
+of the tutorial and the guide, in your browser: check, run, test and format it there, with the
+same errors, hover and completion `eye lsp` gives an editor.
+:::
+
 ## Install
 
 Eyelang is built from source. You need [Go](https://go.dev/dl) 1.25 or later.

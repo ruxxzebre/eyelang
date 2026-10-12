@@ -40,18 +40,33 @@ tasks:
       - for q in queries/*.scm; do tree-sitter query --lib-path ../bin/eyelang-grammar.so --lang-name eyelang "$q" ../testdata/syntax/valid/*.eye > /dev/null || exit 1; done
 
   docs:
-    desc: Build the docs site into docs/.vitepress/dist (needs Node); the Go tests check its examples
+    desc: Build the docs site into docs/.vitepress/dist (needs Node), with the playground's engine; the Go tests check its examples
     dir: docs
+    deps: [playground]
     cmds:
       - npm ci --no-fund --no-audit
       - npx vitepress build
 
   docs-dev:
-    desc: Serve the docs site at http://localhost:5173, reloading as pages change (run task generate after changing SPECS.md or ## comments)
+    desc: Serve the docs site at http://localhost:5173, reloading as pages change (run task generate after changing SPECS.md or ## comments, and task playground after changing Go the playground runs)
     dir: docs
+    deps: [playground]
     cmds:
       - npm ci --no-fund --no-audit
       - npx vitepress dev
+
+  playground:
+    desc: Build the playground's engine, eye-wasm, into docs/public/wasm with the wasm_exec.js of the Go that built it
+    cmds:
+      - mkdir -p docs/public/wasm
+      - GOOS=js GOARCH=wasm go build -trimpath -ldflags='-s -w' -o docs/public/wasm/eye.wasm ./cmd/eye-wasm
+      - install -m 0644 "$(go env GOROOT)/lib/wasm/wasm_exec.js" docs/public/wasm/wasm_exec.js
+
+  playground:e2e:
+    desc: Open the built docs site's playground in Chromium and check, run, test and format a program there (run task docs first; set CHROMIUM to a browser's path)
+    dir: docs
+    cmds:
+      - node test/playground.e2e.mjs
 
   spec:
     desc: Render SPECS.md as one HTML page, bin/spec.html, with examples highlighted by Eyelang's own parser
@@ -166,6 +181,7 @@ tasks:
       - task: grammar
       - task: vscode
       - task: docs
+      - task: playground:e2e
       # ROADMAP.md's What's next was checked since the last release, and names no closed issue.
       - go run ./tools/next --check
 

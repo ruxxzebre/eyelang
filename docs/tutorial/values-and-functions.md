@@ -10,6 +10,8 @@ no rounding gets in the way.
 
 The program is [`docs/tutorial/code/values-and-functions/main.eye`](https://github.com/ruxxzebre/eyelang/blob/dev/docs/tutorial/code/values-and-functions/main.eye).
 
+[Open it in the playground](/playground#example=tutorial/values-and-functions) to run it, test it and change it in your browser.
+
 ## Functions
 
 <<< ./code/values-and-functions/main.eye#functions
