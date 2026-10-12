@@ -77,9 +77,9 @@ title: "Open questions"
 20. **Collection functions' types.** **Decided** for v0.1 ([section 18](/reference/language/calling-c-and-go)): one function per
     operation, with a rule for each kind of collection it takes and a requirement where one is
     needed (`sort` needs `Ord`). A `Collection` trait would need traits over type constructors;
-    reopen this if user-defined collections want the same pipelines. The built-ins also work as
-    methods, `xs.first()`; decided on 2026-10-12 to extend that to every function whose first
-    parameter takes the value ([section 8](/reference/language/methods-and-generics), ROADMAP task G.15).
+    reopen this if user-defined collections want the same pipelines. The built-ins work as
+    methods, `xs.first()`, as every function whose first parameter takes the value does
+    ([section 8](/reference/language/methods-and-generics), and the decision log, row "Functions as methods").
 21. **`Handle(name)` and `extern type`.** **Decided** (see the decision log, row "Foreign
     values"): `extern type` is the one way to name what foreign code owns ([section 18](/reference/language/calling-c-and-go)).
 22. **Printing in jobs.** **Decided** (see the decision log, row "Recorded steps"): output is not

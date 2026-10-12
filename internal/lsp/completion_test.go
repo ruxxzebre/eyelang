@@ -266,9 +266,29 @@ func TestNameCompletion(t *testing.T) {
 			not:  []string{"from", "to"},
 		},
 		{
-			name: "a built-in type has no members",
-			src:  header + "fn f(n: Int) {\n  n.‸\n}\n",
-			not:  []string{"let", "print", "n"},
+			name: "a built-in type: the functions that take it",
+			src:  header + "fn twice(n: Int) -> Int = n * 2\n\nfn f(n: Int) {\n  n.‸\n}\n",
+			want: map[string]int{"twice": completionFunction, "div": completionFunction},
+			not:  []string{"let", "print", "n", "helper", "first", "shapeSize"},
+		},
+		{
+			name: "functions that take the value, after its fields and methods",
+			src: header + "fn norm(p: Point) -> Int = p.x\n\nfn label(c: Color) -> Int = 1\n\n" +
+				"fn f(p: Point, c: Color) {\n  p.‸\n}\n",
+			want: map[string]int{"x": completionField, "norm": completionFunction},
+			not:  []string{"label", "helper", "twice"},
+		},
+		{
+			name: "a method hides a function of its name",
+			src:  header + "fn label(c: Color) -> Int = 1\n\nfn f(c: Color) {\n  c.‸\n}\n",
+			want: map[string]int{"label": completionMethod},
+		},
+		{
+			name: "generic functions and the collection functions",
+			src: header + "fn largest(xs: List(a)) -> Option(a) where a: Ord = xs |> first\n\n" +
+				"fn f(xs: List(Int)) {\n  xs.‸\n}\n",
+			want: map[string]int{"largest": completionFunction, "first": completionFunction, "map": completionFunction},
+			not:  []string{"insert", "keys", "wrappingAdd", "helper"},
 		},
 		{
 			name: "not after a dot in a comment",

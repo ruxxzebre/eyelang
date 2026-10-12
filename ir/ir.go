@@ -503,8 +503,12 @@ type (
 		// method of a type or an entity, an impl's method, or a trait's
 		// method on a dyn value or a type variable, which the value's own
 		// impl answers), a Builtin called as a method (`xs.size()`), a
-		// RuntimeMethod, or a FieldCall.
+		// RuntimeMethod, a FieldCall, or a FuncCall.
 		Target any
+		// Func is the function declared with fn that Name names where
+		// the call is, if any: when the receiver's type has no method and
+		// no field of that name, x.f(a) calls it as f(x, a) (SPECS.md §8).
+		Func *Func
 	}
 	// Waiting is a waiting call, `f!(x)`: a durable step in a job.
 	Waiting struct {
@@ -692,6 +696,10 @@ type EnumFn struct {
 // FieldCall is the target of `timer.read()` where read is a field that
 // holds a function: the call it is, of the field's value.
 type FieldCall struct{ Call *Call }
+
+// FuncCall is the target of `x.f(a)` where f is a function in scope, not a
+// method of x's type: the call it is, f(x, a) (SPECS.md §8).
+type FuncCall struct{ Call *Call }
 
 // Unit is the value ().
 type Unit struct{}

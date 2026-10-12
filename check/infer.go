@@ -1608,6 +1608,9 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		switch {
 		case r.name == "Ref" && r.decl == nil && len(r.args) == 1:
 			if s, ok := prune(r.args[0]).(*tcon); ok && s.entity != nil {
+				if _, isMethod := s.entity.Methods[e.Name]; !isMethod && e.Name != "read" && e.Name != "end" && e.Func != nil {
+					return x.funcMethod(e, recv, want)
+				}
 				x.effect("entity " + s.entity.Name)
 				x.entityCall(e)
 				if e.Name == "read" {
@@ -1712,7 +1715,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			}
 			return x.applyFunc(m, env, e.Args, r.trait.Name+"."+e.Name, e.Pos)
 		}
-		if !isBuiltin(e.Name) {
+		if !isBuiltin(e.Name) && e.Func == nil {
 			x.inferArgs(e.Args)
 			return c.unknownf(e.Pos, "%s has no method %s: a dyn value has only the methods of its trait", show(recv), e.Name)
 		}
@@ -1732,7 +1735,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 					return x.applyFunc(m, env, e.Args, b.trait.Name+"."+e.Name, e.Pos)
 				}
 			}
-			if !isBuiltin(e.Name) {
+			if !isBuiltin(e.Name) && e.Func == nil {
 				x.inferArgs(e.Args)
 				if r.name == "Self" && len(c.ts.bounds[r]) == 1 {
 					tr := c.ts.bounds[r][0].trait
@@ -1749,7 +1752,19 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return x.applyFunc(m, typeEnv{}, e.Args, r.name+"."+e.Name, e.Pos)
 		}
 	}
-	if isBuiltin(e.Name) {
+	if e.Func != nil {
+		// No method and no field: a function in scope whose first parameter
+		// takes the value, called on it, or else the built-in of that name
+		// (SPECS.md §8). On a value whose type isn't known yet, a method of
+		// its type might be meant, so the type must be written.
+		if v, open := defaultLiteral(recv).(*tvar); !open || v.rigid {
+			if !isBuiltin(e.Name) || x.c.takesFirst(e.Func, recv) {
+				return x.funcMethod(e, recv, want)
+			}
+			e.Func = nil
+		}
+	}
+	if isBuiltin(e.Name) && e.Func == nil {
 		c.useName(e, ir.Builtin{Name: e.Name})
 		c.useArgs(e, ir.Builtin{Name: e.Name})
 		args := append([]ir.Arg{{Value: e.Recv}}, e.Args...)
@@ -1764,7 +1779,131 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return c.unknownf(e.Pos, "the type of %s isn't known here, so its method %s can't be found: write its type where it is declared", e.Recv.Position().Text(), e.Name)
 		}
 	}
-	return c.unknownf(e.Pos, "%s has no method %s", show(defaultLiteral(recv)), e.Name)
+	return c.unknownf(e.Pos, "%s has no method %s%s", show(defaultLiteral(recv)), e.Name, x.importHint(e.Name))
+}
+
+// funcMethod checks `x.f(a)` where f is a function in scope and x's type has
+// no method or field f: the call f(x, a), kept as the method call's target
+// (SPECS.md §8). x, already checked as recv, goes to f's first parameter.
+func (x *fnCheck) funcMethod(e *ir.MethodCall, recv, want typ) typ {
+	c := x.c
+	fn := e.Func
+	at := e.Pos
+	if nameAt, ok := c.names.name[e]; ok {
+		c.use(nameAt, fn)
+		at = nameAt
+	}
+	c.useArgs(e, fn)
+	ref := &ir.Ref{At: ir.At{Pos: at}, Decl: fn}
+	call := &ir.Call{At: e.At, Func: ref, Args: append([]ir.Arg{{Value: e.Recv}}, e.Args...)}
+	e.Target = ir.FuncCall{Call: call}
+	prev := x.calling
+	x.calling = ref // called here, so the call applies its bounds
+	callee := x.check(ref, nil)
+	x.calling = prev
+	f, ok := prune(callee).(*tfun)
+	if !ok {
+		x.inferArgs(e.Args)
+		return c.fresh()
+	}
+	for _, u := range f.uses {
+		x.effect(u)
+	}
+	shown := show(defaultLiteral(recv))
+	switch {
+	case len(f.params) == 0:
+		x.inferArgs(e.Args)
+		return c.unknownf(e.Pos, "%s has no method %s, and the function %s takes no parameters, so it can't be called on one", shown, fn.Name, fn.Name)
+	case f.params[0].mut:
+		c.typeErrorf(e.Pos, "%s changes its first parameter, so the change shows at the call: write %s(mut %s, …)", fn.Name, fn.Name, e.Recv.Position().Text())
+	case c.unify(f.params[0].t, recv) != nil:
+		c.typeErrorf(e.Recv.Position(), "%s has no method %s, and the function %s takes %s first, not %s", shown, fn.Name, fn.Name, show(defaultLiteral(f.params[0].t)), shown)
+	}
+	rest := &tfun{params: f.params[1:], ret: f.ret, bounds: f.bounds, ops: f.ops}
+	x.argsWant(rest, e.Args, fn.Name, e.Pos, want)
+	c.ts.exprs = append(c.ts.exprs, typedExpr{call, f.ret})
+	x.top.calls = append(x.top.calls, pendingCall{call, f.ret})
+	return f.ret
+}
+
+// takesFirst reports whether fn's first parameter may take a value of type
+// t, without binding anything: x.f() calls a function of the program only
+// when it does, and the built-in of that name otherwise.
+func (c *checker) takesFirst(fn *ir.Func, t typ) bool {
+	f := c.funcType(fn, nil)
+	return len(f.params) > 0 && mayUnify(f.params[0].t, t)
+}
+
+// mayUnify reports whether want and got could unify, binding nothing. An
+// open type variable may be anything, so a variable used twice may still
+// make unify fail where this says yes; the call is checked properly after.
+func mayUnify(want, got typ) bool {
+	a, b := prune(want), prune(got)
+	if a == b {
+		return true
+	}
+	switch v := b.(type) {
+	case tunknown:
+		return true
+	case *tvar:
+		if !v.rigid {
+			ct, isCon := a.(*tcon)
+			return v.lit == litNone || !isCon || v.lit.allows(ct)
+		}
+	}
+	switch x := a.(type) {
+	case tunknown:
+		return true
+	case *tvar:
+		if x.rigid {
+			return false
+		}
+		ct, isCon := b.(*tcon)
+		return x.lit == litNone || !isCon || x.lit.allows(ct)
+	case *tcon:
+		y, ok := b.(*tcon)
+		if !ok || !sameCon(x, y) || len(x.args) != len(y.args) {
+			return false
+		}
+		for i := range x.args {
+			if !mayUnify(x.args[i], y.args[i]) {
+				return false
+			}
+		}
+		return true
+	case *ttuple:
+		y, ok := b.(*ttuple)
+		if !ok || len(x.elems) != len(y.elems) {
+			return false
+		}
+		for i := range x.elems {
+			if !mayUnify(x.elems[i], y.elems[i]) {
+				return false
+			}
+		}
+		return true
+	case *tfun:
+		y, ok := b.(*tfun)
+		return ok && len(x.params) == len(y.params)
+	case *tdyn:
+		return true // whether the value converts is checked at the call
+	}
+	return true
+}
+
+// importHint says how to call an imported module's function as a method,
+// when the module has one of that name: only names in scope are found.
+func (x *fnCheck) importHint(name string) string {
+	m := x.c.modules[x.top.fn.Module.Path]
+	if m == nil {
+		return ""
+	}
+	for _, imp := range m.imports {
+		if fn, ok := imp.values[name].(*ir.Func); ok && fn.Pub && !fn.HasSelf {
+			return fmt.Sprintf("; module %s has a function %s: import it by name, import %s.{%s}, to call it on a value, or write %s.%s(…)", imp.mod.Name, name, imp.mod.Name, name, imp.mod.Name, name)
+		}
+	}
+	return ""
 }
 
 // fieldCall checks `timer.read()` where read is a field of the record that

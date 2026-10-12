@@ -61,6 +61,7 @@ Words this document uses in one sense, and names that mean different things in d
 | handler | What `with` applies to the rest of a test's block: `fakes(…)`, `clock(…)`, of the built-in type `Handler` (section 20). A program may declare its own `Handler`, as section 12's example does; in its module the name is the program's. |
 | outcome | A run's `Outcome`, `Completed(value)` or `Failed(fault)` (section 15); a command's outcome is the variant its result is (section 17). |
 | fault | What ends a run that code can't catch, such as `DeadlinePassed` or `Unreachable` (section 15). An `Err` is a value, not a fault. |
+| method | What `x.f(a)` calls: a method of `x`'s type, from its `impl`, an entity's or a trait's; else a field of `x` that holds a function; else a function in scope whose first parameter takes `x`, as `f(x, a)` (section 8). |
 | callback | A function given to a parameter whose function type has no `uses`, as `filter`'s. It can't be kept, so it runs before the call returns: its effects count where it is given (section 12), and a lambda given as one may read a `var` (section 7). |
 | `end` | In an entity's own method, `end(ok)` ends the entity (section 14). Elsewhere `s.end()` is a string's end position, and `r.end` a range's end. |
 | `start` | `j.start(…)` starts a run of job `j`, and `claude.start!(…)` an agent's session. `s.start()` is a string's first position, and `r.start` a range's start. |
@@ -154,6 +155,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Statements | **A newline ends a statement** unless the next line starts with a binary operator, `.`, `?`, `,`, `:`, `=`, `->` or `else` (section 4). `;` also separates statements | No semicolons, and a long pipeline can still break before each `|>` |
 | Braces in expressions | A `{` after `if … `, `else`, `for`, `while`, `let … else`, a signature, `test "…"` or a lambda's parameters opens a block; anywhere else it starts a record or map. After `=>` it opens a block unless `name:`, `name,` or `name with` follows, which only a record can start. Variant payloads use parentheses: `Pending(receipt: id)` | Every `{` has one reading, found with at most two tokens of lookahead, in both parsers; a match arm returns a record without extra parentheses |
 | Pipes | Data-first: `x |> f(a)` is `f(x, a)`; `_` places the value elsewhere: `x |> f(a, _)` | Matches method-call intuition |
+| Functions as methods | **`x.f(a)` is `f(x, a)` when `f` is a function in scope whose first parameter takes `x`**, after the methods of `x`'s type and a field of `x` that holds a function; a function imported by name counts, and otherwise the built-in of that name. The type must be known, a function that changes its first parameter is called `f(mut x)`, the editor offers these functions after `x.`, and `eye fmt` rewrites neither form (section 8). Decided by the owner on 2026-10-12 | The built-ins already worked as methods and the program's functions didn't, which gave the built-ins two spellings and the program's one. Pipes are rare in the lab's code, and methods read left to right without a `|>` per step, so the method form is made the rule for every function rather than taken away from the built-ins. The order keeps a type's own operations first, and needs no rule for ties, since there are none |
 | Memory | Reference counting with in-place reuse of uniquely owned values; immutable values; entities referenced by ID | No GC pauses, and no reference cycles by construction |
 | Parsing | A **tree-sitter grammar is the spec**; the compiler's parser is hand-written; a conformance suite fails CI if the two disagree | One definition of the syntax, editor support for free, and compiler error messages under our control |
 | Metaprogramming | **No user-defined macros before v1.0.** `entity`, `job`, `contract` and `view` are built in, each lowered by its own compiler pass. Deriving is limited to the built-in traits; rare code generation goes through a build step (`eye generate`) | Fixed constructs give clearer errors and are easier for agents to work with; a macro system would delay v0.1; separate passes keep the option open |
@@ -693,12 +695,48 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   read: fn() -> Instant uses {clock} }`, `timer.read()` calls the function in the field; the call
   has the effects its type states. So that the call means one thing, a record type can't have a
   method named like a field that holds a function.
-- **Pipes and methods.** `x |> f(a)` calls an ordinary function with `x` first; `x.f(a)` calls a
-  method. Collection operations in the standard library are functions, used with pipes, so the same
-  pipeline works on lists, iterators and entity sets. The built-in functions can also be called as
-  methods today (`xs.first()` is `first(xs)`); calling any function whose first parameter takes
-  the value as `x.f(a)` was decided on 2026-10-12, and ROADMAP task G.15 builds it and writes the
-  rule here.
+- **Any function is a method on its first argument.** `x.f(a)` is `f(x, a)` when `f` is a function
+  in scope whose first parameter takes `x`, and `x |> f(a)` is the same call: write whichever
+  reads better. So the program's own functions read as the built-ins do:
+
+  ```eye
+  type Span = { from: Int, to: Int }
+
+  fn moved(s: Span, by: Int) -> Span = { from: s.from + by, to: s.to + by }
+  fn twice(n) = n + n
+
+  fn shifted(spans: List(Span)) -> List(Span) =
+    spans.map(fn s: s.moved(by: 2.twice()))      # moved(s, by: twice(2))
+  ```
+
+  - **Which `f`.** A method of `x`'s type comes first: one of its `impl`, an entity's, or a
+    trait's on a `dyn` value or a type variable. Then a field of `x` that holds a function. Then
+    a function declared with `fn` and in scope: the module's own, or one imported by name, with
+    `import m.{f}`. A function reached only as `m.f` is called `m.f(x)`; there is no `x.m.f()`.
+    When the program's function of that name doesn't take `x` first, the built-in of that name
+    is called, if there is one, so a program's `fn count(text: String)` leaves `xs.count()` the
+    built-in for a list. A local variable is never called as a method, even one that holds a
+    function, and it hides no function from one.
+  - **No call is ambiguous.** A record type can't have a method named like a field that holds a
+    function (above), and a module has one function of a name, since two imports of it are `f is
+    declared twice in this module`, so the order above settles every case. A function named like
+    a method of the type isn't reached as a method; `f(x)` calls it.
+  - **Generic functions** are called as `f(x, a)` would be: `x` decides the type variables of the
+    first parameter, and the call is checked against the `where` clause, so `[s].largest()` with
+    a `Secret` is an error, since a `Secret` has no `Ord`.
+  - **What isn't called.** On a value whose type isn't known yet, such as an untyped parameter,
+    a method of its type might be meant, so the type must be written. A function that takes no
+    parameters, or whose first parameter doesn't take `x`, is an error that says so: `Pair has no
+    method plus, and the function plus takes Int first, not Pair`. A function that changes its
+    first parameter is called `bump(mut n)`, so the change shows at the call; `n.bump()` is an
+    error that says to write that. A `mut self` method is the type's own, and is called on a `var`
+    without `mut`.
+  - **Tools.** After `x.`, the editor offers the fields and methods of `x`'s type, then the
+    functions in scope that take `x` first, the built-ins among them. `eye fmt` keeps whichever
+    form is written.
+
+  Collection operations in the standard library are functions, so the same pipeline works on
+  lists, iterators and entity sets, written with pipes or as methods.
 - **Type variables** are lower-case names in types, as in Gleam: `fn first(xs: List(a)) -> Option(a)`,
   `type Pair(a, b) = { first: a, second: b }`. A lower-case name followed by `.` is a module:
   `notify.Delivery`.
@@ -2763,9 +2801,9 @@ operator. All binary operators associate to the left except `??`, which associat
 20. **Collection functions' types.** **Decided** for v0.1 (section 18): one function per
     operation, with a rule for each kind of collection it takes and a requirement where one is
     needed (`sort` needs `Ord`). A `Collection` trait would need traits over type constructors;
-    reopen this if user-defined collections want the same pipelines. The built-ins also work as
-    methods, `xs.first()`; decided on 2026-10-12 to extend that to every function whose first
-    parameter takes the value (section 8, ROADMAP task G.15).
+    reopen this if user-defined collections want the same pipelines. The built-ins work as
+    methods, `xs.first()`, as every function whose first parameter takes the value does
+    (section 8, and the decision log, row "Functions as methods").
 21. **`Handle(name)` and `extern type`.** **Decided** (see the decision log, row "Foreign
     values"): `extern type` is the one way to name what foreign code owns (section 18).
 22. **Printing in jobs.** **Decided** (see the decision log, row "Recorded steps"): output is not

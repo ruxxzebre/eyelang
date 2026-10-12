@@ -741,6 +741,9 @@ func (x *fnb) methodCall(e *ir.MethodCall) *Value {
 	case ir.FieldCall:
 		x.durable = durable
 		return x.call(target.Call)
+	case ir.FuncCall:
+		x.durable = durable
+		return x.call(target.Call)
 	case ir.Builtin:
 		recv := x.expr(e.Recv)
 		args, names := x.args(e.Args)

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -930,22 +931,103 @@ func (c *checker) indexAttributes(f *ir.File) {
 	})
 }
 
+// moduleAt is the module of the file at path.
+func (r *Result) moduleAt(path string) *module {
+	if r.c == nil {
+		return nil
+	}
+	for _, mod := range r.c.modules {
+		for _, f := range mod.mod.Files {
+			if f.Path == path {
+				return mod
+			}
+		}
+	}
+	return nil
+}
+
+// FuncsOn returns, by name, the functions `x.f(…)` can call on the
+// expression whose text ends at offset in the file at path, as the receiver
+// before a `.` (SPECS.md §8): the functions declared with fn in scope there
+// whose first parameter takes the expression's type, each an *ir.Func, and
+// the built-ins that take it, each an ir.Builtin. A function of the program
+// hides a built-in of its name. It returns nothing when the type isn't
+// known. The methods and fields of the type aren't among them.
+func (r *Result) FuncsOn(path string, offset int) map[string]any {
+	m := r.moduleAt(path)
+	if m == nil || r.Index == nil {
+		return nil
+	}
+	var best *typed
+	for i := range r.Index.types {
+		e := &r.Index.types[i]
+		if e.at.End == offset && e.at.File.Path == path && (best == nil || e.at.Offset < best.at.Offset) {
+			best = e
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	t := prune(best.t)
+	switch v := defaultLiteral(t).(type) {
+	case tunknown:
+		return nil
+	case *tvar:
+		if !v.rigid {
+			return nil
+		}
+	}
+	c := r.c
+	out := map[string]any{}
+	for name, v := range m.values {
+		if fn, ok := v.(*ir.Func); ok && !fn.HasSelf && fn.Receiver == nil && fn.Entity == nil && c.takesFirst(fn, t) {
+			out[name] = fn
+		}
+	}
+	builtin := func(name string) {
+		if _, taken := m.values[name]; !taken {
+			out[name] = ir.Builtin{Name: name}
+		}
+	}
+	for name, fn := range c.builtins.funcs {
+		if !strings.Contains(name, ".") && c.takesFirst(fn, t) {
+			builtin(name)
+		}
+	}
+	// The collection functions and the fixed-width methods are typed by
+	// rules rather than signatures: they take the kinds their rules say.
+	kind, _ := (&fnCheck{c: c}).collection(t)
+	fixed := false
+	if k, ok := defaultLiteral(t).(*tcon); ok && k.decl == nil {
+		fixed = fixedRanges[k.name] != nil
+	}
+	for name := range c.builtins.rules {
+		if _, op := fixedOps[name]; op {
+			if fixed {
+				builtin(name)
+			}
+			continue
+		}
+		kinds, ok := collectionKinds[name]
+		if !ok {
+			if !goRuleCollection[name] {
+				continue
+			}
+			kinds = elementKinds
+		}
+		if kind != "" && slices.Contains(kinds, kind) {
+			builtin(name)
+		}
+	}
+	return out
+}
+
 // Lookup finds what name means in the module of the file at path, as code
 // there would: a declaration of the module, an imported one (`notify.send`,
 // `notify.Delivery`), the prelude's, or a built-in. Tools use it for names
 // written in comments.
 func (r *Result) Lookup(path, name string) any {
-	if r.c == nil {
-		return nil
-	}
-	var m *module
-	for _, mod := range r.c.modules {
-		for _, f := range mod.mod.Files {
-			if f.Path == path {
-				m = mod
-			}
-		}
-	}
+	m := r.moduleAt(path)
 	if m == nil {
 		return nil
 	}

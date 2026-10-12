@@ -756,8 +756,11 @@ func sourceOf(e ir.Expr) string {
 }
 
 func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
-	if fc, ok := m.Target.(ir.FieldCall); ok {
-		return in.evalCall(f, fc.Call) // a field that holds a function
+	switch t := m.Target.(type) {
+	case ir.FieldCall:
+		return in.evalCall(f, t.Call) // a field that holds a function
+	case ir.FuncCall:
+		return in.evalCall(f, t.Call) // a function called on its first argument
 	}
 	recv := in.eval(f, m.Recv)
 	if m.Name == "read" && entitySet(m.Recv) {

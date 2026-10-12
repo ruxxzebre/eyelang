@@ -17,26 +17,37 @@ import (
 // collection until a trait can say so (SPECS.md §8); those that take any
 // number of arguments; and the rest for the reason given. Their declarations
 // still give their effects.
-var goRules = map[string]bool{
-	// Any number of values, each of which must have Show.
-	"print": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
-	// Any number of contract modules.
-	"fakes": true,
-	// Its capacity must be named, with an error that says why.
-	"channel": true,
-	// Views and triggers aren't values yet: the attribute @on checks them.
-	"enters": true, "leaves": true,
-	// The collection functions.
+var goRules = func() map[string]bool {
+	rules := map[string]bool{
+		// Any number of values, each of which must have Show.
+		"print": true, "log.debug": true, "log.info": true, "log.warn": true, "log.error": true,
+		// Any number of contract modules.
+		"fakes": true,
+		// Its capacity must be named, with an error that says why.
+		"channel": true,
+		// Views and triggers aren't values yet: the attribute @on checks them.
+		"enters": true, "leaves": true,
+		// The methods of the fixed-width integers, which take any of the
+		// five types (fixedRule), and toInt, which also takes a Float.
+		"wrappingAdd": true, "wrappingSub": true, "wrappingMul": true, "checkedAdd": true,
+		"checkedSub": true, "checkedMul": true, "and": true, "or": true, "xor": true, "not": true,
+		"shiftLeft": true, "shiftRight": true, "toInt": true,
+	}
+	for name := range goRuleCollection {
+		rules[name] = true
+	}
+	return rules
+}()
+
+// goRuleCollection are the collection functions among goRules: each takes
+// the kinds of collection collectionKinds gives it, or every kind that has
+// elements.
+var goRuleCollection = map[string]bool{
 	"size": true, "isEmpty": true, "add": true, "remove": true, "contains": true, "insert": true,
 	"get": true, "first": true, "last": true, "map": true, "filter": true, "find": true, "any": true,
 	"all": true, "count": true, "reduce": true, "sum": true, "average": true, "enumerate": true, "drop": true,
 	"take": true, "reverse": true, "sort": true, "keys": true, "values": true, "entries": true,
 	"toList": true, "toSet": true, "join": true, "flatMap": true, "zip": true, "parallelMap": true, "iter": true,
-	// The methods of the fixed-width integers, which take any of the five
-	// types (fixedRule), and toInt, which also takes a Float.
-	"wrappingAdd": true, "wrappingSub": true, "wrappingMul": true, "checkedAdd": true,
-	"checkedSub": true, "checkedMul": true, "and": true, "or": true, "xor": true, "not": true,
-	"shiftLeft": true, "shiftRight": true, "toInt": true,
 }
 
 // builtinDecls are the declarations of ir/builtin.eye, by the name a call

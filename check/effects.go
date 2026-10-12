@@ -920,6 +920,12 @@ func walk(e ir.Expr, waiting bool, visit func(e ir.Expr, waiting bool) bool) {
 		w(e.Func)
 		args(e.Args)
 	case *ir.MethodCall:
+		if fc, ok := e.Target.(ir.FuncCall); ok {
+			// x.f(a) is the call f(x, a), which is what the checks of
+			// calls look at; it holds x and a.
+			walk(fc.Call, waiting, visit)
+			return
+		}
 		w(e.Recv)
 		args(e.Args)
 	case *ir.Waiting:

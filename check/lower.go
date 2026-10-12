@@ -907,7 +907,7 @@ func (l *lowerer) callee(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir
 			l.checkDurable(n, decl, waiting)
 			return &ir.Call{At: at, Func: &ir.Ref{At: l.at(fnNode), Decl: decl}, Args: args}
 		}
-		mc := &ir.MethodCall{At: at, Recv: l.expr(recvNode), Name: name, Args: args, RecvPlace: l.quietPlace(recvNode)}
+		mc := &ir.MethodCall{At: at, Recv: l.expr(recvNode), Name: name, Args: args, RecvPlace: l.quietPlace(recvNode), Func: l.funcNamed(name)}
 		l.c.nameAt(mc, l.pos(fnNode.ChildByField(syntax.FieldField)))
 		return mc
 	}
@@ -979,6 +979,19 @@ func (l *lowerer) entityEnd(n *syntax.Node) bool {
 	}
 	_, ok := m.entity.Methods["end"]
 	return !ok
+}
+
+// funcNamed is the function declared with fn that name names here, in the
+// module or imported by name, which `x.name(…)` calls on x when x's type has
+// no method or field of that name (SPECS.md §8). Only declarations count: a
+// local variable is never called as a method, so it hides no function from
+// one, and `let size = 3` leaves `xs.size()` as it was.
+func (l *lowerer) funcNamed(name string) *ir.Func {
+	fn, _ := l.c.lookupValue(l.m, name).(*ir.Func)
+	if fn == nil || fn.HasSelf || fn.Receiver != nil || fn.Entity != nil {
+		return nil
+	}
+	return fn
 }
 
 // checkDurable reports a call that must be a durable step in a job but has no `!`.

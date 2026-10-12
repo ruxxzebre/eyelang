@@ -181,7 +181,8 @@ func fakeCalls(e *ir.MethodCall) bool {
 	if e.Name != "calls" || len(e.Args) != 1 || e.Args[0].Name != "" {
 		return false
 	}
-	if _, method := e.Target.(*ir.Func); method {
+	switch e.Target.(type) {
+	case *ir.Func, ir.FuncCall:
 		return false
 	}
 	r, ok := e.Args[0].Value.(*ir.Ref)

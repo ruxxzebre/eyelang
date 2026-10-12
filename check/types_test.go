@@ -1304,6 +1304,98 @@ test "t" {
 	}
 }
 
+// TestFunctionsAsMethods checks `x.f(a)` where f is a function in scope
+// (SPECS.md §8): the program's own functions, generic ones and imported
+// ones are called on their first argument; a type's method, then a field
+// that holds a function, come before a function of the same name; a
+// built-in is called when the program's function doesn't take the value;
+// and each case that can't be called says why.
+func TestFunctionsAsMethods(t *testing.T) {
+	cases := []struct {
+		name, src string
+		want      []string
+	}{
+		{"functions of the program, generic ones and imported ones", `import util.{shout}
+type Pair = { a: Int, b: Int }
+fn twice(n) = n + n
+fn add(n: Int, m: Int) -> Int = n + m
+fn largest(xs: List(a)) -> Option(a) where a: Ord = xs |> sort |> last
+fn f(p: Pair) -> Int {
+  let a: Int = 3.twice()
+  let b: Float = 1.5.twice()
+  let c: Int = 3.add(4)
+  let d: Option(String) = ["b", "a"].largest()
+  let e: String = "hi".shout()
+  let g: List(Int) = [1, 2].map(fn x: x.twice())
+  p.a.add(p.b)
+}`, nil},
+		{"a type's method, then a field, then the function", `type Pair = { a: Int, b: Int }
+impl Pair {
+  fn sum(self) -> Int = self.a + self.b
+}
+type Box = { n: Int, scale: fn(Int) -> Int }
+fn sum(p: Pair) -> String = "the function"
+fn scale(b: Box, k: Int) -> String = "the function"
+fn f(p: Pair, b: Box) -> Int = p.sum() + b.scale(2)`, nil},
+		{"a built-in when the program's function doesn't take the value", `fn count(text: String) -> Int = 1
+fn f(xs: List(Int)) -> (Int, Int) = (xs.count(fn x: x > 1), "abc".count())`, nil},
+		{"what can't be called on a value", `import util
+type Pair = { a: Int, b: Int }
+fn plus(n: Int, m: Int) -> Int = n + m
+fn bump(mut n: Int) { n += 1 }
+fn none() -> Int = 1
+fn f(p: Pair) {
+  var n = 1
+  n.bump()
+  let a = 3.none()
+  let b = p.plus(1)
+  let c = 3.triple()
+}
+fn g(x) = x.plus(1)`, []string{
+			"8:3: bump changes its first parameter, so the change shows at the call: write bump(mut n, …)",
+			"9:11: Int has no method none, and the function none takes no parameters, so it can't be called on one",
+			"10:11: Pair has no method plus, and the function plus takes Int first, not Pair",
+			"11:11: Int has no method triple; module util has a function triple: import it by name, import util.{triple}, to call it on a value, or write util.triple(…)",
+			"13:11: the type of x isn't known here, so its method plus can't be found",
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			files := map[string]string{
+				"main.eye":      c.src + "\n",
+				"util/util.eye": "pub fn shout(s: String) -> String = s + \"!\"\n\npub fn triple(n: Int) -> Int = n * 3\n",
+			}
+			for path, text := range files {
+				p := filepath.Join(dir, path)
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, diags := Program(dir)
+			var got []string
+			for _, d := range diags {
+				got = append(got, strings.TrimPrefix(d.String(), filepath.Join(dir, "main.eye")+":"))
+			}
+			if len(got) != len(c.want) {
+				t.Errorf("got %d diagnostics, want %d:\n%s", len(got), len(c.want), strings.Join(got, "\n"))
+			}
+			for _, w := range c.want {
+				found := false
+				for _, g := range got {
+					found = found || strings.HasPrefix(g, w)
+				}
+				if !found {
+					t.Errorf("missing %q in:\n%s", w, strings.Join(got, "\n"))
+				}
+			}
+		})
+	}
+}
+
 // TestPrograms checks the repository's programs: every one type-checks.
 func TestPrograms(t *testing.T) {
 	for _, dir := range []string{

@@ -16,3 +16,6 @@ impl Tally {
   ## How many things the tally has seen.
   pub fn count(self) -> Int = self.seen
 }
+
+## The things two tallies have seen together.
+pub fn merged(a: Tally, b: Tally) -> Tally = { seen: a.seen + b.seen }

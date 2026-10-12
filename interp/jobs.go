@@ -25,8 +25,11 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 	// come before this one.
 	call := w.Call
 	if m, ok := call.(*ir.MethodCall); ok {
-		if fc, ok := m.Target.(ir.FieldCall); ok {
-			call = fc.Call // a field that holds a function
+		switch t := m.Target.(type) {
+		case ir.FieldCall:
+			call = t.Call // a field that holds a function
+		case ir.FuncCall:
+			call = t.Call // a function called on its first argument
 		}
 	}
 	switch c := call.(type) {

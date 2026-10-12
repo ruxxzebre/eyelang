@@ -561,6 +561,14 @@ func (s *server) members(d *document, recv syntax.Span, dot int) []completionIte
 			}
 			addMethods(l, t.Methods)
 		}
+		// Then the functions in scope that take the value first, which
+		// x.f(…) calls on it (SPECS.md §8); a method or field of the same
+		// name, added above, is what the call means.
+		l.rank = "2"
+		funcs := res.FuncsOn(path, dot)
+		for _, name := range slices.Sorted(maps.Keys(funcs)) {
+			l.add(name, completionFunction, funcs[name])
+		}
 	}
 	if l.items == nil {
 		return []completionItem{}

@@ -36,12 +36,48 @@ fn largest(xs: List(a)) -> Option(a) where a: Ord {
   read: fn() -> Instant uses {clock} }`, `timer.read()` calls the function in the field; the call
   has the effects its type states. So that the call means one thing, a record type can't have a
   method named like a field that holds a function.
-- **Pipes and methods.** `x |> f(a)` calls an ordinary function with `x` first; `x.f(a)` calls a
-  method. Collection operations in the standard library are functions, used with pipes, so the same
-  pipeline works on lists, iterators and entity sets. The built-in functions can also be called as
-  methods today (`xs.first()` is `first(xs)`); calling any function whose first parameter takes
-  the value as `x.f(a)` was decided on 2026-10-12, and ROADMAP task G.15 builds it and writes the
-  rule here.
+- **Any function is a method on its first argument.** `x.f(a)` is `f(x, a)` when `f` is a function
+  in scope whose first parameter takes `x`, and `x |> f(a)` is the same call: write whichever
+  reads better. So the program's own functions read as the built-ins do:
+
+  ```eye
+  type Span = { from: Int, to: Int }
+
+  fn moved(s: Span, by: Int) -> Span = { from: s.from + by, to: s.to + by }
+  fn twice(n) = n + n
+
+  fn shifted(spans: List(Span)) -> List(Span) =
+    spans.map(fn s: s.moved(by: 2.twice()))      # moved(s, by: twice(2))
+  ```
+
+  - **Which `f`.** A method of `x`'s type comes first: one of its `impl`, an entity's, or a
+    trait's on a `dyn` value or a type variable. Then a field of `x` that holds a function. Then
+    a function declared with `fn` and in scope: the module's own, or one imported by name, with
+    `import m.{f}`. A function reached only as `m.f` is called `m.f(x)`; there is no `x.m.f()`.
+    When the program's function of that name doesn't take `x` first, the built-in of that name
+    is called, if there is one, so a program's `fn count(text: String)` leaves `xs.count()` the
+    built-in for a list. A local variable is never called as a method, even one that holds a
+    function, and it hides no function from one.
+  - **No call is ambiguous.** A record type can't have a method named like a field that holds a
+    function (above), and a module has one function of a name, since two imports of it are `f is
+    declared twice in this module`, so the order above settles every case. A function named like
+    a method of the type isn't reached as a method; `f(x)` calls it.
+  - **Generic functions** are called as `f(x, a)` would be: `x` decides the type variables of the
+    first parameter, and the call is checked against the `where` clause, so `[s].largest()` with
+    a `Secret` is an error, since a `Secret` has no `Ord`.
+  - **What isn't called.** On a value whose type isn't known yet, such as an untyped parameter,
+    a method of its type might be meant, so the type must be written. A function that takes no
+    parameters, or whose first parameter doesn't take `x`, is an error that says so: `Pair has no
+    method plus, and the function plus takes Int first, not Pair`. A function that changes its
+    first parameter is called `bump(mut n)`, so the change shows at the call; `n.bump()` is an
+    error that says to write that. A `mut self` method is the type's own, and is called on a `var`
+    without `mut`.
+  - **Tools.** After `x.`, the editor offers the fields and methods of `x`'s type, then the
+    functions in scope that take `x` first, the built-ins among them. `eye fmt` keeps whichever
+    form is written.
+
+  Collection operations in the standard library are functions, so the same pipeline works on
+  lists, iterators and entity sets, written with pipes or as methods.
 - **Type variables** are lower-case names in types, as in Gleam: `fn first(xs: List(a)) -> Option(a)`,
   `type Pair(a, b) = { first: a, second: b }`. A lower-case name followed by `.` is a module:
   `notify.Delivery`.

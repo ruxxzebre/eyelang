@@ -27,7 +27,8 @@ func TestDefinition(t *testing.T) {
 	write("shapes/shapes.eye", "pub type Shape = | Square(Int)\n\npub fn size(s: Shape) -> Int = 2\n")
 	// On disk the program doesn't use shapes; the editor's text does.
 	write("app/main.eye", "fn main() {}\n")
-	main := "import shapes\n\nfn area(s: shapes.Shape) -> Int {\n  let n = shapes.size(s)\n  print(n)\n  Some(n) ?? 0\n}\n"
+	main := "import shapes.{size}\n\nfn area(s: shapes.Shape) -> Int {\n  let n = shapes.size(s)\n  print(n)\n  Some(n) ?? 0\n}\n" +
+		"\nfn twice(n: Int) -> Int = n * 2\n\nfn g() -> Int = 3.twice()\n\nfn h(s: shapes.Shape) -> Int = s.size()\n"
 	uri := pathURI(filepath.Join(dir, "app", "main.eye"))
 	// An extern fn the interpreter provides; no program needs to use it.
 	ext := "@host(\"http.get\")\npub extern fn get(url: String) -> String\n"
@@ -43,14 +44,16 @@ func TestDefinition(t *testing.T) {
 		})
 	}
 	ids := map[string]int{
-		"module function": at(uri, 3, 18), // shapes.size
-		"qualified type":  at(uri, 2, 20), // shapes.Shape
-		"local":           at(uri, 4, 8),  // print(n)
-		"declared name":   at(uri, 3, 6),  // let n
-		"prelude":         at(uri, 5, 3),  // Some
-		"builtin":         at(uri, 4, 3),  // print
-		"host function":   at(extURI, 1, 16),
-		"nothing":         at(uri, 1, 0),
+		"module function":               at(uri, 3, 18), // shapes.size
+		"qualified type":                at(uri, 2, 20), // shapes.Shape
+		"local":                         at(uri, 4, 8),  // print(n)
+		"declared name":                 at(uri, 3, 6),  // let n
+		"prelude":                       at(uri, 5, 3),  // Some
+		"builtin":                       at(uri, 4, 3),  // print
+		"host function":                 at(extURI, 1, 16),
+		"nothing":                       at(uri, 1, 0),
+		"function as a method":          at(uri, 10, 19), // 3.twice()
+		"imported function as a method": at(uri, 12, 34), // s.size()
 	}
 	msgs := s.run()
 	get := func(name string) []location {
@@ -78,6 +81,8 @@ func TestDefinition(t *testing.T) {
 	expect("prelude", "check/prelude.eye", -1, -1)
 	expect("builtin", "interp/builtins.go", -1, 0)
 	expect("host function", "interp/services.go", -1, 0)
+	expect("function as a method", "app/main.eye", 8, 3)
+	expect("imported function as a method", "shapes/shapes.eye", 2, 7)
 	if locs := get("nothing"); len(locs) != 0 {
 		t.Errorf("an empty line has a definition: %v", locs)
 	}

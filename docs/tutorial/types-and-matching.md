@@ -103,9 +103,10 @@ usual way to write a constructor:
 rather than changing `self`. The [next page](/tutorial/errors) shows how a function can change a
 value it is given, and makes that visible at the call.
 
-Methods and pipes do different jobs. `t.line()` calls a method of `t`'s type. `tasks |> find(...)`
-calls an ordinary function with `tasks` as its first argument. Collection functions are ordinary
-functions, so one pipeline works on lists, sets and maps alike.
+`t.line()` calls a method of `t`'s type. Any other function is called the same way on its first
+argument: `tasks.find(...)` is `find(tasks, ...)`, and so is the pipe `tasks |> find(...)`. A
+type's own method comes first, so `t.line()` means the method even if a function `line` exists.
+Collection functions are ordinary functions, so one pipeline works on lists, sets and maps alike.
 
 ## Next
 

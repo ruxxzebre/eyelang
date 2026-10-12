@@ -296,6 +296,11 @@ func declString(d any) string {
 			return "the function in field " + f.Name
 		}
 		return "a field's function"
+	case FuncCall:
+		if r, ok := d.Call.Func.(*Ref); ok {
+			return declString(r.Decl) + " on its first argument"
+		}
+		return "a function on its first argument"
 	case nil:
 		return "?"
 	}
