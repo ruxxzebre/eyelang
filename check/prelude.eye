@@ -125,7 +125,8 @@ pub trait Show {
 pub trait Hash {}
 
 ## What can be saved: entity state, a job's arguments and what a job holds
-## across a `!`. Derived; a Secret, a Handle and a function have none.
+## across a `!`. Derived; a Secret, a value of a program's `extern type` and a
+## function have none.
 pub trait Save {}
 
 ## What a model can be asked for: `ai.generate!` derives the JSON Schema from
