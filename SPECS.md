@@ -907,6 +907,10 @@ ranges of numbers or characters (`'a'..='z'`, `0..10`), variants with positional
 ..rest]`, which also match `Bytes` and slices) and alternatives (`Asleep | Waking`). `..` skips the
 remaining fields or elements; `..rest` binds the remaining elements.
 
+A `let` whose pattern can fail needs an `else` block, and the block must leave: the names the
+pattern binds have no value after it, so it ends with `return`, `break`, `continue` or
+`unreachable(…)`, on every way through it. `let Some(n) = x else { 0 }` is an error at the block.
+
 A variant pattern names a variant of the matched value's type, so a variant declared in an imported
 module needs no module prefix in a pattern, even when another module has a variant of the same name:
 `Refused(reason)` in the tour matches zeropod's `Refused`. Outside patterns an imported variant may

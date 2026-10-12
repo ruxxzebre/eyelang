@@ -257,6 +257,20 @@ fn area(s: Shape) -> Float = match s {
   let Some(v) = o
   v
 }`, []string{"2:3: this pattern doesn't match None: add `else { … }`"}},
+		{"a let's else leaves", `fn f(x: Option(Int)) -> Int {
+  let Some(n) = x else { 0 }
+  n
+}
+fn g(xs: List(Option(Int))) -> Int {
+  var total = 0
+  for x in xs {
+    let Some(n) = x else { continue }
+    let true = n >= 0 else { if n < -9 { return -1 } else { break } }
+    let false = n > 99 else { unreachable("no more than 99") }
+    total += n
+  }
+  total
+}`, []string{"2:24: the else block of a let must leave, since the names the pattern binds have no value there: end it with return, break, continue or unreachable(…)"}},
 		{"a pattern names a variant of the matched type", `type A = | One | Two
 type B = | Three
 fn f(a: A) -> Int = match a {

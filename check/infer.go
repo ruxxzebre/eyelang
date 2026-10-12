@@ -892,6 +892,9 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.check(e.Value, t)
 		if e.Else != nil {
 			x.check(e.Else, discard)
+			if !diverges(e.Else) {
+				c.typeErrorf(e.Else.Position(), "the else block of a let must leave, since the names the pattern binds have no value there: end it with return, break, continue or unreachable(…)")
+			}
 		}
 		e.Pattern = x.bindPattern(e.Pattern, t, e.Pos)
 		x.top.lets = append(x.top.lets, pendingLet{l: e, t: t})
@@ -1010,6 +1013,40 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		return tUnit
 	}
 	return c.unknownf(e.Position(), "internal error: the checker doesn't know the expression %T", e)
+}
+
+// diverges reports whether e never finishes with a value: it returns,
+// breaks, continues, stops with unreachable or loops forever, or every way
+// through it does.
+func diverges(e ir.Expr) bool {
+	switch e := e.(type) {
+	case *ir.Return, *ir.Break, *ir.Continue:
+		return true
+	case *ir.Block:
+		for _, s := range e.Exprs {
+			if diverges(s) {
+				return true
+			}
+		}
+	case *ir.If:
+		return e.Else != nil && diverges(e.Then) && diverges(e.Else)
+	case *ir.Match:
+		for _, a := range e.Arms {
+			if !diverges(a.Body) {
+				return false
+			}
+		}
+		return len(e.Arms) > 0
+	case *ir.Call:
+		if r, ok := e.Func.(*ir.Ref); ok {
+			if b, ok := r.Decl.(ir.Builtin); ok && b.Name == "unreachable" {
+				return true
+			}
+		}
+	case *ir.While:
+		return endless(e)
+	}
+	return false
 }
 
 // endless reports whether e is `while true` without a `break`.
