@@ -175,3 +175,32 @@ test "a test reads a run's outcome once the clock has moved past its end" {
   advance(5 min)
   expect(stopped.outcome() == Some(Failed(DeadlinePassed)))
 }
+
+# `at:` starts a run at an instant, and `07:45 in zone` is the next instant
+# the zone's clock shows 07:45: today if it hasn't yet, else tomorrow.
+let dublin: Zone = "Europe/Dublin"
+
+job stampAt() { Stamps("at").add!(now!()) }
+
+job wakeAt() {
+  sleepUntil!(07:45 in dublin)
+  Stamps("wake").add!(now!())
+}
+
+test "a run starts at the instant at: names" {
+  with clock(2026-10-12 09:00 in dublin)
+  stampAt.start(at: 2026-10-12 10:30 in dublin)
+  advance(1 h)
+  expect(Stamps("at").seen == [])
+  advance(1 h)
+  expect(Stamps("at").seen == [2026-10-12 10:30 in dublin])
+}
+
+test "a time of day in a zone is the next instant its clock shows it" {
+  with clock(2026-10-12 09:00 in dublin)
+  expect(07:45 in dublin == 2026-10-13 07:45 in dublin)
+  expect(10:00 in dublin == 2026-10-12 10:00 in dublin)
+  wakeAt.start()
+  advance(1 day)
+  expect(Stamps("wake").seen == [2026-10-13 07:45 in dublin])
+}

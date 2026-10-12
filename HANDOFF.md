@@ -136,12 +136,7 @@ a contract over HTTP (6.13, #81). Open questions 32 to 34 (time-travel debugging
 online playground) are in SPECS.md.
 
 Runtime and tools:
-- A faulted run stays failed, and nothing restarts it (docs/guide/running.md, "Not yet"). It
-  needs a command, such as `eye runs --retry ID`, and a decision first: whether the retried run
-  replays the steps it recorded before the fault.
-- The tutorial and guide writers hit about 20 checker and interpreter bugs on 2026-10-11, most
-  passing `eye check` and failing at run time. Session eyelang-15 holds the list; some are fixed.
-  It should become issues or tests.
+- The docs audit of 2026-10-12 replaced session eyelang-15's lost list with issues #120 to #139 (the restart of a failed run is #136; #132 and #139 were fixed on `dev` the same day).
 
 Checker:
 - A generic private function calling itself at a bigger type is reported by `eye check --lir`

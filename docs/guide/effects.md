@@ -103,7 +103,8 @@ main.eye:59:1: tellLate uses net Chat.history, which its uses clause doesn't lis
 ```
 
 This is the split to aim for: inference inside a module, where the code is read together, and
-stated effects at public boundaries, where other code depends on them.
+stated effects at public boundaries, where other code depends on them. Editors show the inferred
+effects too: hovering over `post` lists `wait` and `net Chat.post` as its effects, as inferred.
 
 ## Callbacks pass their effects to the caller
 
@@ -122,6 +123,16 @@ main.eye:74:1: printLate uses stdio, which its uses clause doesn't list: run eye
 
 That is how `map`, `filter`, `parallelMap` and `timeout` stay pure while working with any function,
 and why every public signature still lists everything its body can do.
+
+A function kept in data, in a record's field, a list or a result, may run long after it was
+given, so its effects can't pass to a caller. Its type states them instead, as in
+`run: fn(Event) uses {net Notify.send}`, and calling it has those effects. A function type without
+`uses` kept in data is pure, and storing a function that does more is an error at the place it is
+stored:
+
+```text
+main.eye:8:35: loud uses stdio, which its type here, fn(Int) -> Int, doesn't list: a function kept in data does only what its type says, so add uses {stdio} to the type
+```
 
 ## Waiting, and `!`
 
@@ -236,12 +247,6 @@ When you review a change, the effects tell you where to look:
   step; check that what it does is safe to have saved.
 - `net C.op` names the exact operations a function can call. A new one means a new dependency on
   another service.
-
-## Not yet
-
-- A function type kept in data states its effects (`run: fn(Event) uses {net Notify.send}`), and
-  calling it has them, but a function that does more can still be stored in it.
-- Editors don't show the inferred effects of private functions yet.
 
 ## See also
 

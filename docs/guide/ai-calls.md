@@ -118,11 +118,15 @@ A type that holds a `Secret`, a `Handle` or a function can't be asked for, and t
 If you ask for something that isn't an object, such as a `List(String)`, it is wrapped in an object
 with one field, `value`, since providers want an object at the top.
 
+Strict schemas have no maps and no fixed-length lists, so a map is asked for as a list of
+`{"key": …, "value": …}` objects, and a tuple as an object with fields `value1`, `value2`, and so
+on. A time of day is text such as `"14:30"`. The reply is read back into the map, tuple or time
+your type says.
+
 ::: info Not yet
-Maps, tuples and times of day pass `eye check` but have no schema yet, so asking for them stops the
-call: `ai.generate can't ask for Counts: byWord: Map has no schema: a model can be asked for
-records, variants, lists, strings, numbers, booleans and dates`. Use a list of records instead of
-a map.
+A type that refers to itself, such as a tree, and `()` pass `eye check` but have no schema, so
+asking for them stops the run at the call
+([#123](https://github.com/ruxxzebre/eyelang/issues/123)).
 :::
 
 ## Replies are checked
@@ -305,7 +309,8 @@ job dedupe(id: TicketId, text: String) -> Result(Triage, ai.AiError) {
 ## Not yet
 
 - **Agents.** Running coding agents with the `agents` module is designed (see
-  [AI models and agents](/reference/language/ai-models-and-agents)) but not built.
+  [AI models and agents](/reference/language/ai-models-and-agents)) but not built
+  ([#60](https://github.com/ruxxzebre/eyelang/issues/60)).
 
 ## See also
 

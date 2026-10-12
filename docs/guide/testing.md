@@ -263,7 +263,9 @@ The same test gives the same result on every run, on any machine.
 | Tests that pass alone and fail together | Each test has its own store |
 
 ::: info Not yet
-`with memory(...)` is designed but not built. See [What runs today](/reference/status#time-secrets-tests).
+`with memory(...)` is in the reference's list of test handlers, but isn't defined yet
+([#134](https://github.com/ruxxzebre/eyelang/issues/134)). See
+[What runs today](/reference/status#time-secrets-tests).
 :::
 
 ## See also

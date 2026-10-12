@@ -310,8 +310,10 @@ POST /v1/ask key=review-r-1
 ```
 
 ::: info Not yet
-In `eye run`, nothing outside the program can publish an event yet, so the approver's answer has
-no way in, and the review waits out its three days. The tests above publish answers directly.
+In `eye run`, another service can't deliver an event into the program yet
+([#135](https://github.com/ruxxzebre/eyelang/issues/135)), so Notify's `answered` event has no way
+in, and the review waits out its three days. The tests above publish answers directly.
+`eye approve` answers only `approval!`, which this program doesn't use.
 :::
 
 ## What you used

@@ -89,8 +89,10 @@ from another, so a refund that is delivered twice starts one run:
 <<< ./code/contracts/main.eye#test-refund
 
 ::: info Not yet
-Under `eye run`, nothing outside the program can publish an event yet. Tests publish them with
-`payments.refunded.publish(…)`, and a program publishes its own.
+Under `eye run`, another service can't deliver an event into the program yet
+([#135](https://github.com/ruxxzebre/eyelang/issues/135)). Tests publish them with
+`payments.refunded.publish(…)`, and a program publishes its own, from an entity method, a job, or
+an operation of a contract it serves.
 :::
 
 ## Keys make repeats safe
@@ -392,11 +394,14 @@ the way an Eyelang caller sends it, so the two sides agree without code of their
 `eye run` keeps no replies of its own: a repeated key reaches the `impl` again, which finds what it
 already did through the entity the key names, as the `Invoice` named by the key does above.
 
-::: info Not yet
-Types generated from contracts for other languages are planned for v0.3.
-:::
+**In Go or TypeScript,** `eye gen` writes the other side from the contract: the types in the one
+JSON shape, a client that calls each `@http` operation, and a server stub that routes requests
+the way `eye run` does. `eye gen go --module payments .` writes a Go package with a
+`PaymentsClient` and a `PaymentsService` interface to implement; `eye gen ts --module invoices .`
+writes the same in TypeScript. The output is a build artifact: generate it in the build, don't
+commit it. See [the eye command](/reference/cli#gen).
 
-**In another language,** a service that an Eyelang program calls needs to do what its contract
+**In any other language,** a service that an Eyelang program calls needs to do what its contract
 says:
 
 - Answer each `@http` route, reading arguments from the path, the query string or a JSON body.
@@ -433,12 +438,23 @@ read of `PAYMENTS_STATUS_URL` included: `env.get!(…)`.
 Prefer a contract for any service you call more than once. `http.get` has the broad effect `net`
 rather than `net Payments.balance`, it has no keys or reconciling, and its answers have no types.
 
-::: info Not yet
-`http.get` has no recordings, so a test can't replay it. Keep the reading in a pure function, like
-`looksUp`, and test that with a `Response` you build:
+Keep the reading in a pure function, like `looksUp`, and test it with a `Response` you build:
 
 <<< ./code/contracts/main.eye#test-page
-:::
+
+A test that runs the call itself answers it from a recording, as for a contract: `with fakes(http,
+from: "recordings/")` reads `recordings/http.json`, whose exchanges are keyed by URL. An exchange
+without a key answers any other URL, and a URL that nothing answers fails the test:
+
+```json
+{ "contract": "http",
+  "exchanges": [
+    { "op": "get", "key": "https://status.example.com",
+      "result": { "kind": "Ok", "value": { "status": 200, "headers": {}, "body": "All systems operational" } } },
+    { "op": "get",
+      "result": { "kind": "Err", "value": { "kind": "NoAnswer", "reason": "refused" } } }
+  ] }
+```
 
 ## Testing with recordings
 

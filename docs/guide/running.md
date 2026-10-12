@@ -228,7 +228,8 @@ already exists, and nothing new happens. So check the configuration before the f
 example by running once with `--memory` against the real services.
 
 ::: info Not yet
-There is no command to restart a failed run.
+There is no command to start a failed run again
+([#136](https://github.com/ruxxzebre/eyelang/issues/136)).
 :::
 
 ## The journal
@@ -267,11 +268,14 @@ The journal is one file that only `eye run` writes:
   eye run: .eye/journal is in use by another eye run
   ```
 
-  So run one instance of a program per journal. A store shared by several machines (Postgres) is
-  planned for v0.2.
+  So run one instance of a program per journal. To keep the state off the machine, use the
+  Postgres store instead, `eye run --store postgres://…`, which also takes one runner per
+  database and schema.
 
-A job that never ends keeps every step it takes. `eye run` warns once when a run passes 1,000
-steps. Prefer a schedule that starts a short run each time over a job that loops forever.
+A job that never ends, such as a `while true` loop that sleeps, stays small: a run keeps a
+checkpoint between the statements of its job, and each wake replays only the steps taken since
+the last one. Steps inside a function the job calls have no checkpoint between them, so `eye run`
+warns once when a run passes 1,000 steps since its last checkpoint.
 
 **Backups.** Copy the `journal` file; the `.lock` and `.reserve` files beside it aren't needed. A
 copy taken while `eye run` is running is still usable, because every change is a whole line and a
