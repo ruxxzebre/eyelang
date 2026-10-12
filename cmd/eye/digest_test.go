@@ -132,9 +132,15 @@ func labWithMain(t *testing.T) string {
 	if err := os.WriteFile(path, src, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	main := "pub fn main() {\n  digest.morning.start(2026-10-12, key: \"exit-test\")\n}\n"
+	main := "pub fn main() uses {start morning} {\n  digest.morning.start(2026-10-12, key: \"exit-test\")\n}\n"
 	if err := os.WriteFile(filepath.Join(dir, "start.eye"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	// A public job states its effects, so eye fmt writes morning's clause
+	// from what its body does, as it would for anyone making it public.
+	var stderr strings.Builder
+	if code := runFmt([]string{dir}, io.Discard, &stderr); code != 0 {
+		t.Fatalf("eye fmt on the lab with a main exited %d:\n%s", code, stderr.String())
 	}
 	// A copy that doesn't check would only show as a run that never asks the model.
 	if _, diags := check.Program(dir); len(diags) > 0 {
