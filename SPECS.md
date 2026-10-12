@@ -168,6 +168,8 @@ Words this document uses in one sense, and names that mean different things in d
 | Lazy iteration | **`xs.iter()` gives an `Iter(a)`, a value that describes a walk and runs it again each time it is walked.** Lists, sets, maps, `Int` ranges, strings and `Bytes` give one, and `s.chars()` is one; `map`, `filter`, `take`, `drop`, `enumerate`, `zip` and `flatMap` on an `Iter` give an `Iter`, and the other collection functions walk it. Its functions only compute; it has none of the derived traits, so it can't be live across a `!`; and there are no endless sources (section 5) | Walking twice gives the same elements because an `Iter` is a value, not a cursor a first walk would use up, which would be state shared by everyone holding it. Functions without effects make a second walk cost time and nothing else, wherever it happens. Sources that end keep `size`, `toList` and `sort` sure to finish |
 | Division helpers | **`/` and `%` keep their `NonZero` divisor, and `xs.average()`, `a.div(b)` and `a.rem(b)` give an `Option` instead**: `None` for an empty list or a divisor of 0. `average` gives a `Float` for `Int`s too; `div` and `rem` round down as `/` and `%` do (section 10) | Every mean needed `match nonzero(xs \|> size) { … }`, so the obvious code was long. One result type for every list keeps `average` predictable, and a mean of `1` and `2` that is quietly `1` would be the wrong answer made easy; `xs.sum().div(xs.size())` is there for an `Int` mean (decided 2026-10-12) |
 | Calls that come back | **A call tree is one transaction, and an entity has one state in it**: a call that comes back to an entity whose method is still running starts from the tree's changes, the outer method goes on from the call's changes as from a `mut self` call, reads in the tree see the state in progress, and the entity commits once (from 2026-10-12, section 14) | Each call loaded its own copy and the last to finish won, so `A.ping` calling `B.pong` calling `A.bump` lost a write without a word. Refusing re-entry would be simpler, but it rejects programs that "the whole call tree commits together" invites |
+| Model tools | **A function declared with `fn` and named where an `ai.Tool` is expected converts to one**, as a value converts to `dyn Trait`; its parameters and result need `Schema`. Its effects count where it is named, and a model call's own effect is `net Ai.generate`, not `net`. In a job each model reply and each tool result is a step (section 19) | `tools: [searchIssues, label]` holds functions of different types, which no rule typed. A conversion keeps what a schema needs, the name, the `##` comment and the types, without a wrapper to write. A call whose own effect was `net` made every public caller list `net`, which covers any tool, so a new tool never showed in review. Recording each step keeps a restarted conversation from running a tool twice. From the spec review of 2026-10-12 |
+| Destructive tools | **`@destructive` adds `approval: Approval` to a function as to a command, and a model's call of one is approved through `ai.generate`'s `approve:`**, a function, usually `fn call: approval!(call, from: someone, within: …)`, called once for each call; without it the call is declined (section 19) | One meaning for the attribute: what it marks runs only with a person's consent, which the type shows. "Until someone approves" named no one; asking through `approval!` answers whom with its `from:`, and keeps its rules (answers by `id`, only from the person asked) with no second way to ask. A function rather than `approver:` and `within:` arguments, which would copy `approval!`'s. From the spec review of 2026-10-12 |
 
 ## 3. A tour
 
@@ -1627,7 +1629,8 @@ type Delivery =
     can't be `@fresh`.
 - **`@destructive`** on a command adds a required `Approval` argument, `approval`, after the
   parameters it declares (and after `basedOn`), and before `key`. Only `approval!` makes an
-  `Approval`, so a program calls the command only after a person said yes.
+  `Approval`, so a program calls the command only after a person said yes. On a function it adds
+  the same parameter, which is how a model's tool asks for a person (section 19).
 
   ```eye
   # shelves/shelves.eye
@@ -1919,7 +1922,8 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   problems listed, and then returns `Err(Malformed(reply, problems))`.
 - **Providers.** `ai.Provider` is `Anthropic` (the Messages API), `OpenAI` (chat completions) or
   `Gateway`, an OpenAI-compatible server such as the lab's, which serves every model. A call has
-  the effect `net`, and each provider's address and key come from the environment and `secret`:
+  the effect `net Ai.generate`, which `uses {net}` covers too (`Ai` is the `ai` module's contract
+  for the providers), and each provider's address and key come from the environment and `secret`:
   `ANTHROPIC_URL` and `secret("anthropic-api-key")`, `OPENAI_URL` and `secret("openai-api-key")`,
   `AI_URL` and `secret("ai-key")`. `provider: Some(ai.Anthropic)` names one; without it, a gateway
   answers every call when `AI_URL` is set, since a deployment that has one routes through it, and
@@ -1944,7 +1948,7 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
 
 **Tools are functions.** Eyelang functions passed as `tools:` become the model's tools. A tool's
 parameter types give its input schema and its `##` comment its description, and the runtime runs
-the function when the model calls it.
+the function when the model calls it and sends back what it returns.
 
 ```eye
 ## Find open issues that mention a phrase.
@@ -1955,21 +1959,54 @@ fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub
 ## Add a label to an issue.
 @destructive
 fn label(issue: IssueId, name: String) uses {net GitHub.label} {
-  github.label(issue, name)
+  github.label(issue, name, approval)
 }
 
 type Triage = { duplicateOf: Option(IssueId), labels: List(String) }
 
 job triage(report: String) -> Result(Triage, AiError) {
-  ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label])
+  ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label],
+    approve: fn call: approval!(call, from: maintainer, within: 1 day))
 }
 ```
 
-- **What a model may do shows up in the signature.** The tools' effects are the call's effects, so
-  `triage` uses `net GitHub.search` and `net GitHub.label`, and adding a tool shows up in review.
-- **Some calls need a person.** When the model calls a `@destructive` tool, the job pauses, as at
-  `approval!`, until someone approves that one call.
-- In a job, each tool call is recorded like any other step.
+- **A tool is a function declared with `fn`, named where it is passed.** `tools:` is a
+  `List(ai.Tool)`, and a named function converts to an `ai.Tool` where one is expected, as a
+  value converts to `dyn Trait` (section 11), so one list holds functions of different types.
+  Its parameters and its result must have `Schema`. The parameters give the input schema, one
+  property each, required unless it has a default, and the `##` comment the description. A
+  lambda, a function passed in, a generic function, an `extern fn`, a contract's operation and a
+  built-in don't convert: a tool needs a name, a description and one schema. A `Tool` has no
+  `Save` and no `Schema`, so it can't be kept in an entity or across a `!`.
+- **What a model may do shows up in the signature.** A model call's own effect is
+  `net Ai.generate`, and naming a function as a tool counts its effects where it is named, as for
+  any function named as a value (section 12). So `triage` uses `net Ai.generate`,
+  `net GitHub.search` and `net GitHub.label`; a public function that passes `label` lists
+  `net GitHub.label` in its `uses`, and adding a tool shows up in review. A tool runs inside the
+  model call, so it can't wait.
+- **The runtime holds the conversation.** It sends the tools with the call, in each provider's
+  own format, and when a reply calls tools, it decodes each call's input into the parameters'
+  types, runs the function and sends back its result as JSON (section 17), until the model
+  answers without calling one. That answer is decoded into the expected type, as above. A call
+  whose input doesn't decode, or that names no tool, goes back to the model as an error, and no
+  function runs. After 20 replies that call tools, the call gives up with `ProviderError`.
+- **In a job, each tool call is a step.** In `ai.generate!(…)` every reply of the model and every
+  tool's result is recorded as a step of its own, so a run that restarts in the middle replays
+  the conversation so far: it doesn't ask the model again, and no tool runs twice. `eye runs`
+  shows them as `ai.generate: reply` and `tool: searchIssues`.
+- **A `@destructive` tool needs a person for each call.** `@destructive` on a function adds a
+  required `approval: Approval` parameter after those it declares, as on a command (section 17),
+  so code calls it only after a person said yes, and its body can pass the approval on, as
+  `label` does. The parameter isn't in the tool's schema. When the model calls the tool, the
+  runtime calls `approve:` with the call written out, `label(issue: IssueId("8"), name: "dup")`,
+  and runs the tool with the `Approval` it gets. `approve:` is usually
+  `fn call: approval!(call, from: someone, within: …)`, so the request goes to the person it
+  names, and only they can answer it (section 15); a test answers with `approve("label(")`. On
+  `Declined` or `Expired` the tool doesn't run, and the model is told that the call was declined.
+  Without `approve:` every such call is declined, and a call whose own `tools:` list names a
+  `@destructive` tool must give `approve:`.
+- **Recordings hold tool calls too.** In a recording, an exchange whose reply calls tools has
+  `"calls": [{"tool": "searchIssues", "input": {"phrase": "crash"}}]` in place of `"result"`.
 
 **Agents are sessions owned by jobs.** A coding agent such as Claude Code or OpenAI Codex works for
 minutes or hours, asks for permission and can be interrupted. `agents` drives them through their

@@ -2,10 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -318,5 +322,128 @@ pub fn main() {
 	}
 	if want := "wait (1 paused run)"; !strings.Contains(stderr.String(), want) {
 		t.Errorf("eye run said %q, want it to name %q", stderr.String(), want)
+	}
+}
+
+// A run killed between two tool calls of a model call (SPECS.md §19) goes on
+// after the restart from where it was: the model isn't asked again for the
+// reply it gave, the tool that ran isn't run again, and the one that hadn't
+// finished runs.
+func TestRunKilledBetweenToolCalls(t *testing.T) {
+	t.Setenv("AI_URL", "")
+	var mu sync.Mutex
+	var asked, firstRang, secondRang int
+	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked++
+		n := asked
+		mu.Unlock()
+		reply := map[string]any{"type": "message", "role": "assistant", "stop_reason": "tool_use",
+			"content": []any{
+				map[string]any{"type": "tool_use", "id": "toolu_1", "name": "first", "input": map[string]any{"name": "kitchen"}},
+				map[string]any{"type": "tool_use", "id": "toolu_2", "name": "second", "input": map[string]any{"name": "hall"}},
+			},
+			"usage": map[string]any{"input_tokens": 100, "output_tokens": 20}}
+		if n > 1 {
+			reply = map[string]any{"type": "message", "role": "assistant", "stop_reason": "end_turn",
+				"content": []any{map[string]any{"type": "text", "text": `{"rang": 2}`}},
+				"usage":   map[string]any{"input_tokens": 200, "output_tokens": 10}}
+		}
+		_ = json.NewEncoder(w).Encode(reply)
+	}))
+	defer model.Close()
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		firstRang++
+		mu.Unlock()
+	}))
+	defer first.Close()
+	// The second bell answers only once eye run has been killed, so the run
+	// is killed while the second tool runs.
+	reached, killed := make(chan struct{}, 1), make(chan struct{})
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		secondRang++
+		n := secondRang
+		mu.Unlock()
+		if n == 1 {
+			reached <- struct{}{}
+			<-killed
+		}
+	}))
+	defer second.Close()
+	t.Setenv("ANTHROPIC_URL", model.URL)
+	t.Setenv("ANTHROPIC_API_KEY", "claude-key")
+
+	dir := program(t, map[string]string{"main.eye": `
+import ai
+import http
+
+type Rung = { rang: Int }
+
+## Rings the first bell.
+fn first(name: String) -> Int uses {net} {
+  match http.get("` + first.URL + `/{name}") {
+    Ok(r) => r.status
+    Err(_) => 0
+  }
+}
+
+## Rings the second bell.
+fn second(name: String) -> Int uses {net} {
+  match http.get("` + second.URL + `/{name}") {
+    Ok(r) => r.status
+    Err(_) => 0
+  }
+}
+
+job ring() -> Result(Rung, ai.AiError) {
+  ai.generate!(model: "claude-sonnet-5-5", prompt: "Ring both bells.", tools: [first, second])
+}
+
+pub fn main() {
+  ring.start(key: "once")
+}
+`})
+	prog, diags := check.Program(dir)
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	cmd, out := eyeProcess(t, "run", dir)
+	select {
+	case <-reached:
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("the second tool never ran; eye run said:\n%s", out)
+	}
+	if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	close(killed)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"run", dir}, &stdout, &stderr); code != 0 {
+		t.Fatalf("eye run after the kill: exit %d: %s%s", code, stdout.String(), stderr.String())
+	}
+	store, err := interp.ReadJournal(filepath.Join(dir, ".eye", "journal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs := interp.Runs(prog, store)
+	if len(rs) != 1 || rs[0].Status != "done" || rs[0].Result != "Ok({ rang: 2 })" {
+		t.Fatalf("runs after the restart: %+v", rs)
+	}
+	var calls []string
+	for _, s := range rs[0].Steps {
+		calls = append(calls, s.Call)
+	}
+	if got := strings.Join(calls, "; "); got != "ai.generate: reply; tool: first; tool: second; ai.generate: reply" {
+		t.Errorf("steps = %s", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if asked != 2 || firstRang != 1 || secondRang != 2 {
+		t.Errorf("the model was asked %d times, the first bell rang %d times and the second %d; want 2, 1 and 2 (the second didn't finish before the kill)", asked, firstRang, secondRang)
 	}
 }

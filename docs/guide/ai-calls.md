@@ -251,11 +251,48 @@ main.eye:12:3: job write: @budget(usd: 0.5) can't be kept, since the price of ho
 
 See [Running in production](/guide/running#configuration) for the other settings.
 
+## Tools
+
+Functions passed as `tools:` are the model's tools. The model reads each one's name, `##` comment
+and parameters, and when it calls one, the function runs and its result goes back to the model,
+until the model answers with the type asked for.
+
+```eye
+## Finds open tickets whose text mentions a phrase.
+fn searchTickets(phrase: String, limit: Int = 10) -> List(TicketId) uses {entity Ticket} {
+  Tickets("open").ids |> filter(fn id: Ticket(id).read().text |> contains(phrase)) |> take(limit)
+}
+
+## Closes a ticket as a duplicate of another.
+@destructive
+fn closeAsDuplicate(id: TicketId, of: TicketId) uses {entity Ticket} {
+  Ticket(id).closeAsDuplicate(of, approval)
+}
+
+job dedupe(id: TicketId, text: String) -> Result(Triage, ai.AiError) {
+  ai.generate!(model: "claude-sonnet-5-5", prompt: text, tools: [searchTickets, closeAsDuplicate],
+    approve: fn call: approval!(call, from: "support-lead", within: 1 day))
+}
+```
+
+- A tool is a function declared with `fn`, named in the list. Its parameters and its result must
+  be types a model can be asked for; a parameter with a default may be left out.
+- The tools' effects are the caller's. A public function that passes `searchTickets` lists
+  `entity Ticket` in its `uses`, next to the call's own `net Ai.generate`.
+- In a job, each reply and each tool's result is a step, so a run that restarts in the middle
+  neither asks the model again nor runs a tool twice. `eye runs` shows them as
+  `ai.generate: reply` and `tool: searchTickets`.
+- A `@destructive` function takes an `approval: Approval` after its declared parameters. When the
+  model calls it, `approve:` asks a person about that one call, written out as
+  `closeAsDuplicate(id: …, of: …)`, and the tool runs only if they approve; otherwise the model
+  hears that the call was declined. A test answers with `approve("closeAsDuplicate(")`.
+- In a recording, a reply that calls tools is
+  `{"op": "generate", "calls": [{"tool": "searchTickets", "input": {"phrase": "refund"}}]}`.
+
 ## Not yet
 
-- **Tools and agents.** Passing functions as `tools:`, and running coding agents with the `agents`
-  module, are designed (see [AI models and agents](/reference/language/ai-models-and-agents)) but
-  not built.
+- **Agents.** Running coding agents with the `agents` module is designed (see
+  [AI models and agents](/reference/language/ai-models-and-agents)) but not built.
 - **`eye test --live`**, which runs model-backed tests against real models.
 
 ## See also

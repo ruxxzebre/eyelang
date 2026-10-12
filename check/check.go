@@ -374,7 +374,8 @@ func (c *checker) collect(m *module, f *ir.File, d *syntax.Node) {
 	case syntax.TypeDeclaration:
 		c.typeDecl(m, f, d)
 	case syntax.FunctionDeclaration:
-		fn := &ir.Func{Name: text(f, nameNode), Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d)}
+		fn := &ir.Func{Name: text(f, nameNode), Module: m.mod, Pub: hasToken(f, d, "pub"), Pos: pos(f, d),
+			Doc: docComment(f, d)}
 		m.mod.Funcs[fn.Name] = fn
 		c.define(m, f, nameNode, fn.Name, fn)
 		if fn.Name == "main" {

@@ -52,6 +52,13 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 	if p, ok := params["provider"].(*Variant); ok && p.V == in.pre.some {
 		req.provider = p.Vals[0].(*Variant).V.Name
 	}
+	// A call written with ! in a job records each reply and each tool's
+	// result as a step of its own; durable says so.
+	run := in.toolRun
+	in.toolRun = nil
+	if tools, _ := params["tools"].(*List); tools != nil && len(tools.Elems) > 0 {
+		return in.generateWithTools(req, prompt, tools.Elems, params["approve"], run, aiErr, wrapped, want, at)
+	}
 
 	var reply aiReply
 	var problem error
@@ -59,7 +66,7 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 		if attempt == 1 {
 			req.messages = append(req.messages,
 				aiMessage{"assistant", reply.text},
-				aiMessage{"user", "That reply doesn't match the schema: " + problem.Error() + ". Reply again with JSON that matches it."})
+				aiMessage{"user", mismatchNote(problem)})
 		}
 		var status int
 		var failure string
@@ -80,21 +87,33 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 		case reply.cut:
 			return aiErr("ProviderError", int64(status), fmt.Sprintf("the reply didn't finish in %d tokens", req.maxTokens))
 		}
-		x, err := decodeJSON([]byte(reply.text))
-		if err == nil && wrapped {
-			obj, _ := x.(map[string]any)
-			x = obj["value"]
-		}
-		var v Value
-		if err == nil {
-			v, err = in.fromWire(x, want, false)
-		}
+		v, err := in.decodeReply(reply.text, want, wrapped)
 		if err == nil {
 			return in.ok(v)
 		}
 		problem = err
 	}
 	return aiErr("Malformed", reply.text, &List{Elems: []Value{problem.Error()}})
+}
+
+// decodeReply reads a model's answer as the type asked for; wrapped says
+// the schema put it in an object's "value".
+func (in *Interp) decodeReply(text string, want *ir.TypeExpr, wrapped bool) (Value, error) {
+	x, err := decodeJSON([]byte(text))
+	if err != nil {
+		return nil, err
+	}
+	if wrapped {
+		obj, _ := x.(map[string]any)
+		x = obj["value"]
+	}
+	return in.fromWire(x, want, false)
+}
+
+// mismatchNote is what goes back to a model whose answer didn't match the
+// schema, before it is asked once more.
+func mismatchNote(problem error) string {
+	return "That reply doesn't match the schema: " + problem.Error() + ". Reply again with JSON that matches it."
 }
 
 // aiRequest is one model call: the conversation so far and the schema the
@@ -106,6 +125,11 @@ type aiRequest struct {
 	messages []aiMessage
 	schema   map[string]any
 	name     string // the type asked for, which names the schema
+	// tools are the functions the model may call, and turns the
+	// conversation, which replaces messages when there are tools
+	// (tools.go).
+	tools []toolDef
+	turns []aiTurn
 	// maxTokens is how long the reply may be; capped says a budget set it.
 	maxTokens int64
 	capped    bool
@@ -124,6 +148,7 @@ type aiReply struct {
 	text    string
 	refusal string // why the model declined, if it did
 	cut     bool   // the reply stopped at maxTokens
+	calls   []toolCall
 	spent   spend
 }
 
@@ -152,7 +177,7 @@ func providerFor(req *aiRequest) string {
 // message of a failure. It ends the run as Failed(OverBudget), without
 // sending anything, when the call doesn't fit the budgets being kept.
 func (in *Interp) complete(req *aiRequest, at ir.Pos) (aiReply, int, string) {
-	prompt, _ := json.Marshal([]any{req.system, req.messages, req.schema})
+	prompt, _ := json.Marshal([]any{req.system, req.messages, req.turns, req.tools, req.schema})
 	// About three bytes a token, which counts English text on the high side.
 	req.maxTokens, req.capped = in.allowance(req.model, int64(len(prompt))/3+1, at)
 	if in.rt.aiReplies != nil {
@@ -162,7 +187,14 @@ func (in *Interp) complete(req *aiRequest, at ir.Pos) (aiReply, int, string) {
 		r := in.rt.aiReplies[0]
 		in.rt.aiReplies = in.rt.aiReplies[1:]
 		req.options = "a recorded reply, from with fakes(ai, …)"
-		return aiReply{text: string(r.Result), spent: r.spent(req.model)}, 0, ""
+		reply := aiReply{text: string(r.Result), spent: r.spent(req.model)}
+		for i, c := range r.Calls {
+			if req.tools == nil {
+				in.faultf(at, "the recorded reply calls the tool %s, and this call has no tools", c.Tool)
+			}
+			reply.calls = append(reply.calls, toolCall{ID: fmt.Sprintf("call-%d-%d", len(req.turns), i+1), Name: c.Tool, Input: c.Input})
+		}
+		return reply, 0, ""
 	}
 	switch providerFor(req) {
 	case "Anthropic":
@@ -186,11 +218,17 @@ func (in *Interp) complete(req *aiRequest, at ir.Pos) (aiReply, int, string) {
 // completeChat speaks the chat completions protocol of OpenAI and the
 // servers compatible with it, with structured output.
 func (in *Interp) completeChat(req *aiRequest, base, key, maxField string, at ir.Pos) (aiReply, int, string) {
-	messages := []aiMessage{}
+	messages := []any{}
 	if req.system != "" {
 		messages = append(messages, aiMessage{"system", req.system})
 	}
-	messages = append(messages, req.messages...)
+	if req.turns != nil {
+		messages = append(messages, chatTurns(req.turns)...)
+	} else {
+		for _, m := range req.messages {
+			messages = append(messages, m)
+		}
+	}
 	body := map[string]any{
 		"model":    req.model,
 		"messages": messages,
@@ -206,11 +244,17 @@ func (in *Interp) completeChat(req *aiRequest, base, key, maxField string, at ir
 	if req.capped {
 		body[maxField] = req.maxTokens
 	}
+	if req.tools != nil {
+		body["tools"] = chatTools(req.tools)
+	}
 	via := "OpenAI's chat completions"
 	if maxField == "max_tokens" {
 		via = "chat completions at AI_URL"
 	}
 	req.options = via + ": response_format json_schema, strict"
+	if req.tools != nil {
+		req.options += fmt.Sprintf(", %d function tools", len(req.tools))
+	}
 	if req.capped {
 		req.options += fmt.Sprintf(", %s %d", maxField, req.maxTokens)
 	}
@@ -227,8 +271,15 @@ func (in *Interp) completeChat(req *aiRequest, base, key, maxField string, at ir
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
-				Content string `json:"content"`
-				Refusal string `json:"refusal"`
+				Content   string `json:"content"`
+				Refusal   string `json:"refusal"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
@@ -247,10 +298,14 @@ func (in *Interp) completeChat(req *aiRequest, base, key, maxField string, at ir
 		r.refusal = c.Message.Refusal
 	case c.FinishReason == "length":
 		r.cut = true
+	case c.FinishReason == "tool_calls" && req.tools != nil:
 	case c.FinishReason != "stop":
 		return r, status, fmt.Sprintf("the reply didn't finish (finish_reason %q)", c.FinishReason)
 	}
 	r.text = c.Message.Content
+	for _, tc := range c.Message.ToolCalls {
+		r.calls = append(r.calls, toolCall{ID: tc.ID, Name: tc.Function.Name, Input: rawInput(tc.Function.Arguments)})
+	}
 	return r, status, ""
 }
 
@@ -279,7 +334,13 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 	if req.system != "" {
 		body["system"] = req.system
 	}
-	req.options = fmt.Sprintf("Anthropic's Messages API: output_config.format json_schema, max_tokens %d; no thinking settings", req.maxTokens)
+	tools := ""
+	if req.turns != nil {
+		body["messages"] = anthropicTurns(req.turns)
+		body["tools"] = anthropicTools(req.tools)
+		tools = fmt.Sprintf(", %d tools", len(req.tools))
+	}
+	req.options = fmt.Sprintf("Anthropic's Messages API: output_config.format json_schema%s, max_tokens %d; no thinking settings", tools, req.maxTokens)
 	headers := http.Header{}
 	headers.Set("x-api-key", key)
 	headers.Set("anthropic-version", anthropicVersion)
@@ -289,8 +350,11 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 	}
 	var resp struct {
 		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type  string          `json:"type"`
+			Text  string          `json:"text"`
+			ID    string          `json:"id"`    // a tool_use block's
+			Name  string          `json:"name"`  // the tool it calls
+			Input json.RawMessage `json:"input"` // and its input
 		} `json:"content"`
 		StopReason  string `json:"stop_reason"`
 		StopDetails *struct {
@@ -310,12 +374,19 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 	u := resp.Usage
 	r := aiReply{spent: usage(req.model, u.InputTokens+u.CacheCreationInputTokens+u.CacheReadInputTokens, u.OutputTokens, nil)}
 	for _, c := range resp.Content {
-		if c.Type == "text" {
+		switch c.Type {
+		case "text":
 			r.text += c.Text
+		case "tool_use":
+			r.calls = append(r.calls, toolCall{ID: c.ID, Name: c.Name, Input: c.Input})
 		}
 	}
 	switch resp.StopReason {
 	case "end_turn", "stop_sequence":
+	case "tool_use":
+		if req.tools == nil {
+			return r, status, "the model called a tool, and the call has none"
+		}
 	case "max_tokens":
 		r.cut = true
 	case "refusal":

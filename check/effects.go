@@ -47,6 +47,7 @@ func (c *checker) checkEffects() {
 	}
 	c.checkMigrationEffects(all)
 	c.checkFnLimits(all)
+	c.checkTools(all)
 	c.checkStepResults(all)
 	for f, set := range all {
 		f.Waits = set["wait"]
@@ -467,7 +468,9 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 			return false
 		}
 		if r, ok := e.(*ir.Ref); ok {
-			c.namedStep(r, job, all, task)
+			if !c.isToolRef(r) { // a tool's calls are the model call's steps
+				c.namedStep(r, job, all, task)
+			}
 			return true
 		}
 		call, ok := e.(*ir.Call)

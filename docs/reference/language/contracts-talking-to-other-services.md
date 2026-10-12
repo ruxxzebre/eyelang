@@ -148,7 +148,8 @@ type Delivery =
     can't be `@fresh`.
 - **`@destructive`** on a command adds a required `Approval` argument, `approval`, after the
   parameters it declares (and after `basedOn`), and before `key`. Only `approval!` makes an
-  `Approval`, so a program calls the command only after a person said yes.
+  `Approval`, so a program calls the command only after a person said yes. On a function it adds
+  the same parameter, which is how a model's tool asks for a person ([section 19](/reference/language/ai-models-and-agents)).
 
   ```eye
   # shelves/shelves.eye

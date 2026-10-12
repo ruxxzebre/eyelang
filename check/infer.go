@@ -76,6 +76,8 @@ type typeState struct {
 	ops      []pendingOp
 	// calls are the record types of fakes.calls(op), one per operation.
 	calls map[*ir.Op]*ir.Type
+	// tools are the functions named where an ai.Tool is expected (tools.go).
+	tools []toolUse
 }
 
 type zoneLit struct {
@@ -473,6 +475,9 @@ func (c *checker) funcType(fn *ir.Func, env typeEnv) *tfun {
 	t := &tfun{}
 	for i, p := range fn.Params {
 		t.params = append(t.params, fparam{name: p.Name, t: c.paramType(fn, i, env, false), hasDefault: p.Default != nil, mut: p.Mut})
+		if fn.Destructive && i == len(fn.Params)-1 {
+			t.params[i].why = " is @destructive, so it takes the Approval that approval!(…) gives"
+		}
 	}
 	t.ret = c.resultType(fn, env, false)
 	// Each call needs the traits the function requires of its type variables.
@@ -544,6 +549,9 @@ func (x *fnCheck) finish() {
 
 // check infers e's type and makes it want, when want is given.
 func (x *fnCheck) check(e ir.Expr, want typ) typ {
+	if t := x.tool(e, want); t != nil {
+		return t
+	}
 	got := x.infer(e, want)
 	x.c.typed(e.Position(), got)
 	x.c.ts.exprs = append(x.c.ts.exprs, typedExpr{e, got})
@@ -576,6 +584,10 @@ func (x *fnCheck) expect(at ir.Pos, want, got typ) bool {
 			x.c.typeErrorf(at, "expected %s, found Stale, which only a @fresh command answers", show(want))
 			return false
 		}
+	}
+	if _, isFn := prune(got).(*tfun); isFn && isTool(want) {
+		x.c.typeErrorf(at, "a tool is a function declared with fn and named here, as tools: [searchIssues], since its name, its ## comment and its parameters' types describe it to the model; a lambda or a function passed in has none of them")
+		return false
 	}
 	if m := x.c.unify(want, got); m != nil {
 		msg := fmt.Sprintf("expected %s, found %s", show(defaultLiteral(want)), show(defaultLiteral(got)))
@@ -1168,6 +1180,7 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 			if res, ok := prune(t).(*tcon); ok && res.decl == c.ts.result && len(res.args) == 2 {
 				x.requireNamed(res.args[0], "Schema", e.Pos, "ai.generate")
 			}
+			c.checkToolApprovals(e)
 		}
 	}
 	return t

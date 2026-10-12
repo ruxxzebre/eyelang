@@ -7,11 +7,12 @@ fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub
 ## Add a label to an issue.
 @destructive
 fn label(issue: IssueId, name: String) uses {net GitHub.label} {
-  github.label(issue, name)
+  github.label(issue, name, approval)
 }
 
 type Triage = { duplicateOf: Option(IssueId), labels: List(String) }
 
 job triage(report: String) -> Result(Triage, AiError) {
-  ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label])
+  ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label],
+    approve: fn call: approval!(call, from: maintainer, within: 1 day))
 }

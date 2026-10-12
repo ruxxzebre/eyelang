@@ -35,6 +35,11 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 		args := in.evalArgs(f, c.Args)
 		switch fn := callee.(type) {
 		case *Closure:
+			if fn.Fn.Host == "ai.generate" && hasTools(fn.Fn, args) {
+				// Its replies and its tools' results are steps of their
+				// own, which it records and replays itself (tools.go).
+				return in.generateSteps(run, fn, args, wanted(c), c.Pos)
+			}
 			if fn.Fn.Host != "" || !fn.Fn.Waits {
 				// A host function (ai.generate, http.get), or a function
 				// that reaches outside without waiting, is a step: its

@@ -272,6 +272,8 @@ func document(f *ir.File, d *syntax.Node, all bool) (decl, bool) {
 			out.title += tp.Text(f.Src)
 		}
 		out.parts = typeParts(f, out.name, d.ChildByField(syntax.FieldValue))
+	case syntax.ExternTypeDeclaration:
+		out.kind, out.signature = "Types", text(f, d)
 	case syntax.FunctionDeclaration, syntax.ExternDeclaration:
 		out.kind, out.signature = "Functions", header(f, d)
 	case syntax.JobDeclaration:

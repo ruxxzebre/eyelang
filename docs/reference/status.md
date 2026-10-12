@@ -22,8 +22,8 @@ compile-time errors it links to the checker's test cases. Every error class the 
 listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go),
 along with the test that reports it.
 
-**The biggest gaps today.** Coding agents and model tools, `@unwitnessed` recordings, and native
-compilation (v0.4).
+**The biggest gaps today.** Coding agents, `@unwitnessed` recordings, and native compilation
+(v0.4).
 
 ## [A tour](/reference/language/a-tour)
 
@@ -70,7 +70,7 @@ compilation (v0.4).
 | Iteration with `for`; `s.chars()`; lazy `xs.iter()` | ✓ | ✓ | ✓ | [core: iter](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/iter.eye#L6), [checker cases](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L279), [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L94) |
 | `Ref(E)`, different for each entity | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L35) |
 | `Secret(a)`: no printing, no saving | ✓ | ✓ | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L180) |
-| `Approval`, made only by `approval!`, with `what` and `by` | ✓ | ✓: a `@destructive` command requires one, and `ok.what` and `ok.by` read what was approved and by whom | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/approvals.eye#L64), [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L192), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L116) |
+| `Approval`, made only by `approval!`, with `what` and `by` | ✓ | ✓: a `@destructive` command or function requires one, and `ok.what` and `ok.by` read what was approved and by whom | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/approvals.eye#L64), [lab access](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/access/access.eye#L192), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L116) |
 | `Version`: a snapshot's `version`, `==` and no order, from an integer literal | ✓ | ✓ | ✓ | [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L130) |
 | `Key`, `Run(a)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | A program's `extern type`, whose values foreign code owns: not saved, shown or compared (`Handle` is gone, open question 21) | ✓ | ✓ | — (no foreign code yet) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L285) |
@@ -256,7 +256,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@key`, `@reconcile` | ✓ | ✓ | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L44) |
 | `@http`, `@auth` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
 | `@port`, `@allow` | ✓ | ✓: a served contract and one with `@allow` need `@port`; a call from a module `@allow` doesn't list, a name that isn't a module, and any call under `@allow(nobody)` are errors | ✓: `eye run` serves a served contract on its `@port` (`<MODULE>_PORT` moves it); `@allow` isn't enforced at the port until network policy (6.5) | [ports_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/ports_test.go#L41), [serve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/serve_test.go) |
-| `@fresh`, `@destructive` | ✓ | partial: on commands ✓; `@destructive` on a model's tool is 6.7 | partial: on commands ✓ | [fresh_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/fresh_test.go#L61), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L92) |
+| `@fresh`, `@destructive` | ✓ | ✓ on commands; `@destructive` on a function adds `approval: Approval` | ✓ on commands, and on a model's tool | [fresh_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/fresh_test.go#L61), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L92) |
 | `@unwitnessed("why")` | ✓ | partial: only where it goes | — | |
 | `@library`, `@host` | ✓ | ✓ | partial: only the standard library's host functions exist | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L30) |
 
@@ -313,7 +313,10 @@ Runs column says whether the runtime does what the attribute says.
 | Tests replay recordings with `fakes(ai, …)` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L272) |
 | `eye test --live` | n/a | n/a | — | |
 | `@budget`: tokens and dollars, counted again on replay, the call that would go over not sent | ✓ | ✓ | ✓ | [ai_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/ai_test.go) |
-| Tools: functions passed as `tools:`, `@destructive` tools | ✓ | — (`generate` has no `tools:`) | — | |
+| Tools: functions passed as `tools:`, each converted to an `ai.Tool`, with its schema from its parameters and its description from its `##` comment | ✓ | ✓ (parameters and result need `Schema`; a lambda, an `extern fn` or a generic function is refused) | ✓ for Anthropic and chat completions, and from recordings | [tools_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/tools_test.go#L46), [interp tools_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/tools_test.go#L45), [programs/tools](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tools/tools.eye#L46) |
+| A tool's effects count where it is named; a model call's own effect is `net Ai.generate` | ✓ | ✓ | n/a | [tools_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/tools_test.go#L46) |
+| In a job, each model reply and each tool's result is a step, so a restarted run runs no tool twice | ✓ | ✓ | ✓ | [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go#L332) |
+| `@destructive` tools: each call waits for `approve:`, usually `approval!` | ✓ | ✓ (a call whose `tools:` names one gives `approve:`) | ✓ | [programs/tools](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tools/tools.eye#L46) |
 | Coding agents: the `agents` module | ✓ | — (no such module) | — | |
 
 ## [Time, secrets, tests](/reference/language/time-secrets-tests)

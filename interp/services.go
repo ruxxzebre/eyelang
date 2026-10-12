@@ -406,9 +406,12 @@ func clipText(s string, n int) string {
 type hostFunc func(in *Interp, params map[string]Value, at ir.Pos) Value
 
 var hostFuncs = map[string]hostFunc{
-	"http.get":    hostHTTPGet,
-	"ai.generate": hostGenerate,
+	"http.get": hostHTTPGet,
 }
+
+// ai.generate runs the functions it is given as tools, so it is added
+// when the package starts rather than in the table it is reached through.
+func init() { hostFuncs["ai.generate"] = hostGenerate }
 
 // callHost runs an extern fn with a host function.
 func (in *Interp) callHost(fn *ir.Func, args []argVal, at ir.Pos) Value {

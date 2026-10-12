@@ -106,7 +106,7 @@ pub extern type Key
 pub extern type Secret(a)
 
 ## A person's approval, which only `approval!(…)` gives: ending an entity, or a `@destructive`
-## command, needs one. `ok.what` is the text that was approved and `ok.by` who approved it, the
+## command or function, needs one. `ok.what` is the text that was approved and `ok.by` who approved it, the
 ## `from:` of `approval!` as text, for audit logs.
 pub extern type Approval
 

@@ -151,6 +151,10 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§17", "a served contract, or one with @allow, without @port, or a port out of range", "a served or guarded contract has a port"},
 	{"§17", "the lab's call of Notify from a module taken out of its @allow", "TestLabAllowNeedsApproving"},
 	{"§19", "a model asked for a type without a Schema", "a model is asked for a type with a Schema"},
+	{"§19", "a tool that isn't a function declared with fn, or whose parameters or result have no Schema, or that waits", "a tool is a function declared with fn, with written types that have Schema"},
+	{"§12, §19", "a public function that passes a tool without listing the tool's effects", "a public function that passes label lists net GitHub.label"},
+	{"§19", "a call whose tools: names a @destructive tool without approve:", "a call that names a @destructive tool says who approves its calls"},
+	{"§17, §19", "a @destructive function called without an Approval, or declaring approval itself", "@destructive adds approval: Approval, which code passes from approval!"},
 }
 
 // TestEveryErrorClassIsTested checks that each error class names a test

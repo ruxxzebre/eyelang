@@ -1,0 +1,8 @@
+{
+  "contract": "ai",
+  "exchanges": [
+    {"op": "generate", "calls": [{"tool": "searchIssues", "input": {"phrase": "save"}}]},
+    {"op": "generate", "calls": [{"tool": "label", "input": {"issue": 7, "name": "duplicate"}}]},
+    {"op": "generate", "result": {"duplicateOf": 7, "labels": ["duplicate"]}}
+  ]
+}

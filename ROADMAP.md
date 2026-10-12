@@ -537,7 +537,7 @@ waits.
 | 6.4 Go and TypeScript types, clients and server stubs from contracts | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
 | 6.5 Network policy from contracts (done) | [#57](https://github.com/ruxxzebre/eyelang/issues/57) |
 | 6.6 Notify's boundary generated from its contract | [#58](https://github.com/ruxxzebre/eyelang/issues/58) |
-| 6.7 Model tools: functions passed as `tools:` | [#59](https://github.com/ruxxzebre/eyelang/issues/59) |
+| 6.7 Model tools: functions passed as `tools:` (done) | [#59](https://github.com/ruxxzebre/eyelang/issues/59) |
 | 6.8 The `agents` module: coding-agent sessions owned by jobs | [#60](https://github.com/ruxxzebre/eyelang/issues/60) |
 | 6.9 `eye test --live`, and recording real exchanges | [#61](https://github.com/ruxxzebre/eyelang/issues/61) |
 | 6.10 `extern type` replaces `Handle`, and can't be saved (done) | [#62](https://github.com/ruxxzebre/eyelang/issues/62) |
@@ -619,6 +619,15 @@ What each task is, until its issue holds it:
   **Done when:** a test replays recorded model exchanges that call two tools; a public function
   that passes `label` without `uses {net GitHub.label}` fails to compile; a runner killed between
   tool calls resumes without calling a tool twice; a `@destructive` tool waits for `approve(…)`.
+  Done on 2026-10-12: a function declared with `fn` and named where an `ai.Tool` is expected
+  converts to one, so `tools:` is a `List(ai.Tool)`; its effects count where it is named, and a
+  model call's own effect is now `net Ai.generate`, so a public caller lists every tool's
+  effects. The interpreter sends the tools in Anthropic's and chat completions' formats, runs
+  each call and loops until an answer, and in a job records each reply and each tool's result
+  as a step. `@destructive` on a function adds `approval: Approval`, as on a command, and the
+  call's `approve:` (usually `fn call: approval!(call, from: …, within: …)`) asks a person for
+  each of the model's calls. Shown by check/tools_test.go, interp/tools_test.go,
+  testdata/programs/tools and cmd/eye's TestRunKilledBetweenToolCalls.
 - **6.8 The `agents` module.** `claude.start!(prompt:, workdir:, tools:)` and `codex.start!(…)`
   begin a session through the harness's SDK; `send!` adds a message; `result!()` waits for the
   final answer and decodes it into the expected type. A job holds only the session's id, so it

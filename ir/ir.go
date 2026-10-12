@@ -216,7 +216,13 @@ type Func struct {
 	// Budget is its @budget: what the model calls made while it runs may
 	// spend. A job's is on its Func.
 	Budget *Budget
-	Pos    Pos
+	// Doc is the `##` comment above a function declared with `fn`: a
+	// model's tool's description.
+	Doc string
+	// Destructive is set by @destructive: its last parameter is the
+	// `approval: Approval` the attribute adds.
+	Destructive bool
+	Pos         Pos
 }
 
 // Budget is @budget(usd:, tokens:); a negative limit is one it doesn't set.

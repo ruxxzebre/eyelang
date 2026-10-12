@@ -60,7 +60,8 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
   problems listed, and then returns `Err(Malformed(reply, problems))`.
 - **Providers.** `ai.Provider` is `Anthropic` (the Messages API), `OpenAI` (chat completions) or
   `Gateway`, an OpenAI-compatible server such as the lab's, which serves every model. A call has
-  the effect `net`, and each provider's address and key come from the environment and `secret`:
+  the effect `net Ai.generate`, which `uses {net}` covers too (`Ai` is the `ai` module's contract
+  for the providers), and each provider's address and key come from the environment and `secret`:
   `ANTHROPIC_URL` and `secret("anthropic-api-key")`, `OPENAI_URL` and `secret("openai-api-key")`,
   `AI_URL` and `secret("ai-key")`. `provider: Some(ai.Anthropic)` names one; without it, a gateway
   answers every call when `AI_URL` is set, since a deployment that has one routes through it, and
@@ -85,7 +86,7 @@ job summarise(items: List(Item)) -> Result(Digest, AiError) {
 
 **Tools are functions.** Eyelang functions passed as `tools:` become the model's tools. A tool's
 parameter types give its input schema and its `##` comment its description, and the runtime runs
-the function when the model calls it.
+the function when the model calls it and sends back what it returns.
 
 ```eye
 ## Find open issues that mention a phrase.
@@ -96,21 +97,54 @@ fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub
 ## Add a label to an issue.
 @destructive
 fn label(issue: IssueId, name: String) uses {net GitHub.label} {
-  github.label(issue, name)
+  github.label(issue, name, approval)
 }
 
 type Triage = { duplicateOf: Option(IssueId), labels: List(String) }
 
 job triage(report: String) -> Result(Triage, AiError) {
-  ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label])
+  ai.generate!(model: "claude-opus-5-5", prompt: report, tools: [searchIssues, label],
+    approve: fn call: approval!(call, from: maintainer, within: 1 day))
 }
 ```
 
-- **What a model may do shows up in the signature.** The tools' effects are the call's effects, so
-  `triage` uses `net GitHub.search` and `net GitHub.label`, and adding a tool shows up in review.
-- **Some calls need a person.** When the model calls a `@destructive` tool, the job pauses, as at
-  `approval!`, until someone approves that one call.
-- In a job, each tool call is recorded like any other step.
+- **A tool is a function declared with `fn`, named where it is passed.** `tools:` is a
+  `List(ai.Tool)`, and a named function converts to an `ai.Tool` where one is expected, as a
+  value converts to `dyn Trait` ([section 11](/reference/language/traits)), so one list holds functions of different types.
+  Its parameters and its result must have `Schema`. The parameters give the input schema, one
+  property each, required unless it has a default, and the `##` comment the description. A
+  lambda, a function passed in, a generic function, an `extern fn`, a contract's operation and a
+  built-in don't convert: a tool needs a name, a description and one schema. A `Tool` has no
+  `Save` and no `Schema`, so it can't be kept in an entity or across a `!`.
+- **What a model may do shows up in the signature.** A model call's own effect is
+  `net Ai.generate`, and naming a function as a tool counts its effects where it is named, as for
+  any function named as a value ([section 12](/reference/language/effects-and-signatures)). So `triage` uses `net Ai.generate`,
+  `net GitHub.search` and `net GitHub.label`; a public function that passes `label` lists
+  `net GitHub.label` in its `uses`, and adding a tool shows up in review. A tool runs inside the
+  model call, so it can't wait.
+- **The runtime holds the conversation.** It sends the tools with the call, in each provider's
+  own format, and when a reply calls tools, it decodes each call's input into the parameters'
+  types, runs the function and sends back its result as JSON ([section 17](/reference/language/contracts-talking-to-other-services)), until the model
+  answers without calling one. That answer is decoded into the expected type, as above. A call
+  whose input doesn't decode, or that names no tool, goes back to the model as an error, and no
+  function runs. After 20 replies that call tools, the call gives up with `ProviderError`.
+- **In a job, each tool call is a step.** In `ai.generate!(…)` every reply of the model and every
+  tool's result is recorded as a step of its own, so a run that restarts in the middle replays
+  the conversation so far: it doesn't ask the model again, and no tool runs twice. `eye runs`
+  shows them as `ai.generate: reply` and `tool: searchIssues`.
+- **A `@destructive` tool needs a person for each call.** `@destructive` on a function adds a
+  required `approval: Approval` parameter after those it declares, as on a command ([section 17](/reference/language/contracts-talking-to-other-services)),
+  so code calls it only after a person said yes, and its body can pass the approval on, as
+  `label` does. The parameter isn't in the tool's schema. When the model calls the tool, the
+  runtime calls `approve:` with the call written out, `label(issue: IssueId("8"), name: "dup")`,
+  and runs the tool with the `Approval` it gets. `approve:` is usually
+  `fn call: approval!(call, from: someone, within: …)`, so the request goes to the person it
+  names, and only they can answer it ([section 15](/reference/language/jobs-and-waiting)); a test answers with `approve("label(")`. On
+  `Declined` or `Expired` the tool doesn't run, and the model is told that the call was declined.
+  Without `approve:` every such call is declined, and a call whose own `tools:` list names a
+  `@destructive` tool must give `approve:`.
+- **Recordings hold tool calls too.** In a recording, an exchange whose reply calls tools has
+  `"calls": [{"tool": "searchIssues", "input": {"phrase": "crash"}}]` in place of `"result"`.
 
 **Agents are sessions owned by jobs.** A coding agent such as Claude Code or OpenAI Codex works for
 minutes or hours, asks for permission and can be interrupted. `agents` drives them through their

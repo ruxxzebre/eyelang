@@ -35,6 +35,9 @@ type Interp struct {
 	// stepSpend collects what the model calls of the step being taken
 	// spent, which the step records; nil outside a step.
 	stepSpend *spend
+	// toolRun is set while durable calls ai.generate with tools: the call
+	// records each reply and each tool's result as a step of that run.
+	toolRun *jobRun
 }
 
 // New prepares to run prog, printing to out and logging to log.

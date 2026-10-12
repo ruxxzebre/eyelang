@@ -40,10 +40,43 @@ pub type Provider =
 ## call is sent only if the budget leaves room for its prompt and some reply,
 ## and the reply is cut off where the budget ends; a call that doesn't fit
 ## ends the run as `Failed(OverBudget)`.
+##
+## `tools:` are functions the model may call, each a [Tool]. The model gets
+## their names, `##` comments and input schemas; when a reply calls one, the
+## function runs and its result goes back, until the model answers without
+## calling one. In a job each reply and each tool's result is a step of its
+## own. A `@destructive` tool runs only with an `Approval`: for each call the
+## model makes of it, `approve:` is given the call written out, as
+## `label(issue: 8, name: "dup")`, and is usually
+## `fn call: approval!(call, from: someone, within: 1 day)`. Without it every
+## such call is declined.
+##
+## A call's effect is `net Ai.generate`, and its tools add theirs, so a public
+## function that calls it lists them all in its `uses`.
 @host("ai.generate")
 pub extern fn generate(
   model: String,
   system: String = "",
   prompt: String,
   provider: Option(Provider) = None,
-) -> Result(a, AiError) uses {net}
+  tools: List(Tool) = [],
+  approve: fn(String) -> Decision = fn _: Declined,
+) -> Result(a, AiError) uses {net Ai.generate}
+
+# == Tools
+
+## A function a model may call. A function declared with `fn` and named where
+## a Tool is expected becomes one, as in `tools: [searchIssues, label]`: its
+## parameters give the input schema, required unless they have a default, and
+## its `##` comment the description. Its parameters and result need `Schema`.
+## A Tool can't be saved, so it is made where it is used.
+pub extern type Tool
+
+## The model providers, seen as one service. It names what a model call does:
+## `ai.generate` has the effect `net Ai.generate`, which a public function that
+## calls it lists in its `uses`, along with the effects of the tools it passes.
+## Programs call it through [generate].
+contract Ai {
+  ## A model's answer to a prompt.
+  query generate(model: String, system: String, prompt: String) -> String
+}

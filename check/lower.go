@@ -90,6 +90,9 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 			fn.Params = append(fn.Params, param)
 		}
 	}
+	if attr := attributeNode(f, d, "destructive"); attr != nil && d.Kind == syntax.FunctionDeclaration {
+		c.destructiveParam(l, attr)
+	}
 	fn.Return = c.typeExpr(m, f, d.ChildByField(syntax.FieldReturnType), nil)
 	c.lowerBounds(m, f, d, fn)
 	fn.Uses, fn.HasUses = usesOf(f, d)
@@ -98,6 +101,23 @@ func (c *checker) lowerFunc(m *module, f *ir.File, d *syntax.Node, fn *ir.Func, 
 	if body := d.ChildByField(syntax.FieldBody); body != nil {
 		fn.Body = l.expr(body)
 	}
+}
+
+// destructiveParam adds the parameter @destructive gives a function, as it
+// gives a command (SPECS.md §17 and §19): `approval: Approval`, after the
+// ones it declares, which the body reads by that name.
+func (c *checker) destructiveParam(l *lowerer, attr *syntax.Node) {
+	fn := l.fn
+	for _, p := range fn.Params {
+		if p.Name == "approval" {
+			l.errorf(attr, "@destructive adds the parameter approval, so %s can't declare one of that name", fn.Name)
+			return
+		}
+	}
+	fn.Destructive = true
+	param := &ir.Param{Name: "approval", Type: &ir.TypeExpr{Name: "Approval"}}
+	param.Slot = l.bind(attr, "approval", false, false)
+	fn.Params = append(fn.Params, param)
 }
 
 // usesOf reads a declaration's uses clause: each effect as written, such as

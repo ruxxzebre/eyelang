@@ -60,15 +60,25 @@ type recording struct {
 		Args   json.RawMessage `json:"args"`
 		Result json.RawMessage `json:"result"`
 		Usage  *recordedUsage  `json:"usage"`
+		Calls  []recordedCall  `json:"calls"`
 	} `json:"exchanges"`
 }
 
 // recordedReply is a model's reply in a recording, and what it spent, if
 // the recording says: `"usage": {"input": 1200, "output": 300}`, with
-// `"usd"` when the price was known.
+// `"usd"` when the price was known. A reply that calls tools has Calls in
+// place of a Result.
 type recordedReply struct {
 	Result json.RawMessage
 	Usage  *recordedUsage
+	Calls  []recordedCall
+}
+
+// recordedCall is a model's call of a tool in a recording:
+// `{"tool": "searchIssues", "input": {"phrase": "crash"}}`.
+type recordedCall struct {
+	Tool  string          `json:"tool"`
+	Input json.RawMessage `json:"input"`
 }
 
 type recordedUsage struct {
@@ -232,7 +242,7 @@ func (in *Interp) loadReplies(path string, at ir.Pos) []recordedReply {
 	}
 	replies := []recordedReply{}
 	for _, e := range rec.Exchanges {
-		replies = append(replies, recordedReply{Result: e.Result, Usage: e.Usage})
+		replies = append(replies, recordedReply{Result: e.Result, Usage: e.Usage, Calls: e.Calls})
 	}
 	return replies
 }
