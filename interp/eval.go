@@ -625,6 +625,13 @@ func wanted(c *ir.Call) *ir.TypeExpr {
 }
 
 func (in *Interp) evalCall(f *frame, c *ir.Call) Value {
+	if r, ok := c.Func.(*ir.Ref); ok && len(c.Args) > 0 {
+		if b, ok := r.Decl.(ir.Builtin); ok && fixedMethods[b.Name] {
+			// `wrappingAdd(a, b)` and `a |> wrappingAdd(b)`: the first
+			// argument's type gives the width.
+			return in.fixedCall(b.Name, c.Args[0].Value.Ty(), in.evalArgs(f, c.Args), c.Pos)
+		}
+	}
 	callee := in.eval(f, c.Func)
 	if b, ok := callee.(*BuiltinFn); ok && b.Name == "expect" && len(c.Args) == 1 {
 		return in.expect(f, c)
@@ -680,6 +687,9 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 	}
 	recv := in.eval(f, m.Recv)
 	args := in.evalArgs(f, m.Args)
+	if b, ok := m.Target.(ir.Builtin); ok && fixedMethods[b.Name] {
+		return in.fixedCall(b.Name, m.Recv.Ty(), append([]argVal{{v: recv}}, args...), m.Pos)
+	}
 	if _, isSelf := m.Recv.(*ir.Self); isSelf && f.fn.Entity != nil {
 		// An entity method calling another of the entity's methods, in the
 		// same transaction, on the same state.

@@ -7,12 +7,35 @@ title: "Values and types"
 # Values and types
 
 - **Primitives:** `Int`, `NonZero(Int)`, `Float`, `Bool`, `Char`, `String`, `()`.
-- **Bytes and fixed-width integers:** `Byte`, `Bytes`, `Int32`, `Int64`, `UInt32` and `UInt64`,
-  for binary formats, hashing and foreign functions. They compare with the usual operators but have
-  no `+`, `-`, `*` or `/`: arithmetic on them is explicit, as `a.wrappingAdd(b)` or
-  `a.checkedAdd(b)` (an `Option`), and so are bit operations (`a.and(b)`, `a.xor(b)`,
-  `a.shiftLeft(3)`). A conversion that could lose information returns an `Option`: `Int32.from(n)`.
-  Integer literals that fit are fixed-width values where one is expected: `src[i] ?? 0`.
+- **Bytes and fixed-width integers:** `Byte` (0 to 255), `Int32`, `Int64`, `UInt32` and `UInt64`,
+  and `Bytes`, a sequence of `Byte`s, for binary formats, hashing, lexers and foreign functions.
+  They compare with the usual operators but have no `+`, `-`, `*` or `/`. Arithmetic and bit
+  operations are methods, each saying what happens at the edges of the type:
+
+  | Method | What it gives |
+  |---|---|
+  | `a.wrappingAdd(b)`, `a.wrappingSub(b)`, `a.wrappingMul(b)` | the result wrapped into the type, modulo 2 to the power of its bits: for `Byte`s, `255` plus `1` is `0` |
+  | `a.checkedAdd(b)`, `a.checkedSub(b)`, `a.checkedMul(b)` | `Some(result)`, or `None` when the result doesn't fit |
+  | `a.and(b)`, `a.or(b)`, `a.xor(b)`, `a.not()` | the bits combined, two's complement for the signed types |
+  | `a.shiftLeft(n)`, `a.shiftRight(n)` | the bits moved by `n`, an `Int`; bits moved out are lost, `shiftRight` keeps the sign of a signed type, and a negative `n` is a fault |
+  | `a.toInt()` | the value as an `Int`, which always fits |
+  | `Int32.from(n)`, and `T.from(n)` for each type | `Some` of the `Int` `n` as that type when it fits, otherwise `None` |
+
+  `a` and `b` have the same type: `x.wrappingAdd(1)` adds a literal of `x`'s type. To mix widths,
+  convert through `Int`: `Int64.from(x.toInt())`.
+
+  ```eye
+  fn fnv1a(data: Bytes) -> UInt32 {
+    var hash: UInt32 = 2166136261
+    for b in data {
+      hash = hash.xor(UInt32.from(b.toInt()) ?? 0).wrappingMul(16777619)
+    }
+    hash
+  }
+  ```
+
+  Integer literals that fit are fixed-width values where one is expected: `src[i] ?? 0`. One that
+  doesn't fit, as in `let b: Byte = 300`, is an error.
 - **Time:** `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`. **Memory:** `Size`.
 - **Collections:** `List(a)`, `Map(k, v)` and `Set(a)`. A `List` is a growable array. Collections
   are values: assigning or passing one never shares later changes ([section 7](/reference/language/mutation)). An update to a

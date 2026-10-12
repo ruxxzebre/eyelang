@@ -22,6 +22,7 @@ func builtinTable() map[string]*BuiltinFn {
 	channelBuiltins(add)
 	stringBuiltins(add)
 	offsetBuiltins(add)
+	fixedBuiltins(add)
 	problemBuiltins(add)
 
 	add("print", func(in *Interp, args []Value, _ map[string]Value, _ ir.Pos) Value {

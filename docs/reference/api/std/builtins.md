@@ -828,7 +828,8 @@ fn toInt(x: Float) -> Option(Int)
 ```
 
 The whole part of x, without its fraction, as an Int: `x.round().toInt()`. An infinity or NaN
-is `None`.
+is `None`. On a fixed-width integer, `x.toInt()` is its value as an Int, which always fits,
+so it isn't an Option.
 
 ### toFloat {#toFloat}
 
@@ -869,6 +870,147 @@ fn abs(n: t) -> t where t: Neg(t)
 ```
 
 n without its sign.
+
+## Fixed-width integers
+
+### wrappingAdd {#wrappingAdd}
+
+```eye
+fn wrappingAdd(a: n, b: n) -> n
+```
+
+a + b wrapped into their type, modulo 2 to the power of its bits: for Bytes, 255 plus 1 is 0.
+a and b have the same fixed-width type: Byte, Int32, Int64, UInt32 or UInt64.
+
+### wrappingSub {#wrappingSub}
+
+```eye
+fn wrappingSub(a: n, b: n) -> n
+```
+
+a - b wrapped into their type, modulo 2 to the power of its bits: for Bytes, 0 minus 1 is 255.
+
+### wrappingMul {#wrappingMul}
+
+```eye
+fn wrappingMul(a: n, b: n) -> n
+```
+
+a * b wrapped into their type, modulo 2 to the power of its bits, as hashes multiply.
+
+### checkedAdd {#checkedAdd}
+
+```eye
+fn checkedAdd(a: n, b: n) -> Option(n)
+```
+
+`Some(a + b)`, or `None` when the sum doesn't fit their type.
+
+### checkedSub {#checkedSub}
+
+```eye
+fn checkedSub(a: n, b: n) -> Option(n)
+```
+
+`Some(a - b)`, or `None` when the difference doesn't fit their type: for Bytes, `0` minus `1`.
+
+### checkedMul {#checkedMul}
+
+```eye
+fn checkedMul(a: n, b: n) -> Option(n)
+```
+
+`Some(a * b)`, or `None` when the product doesn't fit their type.
+
+### and {#and}
+
+```eye
+fn and(a: n, b: n) -> n
+```
+
+The bits set in both a and b.
+
+### or {#or}
+
+```eye
+fn or(a: n, b: n) -> n
+```
+
+The bits set in a, in b, or in both.
+
+### xor {#xor}
+
+```eye
+fn xor(a: n, b: n) -> n
+```
+
+The bits set in a or in b but not in both.
+
+### not {#not}
+
+```eye
+fn not(a: n) -> n
+```
+
+Every bit of a flipped: for a signed type, `-a - 1`.
+
+### shiftLeft {#shiftLeft}
+
+```eye
+fn shiftLeft(a: n, by: Int) -> n
+```
+
+The bits of a moved up by `by`; bits moved past the top are lost, so `by` of the type's width
+or more gives 0. A negative `by` is a fault.
+
+### shiftRight {#shiftRight}
+
+```eye
+fn shiftRight(a: n, by: Int) -> n
+```
+
+The bits of a moved down by `by`, keeping the sign of a signed type: Int32 -8 shifted by 1 is
+-4. A negative `by` is a fault.
+
+### Byte.from {#Byte-from}
+
+```eye
+fn Byte.from(n: Int) -> Option(Byte)
+```
+
+`Some(n)` as a Byte when n is from 0 to 255, otherwise `None`: `Byte.from(n) ?? 0`.
+
+### Int32.from {#Int32-from}
+
+```eye
+fn Int32.from(n: Int) -> Option(Int32)
+```
+
+`Some(n)` as an Int32 when n is from -2147483648 to 2147483647, otherwise `None`.
+
+### Int64.from {#Int64-from}
+
+```eye
+fn Int64.from(n: Int) -> Option(Int64)
+```
+
+`Some(n)` as an Int64 when it fits in 64 bits with a sign, otherwise `None`.
+
+### UInt32.from {#UInt32-from}
+
+```eye
+fn UInt32.from(n: Int) -> Option(UInt32)
+```
+
+`Some(n)` as a UInt32 when n is from 0 to 4294967295, otherwise `None`.
+
+### UInt64.from {#UInt64-from}
+
+```eye
+fn UInt64.from(n: Int) -> Option(UInt64)
+```
+
+`Some(n)` as a UInt64 when n is from 0 to 18446744073709551615, otherwise `None`.
 
 ## Triggers
 

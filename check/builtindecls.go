@@ -32,6 +32,11 @@ var goRules = map[string]bool{
 	"all": true, "count": true, "reduce": true, "sum": true, "enumerate": true, "drop": true,
 	"take": true, "reverse": true, "sort": true, "keys": true, "values": true, "entries": true,
 	"toList": true, "toSet": true, "join": true, "flatMap": true, "zip": true, "parallelMap": true,
+	// The methods of the fixed-width integers, which take any of the five
+	// types (fixedRule), and toInt, which also takes a Float.
+	"wrappingAdd": true, "wrappingSub": true, "wrappingMul": true, "checkedAdd": true,
+	"checkedSub": true, "checkedMul": true, "and": true, "or": true, "xor": true, "not": true,
+	"shiftLeft": true, "shiftRight": true, "toInt": true,
 }
 
 // builtinDecls are the declarations of ir/builtin.eye, by the name a call

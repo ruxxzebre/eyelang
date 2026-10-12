@@ -49,8 +49,10 @@ type typeState struct {
 	// and schemes holds the generic type each one has once it is checked.
 	inferred map[*ir.Func]inferState
 	schemes  map[*ir.Func]*scheme
-	active   []*ir.Func // the inferred functions being checked, innermost last
-	zones    []zoneLit  // string literals that may be zones
+	active   []*ir.Func         // the inferred functions being checked, innermost last
+	zones    []zoneLit          // string literals that may be zones
+	ints     []intLit           // integer literals, which must fit a fixed-width type they become
+	negated  map[*ir.Lit]ir.Pos // integer literals with a minus sign: `-5`, and where it starts
 	option   *ir.Type
 	result   *ir.Type
 	outcome  *ir.Type
@@ -270,6 +272,7 @@ func (c *checker) checkTypes() {
 	c.checkZones()
 	c.settleOps()
 	c.settleDeferred()
+	c.settleLiterals()
 	c.checkRowReads()
 	c.checkEffects()
 	c.writeTypes()
@@ -651,6 +654,14 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 	case *ir.Index:
 		return x.index(e)
 	case *ir.Unary:
+		if lit, ok := e.X.(*ir.Lit); ok && e.Op == "-" {
+			if _, isInt := lit.Value.(*big.Int); isInt {
+				if c.ts.negated == nil {
+					c.ts.negated = map[*ir.Lit]ir.Pos{}
+				}
+				c.ts.negated[lit] = e.Pos
+			}
+		}
 		t := x.check(e.X, nil)
 		if e.Op == "!" {
 			x.expect(e.X.Position(), tBool, t)
@@ -858,10 +869,13 @@ func orNil(t typ) typ {
 func (x *fnCheck) literal(e *ir.Lit, want typ) typ {
 	switch v := e.Value.(type) {
 	case *big.Int:
+		k := litInt
 		if v.Sign() == 0 {
-			return x.c.freshLit(litZero)
+			k = litZero
 		}
-		return x.c.freshLit(litInt)
+		t := x.c.freshLit(k)
+		x.c.ts.ints = append(x.c.ts.ints, intLit{lit: e, t: t})
+		return t
 	case float64:
 		return tFloat
 	case string:
@@ -1924,6 +1938,14 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Exp
 		}
 		return c.unknownf(at, "%s has no %s: implement %s for it, as `impl %s(%s, %s) for %s`", show(lt), op, opTrait(op), opTrait(op), show(lt), show(lt), show(lt))
 	}
+	if fixedRanges[ln] != nil || fixedRanges[rn] != nil {
+		// Fixed-width arithmetic is a method that says what happens at the
+		// edges (SPECS.md §5).
+		if fixedRanges[ln] != nil {
+			return c.unknownf(at, "%s", fixedOpMessage(ln, op))
+		}
+		return c.unknownf(at, "%s", fixedOpMessage(rn, op))
+	}
 	if (op == "/" || op == "%") && (ln == "Int" || ln == "" && (rn == "Int" || rn == "NonZero")) {
 		// An Int is divided only by what can't be 0 (SPECS.md §10).
 		x.expect(at, tInt, l)
@@ -2403,10 +2425,11 @@ func (x *fnCheck) bindPattern(p ir.Pattern, t typ, at ir.Pos) ir.Pattern {
 	case ir.PWild, ir.PEmpty:
 		return p
 	case ir.PLit:
-		x.expect(at, t, x.literal(&ir.Lit{At: ir.At{Pos: at}, Value: p.Value}, nil))
+		p.Value = x.literalPattern(p.Value, t, written(p.Pos, at))
 		return p
 	case ir.PRange:
-		x.expect(at, t, x.literal(&ir.Lit{At: ir.At{Pos: at}, Value: p.Lo}, nil))
+		p.Lo = x.literalPattern(p.Lo, t, written(p.LoPos, at))
+		p.Hi = x.literalPattern(p.Hi, t, written(p.HiPos, at))
 		return p
 	case ir.POr:
 		for i := range p.Alts {

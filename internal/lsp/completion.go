@@ -472,7 +472,9 @@ func scopeNames(res *check.Result, path string, d *document, offset int) []compl
 	}
 	for _, b := range ir.BuiltinDocs {
 		if module, _, ok := strings.Cut(b.Name, "."); ok {
-			l.add(module, completionModule, nil)
+			if module[0] < 'A' || module[0] > 'Z' { // Int32.from is a type's
+				l.add(module, completionModule, nil)
+			}
 			continue
 		}
 		l.add(b.Name, completionFunction, ir.Builtin{Name: b.Name})
@@ -516,6 +518,13 @@ func (s *server) members(d *document, recv syntax.Span, dot int) []completionIte
 	case *ir.Module:
 		addModule(l, t, true)
 	case ir.Builtin:
+		for _, b := range ir.BuiltinDocs {
+			if member, ok := strings.CutPrefix(b.Name, t.Name+"."); ok {
+				l.add(member, completionFunction, ir.Builtin{Name: b.Name})
+			}
+		}
+	case check.BuiltinType:
+		// Functions called on a built-in type: Int32.from.
 		for _, b := range ir.BuiltinDocs {
 			if member, ok := strings.CutPrefix(b.Name, t.Name+"."); ok {
 				l.add(member, completionFunction, ir.Builtin{Name: b.Name})

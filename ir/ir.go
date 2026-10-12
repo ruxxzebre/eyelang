@@ -712,7 +712,11 @@ type (
 		Name string
 		Slot int
 	}
-	PLit struct{ Value any }
+	// PLit matches a literal. Pos is where it is written, for errors.
+	PLit struct {
+		Value any
+		Pos   Pos
+	}
 	// PVariant matches a variant. Names are set for named fields; Rest is `..`.
 	PVariant struct {
 		Variant *Variant
@@ -734,8 +738,9 @@ type (
 		RestPat Pattern
 	}
 	PRange struct {
-		Lo, Hi    any
-		Inclusive bool
+		Lo, Hi       any
+		Inclusive    bool
+		LoPos, HiPos Pos // where Lo and Hi are written, for errors
 	}
 	POr struct{ Alts []Pattern }
 	// PEmpty matches an empty collection: `{}` in a pattern position.

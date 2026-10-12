@@ -450,7 +450,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 
 | Task | Issue |
 |---|---|
-| G.1 Fixed-width integers: `wrappingAdd`, `checkedAdd`, bit operations, `Int32.from` | [#84](https://github.com/ruxxzebre/eyelang/issues/84) |
+| G.1 Fixed-width integers: `wrappingAdd`, `checkedAdd`, bit operations, `Int32.from` (done) | [#84](https://github.com/ruxxzebre/eyelang/issues/84) |
 | G.2 A character literal is a `Byte` where one is expected, so list patterns over `Bytes` work | [#85](https://github.com/ruxxzebre/eyelang/issues/85) |
 | G.3 Lazy `xs.iter()` and `Iter(a)` | [#86](https://github.com/ruxxzebre/eyelang/issues/86) |
 | G.4 `Type.f()` called through another module (`lex.Lexer.new`) (done) | [#87](https://github.com/ruxxzebre/eyelang/issues/87) |

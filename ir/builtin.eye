@@ -33,7 +33,8 @@ pub extern type Char
 ## Text, in UTF-8. Strings interpolate with `{…}`: `"{name} has {n} items"`.
 pub extern type String
 
-## A whole number from 0 to 255, for binary formats; arithmetic on it is explicit.
+## A whole number from 0 to 255, for binary formats; arithmetic on it is explicit:
+## `b.wrappingAdd(1)`.
 pub extern type Byte
 
 ## A sequence of bytes, for binary data, hashing and foreign functions.
@@ -502,7 +503,8 @@ pub extern fn floor(x: Float) -> Float
 pub extern fn ceil(x: Float) -> Float
 
 ## The whole part of x, without its fraction, as an Int: `x.round().toInt()`. An infinity or NaN
-## is `None`.
+## is `None`. On a fixed-width integer, `x.toInt()` is its value as an Int, which always fits,
+## so it isn't an Option.
 pub extern fn toInt(x: Float) -> Option(Int)
 
 ## The number n as a Float: the nearest one when n is too large to hold exactly.
@@ -519,6 +521,67 @@ pub extern fn max(a: t, b: t) -> t where t: Ord
 
 ## n without its sign.
 pub extern fn abs(n: t) -> t where t: Neg(t)
+
+# == Fixed-width integers
+
+## a + b wrapped into their type, modulo 2 to the power of its bits: for Bytes, 255 plus 1 is 0.
+## a and b have the same fixed-width type: Byte, Int32, Int64, UInt32 or UInt64.
+pub extern fn wrappingAdd(a: n, b: n) -> n
+
+## a - b wrapped into their type, modulo 2 to the power of its bits: for Bytes, 0 minus 1 is 255.
+pub extern fn wrappingSub(a: n, b: n) -> n
+
+## a * b wrapped into their type, modulo 2 to the power of its bits, as hashes multiply.
+pub extern fn wrappingMul(a: n, b: n) -> n
+
+## `Some(a + b)`, or `None` when the sum doesn't fit their type.
+pub extern fn checkedAdd(a: n, b: n) -> Option(n)
+
+## `Some(a - b)`, or `None` when the difference doesn't fit their type: for Bytes, `0` minus `1`.
+pub extern fn checkedSub(a: n, b: n) -> Option(n)
+
+## `Some(a * b)`, or `None` when the product doesn't fit their type.
+pub extern fn checkedMul(a: n, b: n) -> Option(n)
+
+## The bits set in both a and b.
+pub extern fn and(a: n, b: n) -> n
+
+## The bits set in a, in b, or in both.
+pub extern fn or(a: n, b: n) -> n
+
+## The bits set in a or in b but not in both.
+pub extern fn xor(a: n, b: n) -> n
+
+## Every bit of a flipped: for a signed type, `-a - 1`.
+pub extern fn not(a: n) -> n
+
+## The bits of a moved up by `by`; bits moved past the top are lost, so `by` of the type's width
+## or more gives 0. A negative `by` is a fault.
+pub extern fn shiftLeft(a: n, by: Int) -> n
+
+## The bits of a moved down by `by`, keeping the sign of a signed type: Int32 -8 shifted by 1 is
+## -4. A negative `by` is a fault.
+pub extern fn shiftRight(a: n, by: Int) -> n
+
+## `Some(n)` as a Byte when n is from 0 to 255, otherwise `None`: `Byte.from(n) ?? 0`.
+@host("Byte.from")
+pub extern fn from(n: Int) -> Option(Byte)
+
+## `Some(n)` as an Int32 when n is from -2147483648 to 2147483647, otherwise `None`.
+@host("Int32.from")
+pub extern fn from(n: Int) -> Option(Int32)
+
+## `Some(n)` as an Int64 when it fits in 64 bits with a sign, otherwise `None`.
+@host("Int64.from")
+pub extern fn from(n: Int) -> Option(Int64)
+
+## `Some(n)` as a UInt32 when n is from 0 to 4294967295, otherwise `None`.
+@host("UInt32.from")
+pub extern fn from(n: Int) -> Option(UInt32)
+
+## `Some(n)` as a UInt64 when n is from 0 to 18446744073709551615, otherwise `None`.
+@host("UInt64.from")
+pub extern fn from(n: Int) -> Option(UInt64)
 
 # == Triggers
 

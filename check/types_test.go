@@ -294,7 +294,7 @@ fn e() = outer(secret("k"))
 fn f() -> Float = double(2.5)`, []string{
 			"10:10: in twice, Bool + Bool isn't defined",
 			"11:24: in twice, Bool + Bool isn't defined",
-			"12:18: in twice, Byte + Byte isn't defined",
+			"12:18: in twice, Byte has no +, since the result may not fit: write a.wrappingAdd(b) to wrap around, or a.checkedAdd(b) for None when it doesn't fit",
 			"13:10: in half, dividing by 0 has no answer",
 			"14:10: showing a value in a string, in label, in outer, needs Show, and Secret(String) has no Show",
 			"15:19: expected Float, found Int",

@@ -134,6 +134,10 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		return &ttuple{elems: []typ{con("Sender", a), con("Receiver", a)}}
 	}
 
+	if _, ok := fixedOps[name]; ok {
+		return x.fixedRule(name, b, at)
+	}
+
 	// Collection functions: the first argument says which kind.
 	x.ruleShape(name, b, at)
 	coll := b.arg(0, nil)

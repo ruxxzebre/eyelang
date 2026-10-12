@@ -149,9 +149,12 @@ func stringBuiltins(add func(string, builtinFunc)) {
 	floatFn("ceil", math.Ceil)
 	add("toInt", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "toInt", at)
+		if isInt(args[0]) {
+			return args[0] // a fixed-width integer, which is an Int at run time
+		}
 		x, ok := args[0].(float64)
 		if !ok {
-			in.faultf(at, "toInt takes a Float, and this is %s", kindName(args[0]))
+			in.faultf(at, "toInt takes a Float or a fixed-width integer, and this is %s", kindName(args[0]))
 		}
 		if math.IsInf(x, 0) || math.IsNaN(x) {
 			return in.none()

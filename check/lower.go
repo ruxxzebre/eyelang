@@ -960,7 +960,18 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 			}
 		}
 	case syntax.TypeIdent:
-		return l.typeMember(recv, l.c.lookupType(l.m, l.text(recv)), name)
+		typeName := l.text(recv)
+		decl := l.c.lookupType(l.m, typeName)
+		if decl == nil && builtinTypes[typeName] {
+			// A function of a built-in type, as Int32.from (SPECS.md §5).
+			l.c.use(l.pos(recv), BuiltinType{Name: typeName})
+			if l.c.builtins.funcs[typeName+"."+name] != nil {
+				return ir.Builtin{Name: typeName + "." + name}
+			}
+			l.errorf(recv, "%s has no function %s", typeName, name)
+			return ir.Builtin{Name: "?"}
+		}
+		return l.typeMember(recv, decl, name)
 	case syntax.FieldExpression:
 		// `lex.Lexer.new`: a function on a type of another module.
 		modNode, typeNode := recv.ChildByField(syntax.FieldValue), recv.ChildByField(syntax.FieldField)
@@ -1110,8 +1121,17 @@ func (l *lowerer) lambda(n *syntax.Node) ir.Expr {
 
 // pattern lowers a pattern, binding its names in the current scope. binds
 // holds the names bound so far, so the alternatives of an or-pattern bind
-// the same slots.
+// the same slots. A literal keeps where it is written.
 func (l *lowerer) pattern(n *syntax.Node, binds map[string]int) ir.Pattern {
+	p := l.lowerPattern(n, binds)
+	if lit, ok := p.(ir.PLit); ok {
+		lit.Pos = l.pos(n)
+		return lit
+	}
+	return p
+}
+
+func (l *lowerer) lowerPattern(n *syntax.Node, binds map[string]int) ir.Pattern {
 	switch n.Kind {
 	case syntax.Ident:
 		name := l.text(n)
@@ -1153,7 +1173,7 @@ func (l *lowerer) pattern(n *syntax.Node, binds map[string]int) ir.Pattern {
 	case syntax.RangePattern:
 		lo := l.pattern(n.ChildByField(syntax.FieldStart), binds).(ir.PLit)
 		hi := l.pattern(n.ChildByField(syntax.FieldEnd), binds).(ir.PLit)
-		return ir.PRange{Lo: lo.Value, Hi: hi.Value, Inclusive: l.text(n.ChildByField(syntax.FieldOperator)) == "..="}
+		return ir.PRange{Lo: lo.Value, Hi: hi.Value, Inclusive: l.text(n.ChildByField(syntax.FieldOperator)) == "..=", LoPos: lo.Pos, HiPos: hi.Pos}
 	case syntax.VariantPattern:
 		nameNode := n.ChildByField(syntax.FieldName)
 		name := l.text(nameNode)

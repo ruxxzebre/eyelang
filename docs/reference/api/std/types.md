@@ -64,7 +64,8 @@ Text, in UTF-8. Strings interpolate with `{…}`: `"{name} has {n} items"`.
 type Byte
 ```
 
-A whole number from 0 to 255, for binary formats; arithmetic on it is explicit.
+A whole number from 0 to 255, for binary formats; arithmetic on it is explicit:
+`b.wrappingAdd(1)`.
 
 ## Bytes {#Bytes}
 

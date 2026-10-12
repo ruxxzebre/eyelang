@@ -23,7 +23,7 @@ listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/
 along with the test that reports it.
 
 **The biggest gaps today.** Some waits (`lock!`, `all!`, `first!`, ending an entity), coding
-agents and model tools, `@unwitnessed` recordings, fixed-width integers, and native compilation (v0.4).
+agents and model tools, `@unwitnessed` recordings, and native compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
 
@@ -55,7 +55,7 @@ agents and model tools, `@unwitnessed` recordings, fixed-width integers, and nat
 | `Int` with arbitrary precision | ✓ | ✓ | ✓ | [core: integers](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L56) |
 | `NonZero(Int)` divisors and `nonzero(n)` | ✓ | ✓ (`/` and `%` on an `Int` take a `NonZero(Int)` or a literal other than 0) | ✓ | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L316) |
 | `Float` | ✓ | ✓ | ✓ | [core: match](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L98) |
-| `Byte`, `Bytes`, `Int32`, `Int64`, `UInt32`, `UInt64` | ✓ | partial: the types are known and integer literals take them, but `Int32.from`, `wrappingAdd` and the bit operations don't exist, a literal too large for its type isn't reported, and a char literal isn't read as a `Byte` ([#84](https://github.com/ruxxzebre/eyelang/issues/84), [#85](https://github.com/ruxxzebre/eyelang/issues/85)) | partial: `s.bytes()` and `b.toText()` run, and `Bytes` index, slice and compare; the fixed-width methods need the checker to give their values a width at run time | [core: bytes](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/strings.eye#L82), [lexer.eye](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/syntax/valid/lexer.eye) |
+| `Byte`, `Bytes`, `Int32`, `Int64`, `UInt32`, `UInt64` | ✓ | ✓ (`wrappingAdd`, `checkedAdd` and the rest of SPECS §5's methods, `T.from(n)`, `x.toInt()`; `+` and the other operators are errors that name the methods; a literal too large for its type is an error at its span; a character literal isn't read as a `Byte` yet, [#85](https://github.com/ruxxzebre/eyelang/issues/85)) | ✓ (a fixed-width value is an `Int` at run time, and its methods take the width from the receiver's type in the typed IR) | [core: fixed](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/fixed.eye#L3), [core: bytes](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/strings.eye#L82), [fixed_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/fixed_test.go#L13) |
 | `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`, `Size` | ✓ | ✓ | ✓ | [core: time](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L185) |
 | `List`, `Map`, `Set` as values | ✓ | ✓ | ✓ | [core: collections](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L156) |
 | Tuples, and lambdas that take a tuple's parts | ✓ | ✓ | ✓ | [core: closures](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L147) |
