@@ -11,28 +11,28 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The whole history and its tags, so that `task next -- --check` can tell when
           # ROADMAP's "What's next" was checked before the last release.
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 
       - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@v3.29.1
+        run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
 
       # @vscode/test-electron needs Node 22 or later.
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
 
       # `task grammar` generates the parser from tree-sitter-eyelang/grammar.js and runs its corpus.
       - name: Set up tree-sitter
@@ -40,7 +40,7 @@ jobs:
 
       # `task vscode` runs the extension in a real VS Code, downloaded once into .vscode-test.
       - name: Cache VS Code for the extension's tests
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: editors/vscode/.vscode-test
           key: vscode-test-${{ runner.os }}-${{ hashFiles('editors/vscode/package-lock.json') }}
@@ -51,7 +51,7 @@ jobs:
       - name: Start Postgres
         run: |
           docker run -d --name eyelang-pg -e POSTGRES_USER=eye -e POSTGRES_PASSWORD=eye -e POSTGRES_DB=eye \
-            -p 55432:5432 postgres:17-alpine
+            -p 55432:5432 postgres:18-alpine
           for i in $(seq 1 30); do docker exec eyelang-pg pg_isready -h 127.0.0.1 -U eye && break; sleep 1; done
 
       - name: Check

@@ -52,7 +52,7 @@ func Own(t *testing.T) (url, container string) {
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	container = Docker(t, "run", "-d", "-e", "POSTGRES_USER=eye", "-e", "POSTGRES_PASSWORD=eye",
-		"-e", "POSTGRES_DB=eye", "-p", fmt.Sprintf("127.0.0.1:%d:5432", port), "postgres:17-alpine")
+		"-e", "POSTGRES_DB=eye", "-p", fmt.Sprintf("127.0.0.1:%d:5432", port), "postgres:18-alpine")
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", container).Run() })
 	url = fmt.Sprintf("postgres://eye:eye@127.0.0.1:%d/eye?sslmode=disable", port)
 	Ready(t, url)

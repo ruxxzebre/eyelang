@@ -11,7 +11,7 @@
     "url": "https://github.com/ruxxzebre/eyelang"
   },
   "engines": {
-    "vscode": "^1.82.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Programming Languages",
@@ -112,13 +112,13 @@
     "package": "vsce package --skip-license --out ../../bin/eyelang.vsix"
   },
   "dependencies": {
-    "vscode-languageclient": "9.0.1"
+    "vscode-languageclient": "10.1.2"
   },
   "devDependencies": {
     "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "4.0.0",
-    "esbuild": "0.25.10",
-    "vscode-jsonrpc": "8.2.0",
+    "esbuild": "0.28.2",
+    "vscode-jsonrpc": "9.0.3",
     "vscode-tmgrammar-test": "0.1.3"
   }
 }

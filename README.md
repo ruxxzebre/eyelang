@@ -58,9 +58,10 @@ editor with an LSP client can run `eye lsp`.
 
 ## Building
 
-You need Go 1.25 or later. With [direnv](https://direnv.net), run `direnv allow` once in the
-repository; `eye` is then on your PATH whenever you are in it, rebuilt from the sources whenever they
-change (`.envrc` adds `scripts/` to PATH):
+You need Go 1.27 or later (a Go from 1.21 on downloads it by itself, as `go.mod` asks). With
+[direnv](https://direnv.net), run `direnv allow` once in the repository; `eye` is then on your PATH
+whenever you are in it, rebuilt from the sources whenever they change (`.envrc` adds `scripts/` to
+PATH):
 
 ```sh
 direnv allow

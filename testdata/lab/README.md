@@ -94,7 +94,7 @@ first digest is the next morning's.
    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o eye ./cmd/eye
    ```
 
-   This needs Go 1.25. The binary is static and carries its time zones, so a
+   This needs Go 1.27. The binary is static and carries its time zones, so a
    `distroless/static` or `scratch` base is enough.
 2. Copy the lab, which holds the program and the modules it imports:
 
