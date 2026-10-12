@@ -58,7 +58,8 @@ job sleepWhenIdle(w: Ref(World)) -> Result((), SleepError) {
       Ok(())
     }
     Refused(reason) => {
-      notify.send!(owner, "world {w.id} didn't sleep: {reason}", key: "sleep-refused-{w.id}")
+      # The run fails either way, so the notice's own outcome is dropped, explicitly.
+      let _ = notify.send!(owner, "world {w.id} didn't sleep: {reason}", key: "sleep-refused-{w.id}")
       Err(SleepRefused(reason))
     }
   }

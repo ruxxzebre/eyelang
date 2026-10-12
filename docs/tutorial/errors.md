@@ -72,6 +72,20 @@ when the caller's error type has exactly one case that holds the error's type, h
 `BadQuantity(ParseError)`, `?` wraps the error in that case. When there is no such case, or more
 than one, write the conversion yourself with `mapErr`, as `parseQuantity` does.
 
+## Ignoring an error on purpose
+
+A `Result` can't be left unused. A call on a line of its own whose `Result` nothing reads, such as
+`fs.writeText(path, text)`, is an error, since a failure there would go unnoticed. When a failure
+really changes nothing, say so with `let _ =`:
+
+```eye
+let _ = fs.writeText("{path}.bak", text)   # a backup that fails changes nothing
+```
+
+The same holds for the outcome of a [command](/guide/contracts) to another service, which may be a
+refusal, or `Uncertain` when the reply was lost. Values that aren't failures, such as the `()` that `print` returns, or an `Option`,
+need nothing.
+
 ## Changing a value you are given: `mut`
 
 `take` also changes the stock. A parameter marked `mut` may be changed by the function, and the

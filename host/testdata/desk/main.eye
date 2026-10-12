@@ -29,7 +29,7 @@ pub fn main(args: List(String)) -> Result((), String) uses {ffi, stdio} {
   showOnDesk("")
 }
 
-job shout(text: String) {
+job shout(text: String) -> Result((), String) {
   showOnDesk!(text)
 }
 

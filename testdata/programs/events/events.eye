@@ -19,7 +19,7 @@ job receive(p: Ping) {
 
 ## Sends, then waits for the ping that answers it.
 job await(text: String) {
-  bus.send!(text, key: "send-{text}").reconcile!()
+  let _ = bus.send!(text, key: "send-{text}").reconcile!()
   let found = next!(bus.pings, where: fn p: p.text == text, within: 10 min)
   match found {
     Some(p) => Inbox("await").add!("{text}: {p.id}")

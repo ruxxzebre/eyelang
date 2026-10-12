@@ -97,10 +97,14 @@ fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub
   github.search(phrase, limit)
 }
 
-## Add a label to an issue.
+## Add a label to an issue. False if there is no such label, or if GitHub's
+## reply was lost.
 @destructive
-fn label(issue: IssueId, name: String) uses {net GitHub.label} {
-  github.label(issue, name, approval)
+fn label(issue: IssueId, name: String) -> Bool uses {net GitHub.label} {
+  match github.label(issue, name, approval) {
+    Added => true
+    NoSuchLabel | Uncertain(_) => false
+  }
 }
 
 type Triage = { duplicateOf: Option(IssueId), labels: List(String) }

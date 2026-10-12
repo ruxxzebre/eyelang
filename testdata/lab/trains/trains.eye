@@ -78,7 +78,9 @@ job watch(t: Ref(Traveller)) {
       for r in due(me, pin, movement, at) { t.remind!(r) }
       match delayNews(me.reported[pin], movement) {
         Some(news) => {
-          notify.send!(
+          # Marked reported whatever Notify answers, so one delay is never
+          # sent twice.
+          let _ = notify.send!(
             event: "trains.delay",
             title: "{pin.train}",
             body: news,

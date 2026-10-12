@@ -123,6 +123,11 @@ type Delivery =
   usually by stopping for a person. Nothing is ever resent on a guess. A service that keeps what
   each key did, as Notify does, names the command itself: with `@reconcile(send)`, reconciling
   sends it again with the same key, and the service answers without doing it twice.
+- **A command's outcome can't be dropped.** A statement whose value is of a type a command
+  returns, with the `Uncertain`, `Stale` and `Expired` the command adds or without them once
+  reconciled, must match it, use it, or discard it with `let _ = …`, as for a `Result`
+  ([section 10](/reference/language/errors-result-only)). `notify.send!(owner, text, key: k)` alone is an error, since a `Refused` or an
+  `Uncertain` reply would go nowhere; `let _ = notify.send!(…)` says that nothing depends on it.
 - **Never sent is not uncertain.** A request that never reached the service (the connection was
   refused, or the name didn't resolve) can't have done anything, so it is sent again, as a query
   would be. Only a request that went out and whose reply was lost (a timeout, a broken connection,

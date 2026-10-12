@@ -131,6 +131,16 @@ and a `match` that forgets it isn't exhaustive:
 main.eye:52:3: this match doesn't handle Uncertain(_): add an arm for it, or `_ => …`
 ```
 
+Nor can a command's outcome be dropped. With `payments.charge!(…)` on a line of its own, whose
+outcome nothing reads, `eye check` says:
+
+```text
+main.eye:51:3: this drops Charge, a command's outcome, which may be Uncertain, so a refusal would go unnoticed: match it, or discard it with let _ = …
+```
+
+For a command whose answer really changes nothing, such as a notice sent on the way to failing
+anyway, say so with `let _ = …`.
+
 There are three ways to settle it. The contract picks the way, once, for every caller.
 
 **Ask a query.** `@reconcile(chargeFor)` names a query that takes the key and returns an `Option`

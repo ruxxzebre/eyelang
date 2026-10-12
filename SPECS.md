@@ -179,6 +179,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Model tools | **A function declared with `fn` and named where an `ai.Tool` is expected converts to one**, as a value converts to `dyn Trait`; its parameters and result need `Schema`. Its effects count where it is named, and a model call's own effect is `net Ai.generate`, not `net`. In a job each model reply and each tool result is a step (section 19) | `tools: [searchIssues, label]` holds functions of different types, which no rule typed. A conversion keeps what a schema needs, the name, the `##` comment and the types, without a wrapper to write. A call whose own effect was `net` made every public caller list `net`, which covers any tool, so a new tool never showed in review. Recording each step keeps a restarted conversation from running a tool twice. From the spec review of 2026-10-12 |
 | Destructive tools | **`@destructive` adds `approval: Approval` to a function as to a command, and a model's call of one is approved through `ai.generate`'s `approve:`**, a function, usually `fn call: approval!(call, from: someone, within: …)`, called once for each call; without it the call is declined (section 19) | One meaning for the attribute: what it marks runs only with a person's consent, which the type shows. "Until someone approves" named no one; asking through `approval!` answers whom with its `from:`, and keeps its rules (answers by `id`, only from the person asked) with no second way to ask. A function rather than `approver:` and `within:` arguments, which would copy `approval!`'s. From the spec review of 2026-10-12 |
 | `?` in a lambda | **A lambda's `?` returns from the lambda, so the lambda's result must be an `Option` for an `Option`'s `None` and a `Result` for an error, which is wrapped into the lambda's error type.** `?` on an `Option` in a function, job or lambda that doesn't return one is an error that names what it returns and points to `??` (section 10, from 2026-10-12) | `return` can't leave a lambda, so `?` returning from the enclosing function would be the one way out, and the interpreter already returned from the lambda. Checking against the enclosing function let `xs \|> map(fn x: x? + 1)` put a `None` where an `Int` belongs, and `fn g(x: Option(Int)) -> Int = x? + 1` returned a `None` from a function that returns `Int` |
+| Dropped results | **A statement can't drop a `Result` or a command's outcome**, with or without the `Uncertain`, `Stale` and `Expired` a command adds: it must be used, matched, passed on with `?`, or discarded with `let _ = …`. A block's last expression is used when the block's value is; `()` and `Option`s may be dropped (sections 10 and 17). Decided by the owner on 2026-10-12 | Dropping a failure without a word is the easy but wrong program: the tour's `notify.send!` lost `Refused` and `Uncertain`, and `fs.writeText("a", "b")` as a statement compiled. `let _ =` costs a few characters where a program means to ignore a failure, and shows that choice in review. An `Option` is a value that may be missing, not a failure, and is often dropped on purpose. From the spec review of 2026-10-12, finding 7 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
 
 ## 3. A tour
 
@@ -234,7 +235,8 @@ job sleepWhenIdle(w: Ref(World)) -> Result((), SleepError) {
       Ok(())
     }
     Refused(reason) => {
-      notify.send!(owner, "world {w.id} didn't sleep: {reason}", key: "sleep-refused-{w.id}")
+      # The run fails either way, so the notice's own outcome is dropped, explicitly.
+      let _ = notify.send!(owner, "world {w.id} didn't sleep: {reason}", key: "sleep-refused-{w.id}")
       Err(SleepRefused(reason))
     }
   }
@@ -738,6 +740,24 @@ it a compile error, which is how a new outcome from another service reaches ever
   fn next(x: Option(Int)) -> Int = x? + 1          # error: next returns Int, not an Option
   fn nextOr(x: Option(Int)) -> Int = (x ?? 0) + 1
   fn doubled(xs: List(Option(Int))) -> List(Option(Int)) = xs |> map(fn x: Some(x? * 2))
+  ```
+- **A `Result` can't be dropped.** A statement whose value is a `Result` must use it, match it,
+  pass its error on with `?`, or discard it with `let _ = …`; dropping it without a word is an
+  error that names its type. A command's outcome follows the same rule (section 17).
+  - The last expression of a block is used when the block's value is: the body of a function that
+    returns a `Result`, or a branch of an `if` or a `match` whose value is bound or returned.
+  - The last expression of a function that returns `()`, a loop's body, the branch of an `if`
+    without `else`, and the arms of a `match` whose value nothing uses are statements.
+  - Other values may be dropped: `()`, which `print`, `log.info` and every function without `->`
+    return, and an `Option`, which is a value that may be missing rather than a failure.
+
+  ```eye
+  import fs
+
+  fn save(path: String, text: String) uses {fs} {
+    let _ = fs.writeText("{path}.bak", text)   # dropped on purpose: a backup is a bonus
+    fs.writeText(path, text)                   # error: this drops a Result((), FsError)
+  }
   ```
 - **Converting errors.** When the caller's error type has exactly one variant whose payload is the
   error's type, `?` wraps the error in it. With none or several, write the conversion:
@@ -1442,10 +1462,13 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     Expired
   }
 
-  job ship(build: String) {
+  job ship(build: String) -> Result((), fs.FsError) {
     match firstDone!([ask.start!("ship {build}?"), timer.start!(1 h)]) {
       Completed(Approved(ok)) => deploy!(build, ok)
-      Completed(_) | Failed(_) => log.info("{build} wasn't approved within the hour")
+      Completed(_) | Failed(_) => {
+        log.info("{build} wasn't approved within the hour")
+        Ok(())
+      }
     }
   }
   ```
@@ -1690,6 +1713,11 @@ type Delivery =
   usually by stopping for a person. Nothing is ever resent on a guess. A service that keeps what
   each key did, as Notify does, names the command itself: with `@reconcile(send)`, reconciling
   sends it again with the same key, and the service answers without doing it twice.
+- **A command's outcome can't be dropped.** A statement whose value is of a type a command
+  returns, with the `Uncertain`, `Stale` and `Expired` the command adds or without them once
+  reconciled, must match it, use it, or discard it with `let _ = …`, as for a `Result`
+  (section 10). `notify.send!(owner, text, key: k)` alone is an error, since a `Refused` or an
+  `Uncertain` reply would go nowhere; `let _ = notify.send!(…)` says that nothing depends on it.
 - **Never sent is not uncertain.** A request that never reached the service (the connection was
   refused, or the name didn't resolve) can't have done anything, so it is sent again, as a query
   would be. Only a request that went out and whose reply was lost (a timeout, a broken connection,
@@ -2156,10 +2184,14 @@ fn searchIssues(phrase: String, limit: Int = 10) -> List(Issue) uses {net GitHub
   github.search(phrase, limit)
 }
 
-## Add a label to an issue.
+## Add a label to an issue. False if there is no such label, or if GitHub's
+## reply was lost.
 @destructive
-fn label(issue: IssueId, name: String) uses {net GitHub.label} {
-  github.label(issue, name, approval)
+fn label(issue: IssueId, name: String) -> Bool uses {net GitHub.label} {
+  match github.label(issue, name, approval) {
+    Added => true
+    NoSuchLabel | Uncertain(_) => false
+  }
 }
 
 type Triage = { duplicateOf: Option(IssueId), labels: List(String) }

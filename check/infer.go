@@ -63,6 +63,9 @@ type typeState struct {
 	// stale and expired are what a @fresh command may answer besides its
 	// declared variants; expired is approval!'s Expired.
 	stale, expired *ir.Variant
+	// outcomes are the types contract commands return, whose values a
+	// statement may not drop.
+	outcomes map[*ir.Type]bool
 	// bounds holds the traits a function's own type variables have, from
 	// its `where` clause.
 	bounds map[*tvar][]cbound
@@ -137,6 +140,14 @@ type fnCheck struct {
 	calls   []pendingCall
 	reqs    []requirement
 	tries   []pendingTry
+	drops   []pendingDrop
+}
+
+// pendingDrop is the value of a statement, which nothing uses: a Result or
+// a command's outcome may not be dropped (SPECS.md §10).
+type pendingDrop struct {
+	at ir.Pos
+	t  typ
 }
 
 // pendingTry is a `?` whose function's result wasn't known where it was
@@ -200,6 +211,18 @@ func (c *checker) checkTypes() {
 		stale: pre.Variants["Stale"], expired: pre.Variants["Expired"],
 		bounds: map[*tvar][]cbound{},
 		rows:   map[*ir.Entity]map[int]*tcon{}, rowOf: map[*ir.Type]*row{},
+		outcomes: map[*ir.Type]bool{},
+	}
+	for _, m := range c.prog.Modules {
+		for _, ct := range m.Contracts {
+			for _, op := range ct.Ops {
+				// A variant type, as a command's result is; an Option stays
+				// free to drop.
+				if op.Command && op.Return != nil && op.Return.Decl != nil && len(op.Return.Decl.Variants) > 0 && op.Return.Decl != c.ts.option {
+					c.ts.outcomes[op.Return.Decl] = true
+				}
+			}
+		}
 	}
 	c.fillImplMethods()
 	c.checkDyns()
@@ -581,6 +604,31 @@ func (x *fnCheck) finish() {
 		t.x.tryInto(t.e, t.k, t.res)
 	}
 	x.settleRequirements()
+	for _, d := range x.drops {
+		c.checkDrop(d)
+	}
+}
+
+// checkDrop reports a statement's value that may not be dropped: a Result,
+// or a command's outcome (SPECS.md §10 and §17).
+func (c *checker) checkDrop(d pendingDrop) {
+	k, ok := prune(d.t).(*tcon)
+	if !ok || k.decl == nil {
+		return
+	}
+	switch {
+	case k.decl == c.ts.result:
+		c.typeErrorf(d.at, "this drops a %s, so a failure would go unnoticed: use it, match it, pass its error on with ?, or discard it with let _ = …", show(k))
+	case k.uncertain || k.fresh || c.ts.outcomes[k.decl]:
+		may := ""
+		switch {
+		case k.fresh:
+			may = ", which may be Uncertain, Stale or Expired"
+		case k.uncertain:
+			may = ", which may be Uncertain"
+		}
+		c.typeErrorf(d.at, "this drops %s, a command's outcome%s, so a refusal would go unnoticed: match it, or discard it with let _ = …", show(k), may)
+	}
 }
 
 // ---------------------------------------------------------------- expressions
@@ -593,7 +641,17 @@ func (x *fnCheck) check(e ir.Expr, want typ) typ {
 	got := x.infer(e, want)
 	x.c.typed(e.Position(), got)
 	x.c.ts.exprs = append(x.c.ts.exprs, typedExpr{e, got})
-	if want == nil || want == discard {
+	if want == discard {
+		// A block passes discard on to its last expression, which is
+		// where its value comes from, and what gives no value, as an
+		// endless loop, drops nothing.
+		v, isVar := prune(got).(*tvar)
+		if _, isBlock := e.(*ir.Block); !isBlock && (!isVar || !v.never) {
+			x.top.drops = append(x.top.drops, pendingDrop{at: e.Position(), t: got})
+		}
+		return got
+	}
+	if want == nil {
 		return got
 	}
 	if _, isDiscard := got.(tdiscard); isDiscard {

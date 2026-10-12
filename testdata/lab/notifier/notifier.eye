@@ -87,7 +87,8 @@ impl notify.Notify {
     if choices |> size < 2 || choices |> size > 4 { return NotAsked(BadChoices) }
     let question = QuestionId("{key}")
     Question(question).open(choices, to:, within:)
-    Message(key).queue({ event, title: "", body: text, priority: High, format: Plain, choices }, [to])
+    # queue only ever accepts; ask answers with the question instead.
+    let _ = Message(key).queue({ event, title: "", body: text, priority: High, format: Plain, choices }, [to])
     Asking(question)
   }
 
@@ -223,9 +224,14 @@ job pressed(update: telegram.Update) {
   let Pressed(message, button) = update.body else { return }
   let Some(person) = personFor!(update.chat) else { return }
   let Some(question) = questionFor!(message) else { return }
+  # The edit only shows the answer; the answer stands whether it shows or not.
   match Question(question).press!(button, by: person, at: update.sentAt) {
-    Ok(a) => telegram.editMessage!(update.chat, message, "Decided: {a.choice} by {person}")
-    Err(AlreadyAnswered(a)) => telegram.editMessage!(update.chat, message, "Already decided: {a.choice} by {a.by}")
+    Ok(a) => {
+      let _ = telegram.editMessage!(update.chat, message, "Decided: {a.choice} by {person}")
+    }
+    Err(AlreadyAnswered(a)) => {
+      let _ = telegram.editMessage!(update.chat, message, "Already decided: {a.choice} by {a.by}")
+    }
     Err(Closed) | Err(NoSuchChoice) | Err(SomeoneElse) => ()
   }
 }

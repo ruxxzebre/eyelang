@@ -113,10 +113,13 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
     Expired
   }
 
-  job ship(build: String) {
+  job ship(build: String) -> Result((), fs.FsError) {
     match firstDone!([ask.start!("ship {build}?"), timer.start!(1 h)]) {
       Completed(Approved(ok)) => deploy!(build, ok)
-      Completed(_) | Failed(_) => log.info("{build} wasn't approved within the hour")
+      Completed(_) | Failed(_) => {
+        log.info("{build} wasn't approved within the hour")
+        Ok(())
+      }
     }
   }
   ```

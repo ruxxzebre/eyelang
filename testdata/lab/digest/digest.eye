@@ -48,8 +48,9 @@ job morning(day: Date) -> Result(notify.Delivery, DigestError) {
   match written!(day, refresh: false) {
     Ok(article) => deliver!(article, dest, priority: Normal, only: dest.people, key: "{dest.keys}ireland-{day}")
     Err(e) => {
-      # Say so where the briefing would have arrived.
-      notify.send!(
+      # Say so where the briefing would have arrived. The run fails with e
+      # either way, so a refusal of the notice changes nothing.
+      let _ = notify.send!(
         event: dest.event,
         title: "Ireland digest not sent",
         body: "This morning's digest failed: {e}. Send /digest refresh to try again.",
@@ -76,16 +77,21 @@ job command(update: telegram.Update) {
   let refresh = args |> trim |> lower == "refresh"
   let day = update.sentAt.date(in: dublin)
   let key = "{dest.keys}digest-{update.id}"
+  # An answer that can't be delivered has nobody else to tell.
   match written!(day, refresh:) {
-    Ok(article) => deliver!(article, dest, priority: High, only: Some([person]), key:)
-    Err(e) => notify.send!(
-      event: dest.event,
-      title: "Ireland digest",
-      body: "The digest couldn't be written: {e}. Try again in a few minutes.",
-      priority: High,
-      to: Some([person]),
-      key: "{key}-failed",
-    )
+    Ok(article) => {
+      let _ = deliver!(article, dest, priority: High, only: Some([person]), key:)
+    }
+    Err(e) => {
+      let _ = notify.send!(
+        event: dest.event,
+        title: "Ireland digest",
+        body: "The digest couldn't be written: {e}. Try again in a few minutes.",
+        priority: High,
+        to: Some([person]),
+        key: "{key}-failed",
+      )
+    }
   }
 }
 
@@ -113,7 +119,8 @@ job write(day: Date) -> Result(Article, DigestError) {
     if !poll!(every: 1 min, within: 6 h, fn { miniflux.me!() |> isOk }) {
       return Err(MinifluxAway)
     }
-    miniflux.refresh!()
+    # A refresh that didn't happen only leaves older news to read.
+    let _ = miniflux.refresh!()
     sleep!(5 min)
   }
   let until = now!()

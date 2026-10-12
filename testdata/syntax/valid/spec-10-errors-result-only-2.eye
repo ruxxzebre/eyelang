@@ -1,10 +1,7 @@
 # SPECS.md section 10, example 2.
 import fs
 
-type CountError = | Usage | Unreadable(fs.FsError) | BadNumber(String)
-
-fn count(path: String) -> Result(Int, CountError) uses {fs} {
-  let text = fs.readText(path)?        # an fs.FsError becomes Unreadable(…)
-  let n = parseInt(text)?              # parseInt's message becomes BadNumber(…)
-  Ok(n)
+fn save(path: String, text: String) uses {fs} {
+  let _ = fs.writeText("{path}.bak", text)   # dropped on purpose: a backup is a bonus
+  fs.writeText(path, text)                   # error: this drops a Result((), FsError)
 }

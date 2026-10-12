@@ -21,6 +21,24 @@ title: "Errors: Result only"
   fn nextOr(x: Option(Int)) -> Int = (x ?? 0) + 1
   fn doubled(xs: List(Option(Int))) -> List(Option(Int)) = xs |> map(fn x: Some(x? * 2))
   ```
+- **A `Result` can't be dropped.** A statement whose value is a `Result` must use it, match it,
+  pass its error on with `?`, or discard it with `let _ = …`; dropping it without a word is an
+  error that names its type. A command's outcome follows the same rule ([section 17](/reference/language/contracts-talking-to-other-services)).
+  - The last expression of a block is used when the block's value is: the body of a function that
+    returns a `Result`, or a branch of an `if` or a `match` whose value is bound or returned.
+  - The last expression of a function that returns `()`, a loop's body, the branch of an `if`
+    without `else`, and the arms of a `match` whose value nothing uses are statements.
+  - Other values may be dropped: `()`, which `print`, `log.info` and every function without `->`
+    return, and an `Option`, which is a value that may be missing rather than a failure.
+
+  ```eye
+  import fs
+
+  fn save(path: String, text: String) uses {fs} {
+    let _ = fs.writeText("{path}.bak", text)   # dropped on purpose: a backup is a bonus
+    fs.writeText(path, text)                   # error: this drops a Result((), FsError)
+  }
+  ```
 - **Converting errors.** When the caller's error type has exactly one variant whose payload is the
   error's type, `?` wraps the error in it. With none or several, write the conversion:
   `.mapErr(Variant)?` or `.mapErr(fn e: …)?`.
