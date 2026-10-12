@@ -35,7 +35,18 @@ title: "Values and types"
   ```
 
   Integer literals that fit are fixed-width values where one is expected: `src[i] ?? 0`. One that
-  doesn't fit, as in `let b: Byte = 300`, is an error.
+  doesn't fit, as in `let b: Byte = 300`, is an error. An ASCII character literal is a `Byte`
+  where one is expected, in expressions and in patterns, so byte-level code reads as text:
+
+  ```eye
+  fn isComment(src: Bytes) -> Bool = match src {
+    ['-', '-', ..] => true
+    _ => false
+  }
+  ```
+
+  Any other character, such as `'é'`, is more than one byte in UTF-8, and is an error where a
+  `Byte` is expected.
 - **Time:** `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`. **Memory:** `Size`.
 - **Collections:** `List(a)`, `Map(k, v)` and `Set(a)`. A `List` is a growable array. Collections
   are values: assigning or passing one never shares later changes ([section 7](/reference/language/mutation)). An update to a

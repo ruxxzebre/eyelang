@@ -37,6 +37,15 @@ fn f() {
   300 => 1
   _ => 0
 }`, []string{"2:3: 300 doesn't fit in a Byte, which holds 0 to 255 @ 300"}},
+		{"a character outside ASCII where a Byte is expected", `fn f() -> Byte = 'é'
+fn g(src: Bytes) -> Bool = src[0] == Some('ü')`, []string{
+			"1:18: 'é' isn't ASCII, so it can't be a Byte: it is 2 bytes in UTF-8 @ 'é'",
+			"2:43: 'ü' isn't ASCII, so it can't be a Byte: it is 2 bytes in UTF-8 @ 'ü'",
+		}},
+		{"a character outside ASCII in a pattern over Bytes", `fn f(src: Bytes) -> Int = match src {
+  ['é', ..] => 1
+  _ => 0
+}`, []string{"2:4: 'é' isn't ASCII, so it can't be a Byte: it is 2 bytes in UTF-8 @ 'é'"}},
 		{"arithmetic operators on fixed-width integers", `fn f(a: Byte, b: Int32) {
   let x = a + a
   let y = 1 * b
@@ -72,7 +81,7 @@ fn f() {
   let b = src[i]?
   let w: Int64 = -9223372036854775808
   let u: UInt64 = 18446744073709551615
-  if b == 45 { return None }
+  if b == '-' { return None }
   let x = b.wrappingAdd(1).xor(127).not().shiftLeft(2).toInt()
   let y = Byte.from(x)? |> checkedSub(1)
   let z = y?

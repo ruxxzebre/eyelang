@@ -48,7 +48,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   after `in` is a zone's name, or a name for a `Zone` value: `dublin` after
   `pub let dublin: Zone = "Europe/Dublin"`.
 - **Characters:** `'a'` is a `Char`, one Unicode scalar value, with the escapes of strings plus
-  `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`.
+  `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`
+  ([section 5](/reference/language/values-and-types)).
 - **Strings:** a string's text stays on one line, though an interpolated expression may break
   across lines. The escapes are `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\{`, `\}` and
   `\u{1F600}`. `{expression}` interpolates a value that has `Show`.

@@ -87,7 +87,7 @@ construct that also works outside that domain.
 | Effects | **Inferred inside, stated at the boundary**: public functions list their effects with `uses` (none means pure); a callback's effects pass to the call that gives it; a function type kept in data states its effects | Permissions show up in the diff without annotating every helper, and higher-order functions work with any callback |
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
 | Arithmetic | **Total types**: `Int` has arbitrary precision; `/` and `%` need a `NonZero` divisor; indexing returns `Option` | Removes the runtime errors that "Result only" would otherwise need |
-| Fixed-width integers | **No operators; each operation names its edge.** `Byte`, `Int32`, `Int64`, `UInt32` and `UInt64` add with `wrappingAdd` or `checkedAdd` (an `Option`), and likewise subtract and multiply; bit operations are methods too (`and`, `xor`, `shiftLeft`, …). `T.from(n)` converts an `Int` and is an `Option`; `x.toInt()` always fits. A literal that doesn't fit its type is a compile error (section 5) | Overflow is never silent and never a fault: the code says at each step whether it wants wrapping, as a hash does, or a check, as a length does, as Rust's `wrapping_add` and `checked_add` do |
+| Fixed-width integers | **No operators; each operation names its edge.** `Byte`, `Int32`, `Int64`, `UInt32` and `UInt64` add with `wrappingAdd` or `checkedAdd` (an `Option`), and likewise subtract and multiply; bit operations are methods too (`and`, `xor`, `shiftLeft`, …). `T.from(n)` converts an `Int` and is an `Option`; `x.toInt()` always fits. A literal that doesn't fit its type is a compile error, and an ASCII character literal is a `Byte` where one is expected (section 5) | Overflow is never silent and never a fault: the code says at each step whether it wants wrapping, as a hash does, or a check, as a length does, as Rust's `wrapping_add` and `checked_add` do. Byte-level code, such as a lexer over `Bytes`, matches `'-'` instead of `45` |
 | Consistency | **Atomic inside eyelang**; keyed commands and **reconcile** at the boundary with other services. A `@reconcile` query returns an `Option` of the command's outcome: `None` means the command never arrived, and only then is it sent again, with the same key | One database makes real transactions cheap; outside services own their own state; the one case where resending is safe is decided by the owner, never guessed. From the lab: a lookup that can't say "never arrived" leaves a lost command uncertain for good |
 | Values as JSON | **One JSON shape everywhere**: records are objects, a variant is an object tagged with `"kind"`, a type of fieldless variants is a string, a wrapped value is the value, `None` is null (section 17) | Requests, replies, recordings, model schemas and the generated TypeScript and Go types agree, and a tagged union reads naturally as a discriminated union in TypeScript |
 | Contracts over HTTP | **Attributes map a contract to HTTP**: `@http("POST /v1/send", status: {202: Pending})` on an operation, `@http(names: snake)` and `@auth(…)` on the contract, the key's header and body field on `@key`; addresses and credentials come from the environment | The real APIs the lab calls (Notify, Miniflux) are described without code; a request that never went out is retried, and only a lost reply is `Uncertain`. From the lab: Notify's 200 and 202 answers and its idempotency header |
@@ -258,7 +258,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   after `in` is a zone's name, or a name for a `Zone` value: `dublin` after
   `pub let dublin: Zone = "Europe/Dublin"`.
 - **Characters:** `'a'` is a `Char`, one Unicode scalar value, with the escapes of strings plus
-  `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`.
+  `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`
+  (section 5).
 - **Strings:** a string's text stays on one line, though an interpolated expression may break
   across lines. The escapes are `\n`, `\r`, `\t`, `\0`, `\\`, `\"`, `\{`, `\}` and
   `\u{1F600}`. `{expression}` interpolates a value that has `Show`.
@@ -354,7 +355,18 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   ```
 
   Integer literals that fit are fixed-width values where one is expected: `src[i] ?? 0`. One that
-  doesn't fit, as in `let b: Byte = 300`, is an error.
+  doesn't fit, as in `let b: Byte = 300`, is an error. An ASCII character literal is a `Byte`
+  where one is expected, in expressions and in patterns, so byte-level code reads as text:
+
+  ```eye
+  fn isComment(src: Bytes) -> Bool = match src {
+    ['-', '-', ..] => true
+    _ => false
+  }
+  ```
+
+  Any other character, such as `'é'`, is more than one byte in UTF-8, and is an error where a
+  `Byte` is expected.
 - **Time:** `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`. **Memory:** `Size`.
 - **Collections:** `List(a)`, `Map(k, v)` and `Set(a)`. A `List` is a growable array. Collections
   are values: assigning or passing one never shares later changes (section 7). An update to a

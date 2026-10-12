@@ -52,6 +52,7 @@ type typeState struct {
 	active   []*ir.Func         // the inferred functions being checked, innermost last
 	zones    []zoneLit          // string literals that may be zones
 	ints     []intLit           // integer literals, which must fit a fixed-width type they become
+	chars    []charLit          // character literals, which may become Bytes
 	negated  map[*ir.Lit]ir.Pos // integer literals with a minus sign: `-5`, and where it starts
 	option   *ir.Type
 	result   *ir.Type
@@ -885,7 +886,10 @@ func (x *fnCheck) literal(e *ir.Lit, want typ) typ {
 	case bool:
 		return tBool
 	case rune:
-		return tChar
+		// A Char, or a Byte where one is expected (SPECS.md §5).
+		t := x.c.freshLit(litChar)
+		x.c.ts.chars = append(x.c.ts.chars, charLit{lit: e, t: t})
+		return t
 	case ir.Unit:
 		return tUnit
 	case ir.Duration:
@@ -1915,6 +1919,8 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Exp
 				return "Int"
 			case litString:
 				return "String"
+			case litChar:
+				return "Char"
 			}
 		}
 		return ""

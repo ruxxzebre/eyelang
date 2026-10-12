@@ -65,7 +65,7 @@ type Byte
 ```
 
 A whole number from 0 to 255, for binary formats; arithmetic on it is explicit:
-`b.wrappingAdd(1)`.
+`b.wrappingAdd(1)`. An ASCII character literal is a Byte where one is expected: `'-'`.
 
 ## Bytes {#Bytes}
 

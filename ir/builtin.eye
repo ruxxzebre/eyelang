@@ -34,7 +34,7 @@ pub extern type Char
 pub extern type String
 
 ## A whole number from 0 to 255, for binary formats; arithmetic on it is explicit:
-## `b.wrappingAdd(1)`.
+## `b.wrappingAdd(1)`. An ASCII character literal is a Byte where one is expected: `'-'`.
 pub extern type Byte
 
 ## A sequence of bytes, for binary data, hashing and foreign functions.
@@ -430,7 +430,7 @@ pub extern fn words(s: String) -> List(String)
 ## The characters of s, in order: `for c in s.chars() { … }`.
 pub extern fn chars(s: String) -> List(Char)
 
-## The bytes of s in UTF-8, for scanning text byte by byte: `src[i] == Some(34)`.
+## The bytes of s in UTF-8, for scanning text byte by byte: `src[i] == Some('"')`.
 pub extern fn bytes(s: String) -> Bytes
 
 ## The text the bytes spell in UTF-8, or `None` if they aren't UTF-8.

@@ -116,10 +116,11 @@ type boundUse struct {
 }
 
 // litKind says which types a literal may still take: a string literal is a
-// String, a Key or a Zone, and an integer literal an Int or a fixed-width
-// integer, depending on where it goes (SPECS.md §5). A literal nothing
-// decides is a String or an Int. The empty `{}` is an empty map, set or
-// record, and nothing chooses one for it.
+// String, a Key or a Zone, an integer literal an Int or a fixed-width
+// integer, and a character literal a Char or a Byte, depending on where it
+// goes (SPECS.md §5). A literal nothing decides is a String, an Int or a
+// Char. The empty `{}` is an empty map, set or record, and nothing chooses
+// one for it.
 type litKind int
 
 const (
@@ -128,6 +129,7 @@ const (
 	litInt
 	litBraces
 	litZero // the literal 0: an integer, and never a NonZero
+	litChar // a character literal: a Char, or a Byte where one is expected
 )
 
 // intLiteral reports whether a literal kind is an integer's.
@@ -198,6 +200,8 @@ func (k litKind) allows(c *tcon) bool {
 			return c.decl == nil && k == litInt
 		}
 		return false
+	case litChar:
+		return c.decl == nil && c.entity == nil && (c.name == "Char" || c.name == "Byte")
 	case litBraces:
 		if c.decl == nil && c.entity == nil {
 			return c.name == "Set" || c.name == "Map"
@@ -422,7 +426,8 @@ func (c *checker) freshLit(k litKind) *tvar {
 }
 
 // defaultLiterals settles the literals nothing else decided: a string
-// literal is a String and an integer literal an Int.
+// literal is a String, an integer literal an Int and a character literal a
+// Char.
 func defaultLiteral(t typ) typ {
 	t = prune(t)
 	if v, ok := t.(*tvar); ok && !v.rigid {
@@ -431,6 +436,8 @@ func defaultLiteral(t typ) typ {
 			v.ref = tString
 		case litInt, litZero:
 			v.ref = tInt
+		case litChar:
+			v.ref = tChar
 		}
 	}
 	return prune(t)
@@ -497,6 +504,8 @@ func writeType(b *strings.Builder, t typ, names map[*tvar]string) {
 			b.WriteString("String")
 		case x.lit.intLiteral():
 			b.WriteString("Int")
+		case x.lit == litChar:
+			b.WriteString("Char")
 		case x.lit == litBraces:
 			b.WriteString("{}")
 		default:
@@ -750,6 +759,8 @@ func toExpr(t typ) *ir.TypeExpr {
 			return &ir.TypeExpr{Name: "String"}
 		case litInt, litZero:
 			return &ir.TypeExpr{Name: "Int"}
+		case litChar:
+			return &ir.TypeExpr{Name: "Char"}
 		}
 	}
 	return nil

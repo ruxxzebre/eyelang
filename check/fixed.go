@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"eyelang/ir"
@@ -10,7 +11,8 @@ import (
 
 // The fixed-width integers (SPECS.md §5): Byte, Int32, Int64, UInt32 and
 // UInt64 have no arithmetic operators, only methods that say what happens
-// at the edges of the type, and a literal that becomes one must fit it.
+// at the edges of the type, and a literal that becomes one must fit it. An
+// ASCII character literal is a Byte where one is expected.
 
 // fixedRanges are the fixed-width integer types and the values each holds.
 var fixedRanges = map[string]*[2]*big.Int{
@@ -154,8 +156,16 @@ type intLit struct {
 	t   typ
 }
 
+// charLit is a character literal, which is a Byte where one is expected.
+type charLit struct {
+	lit *ir.Lit
+	t   typ
+}
+
 // settleLiterals checks the literals that became fixed-width integers, now
-// that every type is known: an integer literal must fit its type.
+// that every type is known: an integer literal must fit its type, and a
+// character literal that became a Byte must be ASCII, and becomes the
+// number it is, so that the interpreter and the compiler see a Byte.
 func (c *checker) settleLiterals() {
 	for _, l := range c.ts.ints {
 		name := fixedName(l.t)
@@ -175,6 +185,25 @@ func (c *checker) settleLiterals() {
 			c.typeErrorf(at, "%s doesn't fit in %s %s, which holds %s to %s", v, article, name, r[0], r[1])
 		}
 	}
+	for _, l := range c.ts.chars {
+		if fixedName(l.t) != "Byte" {
+			continue
+		}
+		r := l.lit.Value.(rune)
+		if msg := byteChar(r); msg != "" {
+			c.typeErrorf(l.lit.Pos, "%s", msg)
+			continue
+		}
+		l.lit.Value = big.NewInt(int64(r))
+	}
+}
+
+// byteChar says why a character can't be a Byte, or "" if it can.
+func byteChar(r rune) string {
+	if r < 0x80 {
+		return ""
+	}
+	return fmt.Sprintf("%s isn't ASCII, so it can't be a Byte: it is %d bytes in UTF-8; write the bytes as numbers, or match a String", strconv.QuoteRune(r), len(string(r)))
 }
 
 // written is where a part of a pattern is written, or at, the place of the
@@ -187,8 +216,21 @@ func written(p, at ir.Pos) ir.Pos {
 }
 
 // literalPattern checks a literal in a pattern against t, the type of what
-// the pattern matches, and returns the literal as the pattern keeps it.
+// the pattern matches, and returns the literal as the pattern keeps it: a
+// character literal matching a Byte is a number.
 func (x *fnCheck) literalPattern(v any, t typ, at ir.Pos) any {
-	x.expect(at, t, x.literal(&ir.Lit{At: ir.At{Pos: at}, Value: v}, nil))
-	return v
+	r, ok := v.(rune)
+	if !ok {
+		x.expect(at, t, x.literal(&ir.Lit{At: ir.At{Pos: at}, Value: v}, nil))
+		return v
+	}
+	if fixedName(t) != "Byte" {
+		x.expect(at, t, tChar)
+		return v
+	}
+	if msg := byteChar(r); msg != "" {
+		x.c.typeErrorf(at, "%s", msg)
+		return v
+	}
+	return big.NewInt(int64(r))
 }

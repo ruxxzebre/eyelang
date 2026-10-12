@@ -1,4 +1,4 @@
-# Fixed-width integers (SPECS.md §5).
+# Fixed-width integers and character literals as Bytes (SPECS.md §5).
 
 test "Byte arithmetic wraps or is checked at 0 and 255" {
   let top: Byte = 255
@@ -160,4 +160,39 @@ test "a hash over Bytes" {
   expect(fnv1a("".bytes()) == 2166136261)
   expect(fnv1a("a".bytes()) == 3826002220)
   expect(fnv1a("foobar".bytes()) == 3214735720)
+}
+
+## What a line of source starts with, matched byte by byte.
+fn token(src: Bytes) -> String = match src {
+  ['-', '-', ..] => "comment"
+  ['-', '>', ..] => "arrow"
+  ['"', ..rest] => "string of {rest |> size}"
+  ['a'..='z', ..] | ['A'..='Z', ..] => "name"
+  ['0'..='9', ..] => "number"
+  [' ' | '\t', ..rest] => token(rest)
+  [] => "end"
+  _ => "other"
+}
+
+test "character literals are Bytes where Bytes are expected" {
+  expect(token("-- note".bytes()) == "comment")
+  expect(token("->".bytes()) == "arrow")
+  expect(token("\"abc\"".bytes()) == "string of 4")
+  expect(token("  \tname".bytes()) == "name")
+  expect(token("Name".bytes()) == "name")
+  expect(token("42".bytes()) == "number")
+  expect(token("".bytes()) == "end")
+  expect(token("é".bytes()) == "other")
+  let src = "a-b".bytes()
+  expect(src[1] == Some('-'))
+  let dash: Byte = '-'
+  expect(dash == 45)
+  expect(dash.wrappingAdd(1) == '.')
+  var letters = 0
+  for b in "a1b2".bytes() {
+    if b >= 'a' && b <= 'z' { letters += 1 }
+  }
+  expect(letters == 2)
+  let c = '-'  # nothing expects a Byte, so it is a Char
+  expect(c.code() == 45)
 }

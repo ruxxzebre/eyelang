@@ -123,7 +123,14 @@ func (c *checker) generalize(fn *ir.Func) {
 		found := map[*tvar]bool{}
 		freeVars(t, found)
 		for v := range found {
-			if !busy[v] {
+			switch {
+			case busy[v]:
+			case v.lit == litChar:
+				// A character literal is a Char or a Byte, which differ
+				// at run time, so one function body can't be both:
+				// `fn dash(c) = c == '-'` takes Chars.
+				v.ref = tChar
+			default:
 				s.vars[v] = true
 			}
 		}

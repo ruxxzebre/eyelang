@@ -650,7 +650,7 @@ The characters of s, in order: `for c in s.chars() { … }`.
 fn bytes(s: String) -> Bytes
 ```
 
-The bytes of s in UTF-8, for scanning text byte by byte: `src[i] == Some(34)`.
+The bytes of s in UTF-8, for scanning text byte by byte: `src[i] == Some('"')`.
 
 ### toText {#toText}
 
