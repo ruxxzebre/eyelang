@@ -464,7 +464,7 @@ func (c *checker) jobLimits(m *module, f *ir.File, d *syntax.Node, job *ir.Job) 
 				c.errorf(pos(f, a), "@deadline at a time of day needs its zone: @deadline(%s, in: dublin)", text(f, a))
 				return
 			}
-			v := ir.Instant{Time: parseTime(text(f, a))}
+			v := ir.Instant{Time: l.timeOfDay(a)}
 			if zone.Kind == syntax.Ident {
 				l.fn.Body = &ir.InZone{At: l.at(a), Instant: v, Zone: l.name(zone)}
 			} else {

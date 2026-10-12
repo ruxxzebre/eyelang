@@ -201,6 +201,7 @@ Words this document uses in one sense, and names that mean different things in d
 | A variant's number | **`v.index()`, derived on a type whose variants have no fields, is the variant's place in `T.variants()`, counting from 0** (section 11). Accepted by the owner on 2026-10-12 | Go's `int(kind)`: a table, a checksum or a foreign format numbers a choice, and building a `Map(Kind, Int)` at the start to find out was ceremony. A derived method, like `variants` and `parse`, not syntax; `index` is the word the library already uses for a place (`indexOf`, `xs[i]`), and a type's own `index` method is called instead |
 | Regular expressions | **A library module, not syntax: `regex.parse(pattern)` gives a `Result(Regex, RegexError)`, and patterns are RE2's, with no backreferences or lookaround. `re.matches(text)` asks about the whole text, `re.replace` replaces every match and `replaceFirst` the first, and a replacement names groups `$1` and `$<name>`** (section 5). From 2026-10-12 | The digest read links out of HTML with a loop of offsets for what a pattern says in a line. RE2 matches in time linear in the text, so a match's cost is bounded whatever the pattern, as section 1 asks; backreferences would make it exponential. A function rather than a literal, since a library covers it and only checking at compile time is lost (open question 44). `matches` on the whole text is what checking an id or a date means; `replace` replaces every match as a string's `replace` replaces every occurrence, so changing a string to a pattern doesn't change how many are replaced. `$<name>` because `${name}` is interpolation in an Eyelang string. A `Regex` holds its pattern, so it has `Eq`, `Show` and `Save` as a record does, and a job can keep one |
 | Schemas aren't recursive | **A type that holds itself, `()`, `Char`, `Byte`, `Bytes` and the fixed-width integers have no `Schema`**, so `eye check` refuses asking a model for them, at the call (section 19); a tool that returns `()` answers `null` | Anthropic's structured outputs take no recursive schema and OpenAI's strict mode limits them, so a `$ref` schema would work with one provider and not the other; the checker and the runtime now refuse the same types, where before the run faulted at the call. A tree is asked for as a flat list with parent names |
+| Midnight is `00:00` | **A time of day goes from `00:00` to `23:59:59`; `24:00` is not a time**, and a literal that names no real date or time is an error at it (section 4) | Each time of day has one spelling, so `daily(24:00, …)` can't mean two moments, and a schedule at `25:00` no longer fires at 01:00. The end of a day is the next day's `00:00` |
 
 ## 3. A tour
 
@@ -318,7 +319,10 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 
   A number followed by a unit name (`ms`, `s`, `min`, `h`, `day`, `days`, `week`, `weeks`, `B`,
   `KiB`, `MiB`, `GiB`) is a Duration or Size. A date or time of day is written without spaces;
-  `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time. The zone
+  `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time. A
+  literal names a real date or time, or is an error at it: hours go from `00` to `23`, minutes
+  and seconds from `00` to `59`, months from `01` to `12`, and the day must exist in its month,
+  so `25:00`, `12:60` and `2026-02-30` are errors. Midnight is `00:00`; `24:00` is not a time. The zone
   after `in` is a zone's name, or a name for a `Zone` value: `dublin` after
   `pub let dublin: Zone = "Europe/Dublin"`.
 

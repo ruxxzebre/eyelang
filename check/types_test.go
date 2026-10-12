@@ -257,6 +257,26 @@ fn area(s: Shape) -> Float = match s {
   let Some(v) = o
   v
 }`, []string{"2:3: this pattern doesn't match None: add `else { … }`"}},
+		{"a date or time literal names a real one", `@on(daily(25:00, in: "UTC"))
+job j() {}
+@deadline(24:00, in: "UTC")
+job k() {}
+fn f() {
+  let ok = [2028-02-29, 2026-12-31]
+  let fine = [00:00, 23:59:59]
+  let bad = [2026-02-30, 2026-13-01, 2026-00-10]
+  let wrong = [12:60, 12:00:60]
+  let at = 2026-04-31 10:00 in "UTC"
+}`, []string{
+			"1:11: 25:00 isn't a time of day: hours go from 00 to 23",
+			"3:11: 24:00 isn't a time of day: hours go from 00 to 23, and midnight is 00:00",
+			"8:14: 2026-02-30 isn't a date: February 2026 has 28 days",
+			"8:26: 2026-13-01 isn't a date: months go from 01 to 12",
+			"8:38: 2026-00-10 isn't a date: months go from 01 to 12",
+			"9:16: 12:60 isn't a time of day: minutes go from 00 to 59",
+			"9:23: 12:00:60 isn't a time of day: seconds go from 00 to 59",
+			"10:12: 2026-04-31 isn't a date: April 2026 has 30 days",
+		}},
 		{"a let's else leaves", `fn f(x: Option(Int)) -> Int {
   let Some(n) = x else { 0 }
   n

@@ -44,7 +44,10 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 
   A number followed by a unit name (`ms`, `s`, `min`, `h`, `day`, `days`, `week`, `weeks`, `B`,
   `KiB`, `MiB`, `GiB`) is a Duration or Size. A date or time of day is written without spaces;
-  `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time. The zone
+  `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time. A
+  literal names a real date or time, or is an error at it: hours go from `00` to `23`, minutes
+  and seconds from `00` to `59`, months from `01` to `12`, and the day must exist in its month,
+  so `25:00`, `12:60` and `2026-02-30` are errors. Midnight is `00:00`; `24:00` is not a time. The zone
   after `in` is a zone's name, or a name for a `Zone` value: `dublin` after
   `pub let dublin: Zone = "Europe/Dublin"`.
 

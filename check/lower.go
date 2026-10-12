@@ -2,9 +2,11 @@ package check
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"eyelang/ir"
@@ -520,13 +522,13 @@ func (l *lowerer) expr(n *syntax.Node) ir.Expr {
 	case syntax.Size:
 		return &ir.Lit{At: at, Value: sizeOf(l.text(n.ChildByField(syntax.FieldValue)), l.text(n.ChildByField(syntax.FieldUnit)))}
 	case syntax.Date:
-		return &ir.Lit{At: at, Value: parseDate(l.text(n))}
+		return &ir.Lit{At: at, Value: l.date(n)}
 	case syntax.Time:
-		return &ir.Lit{At: at, Value: parseTime(l.text(n))}
+		return &ir.Lit{At: at, Value: l.timeOfDay(n)}
 	case syntax.Instant, syntax.ZonedTime:
-		v := ir.Instant{Time: parseTime(l.text(n.ChildByField(syntax.FieldTime)))}
+		v := ir.Instant{Time: l.timeOfDay(n.ChildByField(syntax.FieldTime))}
 		if d := n.ChildByField(syntax.FieldDate); d != nil {
-			v.Date = parseDate(l.text(d))
+			v.Date = l.date(d)
 		}
 		zone := n.ChildByField(syntax.FieldZone)
 		if zone.Kind == syntax.Ident {
@@ -1478,6 +1480,53 @@ var sizeUnits = map[string]float64{"B": 1, "KiB": 1 << 10, "MiB": 1 << 20, "GiB"
 func sizeOf(value, unit string) ir.Size {
 	f, _ := strconv.ParseFloat(strings.ReplaceAll(value, "_", ""), 64)
 	return ir.Size(f * sizeUnits[unit])
+}
+
+// date reads a date literal, which must name a day of the calendar.
+func (l *lowerer) date(n *syntax.Node) ir.Date {
+	d := parseDate(l.text(n))
+	if why := badDate(d); why != "" {
+		l.errorf(n, "%s isn't a date: %s", l.text(n), why)
+	}
+	return d
+}
+
+// timeOfDay reads a time-of-day literal, which must name a time on a clock.
+func (l *lowerer) timeOfDay(n *syntax.Node) ir.TimeOfDay {
+	t := parseTime(l.text(n))
+	if why := badTime(t); why != "" {
+		l.errorf(n, "%s isn't a time of day: %s", l.text(n), why)
+	}
+	return t
+}
+
+// badDate says why d is no day of the calendar, or "" if it is one.
+func badDate(d ir.Date) string {
+	if d.Month < 1 || d.Month > 12 {
+		return "months go from 01 to 12"
+	}
+	days := time.Date(d.Year, time.Month(d.Month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	if d.Day < 1 || d.Day > days {
+		return fmt.Sprintf("%s %d has %d days", time.Month(d.Month), d.Year, days)
+	}
+	return ""
+}
+
+// badTime says why t is no time on a clock, or "" if it is one. 24:00 isn't
+// one: midnight is 00:00, so each time of day has one spelling.
+func badTime(t ir.TimeOfDay) string {
+	switch {
+	case t.Hour > 23:
+		if t.Hour == 24 && t.Minute == 0 && t.Second == 0 {
+			return "hours go from 00 to 23, and midnight is 00:00"
+		}
+		return "hours go from 00 to 23"
+	case t.Minute > 59:
+		return "minutes go from 00 to 59"
+	case t.Second > 59:
+		return "seconds go from 00 to 59"
+	}
+	return ""
 }
 
 func parseDate(s string) ir.Date {
