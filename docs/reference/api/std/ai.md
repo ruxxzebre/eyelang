@@ -35,14 +35,12 @@ Why a model call gave no value.
 ### Effort {#Effort}
 
 ```eye
-pub type Effort = LowEffort | MediumEffort | HighEffort
+pub type Effort = Low | Medium | High
 ```
 
 How much a model reasons before it answers: more costs more tokens and
 time, and helps with harder questions. Anthropic's models take it as
 `output_config.effort`, OpenAI's and a gateway's as `reasoning_effort`.
-The variants name the effort, so that they don't clash with a `Low` or
-`High` of another module the program imports, as notify's priorities.
 
 ### Provider {#Provider}
 
@@ -106,7 +104,7 @@ and the reply is cut off where the budget ends; a call that doesn't fit
 ends the run as `Failed(OverBudget)`.
 
 `effort:` asks the model to reason more or less, as `effort:
-Some(MediumEffort)` ([`Effort`](./ai#Effort)); without it the provider's default holds.
+Some(Medium)` ([`Effort`](./ai#Effort)); without it the provider's default holds.
 
 A provider that can't be reached is tried again for about a minute, as a
 contract's query is: a request that never got there (the connection was

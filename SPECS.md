@@ -110,6 +110,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Records | **Nominal**: a record type is its name, and a literal takes the type its context expects | Same-shaped types can't be mixed up, and methods, operators, schemas and error messages have a name to use |
 | Record literals in lambdas | **A lambda's record literal takes its type from where the call's result goes**, with no syntax at the literal: a call takes the type expected of it before its lambdas are checked, so `let rows: List(Row) = users \|> map(fn u: { … })` builds `Row`s, a later stage's lambda reads their fields, and a literal nested in one takes its field's type (section 5, open question 25). Decided by the owner on 2026-10-12 | Mapping records into other records is the commonest data program there is, and it failed with "which record type?" though the type was written on the `let`. Literals already take the type their context expects; a lambda's body is one more context, so nothing new is learned, and a type named at each literal would repeat what the `let` says |
 | Variants and types | **Where a type goes, a name means a type, never a variant**, except a variant that shares its one type's name, `type Id = \| Id(String)`. A variant there is an error that names its type (section 5). Decided 2026-10-12 | A variant named `Int` or `Date` silently turned every `Int` in its module's signatures into the variant's type, and the errors pointed far from the cause; Eyelang's lexer in Eyelang had to call its token kinds `IntLiteral` and `DateLiteral`. Refusing such names would cost the most natural names for token kinds and JSON values, while types and values never meet in one position, so letting each position see its own kind of name costs nothing |
+| Variants by the type expected | **A variant name written alone that several imported modules declare is the one whose type is expected where it is written**: an argument, a typed `let`, a return, a record field, inside `Some`, the other side of `==`, or a later use in the same body. Only where nothing says which is it an error that asks for the module, `a.Low`. Patterns already chose by the matched value's type. Decided 2026-10-12 | `ai.Effort`'s `Low` and `High` clashed with Notify's priorities, and the first fix renamed them `LowEffort` and `HighEffort`: any two modules with common words such as `High` couldn't be imported together without qualifying every use. The type already says which, as Swift's and OCaml's do; record literals take their type from context the same way (G.14). From the lab, 2026-10-12 |
 | Results | **A function without `->` returns `()` when its body is a block**, and its last value is dropped; one written `= expr` returns the expression's type, inferred. `while true` without `break` has any type, since only `return` leaves it | Entity methods, jobs and helpers that do something need no `-> ()`, and a loop that serves until it returns needs no `unreachable` after it. From the type checker: Notify's delivery loop |
 | Effects | **Inferred inside, stated at the boundary**: public functions list their effects with `uses` (none means pure); a callback's effects pass to the call that gives it; a function type kept in data states its effects | Permissions show up in the diff without annotating every helper, and higher-order functions work with any callback |
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
@@ -190,6 +191,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Dropped results | **A statement can't drop a `Result` or a command's outcome**, with or without the `Uncertain`, `Stale` and `Expired` a command adds: it must be used, matched, passed on with `?`, or discarded with `let _ = …`. A block's last expression is used when the block's value is; `()` and `Option`s may be dropped (sections 10 and 17). Decided by the owner on 2026-10-12 | Dropping a failure without a word is the easy but wrong program: the tour's `notify.send!` lost `Refused` and `Uncertain`, and `fs.writeText("a", "b")` as a statement compiled. `let _ =` costs a few characters where a program means to ignore a failure, and shows that choice in review. An `Option` is a value that may be missing, not a failure, and is often dropped on purpose. From the spec review of 2026-10-12, finding 7 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
 | Reading a run's outcome | **A test or `main` reads a run's outcome with `run.outcome()`, an `Option(Outcome(a))` that is `None` while the run is still going; only a job waits for one, with `run.join!()`.** `run.join()` without `!` is an error that names the call to write, and `outcome()` in a job is an error that names `join!()` (section 15). Decided 2026-10-12 | A test can't wait, since its clock moves only when it calls `advance(…)`, but it must check how a run ended, including a `Failed(DeadlinePassed)` it expects. Before, `run.join()` in a test passed the checker and then failed at run time as the strings' `join`, and tests wrote a job that joined and an entity that kept what it saw. `Option(Outcome(a))` rather than `Option(a)`, so a test sees a fault too. In a job a read that isn't a step could see another outcome on replay, so there it is `join!()`. From the ergonomics analysis of 2026-10-12 |
 | Calls without a contract | **`http.get` and `ai.generate` try a service that can't be reached again for about a minute, as a contract's query does, and then return `Err`** with the reason in words, instead of ending the run as `Unavailable`: their results already say how they fail. `ai.generate` also tries again on 429 and 5xx answers. A request that reached the service and had no answer isn't sent again (sections 17 and 19). Decided 2026-10-12 | Network rules in a new pod take effect seconds after it starts, and the digest's 07:40 run, missed while the pod was down, runs right then: contract calls waited for the network, and these two failed at once. They declare their failures, so a program that reads pages can report one it couldn't read and go on. Sending again only what never arrived keeps a slow page from holding a run for minutes, and a model call from being paid twice. From the lab, 2026-10-12 |
+| One retry rule | **The runtime tries again only where the program didn't ask to see the failure**: an operation that declares `http.HttpError` gets it at once; one that declares no failures, and `http.get` and `ai.generate`, whose results always declare theirs, try again for about a minute what never reached the service (section 17). Making declared-failure operations retry too was weighed and left: it would hide a minute inside each try of a program's own wait, and take away the only way to see a failure at once. Decided 2026-10-12 | The owner asked for one rule. The digest polls Miniflux's `me`, declared `Result(User, http.HttpError)`, every minute for up to six hours; that program chose its wait, and the built-ins' callers never could. From the lab, 2026-10-12 |
 | Waiting runs leave RAM | **A run's record is in memory only while the run is ready.** A run that waits or has ended keeps a handle in memory (its number, job, when it wakes, what wakes it, where it resumes); the journal and the Postgres store keep its record on disk and read it back when the run wakes or something asks for it, and opening a store reads no waiting run's record (section 15). Decided 2026-10-12 | Waiting that costs no memory is a pillar, and the records were what it cost: 20,000 runs sleeping for a day took 32 MB with their records in memory, and take 7 MB with their handles. A waiting run needs nothing of its record until it wakes; what the runner asks of it before then, when it wakes and what wakes it, fits in the handle |
 
 ## 3. A tour
@@ -813,8 +815,8 @@ remaining fields or elements; `..rest` binds the remaining elements.
 A variant pattern names a variant of the matched value's type, so a variant declared in an imported
 module needs no module prefix in a pattern, even when another module has a variant of the same name:
 `Refused(reason)` in the tour matches zeropod's `Refused`. Outside patterns an imported variant may
-be written alone too, `fn t() = Blocked`, when no other imported module has one of that name
-(section 13).
+be written alone too, `fn t() = Blocked`, when no other imported module has one of that name, or
+when the type expected where it is written says which (section 13).
 
 Every `match` must be exhaustive. Adding a variant to a type makes each `match` that doesn't handle
 it a compile error, which is how a new outcome from another service reaches every caller.
@@ -1224,9 +1226,11 @@ pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
   imports. A program is the module in its directory and the modules it imports. `import lab.notify`
   names the directory `lab/notify` below the program's directory; its public names are then used as
   `notify.Delivery`, or brought in by name with `import lab.notify.{Delivery}`. A variant of an
-  imported type may be written alone, `Accepted(…)`, when no other imported module has a variant
-  of that name and the prelude has none (its `Skip` is a `GapPolicy`); otherwise it is written
-  with its module, `notify.Accepted(…)`.
+  imported type may be written alone, `Accepted(…)`, when the prelude has none of that name (its
+  `Skip` is a `GapPolicy`) and either no other imported module has one, or the type expected where
+  it is written says which: with `ai` and `notify` both declaring `High`, `effort: Some(High)` is
+  `ai.High` and `priority: High` is `notify.High`. Where nothing says which, it is written with its
+  module, `notify.High`.
 - **A program's root is marked by `eye.toml`.** A file belongs to the program of the nearest
   directory, from the file upward, that holds an `eye.toml`; without one, it belongs to the
   program in its own directory. So `lab/digest/digest.eye` belongs to the program in `lab/` when
@@ -1919,6 +1923,12 @@ type Delivery =
   waits, and after a minute the run ends as `Failed(Unavailable(…))`. A query whose failures the
   caller handles declares them in its result: `query page(url: String) -> Result(String, FetchError)`,
   or, over HTTP, `Result(T, http.HttpError)`, which gets the failures instead of retrying.
+- **One rule for waiting on a service:** the runtime tries again only where the program didn't
+  ask to see the failure. An operation that declares `http.HttpError` asked, so it gets
+  `Err(NoAnswer(…))` at once and waits its own way: the digest checks Miniflux's `me` every minute
+  for up to six hours. An operation that declares no failures, and `http.get` and `ai.generate`,
+  whose results always declare theirs so that a caller never chose, try again for about a minute
+  what never reached the service (`http.get` below, `ai.generate` in section 19).
 - **Events** are published with `notify.delivered.publish(d)`: from an entity method or an
   operation when the transaction commits, and from a job as a `!` step, `notify.delivered.publish!(d)`. `@key(field)` on an event
   names the field that tells one event from another, so an event delivered twice starts one run of
@@ -2349,11 +2359,11 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   `AI_URL` and `secret("ai-key")`. `provider: Some(ai.Anthropic)` names one; without it, a gateway
   answers every call when `AI_URL` is set, since a deployment that has one routes through it, and
   otherwise the model's name decides: `claude-…` is Anthropic, `gpt-…` and `o1`, `o3`… OpenAI.
-- **Effort.** `effort: Some(ai.MediumEffort)` asks the model to reason more or less: `ai.Effort` is
-  `LowEffort`, `MediumEffort` or `HighEffort`, sent as Anthropic's `output_config.effort` and as
-  chat completions' `reasoning_effort`. Without it the provider's default holds. The variants
-  name the effort so that a program that also imports a `Low` or a `High`, as Notify's
-  priorities, can still write those unqualified.
+- **Effort.** `effort: Some(Medium)` asks the model to reason more or less: `ai.Effort` is
+  `Low`, `Medium` or `High`, sent as Anthropic's `output_config.effort` and as chat completions'
+  `reasoning_effort`. Without it the provider's default holds. A program that also imports
+  Notify, whose priorities are `Low` and `High` too, still writes them alone: the type expected
+  where a variant is written says which it is (section 13).
 - **A provider that can't be reached is tried again,** as a contract's query is: a request that
   never got there, and one it answered with 429 or a 5xx, which did nothing, for about a minute,
   while the run waits. Then the call is `Err(ProviderError(status, message))`, the message saying

@@ -136,6 +136,12 @@ type Delivery =
   waits, and after a minute the run ends as `Failed(Unavailable(…))`. A query whose failures the
   caller handles declares them in its result: `query page(url: String) -> Result(String, FetchError)`,
   or, over HTTP, `Result(T, http.HttpError)`, which gets the failures instead of retrying.
+- **One rule for waiting on a service:** the runtime tries again only where the program didn't
+  ask to see the failure. An operation that declares `http.HttpError` asked, so it gets
+  `Err(NoAnswer(…))` at once and waits its own way: the digest checks Miniflux's `me` every minute
+  for up to six hours. An operation that declares no failures, and `http.get` and `ai.generate`,
+  whose results always declare theirs so that a caller never chose, try again for about a minute
+  what never reached the service (`http.get` below, `ai.generate` in [section 19](/reference/language/ai-models-and-agents)).
 - **Events** are published with `notify.delivered.publish(d)`: from an entity method or an
   operation when the transaction commits, and from a job as a `!` step, `notify.delivered.publish!(d)`. `@key(field)` on an event
   names the field that tells one event from another, so an event delivered twice starts one run of

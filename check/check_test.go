@@ -402,7 +402,51 @@ func TestAmbiguousVariants(t *testing.T) {
 	write("a/a.eye", "pub type A = | Done\n")
 	write("b/b.eye", "pub type B = | Done\n")
 	_, diags := Program(dir)
-	if len(diags) != 1 || !strings.HasSuffix(diags[0].Pos.String(), "main.eye:3:10") || !strings.Contains(diags[0].Message, "Done is a variant in more than one imported module; qualify it") {
+	if len(diags) != 1 || !strings.HasSuffix(diags[0].Pos.String(), "main.eye:3:10") || !strings.Contains(diags[0].Message, "Done is a variant of a.A and b.B, and nothing here says which") {
+		t.Errorf("diagnostics: %v", diags)
+	}
+}
+
+// TestVariantsByExpectedType checks that a variant name two imported modules
+// declare is the one whose type is expected where it is written: in an
+// argument, a typed let, a return, a record field, inside Some, compared
+// with ==, called with fields, and bound first and used later.
+func TestVariantsByExpectedType(t *testing.T) {
+	dir := t.TempDir()
+	write := func(path, src string) {
+		p := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a/a.eye", "pub type Effort = Low | Medium | High\npub type Reply = | Busy(secs: Int) | Fine\npub fn think(effort: Option(Effort)) -> Effort = effort ?? Medium\n")
+	write("b/b.eye", "pub type Priority = Low | Normal | High\npub type Status = | Busy(secs: Int) | Idle\npub fn send(priority: Priority) -> Priority = priority\n")
+	write("main.eye", `import a
+import b
+
+type Job = { priority: b.Priority, effort: a.Effort }
+
+fn effort() -> a.Effort = High
+
+fn reply() -> a.Reply = Busy(secs: 3)
+
+test "a variant two modules declare is the one expected" {
+  expect(a.think(Some(High)) == a.High)
+  expect(b.send(High) == b.High)
+  let e: a.Effort = Low
+  expect(e == a.Low)
+  let job: Job = { priority: Low, effort: High }
+  expect(job.priority == b.Low)
+  expect(effort() == High)
+  let later = High
+  expect(b.send(later) == b.High)
+  expect(reply() == a.Busy(secs: 3))
+}
+`)
+	if _, diags := Program(dir); len(diags) != 0 {
 		t.Errorf("diagnostics: %v", diags)
 	}
 }

@@ -672,7 +672,14 @@ func (l *lowerer) typeName(n *syntax.Node) ir.Expr {
 		l.visible(n, d, name)
 		return &ir.Ref{At: at, Decl: d}
 	case ambiguous:
-		l.errorf(n, "%s is a variant in more than one imported module; qualify it with the module's name", name)
+		// The type expected where it is written says which it is; the
+		// checker settles it (fnCheck.chooseVariant).
+		r := &ir.Ref{At: at, Decl: d.choices[0]}
+		if l.c.variantChoices == nil {
+			l.c.variantChoices = map[*ir.Ref][]*ir.Variant{}
+		}
+		l.c.variantChoices[r] = d.choices
+		return r
 	default:
 		l.errorf(n, "undefined name %s", name)
 	}

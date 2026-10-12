@@ -53,7 +53,7 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 		req.provider = p.Vals[0].(*Variant).V.Name
 	}
 	if e, ok := params["effort"].(*Variant); ok && e.V == in.pre.some {
-		req.effort = strings.ToLower(strings.TrimSuffix(e.Vals[0].(*Variant).V.Name, "Effort"))
+		req.effort = strings.ToLower(e.Vals[0].(*Variant).V.Name)
 	}
 	// A call written with ! in a job records each reply and each tool's
 	// result as a step of its own; durable says so.

@@ -66,11 +66,11 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   `AI_URL` and `secret("ai-key")`. `provider: Some(ai.Anthropic)` names one; without it, a gateway
   answers every call when `AI_URL` is set, since a deployment that has one routes through it, and
   otherwise the model's name decides: `claude-…` is Anthropic, `gpt-…` and `o1`, `o3`… OpenAI.
-- **Effort.** `effort: Some(ai.MediumEffort)` asks the model to reason more or less: `ai.Effort` is
-  `LowEffort`, `MediumEffort` or `HighEffort`, sent as Anthropic's `output_config.effort` and as
-  chat completions' `reasoning_effort`. Without it the provider's default holds. The variants
-  name the effort so that a program that also imports a `Low` or a `High`, as Notify's
-  priorities, can still write those unqualified.
+- **Effort.** `effort: Some(Medium)` asks the model to reason more or less: `ai.Effort` is
+  `Low`, `Medium` or `High`, sent as Anthropic's `output_config.effort` and as chat completions'
+  `reasoning_effort`. Without it the provider's default holds. A program that also imports
+  Notify, whose priorities are `Low` and `High` too, still writes them alone: the type expected
+  where a variant is written says which it is ([section 13](/reference/language/programs-and-concurrency)).
 - **A provider that can't be reached is tried again,** as a contract's query is: a request that
   never got there, and one it answered with 429 or a 5xx, which did nothing, for about a minute,
   while the run waits. Then the call is `Err(ProviderError(status, message))`, the message saying

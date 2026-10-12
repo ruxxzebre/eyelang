@@ -97,7 +97,11 @@ type checker struct {
 	diags   []Diagnostic
 	ts      *typeState
 	nextVar int
-	overlay map[string][]byte       // unsaved files, by path
+	// variantChoices are the variant names written alone that several
+	// imported modules declare, with the candidates, until the type
+	// expected settles each (fnCheck.chooseVariant).
+	variantChoices map[*ir.Ref][]*ir.Variant
+	overlay        map[string][]byte // unsaved files, by path
 	index   *Index                  // nil unless a tool asked for it
 	all     bool                    // load every module below root, for tools
 	names   names                   // where names are written, until types resolve them
@@ -1318,7 +1322,8 @@ func (c *checker) lookupUpper(m *module, name string, keep func(any) bool) any {
 	if d, ok := c.prelude.types[name]; ok && keep(d) {
 		return d
 	}
-	var found, hidden any
+	var found []*ir.Variant
+	var hidden any
 	for _, imp := range m.imports {
 		if v, ok := imp.types[name].(*ir.Variant); ok && keep(v) {
 			if c.privateUse(m.mod, v, name) != "" {
@@ -1327,20 +1332,25 @@ func (c *checker) lookupUpper(m *module, name string, keep func(any) bool) any {
 				}
 				continue
 			}
-			if found != nil {
-				return ambiguous{name}
-			}
-			found = v
+			found = append(found, v)
 		}
 	}
-	if found == nil {
+	switch len(found) {
+	case 0:
 		return hidden
+	case 1:
+		return found[0]
 	}
-	return found
+	return ambiguous{name, found}
 }
 
-// ambiguous is a variant name that several imported modules declare.
-type ambiguous struct{ name string }
+// ambiguous is a variant name that several imported modules declare. Where
+// a value is expected, the type expected there says which it is (SPECS.md
+// §13); choices are the candidates.
+type ambiguous struct {
+	name    string
+	choices []*ir.Variant
+}
 
 func (c *checker) lowerModule(m *module) {
 	for i := 0; i < len(m.decls); i++ {

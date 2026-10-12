@@ -143,6 +143,18 @@ type fnCheck struct {
 	reqs    []requirement
 	tries   []pendingTry
 	drops   []pendingDrop
+	// variants are variant names several imported modules declare, which
+	// wait for the type expected of them (chooseVariant).
+	variants []pendingVariant
+}
+
+// pendingVariant is a variant name written alone that more than one
+// imported module declares, whose expected type wasn't known where it was
+// checked.
+type pendingVariant struct {
+	e       *ir.Ref
+	choices []*ir.Variant
+	t       *tvar
 }
 
 // pendingDrop is the value of a statement, which nothing uses: a Result or
@@ -607,6 +619,15 @@ func (x *fnCheck) finish() {
 	for _, r := range pending {
 		c.typeErrorf(r.at, "which record type is this? Nothing here says; write it where the value is bound, as `let x: T = …`")
 	}
+	for _, p := range x.variants {
+		v := pickVariant(p.choices, p.t)
+		if v == nil {
+			c.typeErrorf(p.e.Pos, "%s", ambiguousVariant(p.choices))
+			v = p.choices[0]
+		}
+		x.settleVariant(p.e, v)
+		x.expect(p.e.Pos, p.t, x.ref(p.e))
+	}
 	for _, m := range x.matches {
 		c.checkExhaustive(m.m, m.t)
 	}
@@ -763,6 +784,9 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		}
 		return c.unknownf(e.Pos, "internal error: %s isn't a state field here", e.Name)
 	case *ir.Ref:
+		if choices, ok := c.variantChoices[e]; ok {
+			return x.chooseVariant(e, choices, want)
+		}
 		if t := x.freshOutcome(e, want); t != nil {
 			return t
 		}
@@ -1054,6 +1078,56 @@ func (c *checker) checkZones() {
 	}
 }
 
+// chooseVariant types a variant name written alone that several imported
+// modules declare: the type expected where it is written says which it is,
+// as the matched value's type does in a pattern (SPECS.md §13). When that
+// type isn't known yet, the name waits for the end of the body.
+func (x *fnCheck) chooseVariant(e *ir.Ref, choices []*ir.Variant, want typ) typ {
+	if v := pickVariant(choices, want); v != nil {
+		x.settleVariant(e, v)
+		return x.ref(e)
+	}
+	t := x.c.fresh()
+	x.top.variants = append(x.top.variants, pendingVariant{e, choices, t})
+	return t
+}
+
+// pickVariant is the one of choices whose type want is, or nil.
+func pickVariant(choices []*ir.Variant, want typ) *ir.Variant {
+	if want == nil || want == discard {
+		return nil
+	}
+	w, ok := prune(want).(*tcon)
+	if !ok || w.decl == nil {
+		return nil
+	}
+	for _, v := range choices {
+		if v.Type == w.decl {
+			return v
+		}
+	}
+	return nil
+}
+
+// settleVariant makes e name v, the variant its expected type chose.
+func (x *fnCheck) settleVariant(e *ir.Ref, v *ir.Variant) {
+	e.Decl = v
+	delete(x.c.variantChoices, e)
+	x.c.use(e.Pos, v)
+}
+
+// ambiguousVariant says that a variant name is several imported modules',
+// and nothing where it is written says which.
+func ambiguousVariant(choices []*ir.Variant) string {
+	v := choices[0]
+	var mods []string
+	for _, c := range choices {
+		mods = append(mods, c.Type.Module.Name+"."+c.Type.Name)
+	}
+	return fmt.Sprintf("%s is a variant of %s, and nothing here says which: write it where its type is expected, or with its module, as %s.%s",
+		v.Name, strings.Join(mods, " and "), v.Type.Module.Name, v.Name)
+}
+
 func (x *fnCheck) ref(e *ir.Ref) typ {
 	c := x.c
 	switch d := e.Decl.(type) {
@@ -1251,6 +1325,16 @@ func (c *checker) globalType(g *ir.Global) typ {
 func (x *fnCheck) call(e *ir.Call, want typ) typ {
 	c := x.c
 	if r, ok := e.Func.(*ir.Ref); ok {
+		if choices, ok := c.variantChoices[r]; ok {
+			// A variant with fields, called: the type expected of the
+			// call says which module's it is.
+			v := pickVariant(choices, want)
+			if v == nil {
+				c.typeErrorf(r.Pos, "%s", ambiguousVariant(choices))
+				v = choices[0]
+			}
+			x.settleVariant(r, v)
+		}
 		c.useArgs(e, r.Decl)
 		switch d := r.Decl.(type) {
 		case ir.Builtin:
@@ -3139,9 +3223,13 @@ func (x *fnCheck) bindVariant(p ir.PVariant, t typ, at ir.Pos) ir.Pattern {
 		// The variant of the matched type with that name, whichever module
 		// the name was found in.
 		found := false
+		byName := p.Variant.Type == nil // a name several imported modules declare
 		for _, v := range k.decl.Variants {
 			if v.Name == p.Variant.Name {
 				p.Variant, found = v, true
+				if byName {
+					c.use(at, v)
+				}
 			}
 		}
 		if !found && p.Variant.Name == "Uncertain" && k.uncertain {

@@ -225,8 +225,8 @@ Which one answers a call:
 main.eye:12:3: job sort: ai.generate needs a model gateway for house-model: set AI_URL to its base URL, such as http://gateway:8317/v1, or name the provider with provider:
 ```
 
-`effort:` asks the model to reason more or less before it answers: `Some(ai.LowEffort)`,
-`Some(ai.MediumEffort)` or `Some(ai.HighEffort)`. Anthropic gets it as `output_config.effort`, and
+`effort:` asks the model to reason more or less before it answers: `Some(Low)`, `Some(Medium)`
+or `Some(High)`. Anthropic gets it as `output_config.effort`, and
 OpenAI and a gateway as `reasoning_effort`; without it the provider's default holds. More effort
 costs more tokens and time.
 

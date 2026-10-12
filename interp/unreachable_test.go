@@ -96,7 +96,7 @@ import ai
 type Answer = { n: Int }
 
 job ask() -> Result(Answer, ai.AiError) {
-  ai.generate!(model: "lab-model", prompt: "three", effort: Some(ai.HighEffort))
+  ai.generate!(model: "lab-model", prompt: "three", effort: Some(High))
 }
 `
 
@@ -181,7 +181,7 @@ import ai
 type Answer = { n: Int }
 
 job ask() -> Result(Answer, ai.AiError) {
-  ai.generate!(model: "claude-sonnet-5-5", prompt: "three", effort: Some(ai.MediumEffort))
+  ai.generate!(model: "claude-sonnet-5-5", prompt: "three", effort: Some(ai.Medium))
 }
 `), io.Discard, io.Discard)
 	if got := runJob(t, in, "ask"); got != "Completed(Ok({ n: 3 }))" {

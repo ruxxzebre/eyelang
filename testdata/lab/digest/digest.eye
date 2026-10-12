@@ -129,7 +129,7 @@ job write(day: Date) -> Result(Article, DigestError) {
     model: env.get!("DIGEST_MODEL") ?? "gpt-5.6-terra",
     system: prompt,
     prompt: news.input |> toJson,
-    effort: Some(MediumEffort),  # as the TypeScript digest asks
+    effort: Some(Medium),  # as the TypeScript digest asks
   ).mapErr(WriteFailed)?
   let items = news.input.sections |> map(fn s: s.items |> size) |> sum
   if items > 0 && briefing.highlights == [] && !(briefing.sections |> any(fn s: s.stories != [])) {
