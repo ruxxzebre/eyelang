@@ -39,17 +39,17 @@ decisions; the owner decides.
 
 Recorded on 2026-10-12 (4-core Xeon, Go 1.27.2, zig 0.17.0; fastest of 5 runs, peak RSS).
 
-| Benchmark | Native ms | Go ms | Time × Go | Native MB | Go MB | Memory × Go | Interpreter ms |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| fib(37) | 455 | 96 | 4.74× | 0.16 | 2.03 | 0.08× | 7,382 |
-| mandelbrot, 1600² | 278 | 118 | 2.34× | 0.16 | 1.97 | 0.08× | 26,318 |
-| trees, depth 16 | 1,051 | 468 | 2.25× | 80.2 | 13.0 | 6.17× | 7,749 |
-| records, 30M `with` | 1,346 | 284 | 4.75× | 0.16 | 1.97 | 0.08× | 9,761 |
-| strings, 1M parts | 378 | 188 | 2.01× | 83.0 | 43.4 | 1.91× | 3,323 |
-| lists, 1M | 179 | 162 | 1.10× | 42.3 | 46.5 | 0.91× | 3,312 |
-| maps, 5M lookups | 548 | 97 | 5.67× | 1.18 | 2.53 | 0.47× | 16,824 |
-| logs, 200k lines | 383 | 263 | 1.46× | 54.7 | 59.9 | 0.91× | 1,671 |
-| lexer, 7.5 MB of Eyelang | 1,786 | 388 | 4.61× | 478.0 | 191.8 | 2.49× | 28,247 |
+| Benchmark | Native ms | Go ms | Time × Go | Native MB | Go MB | Memory × Go | Interpreter ms | Interpreter MB |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| fib(37) | 455 | 96 | 4.74× | 0.16 | 2.03 | 0.08× | 7,382 | 18.4 |
+| mandelbrot, 1600² | 278 | 118 | 2.34× | 0.16 | 1.97 | 0.08× | 26,318 | 23.5 |
+| trees, depth 16 | 1,051 | 468 | 2.25× | 80.2 | 13.0 | 6.17× | 7,749 | 50.3 |
+| records, 30M `with` | 1,346 | 284 | 4.75× | 0.16 | 1.97 | 0.08× | 9,761 | 21.1 |
+| strings, 1M parts | 378 | 188 | 2.01× | 83.0 | 43.4 | 1.91× | 3,323 | 733.7 |
+| lists, 1M | 179 | 162 | 1.10× | 42.3 | 46.5 | 0.91× | 3,312 | 131.7 |
+| maps, 5M lookups | 548 | 97 | 5.67× | 1.18 | 2.53 | 0.47× | 16,824 | 31.9 |
+| logs, 200k lines | 383 | 263 | 1.46× | 54.7 | 59.9 | 0.91× | 1,671 | 81.8 |
+| lexer, 7.5 MB of Eyelang | 1,786 | 388 | 4.61× | 478.0 | 191.8 | 2.49× | 28,247 | 1,798.8 |
 
 Native code takes 1.1–5.7× Go's time, 2.8× on the geometric mean, and uses less memory in six of
 nine (0.57× on the geometric mean). Four of those six win only on start-up: a static binary starts
@@ -57,7 +57,10 @@ at 0.16 MB and a Go program at 2 MB. That floor is real and useful, since a prog
 waits is mostly floor, but it isn't evidence about how we hold data. Trees, strings and the lexer
 hold data and use more memory than Go.
 
-The interpreter takes 4–95× native code's time. After R.6 it is in CPython's range, and the lab,
+The interpreter takes 4–95× native code's time. Its memory starts at about 18 MB, the Go runtime
+and the checked program, and grows to 734 MB on strings and 1.8 GB on the lexer, 3.8× native
+code's and 9.4× Go's there; on trees it holds less than native code does today (50 MB against 80),
+since Go's collector frees each tree soon after it is checked. After R.6 it is in CPython's range, and the lab,
 which is bound by input and output, runs its 31 tests in under 200 ms. The interpreter is not
 what limits the lab today.
 
