@@ -37,9 +37,8 @@ yet.
 - Closed tasks whose exit tests weren't met: carry-over tasks C.1, C.2, C.6 and C.7 under the
   phases (`end(ok)`, `lock!`, `all!` and `first!`, 10,000 waiting tasks, the spec's examples
   through the checker). C.3 (`cron` and the schedule policies) is done.
-- Approvals answered by id and only by the person asked (C.8, #71), from the decisions of
-  2026-10-11, deferred by the user: until then the lab answers approvals only with `eye approve`
-  and `eye decline`, and its `approving` module tells the operator how.
+- Approvals are answered by id, and only by the person asked (C.8, done 2026-10-12), so the
+  lab's approvals have buttons again. Who may publish an answer at all is open question 35.
 - Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
   not built: `World.all |> filter(…)` loads every entity. **Recommendation:** not phase 6. SQL
   saves nothing while the runner holds every entity in memory, which both stores do today (the
