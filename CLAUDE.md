@@ -128,6 +128,12 @@ scope test above and the steps below.
   lint, tests, formatting, the conformance suite, the grammar's corpus and the VS Code extension's
   tests. On macOS it skips the extension's end-to-end test, which opens a VS Code window; run
   `task vscode:e2e`, or set `VSCODE_E2E=1`, when a change touches the extension or `eye lsp`.
+- **Keep dependencies current.** Go itself (`go.mod`'s `go` line, on a supported release),
+  modules (`go list -m -u all`, then `go get -u ./... && go mod tidy`), the npm packages of
+  `editors/vscode` and `docs` (`npm outdated`), and the versions `.github/workflows` and
+  `internal/pgtest` pin (actions, golangci-lint, Task, tree-sitter-cli, Node, Postgres). Update
+  them in a commit of their own, regenerate, and run `task check` with the extension's
+  end-to-end test; a major version's changes are read before it goes in.
 - **One task, one change.** Commits and pull requests say `Closes #N` for the ROADMAP task they
   finish. The `Close issues` workflow closes it when the commit reaches `dev`, which isn't the
   default branch; check that it did, and close by hand, naming the commit, an issue it missed.
