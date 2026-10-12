@@ -58,11 +58,11 @@ func Program(dir string) (*ir.Program, []Diagnostic) {
 func (c *checker) program(path string) (*ir.Program, []Diagnostic) {
 	c.prog = &ir.Program{}
 	c.readConfig()
-	prelude := c.parse("prelude", "", []*ir.File{parseFile("<prelude>", preludeSrc)})
+	prelude := c.parse("prelude", "", []*ir.File{c.parseFile("<prelude>", preludeSrc)})
 	c.prog.Prelude = prelude.mod
 	c.prelude = prelude
 	c.loadBuiltins()
-	c.prog.Store = c.parse("runtime.store", "", []*ir.File{parseFile("<runtime store>", storeSrc)}).mod
+	c.prog.Store = c.parse("runtime.store", "", []*ir.File{c.parseFile("<runtime store>", storeSrc)}).mod
 	root := c.load(path, filepath.Join(append([]string{c.root}, strings.Split(path, ".")...)...))
 	if root == nil {
 		return c.prog, c.diags
@@ -101,14 +101,15 @@ type checker struct {
 	// imported modules declare, with the candidates, until the type
 	// expected settles each (fnCheck.chooseVariant).
 	variantChoices map[*ir.Ref][]*ir.Variant
-	overlay        map[string][]byte // unsaved files, by path
-	index   *Index                  // nil unless a tool asked for it
-	all     bool                    // load every module below root, for tools
-	names   names                   // where names are written, until types resolve them
-	dyns    []dynUse                // each dyn Trait written, checked once traits are known
-	typePos map[*ir.TypeExpr]ir.Pos // where each type as written is
-	public  map[any]bool            // declarations marked pub that have no Pub field of their own
-	opaque  map[*ir.Type]bool       // types declared `pub opaque`
+	overlay        map[string][]byte       // unsaved files, by path
+	parsed         map[string]*ir.File     // immutable syntax shared by a formatting session
+	index          *Index                  // nil unless a tool asked for it
+	all            bool                    // load every module below root, for tools
+	names          names                   // where names are written, until types resolve them
+	dyns           []dynUse                // each dyn Trait written, checked once traits are known
+	typePos        map[*ir.TypeExpr]ir.Pos // where each type as written is
+	public         map[any]bool            // declarations marked pub that have no Pub field of their own
+	opaque         map[*ir.Type]bool       // types declared `pub opaque`
 
 	// importRoots are the directories imports are looked for below: the
 	// program's own, then those its eye.toml lists in modules.
@@ -172,7 +173,7 @@ func (c *checker) load(path, dir string) *module {
 			c.errorf(ir.Pos{}, "%v", err)
 			continue
 		}
-		files = append(files, parseFile(p, src))
+		files = append(files, c.parseFile(p, src))
 	}
 	// A file in the overlay that isn't on disk yet, such as an editor's new
 	// buffer or the REPL's session, is part of its directory's module too.
@@ -186,7 +187,7 @@ func (c *checker) load(path, dir string) *module {
 	}
 	sort.Strings(unsaved)
 	for _, p := range unsaved {
-		files = append(files, parseFile(p, c.overlay[p]))
+		files = append(files, c.parseFile(p, c.overlay[p]))
 	}
 	if len(files) == 0 {
 		c.errorf(ir.Pos{}, "%s has no .eye files", dir)
@@ -275,7 +276,7 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 	}
 	imp := c.modules[path]
 	if src, err := std.ReadFile("std/" + path + ".eye"); imp == nil && err == nil {
-		imp = c.parse(path, "", []*ir.File{parseFile("<std "+path+">", src)})
+		imp = c.parse(path, "", []*ir.File{c.parseFile("<std "+path+">", src)})
 	}
 	if imp == nil {
 		// The first root that has the module's directory wins.

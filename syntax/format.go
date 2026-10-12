@@ -27,11 +27,16 @@ import (
 // the tree of src, apart from separators and trailing commas. A file with
 // syntax errors isn't formatted.
 func Format(src []byte) ([]byte, error) {
-	f := Parse(src)
+	return FormatFile(Parse(src))
+}
+
+// FormatFile formats a parsed source file without parsing it again. It does
+// not modify the file or its tree; the source and tree must still match.
+func FormatFile(f *File) ([]byte, error) {
 	if len(f.Diagnostics) > 0 {
 		return nil, errors.New("the file has syntax errors")
 	}
-	fm := &formatter{src: src}
+	fm := &formatter{src: f.Src}
 	fm.collect(f.Root, nil)
 	fm.plan(f.Root)
 	return fm.print(), nil

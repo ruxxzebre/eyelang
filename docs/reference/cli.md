@@ -44,6 +44,7 @@ usage: eye fmt [--check] [--syntax-only] [file.eye | directory]...
 
 Formats files in place; directories are searched for .eye files. With no
 paths, formats standard input to standard output.
+Recursive searches skip hidden directories and node_modules, unless named explicitly.
 
 A directory's files are also checked as programs, and each public function's
 uses clause is written from the effects its body has. A file named alone is

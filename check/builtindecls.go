@@ -62,7 +62,7 @@ type builtinDecls struct {
 // ones the checker knows by name, such as String and List, and the prelude's;
 // its own `extern type` lines only document them.
 func (c *checker) loadBuiltins() {
-	f := parseFile("<builtin>", ir.BuiltinSource)
+	f := c.parseFile("<builtin>", ir.BuiltinSource)
 	m := &module{
 		mod: &ir.Module{Path: "builtin", Name: "builtin", Files: []*ir.File{f},
 			Types: map[string]*ir.Type{}, Funcs: map[string]*ir.Func{}},

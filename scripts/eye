@@ -1,8 +1,49 @@
 #!/bin/sh
-# Runs eye built from this checkout. go build does work only when the sources
-# have changed; otherwise it takes about a tenth of a second. The VS Code
-# extension runs bin/eye and restarts its language server when this rebuilds it.
+# Runs eye built from this checkout. Unchanged sources use the existing
+# binary; changed sources or build settings run go build. The VS Code
+# extension runs bin/eye and restarts its language server when it rebuilds.
 set -e
 root=$(cd "$(dirname "$0")/.." && pwd)
-(cd "$root" && go build -o bin/eye ./cmd/eye)
+stamp="$root/bin/.eye-build-stamp"
+key="$root/bin/.eye-build-key"
+build_key=$(
+  cd "$root"
+  # GOGCCFLAGS contains a fresh temporary path on every call; use the
+  # effective build settings instead of that generated compiler command.
+  go env -json GOOS GOARCH CGO_ENABLED GOFLAGS GOEXPERIMENT GOTOOLCHAIN \
+    GOVERSION GOROOT GOWORK GO111MODULE GOMOD GOENV GOCACHEPROG GOFIPS140 \
+    GOPATH GOMODCACHE CC CXX PKG_CONFIG \
+    CGO_CFLAGS CGO_CPPFLAGS CGO_CXXFLAGS CGO_FFLAGS CGO_LDFLAGS \
+    GOAMD64 GOARM GOARM64 GO386 GORISCV64 GOMIPS GOMIPS64 GOPPC64 GOWASM
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git rev-parse HEAD
+    git status --porcelain
+  fi
+)
+rebuild=false
+if [ ! -x "$root/bin/eye" ] || [ ! -f "$stamp" ] || [ ! -f "$key" ]; then
+  rebuild=true
+elif [ "$build_key" != "$(cat "$key")" ]; then
+  rebuild=true
+elif ! printf '%s\n' "$build_key" | grep -Eq '"GOWORK": "(off)?"' || grep -Eq '^[[:space:]]*replace[[:space:](]' "$root/go.mod"; then
+  # External workspace/replacement sources need Go's dependency checks.
+  rebuild=true
+else
+  # Directory timestamps also catch removed source files.
+  changed=$(find "$root" \( -type d ! -path "$root" \( -name '.*' -o -name node_modules -o -name bin \) \) -prune -o ! -name .DS_Store -newer "$stamp" -print -quit) || rebuild=true
+  if [ -n "$changed" ]; then
+    rebuild=true
+  fi
+fi
+if [ "$rebuild" = true ]; then
+  mkdir -p "$root/bin"
+  temp_stamp=$(mktemp "$root/bin/.eye-build-stamp.XXXXXX")
+  temp_key=$(mktemp "$root/bin/.eye-build-key.XXXXXX")
+  trap 'rm -f "$temp_stamp" "$temp_key"' EXIT HUP INT TERM
+  printf '%s' "$build_key" > "$temp_key"
+  (cd "$root" && go build -o bin/eye ./cmd/eye)
+  mv "$temp_stamp" "$stamp"
+  mv "$temp_key" "$key"
+  trap - EXIT HUP INT TERM
+fi
 exec "$root/bin/eye" "$@"

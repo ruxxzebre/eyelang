@@ -31,6 +31,7 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Formats files in place; directories are searched for .eye files. With no")
 		fmt.Fprintln(stderr, "paths, formats standard input to standard output.")
+		fmt.Fprintln(stderr, "Recursive searches skip hidden directories and node_modules, unless named explicitly.")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "A directory's files are also checked as programs, and each public function's")
 		fmt.Fprintln(stderr, "uses clause is written from the effects its body has. A file named alone is")
@@ -77,9 +78,10 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 	}
 	code := 0
 	var sigs map[string][]check.Signature
+	var session check.FormatSession
 	if !*syntaxOnly {
 		var ok bool
-		if sigs, ok = signatures(inDirs, stderr); !ok {
+		if sigs, ok = signatures(inDirs, &session, stderr); !ok {
 			code = exitErrors
 		}
 	}
@@ -94,7 +96,11 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 		if s := sigs[absPath(path)]; len(s) > 0 {
 			in = writeUses(path, src, s, stderr)
 		}
-		out, ok := format(path, in, stderr)
+		parsed := session.File(absPath(path))
+		if parsed == nil || !bytes.Equal(in, parsed.Src) {
+			parsed = syntax.Parse(in)
+		}
+		out, ok := formatParsed(path, parsed, stderr)
 		if !ok {
 			code = exitErrors
 			continue
@@ -117,7 +123,10 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 
 // format formats src, reporting syntax errors as path:line:column.
 func format(path string, src []byte, stderr io.Writer) ([]byte, bool) {
-	f := syntax.Parse(src)
+	return formatParsed(path, syntax.Parse(src), stderr)
+}
+
+func formatParsed(path string, f *syntax.File, stderr io.Writer) ([]byte, bool) {
 	if len(f.Diagnostics) > 0 {
 		for _, d := range f.Diagnostics {
 			pos := f.Lines.Position(d.Span.Start)
@@ -125,7 +134,7 @@ func format(path string, src []byte, stderr io.Writer) ([]byte, bool) {
 		}
 		return nil, false
 	}
-	out, err := syntax.Format(src)
+	out, err := syntax.FormatFile(f)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", path, err)
 		return nil, false
@@ -149,6 +158,9 @@ func eyeFiles(paths []string) (files, inDirs []string, err error) {
 			if err != nil {
 				return err
 			}
+			if path != p && d.IsDir() && (strings.HasPrefix(d.Name(), ".") || d.Name() == "node_modules") {
+				return filepath.SkipDir
+			}
 			if !d.IsDir() && strings.HasSuffix(path, ".eye") {
 				files = append(files, path)
 				inDirs = append(inDirs, path)
@@ -166,7 +178,7 @@ func eyeFiles(paths []string) (files, inDirs []string, err error) {
 // returns by absolute path the public functions whose uses clause doesn't
 // say what their bodies do. It reports a program with other errors, whose
 // clauses it leaves as written, and returns false.
-func signatures(files []string, stderr io.Writer) (map[string][]check.Signature, bool) {
+func signatures(files []string, session *check.FormatSession, stderr io.Writer) (map[string][]check.Signature, bool) {
 	out := map[string][]check.Signature{}
 	checked := map[string]bool{} // module directories
 	seen := map[string]bool{}    // functions, by file and offset: a module imported by two checked ones comes back twice
@@ -177,7 +189,7 @@ func signatures(files []string, stderr io.Writer) (map[string][]check.Signature,
 			continue
 		}
 		root := check.Root(dir)
-		res := check.Check(root, check.Options{Module: dir})
+		res := session.Check(root, dir)
 		checked[dir] = true
 		for _, m := range res.Program.Modules {
 			if m.Dir != "" {

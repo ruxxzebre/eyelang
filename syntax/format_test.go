@@ -53,12 +53,23 @@ func TestFormatKeepsMeaning(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			original := Parse(src)
+			opts := SExprOptions{Fields: true, Tokens: true, Text: true}
+			tree := original.Root.SExpr(src, opts)
+			for range 2 {
+				reused, err := FormatFile(original)
+				if err != nil || string(reused) != string(out) {
+					t.Fatalf("formatting a parsed file differs: %v\n%s", err, reused)
+				}
+				if original.Root.SExpr(src, opts) != tree {
+					t.Fatal("formatting modified the original tree")
+				}
+			}
 			f := Parse(out)
 			if len(f.Diagnostics) > 0 {
 				t.Fatalf("the formatted file doesn't parse: %v\n%s", f.Diagnostics, out)
 			}
-			opts := SExprOptions{Fields: true, Tokens: true, Text: true}
-			before := meaning(Parse(src).Root.SExpr(src, opts))
+			before := meaning(tree)
 			after := meaning(f.Root.SExpr(out, opts))
 			if before != after {
 				t.Errorf("formatting changed the tree\n%s\nbefore: %s\n after: %s\n%s", out, before, after, firstDifference(before, after))
@@ -113,6 +124,9 @@ func TestFormatGolden(t *testing.T) {
 func TestFormatRefusesErrors(t *testing.T) {
 	if _, err := Format([]byte("fn f( {")); err == nil {
 		t.Error("Format accepted a file with syntax errors")
+	}
+	if _, err := FormatFile(Parse([]byte("fn f( {"))); err == nil {
+		t.Error("FormatFile accepted a file with syntax errors")
 	}
 }
 
