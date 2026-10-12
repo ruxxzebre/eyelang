@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs the zig this repository pins (tools/zig), fetching it into the user's
+# cache the first time.
+set -e
+root=$(cd "$(dirname "$0")/.." && pwd)
+(cd "$root" && go build -o bin/zig-pinned ./tools/zig)
+exec "$root/bin/zig-pinned" "$@"

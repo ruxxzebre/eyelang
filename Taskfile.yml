@@ -169,6 +169,11 @@ tasks:
       # ROADMAP.md's What's next was checked since the last release, and names no closed issue.
       - go run ./tools/next --check
 
+  zig:
+    desc: Run the zig this repository pins (tools/zig), fetching it once into the user's cache - task zig -- cc …
+    cmds:
+      - go run ./tools/zig {{.CLI_ARGS}}
+
   next:
     desc: Say what's next - the last release, ROADMAP.md's priorities, open issues, the gaps in status.md, and who works on what (--all lists every gap)
     cmds:

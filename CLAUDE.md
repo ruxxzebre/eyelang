@@ -131,7 +131,9 @@ scope test above and the steps below.
 - **Keep dependencies current.** Go itself (`go.mod`'s `go` line, on a supported release),
   modules (`go list -m -u all`, then `go get -u ./... && go mod tidy`), the npm packages of
   `editors/vscode` and `docs` (`npm outdated`), and the versions `.github/workflows` and
-  `internal/pgtest` pin (actions, golangci-lint, Task, tree-sitter-cli, Node, Postgres). Update
+  `internal/pgtest` pin (actions, golangci-lint, Task, tree-sitter-cli, Node, Postgres), and
+  zig, whose version and checksums `tools/zig` pins (C is built only with `scripts/zig` or
+  `task zig -- …`, never a zig from PATH). Update
   them in a commit of their own, regenerate, and run `task check` with the extension's
   end-to-end test; a major version's changes are read before it goes in.
 - **One task, one change.** Commits and pull requests say `Closes #N` for the ROADMAP task they
@@ -161,6 +163,7 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `internal/lsp/` | The language server behind `eye lsp` |
 | `internal/specdoc/`, `tools/specexamples/` | Extract SPECS.md's examples into `testdata/syntax` |
 | `tools/next/` | `task next` and `task claim`: what's next, and who works on what |
+| `tools/zig/` | The pinned zig: `scripts/zig` and `task zig -- …` fetch it once, check its checksum and run it |
 | `tools/spechtml/`, `internal/highlight/` | Render SPECS.md as one HTML page (`task spec`), highlighted by the parser |
 | `internal/apidoc/` | The API reference `eye doc` writes from `##` comments |
 | `docs/` | The docs site (VitePress): guides and tutorial written by hand, reference pages generated; `task docs` builds it, `task docs-dev` serves it |
