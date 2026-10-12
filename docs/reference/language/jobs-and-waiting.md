@@ -72,8 +72,17 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   implements it; the runtime, written in Go, calls the store through a Go interface with the
   same methods. It is what tests, the REPL and
   embedders use; on its own it doesn't survive a restart. For one machine, the journal (question 9)
-  appends each commit to a file and syncs it before the commit counts, which is what `eye run`
-  uses by default. The Postgres store (`eye run --store postgres://…`, or `$EYE_STORE`) keeps the
+  appends each commit to a file, which is what `eye run` uses by default. It syncs the file
+  before anything outside the runner can learn of a commit: before the runner calls a service or
+  an `extern fn`, prints, answers a request, takes an answer from its inbox, or waits. One fsync
+  then covers every commit made since the last (group commit), so `main` starting thousands of
+  runs, or a burst of wakes, costs one sync rather than one each; a crash can lose only commits
+  nothing outside had seen, which the next start makes again (`main` starts runs by key). A
+  run's record is written as JSON, and a run whose trail (the 20 steps `eye runs` keeps) moved on
+  is written with only the steps it gained. **An existing journal keeps working:** one written
+  before 2026-10-12, which held each run's record as base64 and whole in every commit, is read
+  as it is and written in the new form from the snapshot opening it writes, so a deployed
+  program carries on across the upgrade. The Postgres store (`eye run --store postgres://…`, or `$EYE_STORE`) keeps the
   same state in a database, so it survives the loss of the machine: each commit is one SQL
   transaction, written before it counts, and a commit made while the database is down or not
   answering changes nothing and is tried again, so the runner carries on once the database is back.

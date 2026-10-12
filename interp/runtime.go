@@ -70,6 +70,9 @@ type runtime struct {
 	// once the runner has stopped (listen.go).
 	kick    chan struct{}
 	stopped bool
+	// journal is the store when it is a journal, whose commits wait to be
+	// synced until the runner does something outside (durable).
+	journal *Journal
 }
 
 // event is a published event, saved as bytes.
@@ -100,9 +103,12 @@ func newRuntime(in *Interp) *runtime {
 // store written in Eyelang here.
 func (rt *runtime) useStore(s Store) {
 	var mem *memory
+	rt.journal = nil
 	switch d := s.(type) {
 	case *Journal:
 		mem = &d.memory
+		d.syncLater()
+		rt.journal = d
 	case *Postgres:
 		mem = &d.memory
 	}
@@ -115,6 +121,22 @@ func (rt *runtime) useStore(s Store) {
 	}
 	rt.index = indexStore(s)
 	rt.store = rt.index
+}
+
+// durable syncs the commits the journal holds unsynced, with one fsync for
+// all of them. The runtime calls it before the runner does anything that
+// can be seen outside it: before it calls a service or an extern fn, prints,
+// answers a request, removes an answer from the inbox, or waits. So nothing
+// outside learns of a commit before it is on disk, and commits made one
+// after another in between, such as main starting many runs, share a sync.
+// It panics with a fatal *CommitError if the sync fails.
+func (rt *runtime) durable() {
+	if rt.journal == nil {
+		return
+	}
+	if err := rt.journal.Sync(); err != nil {
+		panic(err)
+	}
 }
 
 // ---------------------------------------------------------------- entities
@@ -610,9 +632,7 @@ type jobRun struct {
 	Args       [][]byte
 	Checkpoint *checkpoint `json:",omitempty"`
 	Log        []step      // the steps since the checkpoint
-	// Trail is the last few steps a checkpoint dropped, kept for eye runs.
-	Trail  []step `json:",omitempty"`
-	Status string // ready, sleeping, done, failed
+	Status     string      // ready, sleeping, done, failed
 	WakeAt int64  `json:",omitempty"` // Unix nanoseconds, while sleeping
 	// WaitEvent is the event a sleeping run waits for in next!; one wakes it.
 	WaitEvent string `json:",omitempty"`
@@ -649,7 +669,11 @@ type jobRun struct {
 	// Locks are the locks the run holds inside lock!, which end it as
 	// Failed(LockExpired) if it is still waiting there when they run out.
 	Locks []heldLock `json:",omitempty"`
-	cursor     int
+	// Trail is the last few steps a checkpoint dropped, kept for eye runs.
+	// It comes last, where the journal puts it back when it writes only the
+	// steps a trail gained (journal_line.go).
+	Trail  []step `json:",omitempty"`
+	cursor int
 }
 
 // step is a durable step: a recorded result, a timer still running, or a

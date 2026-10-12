@@ -75,6 +75,13 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 			code = 1
 		}
 	}()
+	defer func() {
+		// Whatever was committed last is synced before eye run ends.
+		if err := guard(in.rt.durable); err != nil {
+			fmt.Fprintf(stderr, "eye run: %v\n", err)
+			code = 1
+		}
+	}()
 	if err := in.rt.checkVersions(); err != nil {
 		fmt.Fprintf(stderr, "eye run: %v\n", err)
 		return 1
@@ -186,6 +193,10 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, in
 		})
 		if err == nil && rt.commitErr != nil {
 			err = rt.commitErr
+		}
+		// What was committed is synced before the runner waits.
+		if serr := guard(rt.durable); serr != nil {
+			err = serr
 		}
 		var wait time.Duration
 		if ce, ok := err.(*CommitError); ok && ce.Fatal {

@@ -231,9 +231,16 @@ There is no command to restart a failed run.
 
 The journal is one file that only `eye run` writes:
 
-- **Each change is on disk before it counts.** Each commit, such as a step with the entity changes
-  it made, is one line, appended and synced. A last line cut short by a crash is dropped when the journal is read,
-  since the change it held was never acknowledged.
+- **Each change is on disk before anyone can see it.** Each commit, such as a step with the
+  entity changes it made, is one line, appended at once. The journal is synced before `eye run`
+  does anything outside: before it calls a service, runs a program, writes a file, prints,
+  answers a request, or waits. One sync covers every commit made since the last, so `main`
+  starting 5,000 runs takes a third of a second, not four. A last line cut short by a crash is
+  dropped when the journal is read, and so are zeros a crash left where commits never reached
+  the disk, with what follows: nothing outside had seen those changes.
+- **Each line is small.** A run's record is written as JSON, and a run whose last 20 steps (what
+  `eye runs` shows) moved on is written with only the steps they gained. A journal written by an
+  `eye` before 2026-10-12 opens as before and is written in this form from then on.
 - **It grows with the state, not the history.** When `eye run` opens the journal, and whenever it
   grows past four times the live data (and past 1 MiB), it is rewritten as one snapshot, through
   a new file renamed over the old one. Above, 7.2 KiB on disk with 1.8 KiB live became 1.8 KiB

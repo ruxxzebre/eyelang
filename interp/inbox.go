@@ -87,6 +87,7 @@ func (rt *runtime) readInbox(dir string, report func(string)) {
 			}
 			rt.answer(req.id, a.Approved, by)
 		}
+		rt.durable()        // the answer is gone once its file is
 		_ = os.Remove(path) // published: a commit that failed would have panicked before this
 	}
 }

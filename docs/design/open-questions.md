@@ -29,7 +29,8 @@ title: "Open questions"
 9. **Durability without a database.** **Decided** (see the decision log, rows "Storage" and "Long
    runs"): the journal. Each commit (entity
    writes, runs, events, schedule firings, event keys seen, commands whose reply was lost) is one
-   line of JSON appended to `.eye/journal` and synced before it counts. A commit that can't be
+   line of JSON appended to `.eye/journal`, and synced, in a group with the commits before it,
+   before anything outside the runner can see it ([section 15](/reference/language/jobs-and-waiting)). A commit that can't be
    written, on a full disk or otherwise, changes nothing: the journal is cut back, memory isn't
    touched, and the run stays at its last checkpoint and is tried again later. The journal is
    rewritten as one snapshot when it is opened and when it grows past four times its live data,

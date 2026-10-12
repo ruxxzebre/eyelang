@@ -34,6 +34,7 @@ func builtinTable() map[string]*BuiltinFn {
 		for _, a := range args {
 			parts = append(parts, in.display(a))
 		}
+		in.rt.durable() // a person may act on what it says
 		fmt.Fprintln(in.out, strings.Join(parts, " "))
 		return ir.Unit{}
 	})

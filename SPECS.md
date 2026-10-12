@@ -163,6 +163,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Loading C | **The interpreter loads `@library` functions with purego** (github.com/ebitengine/purego), which calls the system's `dlopen` and then C functions from Go without cgo; the loader is `internal/ffi`, which the Go runner can also load compiled programs with. **The released `eye` for Linux leaves the loader out**, since it makes a binary dynamically linked; `go build -tags clib` puts it in, and on macOS and Windows it is always in (section 18). Decided 2026-10-12 | Linux has no system call that loads a library: `dlopen` belongs to the C library, so the choice was a loader of our own, which would also have to start libc for each library it loads, or the system's. The lab runs `eye` on `scratch` images, which have no dynamic linker, so the release must stay static |
 | Host functions | **A `@host` function is any Go function whose types match its declaration**, checked when it is registered: `Int` is a Go `int`, `Result(T, String)` is `(T, error)`, and an `extern type` is any Go pointer, struct, map, channel, function or interface type (section 18). Decided 2026-10-12 | The embedding program writes ordinary Go, and a mismatch is an error at `Register` that names the parameter, not a wrong value at a call. Go's `int` and `error` are what Go code already has |
 | Long runs | **A run's saved state is its live variables, not its history.** The interpreter keeps a checkpoint at each statement of a job's body and replays only the steps since (from 2026-10-11); compiled code saves frames at each `!` from v0.4. The language gets no `continue`-as-new | A run that never ends, such as the lab's train watcher, costs the same on its tenth day as on its first, with no new syntax (open question 9) |
+| Journal syncs | **The journal syncs before the runner does anything outside, not after each commit** (group commit): one fsync covers every commit since the last. Run records are JSON in the line, a trail that moved on is written as the steps it gained, and a journal written before 2026-10-12 is read as it is and written in the new form (section 15) | Nothing outside can tell the difference, since a crash loses only commits no one saw, and `main` starting 5,000 runs went from 3.9 s to 0.36 s; a looping job's commit from 1.9 KB to 0.45 KB. Reading the old form keeps the deployed digest running across the upgrade, where refusing it would have meant `--fresh` |
 | Job code changes | **A paused run resumes only at a resume point that still exists with the same live variables**: in the interpreter, the same statement of the job with the same typed code and as many variables. `eye run` refuses to start otherwise, as it does for entity rows it can't migrate, and names the job and its runs. Replaying the steps since a checkpoint compares each recorded step's call with the call it replays and faults the run on a difference | A code change under a paused run is an error with a message, not a wrong value found later; the old job keeps its name until its runs finish, and the new code takes a new one. Finishing old runs on old code is rejected, since entities migrate forward and old code would read new state (open question 4) |
 | Typed choices | **A type whose variants have no fields gets `T.variants()` and `T.parse(s)`, derived**: every variant in order, and `Some` of the variant named `s`, else `None` (section 11) | A person's choice, such as a button, is matched as a variant, so a misspelt or forgotten choice fails to compile, and the buttons come from the type the match uses. No syntax: they are calls on a type, as `Lexer.new` is (open question 15) |
 | Module roots | **`eye.toml` may list `modules`, more directories to find imports in**, searched after the program's own directory, in order (section 13) | A program deployed alone, such as the lab's digest, names the lab's modules in its `eye.toml` instead of reaching them through symbolic links that break and must list every module imported. From the lab: `deploy/digest` |
@@ -1430,8 +1431,17 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   implements it; the runtime, written in Go, calls the store through a Go interface with the
   same methods. It is what tests, the REPL and
   embedders use; on its own it doesn't survive a restart. For one machine, the journal (question 9)
-  appends each commit to a file and syncs it before the commit counts, which is what `eye run`
-  uses by default. The Postgres store (`eye run --store postgres://…`, or `$EYE_STORE`) keeps the
+  appends each commit to a file, which is what `eye run` uses by default. It syncs the file
+  before anything outside the runner can learn of a commit: before the runner calls a service or
+  an `extern fn`, prints, answers a request, takes an answer from its inbox, or waits. One fsync
+  then covers every commit made since the last (group commit), so `main` starting thousands of
+  runs, or a burst of wakes, costs one sync rather than one each; a crash can lose only commits
+  nothing outside had seen, which the next start makes again (`main` starts runs by key). A
+  run's record is written as JSON, and a run whose trail (the 20 steps `eye runs` keeps) moved on
+  is written with only the steps it gained. **An existing journal keeps working:** one written
+  before 2026-10-12, which held each run's record as base64 and whole in every commit, is read
+  as it is and written in the new form from the snapshot opening it writes, so a deployed
+  program carries on across the upgrade. The Postgres store (`eye run --store postgres://…`, or `$EYE_STORE`) keeps the
   same state in a database, so it survives the loss of the machine: each commit is one SQL
   transaction, written before it counts, and a commit made while the database is down or not
   answering changes nothing and is tried again, so the runner carries on once the database is back.
@@ -2659,7 +2669,8 @@ operator. All binary operators associate to the left except `??`, which associat
 9. **Durability without a database.** **Decided** (see the decision log, rows "Storage" and "Long
    runs"): the journal. Each commit (entity
    writes, runs, events, schedule firings, event keys seen, commands whose reply was lost) is one
-   line of JSON appended to `.eye/journal` and synced before it counts. A commit that can't be
+   line of JSON appended to `.eye/journal`, and synced, in a group with the commits before it,
+   before anything outside the runner can see it (section 15). A commit that can't be
    written, on a full disk or otherwise, changes nothing: the journal is cut back, memory isn't
    touched, and the run stays at its last checkpoint and is tried again later. The journal is
    rewritten as one snapshot when it is opened and when it grows past four times its live data,

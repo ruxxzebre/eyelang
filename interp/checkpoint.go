@@ -44,7 +44,7 @@ type checkpoint struct {
 	// Steps is how many steps the run took before it, and Spent what their
 	// model calls spent, which counts against the job's @budget.
 	Steps int   `json:",omitempty"`
-	Spent spend `json:",omitempty"`
+	Spent spend `json:",omitzero"`
 }
 
 // pathElem is one step on the path from a job's body to a statement: the

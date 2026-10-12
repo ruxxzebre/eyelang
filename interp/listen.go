@@ -248,6 +248,16 @@ func (in *Interp) handler(l *listener) http.Handler {
 			writeError(w, http.StatusServiceUnavailable, "the program is stopping")
 			return
 		}
+		// The reply waits until what the request committed is on disk.
+		// The lock is free meanwhile, so requests answered together share
+		// one sync.
+		if j := in.rt.journal; j != nil {
+			if err := j.Sync(); err != nil {
+				fmt.Fprintf(in.log, "eye run: %s.%s couldn't be saved, answered 503: %v\n", contractName(l.ct), rt.op.Name, err)
+				writeError(w, http.StatusServiceUnavailable, "the request couldn't be saved: "+err.Error())
+				return
+			}
+		}
 		select {
 		case in.rt.kick <- struct{}{}: // the runner runs the jobs it started
 		default:

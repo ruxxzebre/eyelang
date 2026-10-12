@@ -539,7 +539,7 @@ They come before 7.5. Like the carry-overs, they have no phase issue.
 | R.2 Waking waiting runs is O(log n): a timer heap, an index by event, no event copy per commit (done) | [#102](https://github.com/ruxxzebre/eyelang/issues/102) |
 | R.3 Replacing a map key's value and writing an entity are O(log n) (done) | [#103](https://github.com/ruxxzebre/eyelang/issues/103) |
 | R.4 Building a string with `+=` is amortised O(1) (done) | [#104](https://github.com/ruxxzebre/eyelang/issues/104) |
-| R.5 The journal: raw JSON records, the trail out of every commit, grouped commits | [#105](https://github.com/ruxxzebre/eyelang/issues/105) |
+| R.5 The journal: raw JSON records, the trail out of every commit, grouped commits (done) | [#105](https://github.com/ruxxzebre/eyelang/issues/105) |
 | R.6 The interpreter's call path: 2–3× on calls and records | [#106](https://github.com/ruxxzebre/eyelang/issues/106) |
 | R.7 A waiting run's record leaves RAM | [#107](https://github.com/ruxxzebre/eyelang/issues/107) |
 

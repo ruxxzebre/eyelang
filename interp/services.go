@@ -209,6 +209,7 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		return u
 	}
 	httpErr := httpErrorType(op.Return)
+	rt.durable() // the service sees the call
 	for try := 0; ; try++ {
 		status, reply, err := in.doRequest(op.HTTP.Method, target, headers, body)
 		retry := false
@@ -409,6 +410,7 @@ func (in *Interp) callHost(fn *ir.Func, args []argVal, at ir.Pos) Value {
 	if err != nil {
 		in.faultf(at, "%v", err)
 	}
+	in.rt.durable() // what it does may be seen outside
 	fr := &frame{fn: fn, slots: make([]Value, fn.Slots)}
 	in.bind(fn, fr, args, at)
 	params := map[string]Value{}
