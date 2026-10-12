@@ -166,6 +166,8 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `tools/zig/` | The pinned zig: `scripts/zig` and `task zig -- …` fetch it once, check its checksum and run it |
 | `tools/spechtml/`, `internal/highlight/` | Render SPECS.md as one HTML page (`task spec`), highlighted by the parser |
 | `internal/apidoc/` | The API reference `eye doc` writes from `##` comments |
+| `internal/wire/` | How a contract's values and operations go over HTTP: the rules the interpreter and the generators share |
+| `internal/codegen/` | `eye gen go` and `eye gen ts`: types, clients and server stubs from contracts; golden files in `testdata/` |
 | `docs/` | The docs site (VitePress): guides and tutorial written by hand, reference pages generated; `task docs` builds it, `task docs-dev` serves it |
 | `tools/specpages/` | SPECS.md as the site's language reference (`docs/reference/language`) and design pages (`docs/design`) |
 | `tools/clidoc/` | `eye help` as the site's command reference, `docs/reference/cli.md` |

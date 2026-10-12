@@ -13,7 +13,7 @@ title: The eye command
 | [`eye parse`](#parse) | print the syntax tree of files |
 | [`eye fmt`](#fmt) | format source files |
 | [`eye doc`](#doc) | write the API reference as Markdown |
-| [`eye gen`](#gen) | write build output from a program's contracts: network policy |
+| [`eye gen`](#gen) | write build output from a program's contracts: network policy, Go and TypeScript |
 | [`eye check`](#check) | report errors in a program: syntax, names, types and effects |
 | [`eye run`](#run) | run a program: main, then its jobs, kept in a journal across restarts |
 | [`eye runs`](#runs) | list a program's job runs: status, what each waits for, and steps |
@@ -75,6 +75,8 @@ must check; with no directory, it is the program in the current directory.
 
 targets:
   policy   Kubernetes network policy: which module may reach which service on which port
+  go       Go types, client and server stub for each contract
+  ts       TypeScript types, client and server stub for each contract
 
 usage: eye gen policy [--namespace name] [program-directory]
 
@@ -94,6 +96,52 @@ so the policies of programs that call one service add up. For example:
 
   -namespace namespace
     	the Kubernetes namespace the policies go in, such as homelab; without it they have none, and kubectl apply -n decides
+
+usage: eye gen go [--module name] [--out directory] [--package name] [program-directory]
+
+Writes a Go package for a module's contracts: their types, which marshal to
+Eyelang's one JSON shape; for each contract a client, NotifyClient for
+Notify, that calls its operations over @http; and a server stub, the
+NotifyService interface to implement and NewNotifyHandler, an http.Handler
+that routes requests to it the way eye run serves the contract. A command's
+lost reply is an *Uncertain error, and a @fresh command's outcomes are
+ErrStale and ErrExpired.
+
+Operations without @http are left out of the client and the stub. The output
+is a build artifact, never committed. Without --out, one module's file goes
+to standard output; with it, each module with contracts gets a file, such as
+notify/notify.go. For example:
+
+  eye gen go --module notify testdata/lab > notify.go
+
+  -module module
+    	the module whose contracts to write, by import path or name, such as notify; without it, the program's only module with contracts
+  -out directory
+    	a directory to write a file for each module with contracts into, instead of printing one
+  -package name
+    	the Go package's name; the module's name without it
+
+usage: eye gen ts [--module name] [--out directory] [program-directory]
+
+Writes a TypeScript module for a module's contracts: their types as the JSON
+they are on the wire, a variant type as a union discriminated on "kind"; for
+each contract a client class, NotifyClient for Notify, that calls its
+operations over @http; and a server stub, the NotifyService interface to
+implement and notifyHandler, a Fetch API handler from Request to Response
+that routes requests to it the way eye run serves the contract. It compiles
+with tsc --strict for ES2022 with the DOM library's fetch types.
+
+Operations without @http are left out of the client and the stub. The output
+is a build artifact, never committed. Without --out, one module's file goes
+to standard output; with it, each module with contracts gets a file, such as
+notify.ts. For example:
+
+  eye gen ts --module notify testdata/lab > notify.ts
+
+  -module module
+    	the module whose contracts to write, by import path or name, such as notify; without it, the program's only module with contracts
+  -out directory
+    	a directory to write a file for each module with contracts into, instead of printing one
 ```
 
 ## eye check {#check}

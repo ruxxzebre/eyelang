@@ -335,5 +335,59 @@ type Delivery =
   `recordings/http.json`: `"contract": "http"`, and an exchange per URL, with `"op": "get"`, the
   URL as its `"key"` and `http.get`'s result (`{ "kind": "Ok", "value": { "status": 200, … } }`).
   An exchange without a key answers every other URL; a URL nothing answers fails the test.
-- **Generated code for other languages** (types, clients and server stubs for Go, TypeScript, Rust
-  and Python) is a build output, never committed.
+- **Generated code for other languages.** `eye gen go DIR` and `eye gen ts DIR` write, for each
+  module that declares contracts, its types, a client and a server stub: a Go package, or a
+  TypeScript module. Like the network policy, the output is a build artifact, never committed.
+  Rust and Python may follow. Both read the same rules as the interpreter, so a generated client,
+  a generated stub and `eye run` send and read the same requests.
+
+  ```sh
+  eye gen ts --module notify testdata/lab > notify.ts
+  eye gen go --out gen testdata/lab   # gen/notify/notify.go, gen/miniflux/miniflux.go, …
+  ```
+
+  - The types are the one JSON shape above, with their `##` comments. TypeScript's describe the
+    JSON itself: a record is an interface with the names on the wire (`published_at`), a variant
+    type is a union discriminated on `"kind"`, a type of fieldless variants a union of strings, a
+    wrapper its value's type, and `Option(T)` is `T | null`. Go's marshal to it: a struct for each
+    record and each variant, an interface for a variant type (`Delivery`, which `Accepted`,
+    `Pending` and `Refused` implement), a string type with constants for fieldless variants, `*T`
+    for an `Option`, `time.Time` for an `Instant`, and `Duration`, in milliseconds on the wire.
+    Go names take Go's capitals: `MessageId` is `MessageID`.
+
+    ```ts
+    export type Delivery = Accepted | Pending | Refused;
+
+    export interface Accepted {
+      kind: "Accepted";
+      id: MessageId;
+      deliveries: number;
+      deduped: boolean;
+    }
+    ```
+
+  - Every type the contracts' operations and events use is written, from whichever module
+    declares it. When two things would have one name, both take a longer one: a type puts its
+    module's name in front, and a variant its type's, as NetBird's record `Pending` and Notify's
+    variant `Pending` become `NetbirdPending` and `DeliveryPending`. A variant type with one
+    variant of its own name is that variant alone.
+  - A client calls each operation that has `@http` as the interpreter does: path, query or body,
+    defaults filled in, a `None` left out, `@auth`, the key's header and body field, and
+    `status:`. Its answers are the operation's, with what the contract adds: in TypeScript,
+    `Uncertain` for a lost reply, and `Stale` and `Expired`, as values; in Go, as the errors
+    `*Uncertain`, `ErrStale` and `ErrExpired`. A query of `Result(T, http.HttpError)` returns
+    `T`, and an answer that isn't a success is an `HttpError` (Go's `*HTTPError`). A request
+    that never reached the service gives the error that stopped it, never `Uncertain`, so it can
+    be sent again.
+  - A server stub is an interface to implement, `NotifyService`, and a handler that serves it
+    as `eye run` serves the contract: Go's `NewNotifyHandler(service, secret)` is an
+    `http.Handler`, and TypeScript's `notifyHandler(service, secret)` a function from a Fetch API
+    `Request` to a `Response`. It checks `@auth` first, routes by `@http`, reads the arguments,
+    gives those left out their defaults, reads the key, and answers with the status `status:`
+    gives the result's variant. A method that fails answers 500, which the caller's command takes
+    as `Uncertain`; returning `ErrStale` or `ErrExpired` in Go, or `Stale` or `Expired` in
+    TypeScript, gives those outcomes. A Go client implements its service interface, so a server
+    can pass calls on.
+  - Operations without `@http` have no client method and no route, as `eye run` gives them none.
+  - A type these languages' JSON can't say the same way, a tuple, a map whose keys aren't strings
+    on the wire, an unnamed record or an `extern type`, is an error that names it.

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"eyelang/internal/wire"
 	"eyelang/ir"
 )
 
@@ -98,7 +99,7 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		return nil, false
 	}
 	in := rt.in
-	wire := op.Contract.HTTP
+	shared := op.Contract.HTTP // what the contract's operations share
 	// The arguments by parameter, defaults filled in. A None is left out,
 	// which is how JSON says a value is absent.
 	given := map[string]Value{}
@@ -142,28 +143,28 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 			if !ok {
 				in.faultf(at, "%s's path needs %s, which has no value", op.Name, name)
 			}
-			segments[i] = url.PathEscape(fmt.Sprint(in.toWire(v, wire.Snake)))
+			segments[i] = url.PathEscape(fmt.Sprint(in.toWire(v, shared.Snake)))
 			delete(given, name)
 		}
 	}
 	path := strings.Join(segments, "/")
 	target := base + path
 	var body []byte
-	if op.HTTP.Method == "GET" || op.HTTP.Method == "DELETE" {
+	if wire.InQuery(op.HTTP.Method) {
 		q := url.Values{}
 		for _, name := range order {
 			v, ok := given[name]
 			if !ok {
 				continue
 			}
-			switch x := in.toWire(v, wire.Snake).(type) {
+			switch x := in.toWire(v, shared.Snake).(type) {
 			case []any:
 				for _, e := range x {
-					q.Add(wireName(name, wire.Snake), fmt.Sprint(e))
+					q.Add(wireName(name, shared.Snake), fmt.Sprint(e))
 				}
 			case nil:
 			default:
-				q.Set(wireName(name, wire.Snake), fmt.Sprint(x))
+				q.Set(wireName(name, shared.Snake), fmt.Sprint(x))
 			}
 		}
 		if len(q) > 0 {
@@ -173,7 +174,7 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		obj := map[string]any{}
 		for _, name := range order {
 			if v, ok := given[name]; ok {
-				obj[wireName(name, wire.Snake)] = in.toWire(v, wire.Snake)
+				obj[wireName(name, shared.Snake)] = in.toWire(v, shared.Snake)
 			}
 		}
 		if key != nil && op.KeyField != "" {
@@ -188,18 +189,14 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 	}
 	headers.Set("Accept", "application/json")
 	if key != nil {
-		h := op.KeyHeader
-		if h == "" {
-			h = "Idempotency-Key"
-		}
-		headers.Set(h, show(key))
+		headers.Set(wire.KeyHeader(op), show(key))
 	}
-	if wire.AuthSecret != "" {
-		s := in.secret(wire.AuthSecret, at).value
-		if wire.AuthBearer {
+	if shared.AuthSecret != "" {
+		s := in.secret(shared.AuthSecret, at).value
+		if shared.AuthBearer {
 			s = "Bearer " + s
 		}
-		headers.Set(wire.AuthHeader, s)
+		headers.Set(shared.AuthHeader, s)
 	}
 
 	name := op.Contract.Module.Name + "." + op.Name
@@ -229,10 +226,10 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 				in.faultf(at, "%s answered %d with a body that isn't %s: %v", name, status, op.HTTP.Status[status], derr)
 			}
 			return v, true
-		case op.Fresh && (status == http.StatusConflict || status == http.StatusGone):
+		case op.Fresh && (status == wire.StaleStatus || status == wire.ExpiredStatus):
 			// A @fresh command's service refused it: the state changed after
 			// basedOn (409), or what it was based on is gone (410).
-			if status == http.StatusConflict {
+			if status == wire.StaleStatus {
 				return &Variant{V: in.pre.stale}, true
 			}
 			return &Variant{V: in.pre.expired}, true
@@ -244,7 +241,7 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 			x, derr := decodeJSON(reply)
 			var v Value
 			if derr == nil {
-				v, derr = in.opResult(op, x, t, wire.Snake)
+				v, derr = in.opResult(op, x, t, shared.Snake)
 			}
 			if derr != nil {
 				in.faultf(at, "%s answered with a body that isn't %s: %v", name, typeString(t), derr)
@@ -360,16 +357,7 @@ func (in *Interp) decodeStatus(op *ir.Op, status int, reply []byte) (Value, erro
 // httpErrorType returns http's HttpError when t is Result(T, http.HttpError):
 // a query that handles its own failures, which come back as Err instead of
 // being retried.
-func httpErrorType(t *ir.TypeExpr) *ir.Type {
-	if t == nil || t.Name != "Result" || len(t.Args) != 2 {
-		return nil
-	}
-	e := t.Args[1].Decl
-	if e == nil || e.Name != "HttpError" || e.Module == nil || e.Module.Path != "http" {
-		return nil
-	}
-	return e
-}
+func httpErrorType(t *ir.TypeExpr) *ir.Type { return wire.HTTPErrorType(t) }
 
 // httpError makes an http.HttpError: no answer, or an answer with a status
 // that isn't a success.

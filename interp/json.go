@@ -3,13 +3,14 @@ package interp
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
+	"eyelang/internal/wire"
 	"eyelang/ir"
 )
 
@@ -34,37 +35,15 @@ import (
 // With snake set, names are snake_case on the wire: field dedupeKey is
 // dedupe_key, and variant Normal is "normal".
 
+// The rules for names and shapes on the wire live in internal/wire, which
+// the clients and server stubs that eye gen writes follow too.
+
 // wireName is a field's or variant's name on the wire.
-func wireName(name string, snake bool) string {
-	if !snake {
-		return name
-	}
-	var b strings.Builder
-	for i, r := range name {
-		if unicode.IsUpper(r) {
-			if i > 0 {
-				b.WriteByte('_')
-			}
-			r = unicode.ToLower(r)
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
+func wireName(name string, snake bool) string { return wire.Name(name, snake) }
 
 // isEnum reports whether a type's variants all have no fields, so that its
 // values are strings on the wire.
-func isEnum(t *ir.Type) bool {
-	if len(t.Variants) == 0 {
-		return false
-	}
-	for _, v := range t.Variants {
-		if len(v.Fields) > 0 {
-			return false
-		}
-	}
-	return true
-}
+func isEnum(t *ir.Type) bool { return wire.IsEnum(t) }
 
 func (in *Interp) isOption(t *ir.Type) bool {
 	return t != nil && in.pre.some != nil && t == in.pre.some.Type
@@ -135,7 +114,7 @@ func (in *Interp) toWire(v Value, snake bool) any {
 		}
 		obj := map[string]any{"kind": x.V.Name}
 		for i, val := range x.Vals {
-			obj[wireName(fieldName(x.V, i, len(x.Vals)), snake)] = in.toWire(val, snake)
+			obj[wireName(fieldName(x.V, i), snake)] = in.toWire(val, snake)
 		}
 		return obj
 	case *SecretVal:
@@ -144,6 +123,33 @@ func (in *Interp) toWire(v Value, snake bool) any {
 		return map[string]any{"what": x.What, "by": x.By}
 	}
 	return show(v)
+}
+
+// DefaultJSON is the JSON that an operation's parameter sends when a call
+// leaves it out, as callHTTP fills it in and eye run reads it: eye gen
+// writes it into the clients and server stubs it generates. ok is false for
+// a parameter without a default, and for one whose default is None, which
+// is left out of a request.
+func DefaultJSON(prog *ir.Program, op *ir.Op, p *ir.Param) (data []byte, ok bool, err error) {
+	if p.Default == nil {
+		return nil, false, nil
+	}
+	in := New(prog, io.Discard, io.Discard)
+	defer func() {
+		if r := recover(); r != nil {
+			f, isFault := r.(*Fault)
+			if !isFault {
+				panic(r)
+			}
+			data, ok, err = nil, false, fmt.Errorf("%s's default for %s can't be computed: %s", op.Name, p.Name, f.Msg)
+		}
+	}()
+	v := in.eval(&frame{fn: &ir.Func{Name: op.Name}, slots: make([]Value, 16)}, p.Default)
+	if x, isVariant := v.(*Variant); isVariant && x.V == in.pre.none {
+		return nil, false, nil
+	}
+	data, err = json.Marshal(in.toWire(v, op.Contract.HTTP.Snake))
+	return data, err == nil, err
 }
 
 // opResult reads an operation's result in its JSON shape, as type t. A
@@ -179,15 +185,7 @@ func (in *Interp) freshOutcome(op *ir.Op, x any, snake bool) Value {
 
 // fieldName is a variant field's name in JSON: its own, or "value" for a
 // positional field ("value1", "value2", … when there are several).
-func fieldName(v *ir.Variant, i, n int) string {
-	if i < len(v.Fields) && v.Fields[i].Name != "" {
-		return v.Fields[i].Name
-	}
-	if n == 1 {
-		return "value"
-	}
-	return fmt.Sprintf("value%d", i+1)
-}
+func fieldName(v *ir.Variant, i int) string { return wire.FieldName(v, i) }
 
 func (in *Interp) wireList(elems []Value, snake bool) []any {
 	out := make([]any, len(elems))
@@ -271,6 +269,17 @@ func (in *Interp) decodeWire(x any, t *ir.TypeExpr, snake bool, env typeEnv, pat
 			return v, nil
 		}
 		return fail("a version, a whole number or a string")
+	case "Approval":
+		// A @destructive command's approval, as its caller sends it. The
+		// service can't check it, only record it (SPECS.md §17).
+		if obj, ok := x.(map[string]any); ok {
+			what, okWhat := obj["what"].(string)
+			by, okBy := obj["by"].(string)
+			if okWhat && okBy {
+				return &ApprovalVal{What: what, By: by}, nil
+			}
+		}
+		return fail(`an approval, { "what": "…", "by": "…" }`)
 	case "Float":
 		if n, ok := x.(json.Number); ok {
 			if f, err := n.Float64(); err == nil {
@@ -526,7 +535,7 @@ func (in *Interp) decodeDecl(x any, d *ir.Type, env typeEnv, snake bool, path st
 func (in *Interp) decodeFields(obj map[string]any, v *ir.Variant, env typeEnv, snake bool, path string) (Value, error) {
 	vals := make([]Value, len(v.Fields))
 	for i, f := range v.Fields {
-		name := wireName(fieldName(v, i, len(v.Fields)), snake)
+		name := wireName(fieldName(v, i), snake)
 		raw, present := obj[name]
 		ft := env.resolve(f.Type)
 		if !present {
@@ -649,7 +658,7 @@ func (in *Interp) declSchema(d *ir.Type, env typeEnv, seen map[*ir.Type]bool) (m
 		props := map[string]any{"kind": map[string]any{"type": "string", "const": v.Name}}
 		required := []any{"kind"}
 		for i, f := range v.Fields {
-			name := fieldName(v, i, len(v.Fields))
+			name := fieldName(v, i)
 			s, err := in.schemaOf(f.Type, env, seen)
 			if err != nil {
 				return nil, err

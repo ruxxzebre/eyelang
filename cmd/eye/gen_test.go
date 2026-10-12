@@ -67,3 +67,38 @@ func TestGenPolicy(t *testing.T) {
 		})
 	}
 }
+
+// TestGenCode runs eye gen go and ts on the lab: one module to standard
+// output, a module that declares no contract, and a program with several
+// modules and no --module. internal/codegen's tests check what the code
+// says, and TestGenRoundTrip what it does.
+func TestGenCode(t *testing.T) {
+	cases := []struct {
+		name   string
+		args   []string
+		code   int
+		stdout string
+		stderr string
+	}{
+		{"Go for Notify", []string{"gen", "go", "--module", "notify", "../../testdata/lab"}, 0, "package notify\n", ""},
+		{"a package name", []string{"gen", "go", "--module", "notify", "--package", "notifyapi", "../../testdata/lab"}, 0, "package notifyapi\n", ""},
+		{"TypeScript for Miniflux", []string{"gen", "ts", "--module", "miniflux", "../../testdata/lab"}, 0, "export class MinifluxClient {", ""},
+		{"several modules", []string{"gen", "ts", "../../testdata/lab"}, exitUsage, "", "7 modules declare contracts (authentik, flaresolverr, irishrail, miniflux, netbird, notify, telegram): name one with --module, or write them all with --out"},
+		{"a module without contracts", []string{"gen", "go", "--module", "digest", "../../testdata/lab"}, exitUsage, "", "no module digest declares a contract"},
+		{"--package for several", []string{"gen", "go", "--out", t.TempDir(), "--package", "x", "../../testdata/lab"}, exitUsage, "", "--package names one package"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run(c.args, &stdout, &stderr); code != c.code {
+				t.Errorf("exit code %d, want %d; stderr:\n%s", code, c.code, stderr.String())
+			}
+			if !strings.Contains(stdout.String(), c.stdout) {
+				t.Errorf("stdout lacks %q", c.stdout)
+			}
+			if !strings.Contains(stderr.String(), c.stderr) {
+				t.Errorf("stderr lacks %q:\n%s", c.stderr, stderr.String())
+			}
+		})
+	}
+}

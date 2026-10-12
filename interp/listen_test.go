@@ -35,7 +35,7 @@ contract Shop {
   command place(item: ItemId, count: Int = 1, giftNote: Option(String) = None) -> Placing
 
   @http("GET /v1/items/:id")
-  query item(id: ItemId, tags: List(String) = []) -> Option(Item)
+  query item(id: ItemId, tags: List(String) = [], limit: Option(Int) = None) -> Option(Item)
 
   query internal() -> Int
 }
@@ -69,7 +69,7 @@ impl shop.Shop {
     placed
   }
 
-  fn item(id, tags) = Some({ id, name: "a thing", tags })
+  fn item(id, tags, limit) = Some({ id, name: if limit == Some(2) then "two things" else "a thing", tags })
 
   fn internal() = 1
 }
@@ -179,6 +179,7 @@ func TestServeContractOverHTTP(t *testing.T) {
 		{"a query: path and repeated parameters", "GET", "/v1/items/a%2Fb?tags=x&tags=y", auth, "",
 			200, `{"id":"a/b","name":"a thing","tags":["x","y"]}`},
 		{"a query's default", "GET", "/v1/items/c", auth, "", 200, `{"id":"c","name":"a thing","tags":[]}`},
+		{"an Option in the query", "GET", "/v1/items/c?limit=2", auth, "", 200, `{"id":"c","name":"two things","tags":[]}`},
 		{"a path with another method", "DELETE", "/v1/items/c", auth, "", 405, "takes GET, not DELETE"},
 		{"a path nothing answers", "GET", "/v1/internal", auth, "", 404, "shop.Shop has no operation at GET /v1/internal"},
 	}

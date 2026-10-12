@@ -819,7 +819,7 @@ func (c *checker) entityDecl(m *module, f *ir.File, d *syntax.Node) {
 
 func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 	nameNode := d.ChildByField(syntax.FieldName)
-	ct := &ir.Contract{Name: text(f, nameNode), Module: m.mod, Ops: map[string]*ir.Op{}, Events: map[string]*ir.Event{}}
+	ct := &ir.Contract{Name: text(f, nameNode), Module: m.mod, Ops: map[string]*ir.Op{}, Events: map[string]*ir.Event{}, Doc: docComment(f, d)}
 	m.mod.Contracts[ct.Name] = ct
 	c.define(m, f, nameNode, ct.Name, ct)
 	c.contractPolicy(m, f, d, ct)
@@ -869,7 +869,7 @@ func (c *checker) contractDecl(m *module, f *ir.File, d *syntax.Node) {
 			continue
 		}
 		mn := member.ChildByField(syntax.FieldName)
-		op := &ir.Op{Name: text(f, mn), Contract: ct, Command: member.Kind == syntax.CommandDeclaration, Pos: pos(f, member)}
+		op := &ir.Op{Name: text(f, mn), Contract: ct, Command: member.Kind == syntax.CommandDeclaration, Pos: pos(f, member), Doc: docComment(f, member)}
 		if args := attributeArgs(f, member, "reconcile"); len(args) == 1 {
 			op.Reconcile = text(f, args[0])
 			names[op] = args[0]

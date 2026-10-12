@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"eyelang/internal/wire"
 	"eyelang/ir"
 )
 
@@ -328,7 +329,7 @@ func (in *Interp) answer(op *ir.Op, req request) (status int, reply []byte, cont
 // out takes its default, and an Option None.
 func (in *Interp) requestArgs(op *ir.Op, req request) ([]argVal, error) {
 	snake := op.Contract.HTTP.Snake
-	inQuery := op.HTTP.Method == "GET" || op.HTTP.Method == "DELETE"
+	inQuery := wire.InQuery(op.HTTP.Method)
 	var obj map[string]any
 	if !inQuery {
 		x, err := decodeJSON(req.body)
@@ -344,12 +345,12 @@ func (in *Interp) requestArgs(op *ir.Op, req request) ([]argVal, error) {
 	}
 	var args []argVal
 	for _, p := range op.Params {
-		wire := wireName(p.Name, snake)
+		onWire := wireName(p.Name, snake)
 		var v Value
 		var err error
 		raw, inPath := req.path[p.Name]
-		values, hasQuery := req.query[wire]
-		field, inBody := obj[wire]
+		values, hasQuery := req.query[onWire]
+		field, inBody := obj[onWire]
 		switch {
 		case inPath:
 			v, err = in.fromText(raw, p.Type, snake)
@@ -365,15 +366,12 @@ func (in *Interp) requestArgs(op *ir.Op, req request) ([]argVal, error) {
 			err = errors.New("it is missing")
 		}
 		if err != nil {
-			return nil, fmt.Errorf("%s's argument %s: %v", op.Name, wire, err)
+			return nil, fmt.Errorf("%s's argument %s: %v", op.Name, onWire, err)
 		}
 		args = append(args, argVal{v: v})
 	}
 	if op.Key {
-		header := op.KeyHeader
-		if header == "" {
-			header = "Idempotency-Key"
-		}
+		header := wire.KeyHeader(op)
 		key := req.header.Get(header)
 		if s, ok := obj[op.KeyField].(string); key == "" && op.KeyField != "" && ok {
 			key = s
@@ -408,8 +406,10 @@ func (in *Interp) fromText(s string, t *ir.TypeExpr, snake bool) (Value, error) 
 // fromQuery reads an argument from a query parameter: a list or a set from
 // the parameter repeated, anything else from its first value.
 func (in *Interp) fromQuery(values []string, t *ir.TypeExpr, snake bool) (Value, error) {
-	if t.Decl != nil && in.isOption(t.Decl) {
-		v, err := in.fromQuery(values, t.Decl.Variants[0].Fields[0].Type, snake)
+	if t.Decl != nil && in.isOption(t.Decl) && len(t.Args) == 1 {
+		// Option(T) reads T: the type argument, not the declaration's
+		// variable.
+		v, err := in.fromQuery(values, t.Args[0], snake)
 		if err != nil {
 			return nil, err
 		}
@@ -454,15 +454,7 @@ func (in *Interp) replyFor(op *ir.Op, v Value) (int, []byte, string) {
 	}
 	status := http.StatusOK
 	if x, ok := v.(*Variant); ok {
-		best := 0
-		for code, name := range op.HTTP.Status {
-			if name == x.V.Name && (best == 0 || code < best) {
-				best = code
-			}
-		}
-		if best != 0 {
-			status = best
-		}
+		status = wire.ReplyStatus(op, x.V.Name)
 	}
 	data, err := json.Marshal(in.toWire(v, op.Contract.HTTP.Snake))
 	if err != nil {

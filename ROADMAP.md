@@ -534,7 +534,7 @@ waits.
 | 6.1 `extern` functions: Go host functions and C libraries (from phase 3) | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
 | 6.2 `@port` and `@allow` enforced (done) | [#54](https://github.com/ruxxzebre/eyelang/issues/54) |
 | 6.3 `@fresh` and `@destructive` (done) | [#55](https://github.com/ruxxzebre/eyelang/issues/55) |
-| 6.4 Go and TypeScript types, clients and server stubs from contracts | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
+| 6.4 Go and TypeScript types, clients and server stubs from contracts (done) | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
 | 6.5 Network policy from contracts (done) | [#57](https://github.com/ruxxzebre/eyelang/issues/57) |
 | 6.6 Notify's boundary generated from its contract | [#58](https://github.com/ruxxzebre/eyelang/issues/58) |
 | 6.7 Model tools: functions passed as `tools:` (done) | [#59](https://github.com/ruxxzebre/eyelang/issues/59) |
@@ -589,6 +589,23 @@ What each task is, until its issue holds it:
   **Done when:** golden tests cover the lab's Notify and Miniflux contracts; the generated
   TypeScript passes `tsc --strict` and the Go `go vet`; a round trip test sends every type of the
   lab's contracts through a generated client to an Eyelang `impl` and back unchanged.
+  Done on 2026-10-12: `eye gen go|ts [--module m] [--out dir] DIR` (`cmd/eye/gen.go`) writes, for
+  each module with contracts, its types, a client for the operations with `@http`, and a server
+  stub: a `NotifyService` interface with Go's `NewNotifyHandler`, an `http.Handler`, or
+  TypeScript's `notifyHandler`, a Fetch API handler (`internal/codegen`). Both generators and the
+  interpreter read the wire rules from `internal/wire`, and parameters' defaults come from the
+  interpreter (`interp.DefaultJSON`). The outcomes a contract adds are values in TypeScript and
+  errors in Go (`*Uncertain`, `ErrStale`, `ErrExpired`); SPECS §17 and a decision-log row
+  "Generated code" have the rules. Tests: golden files for Notify and Miniflux, `go vet` and
+  `tsc --strict` on every lab contract module (`internal/codegen/codegen_test.go`), and
+  `TestGenRoundTrip` (`cmd/eye/gen_roundtrip_test.go`): `eye run` serves the notifier, Echo (a
+  contract that echoes every type of the lab's seven contract modules) and a Miniflux written in
+  Eyelang, and a Go and a TypeScript program built against the generated code send each type
+  through the clients, and through the stubs, which pass calls on to `eye run`, and back
+  unchanged; requests written by hand get the same answers from `eye run` and the stubs. The
+  round trip found two bugs in `eye run`'s serving, now fixed: an `Option` in the query wasn't
+  read, and a `@destructive` command's `approval` couldn't be decoded. Still open: Rust and
+  Python; the TypeScript stub doesn't check arguments' shapes.
 - **6.5 Network policy from contracts.** From each contract's `@port` and `@allow` and the program's
   imports, `eye gen policy DIR` writes which module may reach which service on which port. The
   first output format is the one the homelab deploys with, which the user names.

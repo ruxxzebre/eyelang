@@ -363,6 +363,7 @@ type Contract struct {
 	// @allow(nobody) leaves Allowed empty.
 	Guarded bool
 	Allowed []string
+	Doc     string // the `##` comment above it
 }
 
 // ContractHTTP is what a contract's operations share over HTTP.
@@ -406,7 +407,8 @@ type Op struct {
 	KeyHeader   string // @key(…, header: "…"): the HTTP header that carries the key
 	KeyField    string // @key(…, field: "…"): a body field that carries it too
 	HTTP        *OpHTTP
-	Impl        *Func // the function that serves it, when this program serves the contract
+	Impl        *Func  // the function that serves it, when this program serves the contract
+	Doc         string // the `##` comment above it, which generated code repeats
 	Pos         Pos
 }
 

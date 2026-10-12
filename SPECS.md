@@ -118,6 +118,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Ports and callers | **`@port` is where a service listens, and `@allow` who may reach it, checked at compile time.** A contract a program serves must declare `@port`; a contract without one is a service outside the network, reached at its configured URL, that any module may call. `@allow(m, …)` lists the modules that may call its operations (besides its own module, the modules that serve it, and tests); each name is a module the program can import; `@allow(nobody)` lets no module call it; `@allow` needs `@port` (section 17) | The lab's own Notify has a port and four callers, which network policy can be written from, while Telegram, Miniflux and NetBird are outside services with no port of ours to guard: a rule that every called contract declares a port would have given them made-up ones. Callers write no port: a call goes to the URL the configuration gives, and the policy opens only the contract's port, so a call configured for another port reaches nothing |
 | Fresh and destructive commands | **`@fresh` adds a `basedOn: Version` parameter and the outcomes `Stale` and `Expired`; `@destructive` adds an `approval: Approval` parameter.** Both come after the declared parameters, before `key`, and a served `impl` takes them too. `Stale` means the state changed since that version, `Expired` that what the command was based on is gone; `Expired` is the one `approval!` gives. A `Version` has `==` and no order; a snapshot's `version` is one. Over HTTP they travel as arguments, a reply of 409 is `Stale` and 410 `Expired`, and both outcomes are objects tagged with `"kind"` (section 17) | The check-then-act race is the usual bug in programs that act on another service's state, and the fix (send the version you read, let the service refuse) is easy to forget, so the contract asks for it and the match must handle the refusal. Two outcomes because a caller does different things: read again after `Stale`, give up after `Expired`. Reusing `approval!`'s `Expired` keeps one word for "too late" |
 | Network policy | **`eye gen policy` writes Kubernetes `NetworkPolicy` objects from the contracts**: for each contract with `@port`, the pods of the module that serves it (else of the contract's own module) accept TCP on that port only from the pods of the modules whose code calls it, among those `@allow` lets. Pods are labelled `eyelang.module: <module>`; the namespace is the `--namespace` flag (section 17) | The homelab deploys to Kubernetes, and a plain `NetworkPolicy` needs no CNI extension. The checker already knows who calls what, so the policy admits the callers the code has, not every name `@allow` lists: a module listed but not yet calling stays out until it does. The namespace is a deployment's choice, not the program's |
+| Generated code | **`eye gen go` and `eye gen ts` write each contract module's types, a client and a server stub**, from the rules the interpreter follows (`internal/wire`) and the defaults it computes. TypeScript's types are the JSON, a variant type a union on `"kind"`; Go's are structs and interfaces with JSON methods. Only operations with `@http` get a client method and a route. The outcomes a contract adds are values in TypeScript and errors in Go (`*Uncertain`, `ErrStale`, `ErrExpired`); a stub answers as `eye run` does, 500 for a failure (section 17) | Notify in TypeScript and any service in Go build against the contract, so a change that breaks them fails their build. One set of rules read by the interpreter and both generators, checked by a round trip through `eye run`, keeps the three in step. Go code checks `err` after every call, so the outcomes it must handle are errors there; a TypeScript union handles them as values |
 | Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
 | Queries | **Pipelines** (`filter`, `map`, …) over lists and entity sets alike. Over an entity set they run in memory today; compiling them to SQL waits for several runners on one database (open question 28) | The same code as for lists |
 | Reactions | **Views trigger jobs**: `@on(enters(view))`, `@on(leaves(view))` | Replaces most polling cron jobs |
@@ -1816,8 +1817,62 @@ type Delivery =
   `recordings/http.json`: `"contract": "http"`, and an exchange per URL, with `"op": "get"`, the
   URL as its `"key"` and `http.get`'s result (`{ "kind": "Ok", "value": { "status": 200, … } }`).
   An exchange without a key answers every other URL; a URL nothing answers fails the test.
-- **Generated code for other languages** (types, clients and server stubs for Go, TypeScript, Rust
-  and Python) is a build output, never committed.
+- **Generated code for other languages.** `eye gen go DIR` and `eye gen ts DIR` write, for each
+  module that declares contracts, its types, a client and a server stub: a Go package, or a
+  TypeScript module. Like the network policy, the output is a build artifact, never committed.
+  Rust and Python may follow. Both read the same rules as the interpreter, so a generated client,
+  a generated stub and `eye run` send and read the same requests.
+
+  ```sh
+  eye gen ts --module notify testdata/lab > notify.ts
+  eye gen go --out gen testdata/lab   # gen/notify/notify.go, gen/miniflux/miniflux.go, …
+  ```
+
+  - The types are the one JSON shape above, with their `##` comments. TypeScript's describe the
+    JSON itself: a record is an interface with the names on the wire (`published_at`), a variant
+    type is a union discriminated on `"kind"`, a type of fieldless variants a union of strings, a
+    wrapper its value's type, and `Option(T)` is `T | null`. Go's marshal to it: a struct for each
+    record and each variant, an interface for a variant type (`Delivery`, which `Accepted`,
+    `Pending` and `Refused` implement), a string type with constants for fieldless variants, `*T`
+    for an `Option`, `time.Time` for an `Instant`, and `Duration`, in milliseconds on the wire.
+    Go names take Go's capitals: `MessageId` is `MessageID`.
+
+    ```ts
+    export type Delivery = Accepted | Pending | Refused;
+
+    export interface Accepted {
+      kind: "Accepted";
+      id: MessageId;
+      deliveries: number;
+      deduped: boolean;
+    }
+    ```
+
+  - Every type the contracts' operations and events use is written, from whichever module
+    declares it. When two things would have one name, both take a longer one: a type puts its
+    module's name in front, and a variant its type's, as NetBird's record `Pending` and Notify's
+    variant `Pending` become `NetbirdPending` and `DeliveryPending`. A variant type with one
+    variant of its own name is that variant alone.
+  - A client calls each operation that has `@http` as the interpreter does: path, query or body,
+    defaults filled in, a `None` left out, `@auth`, the key's header and body field, and
+    `status:`. Its answers are the operation's, with what the contract adds: in TypeScript,
+    `Uncertain` for a lost reply, and `Stale` and `Expired`, as values; in Go, as the errors
+    `*Uncertain`, `ErrStale` and `ErrExpired`. A query of `Result(T, http.HttpError)` returns
+    `T`, and an answer that isn't a success is an `HttpError` (Go's `*HTTPError`). A request
+    that never reached the service gives the error that stopped it, never `Uncertain`, so it can
+    be sent again.
+  - A server stub is an interface to implement, `NotifyService`, and a handler that serves it
+    as `eye run` serves the contract: Go's `NewNotifyHandler(service, secret)` is an
+    `http.Handler`, and TypeScript's `notifyHandler(service, secret)` a function from a Fetch API
+    `Request` to a `Response`. It checks `@auth` first, routes by `@http`, reads the arguments,
+    gives those left out their defaults, reads the key, and answers with the status `status:`
+    gives the result's variant. A method that fails answers 500, which the caller's command takes
+    as `Uncertain`; returning `ErrStale` or `ErrExpired` in Go, or `Stale` or `Expired` in
+    TypeScript, gives those outcomes. A Go client implements its service interface, so a server
+    can pass calls on.
+  - Operations without `@http` have no client method and no route, as `eye run` gives them none.
+  - A type these languages' JSON can't say the same way, a tuple, a map whose keys aren't strings
+    on the wire, an unnamed record or an `extern type`, is an error that names it.
 
 ## 18. Calling C and Go
 
