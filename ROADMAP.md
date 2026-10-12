@@ -1,16 +1,17 @@
 # Eyelang 2 roadmap
 
-**Status, 2026-10-11:** v0.2.0 is released (phase 5; tag `v0.2.0`), after v0.1.0 (phases 0–4,
-2026-10-10). Development and releases happen on `dev`; `main` stays at Eyelang 1 until that
-changes.
+**Status, 2026-10-12:** v0.2.0 is released (phase 5; tag `v0.2.0`), after v0.1.0 (phases 0–4,
+2026-10-10). Phase 6 (v0.3) is under way, with 7.1 to 7.3 of phase 7 pulled into it. Development
+and releases happen on `dev`; `main` stays at Eyelang 1 until that changes.
 
 What gets built, in what order, and how we know each part is done. The language itself is defined
 in [SPECS.md](SPECS.md); what runs today, feature by feature, in
 [docs/reference/status.md](docs/reference/status.md).
 
-**Status lives in the GitHub issues**, not in this file. Each phase has an issue, and each task in
-v0.1 is a sub-issue of its phase. A pull request closes its task issue (`Closes #N`), and a phase
-is done when all its sub-issues are closed and its exit test passes.
+**Status lives in the GitHub issues**, not in this file. Each phase has an issue, and each of its
+tasks is a sub-issue of it; carry-over tasks (C.n) name the closed issue they continue instead. A
+pull request closes its task issue (`Closes #N`), and a phase is done when all its sub-issues are
+closed and its exit test passes.
 
 ## What's next
 
@@ -21,54 +22,59 @@ those can't say, so it stays short: what is owed, and the order. Change it in th
 changes it, and set the date below when you check it; `task next -- --check`, part of
 `task check`, fails when it was checked before the last release or names a closed issue.
 
-Checked: 2026-10-11
+Checked: 2026-10-12
 
-Start with [HANDOFF.md](HANDOFF.md): the digest's first runs in the homelab, and findings that
-have no issue yet.
+Start with [HANDOFF.md](HANDOFF.md): the digest in the homelab, and findings that have no issue
+yet.
 
 **Owed by releases already made**
 
-- Phase 5's exit test ran the lab's digest against stand-ins for its services. Nothing written in
-  Eyelang runs in the homelab yet, so the exit criterion "the morning digest runs in the lab" is
-  still open: deploy the digest on Postgres there. The program is ready: its blockers are fixed
-  (the model's price is documented in `AI_PRICES`, Notify's `@allow` includes `approving`), and
-  [testdata/lab/README.md](testdata/lab/README.md) says how to deploy `deploy/digest`. What is
-  left is the user's choices (the price in `AI_PRICES`, the Postgres schema, whether it first runs
-  in shadow mode beside the TypeScript digest) and the cluster work (eyelang-af).
+- Phase 5's exit criterion, "the morning digest runs in the lab." The digest runs in the homelab
+  on Postgres, in shadow mode beside the TypeScript digest (session eyelang-af; HANDOFF.md says
+  what is deployed and how to read its runs). Its first scheduled morning was 2026-10-12 07:40
+  Europe/Dublin. The criterion closes after one good morning run; replacing the TypeScript
+  digest is the user's decision.
 - Closed tasks whose exit tests weren't met: carry-over tasks C.1 to C.3, C.6 and C.7 under the
   phases (`end(ok)`, `lock!`, `all!` and `first!`, `cron`, 10,000 waiting tasks, the spec's
   examples through the checker).
-- The decisions of 2026-10-11 ([docs/internals/proposals.md](docs/internals/proposals.md), all
-  accepted) change code that v0.2 shipped: approvals answered by id and only by the person asked
-  (C.8, #71, deferred: until then the lab answers approvals only with `eye approve` and
-  `eye decline`, and its `approving` module tells the operator how). A job changed under a
-  paused run faulting instead of replaying wrong values (C.10, #73) and module roots in
-  `eye.toml` (C.11) are done.
+- Approvals answered by id and only by the person asked (C.8, #71), from the decisions of
+  2026-10-11, deferred by the user: until then the lab answers approvals only with `eye approve`
+  and `eye decline`, and its `approving` module tells the operator how.
 - Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
   not built: `World.all |> filter(…)` loads every entity. **Recommendation:** not phase 6. SQL
   saves nothing while the runner holds every entity in memory, which both stores do today (the
   Postgres store reads everything when it opens and keeps rows as bytes, not columns). It belongs
   with several runners on one database (open question 28), when the store stops living in one
   runner's memory, after v0.4. Until then the decision log should say that pipelines over entity
-  sets run in memory.
+  sets run in memory; it doesn't yet, since the user hasn't taken the recommendation.
 
 **Ahead, in order**
 
-1. The gaps in the core that phase 7 and self-hosting need closed: the checker's remaining
-   partial rows in status.md. (Function types now state their effects: a function kept in data
-   does no more than its type says, and callbacks can't be kept there.)
-2. The digest in the homelab, closing phase 5's exit criterion.
-3. Phase 6 (v0.3): its tasks are below the phase, each with its issue (6.1 to 6.12). `@port` and
-   `@allow` (6.2) are checked, so network policy from them (6.5) can start. The typed IR (7.1, #28)
-   and checkpoints in the interpreter (7.3, #76), pulled forward from phase 7 so that the lab's
-   never-ending runs stop growing (open question 9), are done, and so are enums (6.11).
+1. The gaps in the core that self-hosting and phase 7 need, none with an issue yet (status.md
+   has each row):
+   - fixed-width integers and `Bytes`: `Int32.from`, `wrappingAdd`, the bit operations, a
+     literal too large for its type, and a character literal read as a `Byte`, so that list
+     patterns over `Bytes` work. The typed IR (7.1) now gives every value its type, which the
+     interpreter's fixed-width methods were waiting for;
+   - lazy `xs.iter()`;
+   - `Type.f()` called through another module (`lex.Lexer.new`) is refused by the checker;
+   - what a task captures in `parallelMap`, `both` and `race` isn't checked.
+2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
+   its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
+   image layout of C.11 (the program is `/lab/deploy/digest`).
+3. Phase 6 (v0.3): 6.2, 6.10, 6.11 and 6.12 are done; 6.1 and 6.3 to 6.9 are open, each with its
+   issue. Ready to start: 6.3, 6.7 (function types now state their effects), 6.9, 6.1, and 6.5
+   once the user names the policy format. 6.4's round trip needs `eye run` to serve a program's
+   `impl Contract` over HTTP on its `@port`, which no task holds yet: today a served contract is
+   called only from inside its own program, and tests stand in for services with Go handlers.
+   An online playground's contracts demo (open question 34) needs the same. The phase's exit
+   test is 6.6 (Notify, with the user, in the homelab repository) and 6.8 (agents, after 6.7).
 4. Self-hosting's early start: an Eyelang lexer as a test program, checked by the conformance
-   suite. Not begun.
-5. Phase 7 (v0.4), after 1: code generation to C built by the `zig cc` that `eye` ships,
-   reference counting with in-place updates, generic specialisation, and jobs compiled to state
-   machines, where a waiting run is a record in the store. The design is
-   [docs/internals/compilation.md](docs/internals/compilation.md); its tasks are below the phase
-   (7.2 to 7.6).
+   suite. Not begun; it needs item 1's `Bytes` and character literals.
+5. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2) and checkpoints in
+   the interpreter (7.3) are done. Next is the C back end (7.4), then reference counting (7.5);
+   the runner hosting compiled programs (7.6) waits on the user's choice of how it loads them
+   without cgo. The design is [docs/internals/compilation.md](docs/internals/compilation.md).
 
 The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all
 accepted on 2026-10-11, with the C back end and a shipped `zig cc` for phase 7; SPECS.md's
@@ -76,10 +82,12 @@ decision log records each. `eye` itself stays free of cgo. Still open for the us
 runner hosts compiled code without cgo (compilation.md, section 1), and whether a choice's label
 comes from its `##` comment or its `Show` (open question 15).
 
-Open questions 1–33 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
+Open questions 1–34 in [SPECS.md](SPECS.md) are settled as real programs ask; those on `!` (23),
 `Self` (24) and what `@memory` measures (26) bear on phase 7. Time-travel debugging (32) is
 wanted, not yet a task: it builds on the checkpoints of 7.3, and `eye test --debug` on a failing
-test is the first step.
+test is the first step. An online playground (34) is wanted too, not yet a task: the core
+already builds for WebAssembly, and its contracts demo needs `eye run` to serve a contract over
+HTTP first.
 
 ## Versions
 
@@ -323,7 +331,7 @@ each names the closed issue it continues.
 | C.1 Entities: `end(ok)`, and tests of rollback and the single writer (from 4.1) | [#65](https://github.com/ruxxzebre/eyelang/issues/65) |
 | C.2 Waiting: `lock!`, `all!` and `first!` (from 4.4) | [#66](https://github.com/ruxxzebre/eyelang/issues/66) |
 | C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
-| C.4 `NonZero` divisors checked (from 2.4) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
+| C.4 `NonZero` divisors checked (from 2.4) (done) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
 | C.5 `eye fmt` writes public functions' `uses` clauses (from 2.6) (done) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
 | C.6 10,000 waiting tasks within a memory budget (from 3.5) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
 | C.7 Every SPECS.md example passes the checker (phase 2's exit test) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
@@ -363,6 +371,8 @@ What each task is, until its issue holds it:
   `NonZero(Int)` is treated as `Int`, so dividing by a plain `Int` variable is not an error.
   **Done when:** dividing by an `Int` that isn't a nonzero literal or a `NonZero(Int)` is an error
   that says to use `nonzero(n)`, with a test in `check/classes_test.go`; the lab still checks.
+  Done on 2026-10-11 (#68), with the test in `check/types_test.go` ("dividing by Int fails when
+  it is 0").
 - **C.5 `eye fmt` writes `uses` clauses (#26, 2.6).** Done: as decided, it is the default when
   formatting a program's directory, not a `--signatures` flag; `--syntax-only` turns it off.
   **Done when:** `eye fmt` writes each public function's inferred `uses` into its signature, and a
@@ -445,7 +455,7 @@ waits.
 | Task | Issue |
 |---|---|
 | 6.1 `extern` functions: Go host functions and C libraries (from phase 3) | [#42](https://github.com/ruxxzebre/eyelang/issues/42) |
-| 6.2 `@port` and `@allow` enforced | [#54](https://github.com/ruxxzebre/eyelang/issues/54) |
+| 6.2 `@port` and `@allow` enforced (done) | [#54](https://github.com/ruxxzebre/eyelang/issues/54) |
 | 6.3 `@fresh` and `@destructive` | [#55](https://github.com/ruxxzebre/eyelang/issues/55) |
 | 6.4 Go and TypeScript types, clients and server stubs from contracts | [#56](https://github.com/ruxxzebre/eyelang/issues/56) |
 | 6.5 Network policy from contracts | [#57](https://github.com/ruxxzebre/eyelang/issues/57) |
@@ -453,9 +463,9 @@ waits.
 | 6.7 Model tools: functions passed as `tools:` | [#59](https://github.com/ruxxzebre/eyelang/issues/59) |
 | 6.8 The `agents` module: coding-agent sessions owned by jobs | [#60](https://github.com/ruxxzebre/eyelang/issues/60) |
 | 6.9 `eye test --live`, and recording real exchanges | [#61](https://github.com/ruxxzebre/eyelang/issues/61) |
-| 6.10 `extern type` replaces `Handle`, and can't be saved | [#62](https://github.com/ruxxzebre/eyelang/issues/62) |
-| 6.11 Enums: `T.variants()` and `T.parse(s)` | [#63](https://github.com/ruxxzebre/eyelang/issues/63) |
-| 6.12 A test sees what a fake received | [#64](https://github.com/ruxxzebre/eyelang/issues/64) |
+| 6.10 `extern type` replaces `Handle`, and can't be saved (done) | [#62](https://github.com/ruxxzebre/eyelang/issues/62) |
+| 6.11 Enums: `T.variants()` and `T.parse(s)` (done) | [#63](https://github.com/ruxxzebre/eyelang/issues/63) |
+| 6.12 A test sees what a fake received (done) | [#64](https://github.com/ruxxzebre/eyelang/issues/64) |
 
 What each task is, until its issue holds it:
 
@@ -536,6 +546,8 @@ What each task is, until its issue holds it:
   `extern type`. SPECS §18 has the rules.
   **Done when:** holding a value of a program's `extern type` across a `!` is a compile error
   with a test, as are printing, comparing and asking a model for one; `Handle` is undefined.
+  Done on 2026-10-11 (#62): a program's `extern type` has none of `Eq`, `Ord`, `Show`, `Hash`,
+  `Save` and `Schema` (`check/types_test.go`, "foreign code owns an extern type's values").
 - **6.11 Enums (open question 15).** Done on 2026-10-11. A type whose variants have no fields
   gets `T.variants()` and `T.parse(s)`, derived as the traits are (SPECS §11), in the checker
   and the interpreter. The NetBird admission's buttons in `access.eye` come from
@@ -554,12 +566,18 @@ What each task is, until its issue holds it:
   **Done when:** SPECS §20 says how a test reads what a fake received; a test in
   `testdata/programs` checks a call's arguments that way; the digest's `Day.sent` workaround is
   gone.
+  Done on 2026-10-11 (6134df0, open question 16 decided): a test asks a fake for the calls it
+  answered with `fakes(…).calls(op)`, one record per call with the operation's parameters
+  (`testdata/programs/events`, `TestFakeCalls`), and the digest's tests ask the fake what was
+  sent instead of `Day.sent`. Still open: `fakes(…)` returns the plain `Handler` type, so
+  `.calls(op)` on a clock fails only at run time.
 
-Order: 6.1 any time; the interpreter loads C libraries without cgo, as `eye` stays free of it.
-6.10 before or with 6.1. 6.2 after `pub` and `opaque` are enforced, then 6.5. 6.4, then 6.6. 6.3
-any time. 6.7 after typed function types, then 6.8. 6.9 and 6.12 any time, and early: the lab's
-tests need them. 6.11 any time. Pipelines compiled to SQL are not part of this phase ("What's
-next").
+Order (6.2, 6.10, 6.11 and 6.12 are done): 6.1 any time; the interpreter loads C libraries
+without cgo, as `eye` stays free of it. 6.5 now that 6.2 is done. 6.4, then 6.6; 6.4's round
+trip to an Eyelang `impl` needs `eye run` to serve a contract over HTTP on its `@port`, which
+no task holds yet ("What's next"). 6.3 any time. 6.7 now that function types state their
+effects, then 6.8. 6.9 any time, and early: the lab's tests need it. Pipelines compiled to SQL
+are not part of this phase ("What's next").
 
 ### Phase 7: Native compilation — [#8](https://github.com/ruxxzebre/eyelang/issues/8) · v0.4
 

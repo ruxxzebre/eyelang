@@ -74,7 +74,7 @@ func main() {
 	if tag := git("describe", "--tags", "--abbrev=0"); tag != "" {
 		fmt.Printf("%s, and %s commits on %s since\n", tag, git("rev-list", "--count", tag+"..HEAD"), git("branch", "--show-current"))
 	} else {
-		fmt.Println("no release tag in this clone")
+		fmt.Println("no release tag in this clone; a shallow clone has none: git fetch --unshallow --tags")
 	}
 	for _, p := range stale(next) {
 		fmt.Println("warning: What's next", p)

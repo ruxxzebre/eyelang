@@ -1,45 +1,21 @@
-# Handoff, 2026-10-11
+# Handoff, 2026-10-12
 
-Where the parallel work of 2026-10-11 stopped, and what to pick up first. `task next` and
-ROADMAP.md's "What's next" stay the source of truth for the plan; this file holds what they
-can't: branches in flight, findings that have no issue yet, and the state of the homelab deploy.
-Delete it once its items are done or moved to issues.
+What `task next` and ROADMAP.md's "What's next" can't hold: the state of the homelab deploy, and
+findings that have no issue yet. Delete an item once it is done or moved to an issue, and the
+file once nothing is left.
 
-Every lane that ran on 2026-10-11 is merged into dev, `track/runtime-wip` last (see "CI and
-checks" for how to confirm CI).
+Nothing is in flight: every branch of 2026-10-11 and 2026-10-12 is merged into `dev`, no
+worktree is left, and nobody holds a claim.
 
 ## Pick up first
 
-1. **Done: `track/runtime-wip` is merged.** Its first four commits were already on dev, rebased
-   (c563080 to 9ec971b). The other three were cherry-picked: Q16 and #64, `fakes(…).calls(op)`,
-   and `eye run --fresh`. `check/infer.go`'s `calls` map holds one record type per operation,
-   built from the contract's declared parameter types, so generic private functions don't touch
-   it. `TestFakeCalls` checks its error message. The digest tests that dev added since then ask
-   the fake what was sent, not `Day.sent`. Those tests now also show that a failed morning sends
-   the operator the `…-failed` notice. #64 stays open until someone closes it by hand, since
-   dev isn't the default branch. Known gap: `fakes(…)` still returns the plain `Handler` type,
-   so `clock(…).calls(op)` fails only at run time; a separate `Fakes` type would catch it.
-2. **Watch the digest's first real run in the homelab** (below), and fix what it shows.
-3. **Done: the parser fuzz after lane B's grammar change** (eea8493, string effect targets).
-   `FUZZTIME=60s FUZZWORKERS=2 task fuzz` ran clean on dev at 386cc1e.
-
-## CI and checks
-
-- **CI on dev was red from fca3a9f to d45535b,** all day, and nobody looked at it: every merge
-  was checked with a local `task check`, which can't run the Docker tests on this laptop and
-  skips the VS Code window test on macOS. Two causes, both fixed in bbf2505, whose CI run passes:
-  - `task check`'s vscode step called `{{.TASK_EXE}}`, which CI's Task leaves empty, so on Linux
-    it failed before the VS Code end-to-end test (from fca3a9f).
-  - Once `pub` was enforced (25e1998), the exit test's `main` couldn't start `digest.morning`,
-    so `TestMorningDigestOnPostgres` timed out waiting for the model. The test's copy of the lab
-    now makes `morning` public, and checks the copy before `eye run` starts.
-- bbf2505's CI run is the first in which the VS Code end-to-end test checked completion
-  (b297dbf, eyelang-3b) and the Postgres exit test ran on today's lab. Both pass.
-- **After every push to dev, check CI:** `gh run list --branch dev --workflow ci.yml --limit 3`.
-  A local `task check` is not enough: CI runs the Docker tests (`EYE_TEST_DOCKER=1`) and the
-  VS Code window test, and this laptop runs neither by default.
-- Locally, Docker didn't answer at the end of the day (`docker info` hung), and the disk had
-  about 11 GB free. `go clean -cache` frees the most; it filled to ENOSPC once.
+1. **Read the digest's first morning run in the homelab** (2026-10-12 07:40 Europe/Dublin) and
+   fix what it shows, as "The digest in the homelab" below says. One good run closes phase 5's
+   exit criterion.
+2. **After every push to `dev`, check CI** (`gh run list --branch dev --workflow ci.yml --limit
+   3`, or the GitHub Actions list for `ci.yml`). A local `task check` isn't enough: CI runs the
+   Docker tests (`EYE_TEST_DOCKER=1`) and the VS Code window test, which a laptop or a cloud
+   session usually doesn't.
 
 ## The digest in the homelab
 
@@ -96,131 +72,59 @@ Session eyelang-af did the cluster work in the stacks-homelab repository.
 
 ## Findings without an issue yet
 
+The core gaps that self-hosting needs (fixed-width integers, character literals as `Byte`,
+`iter`, `Type.f()` through a module, what a task captures) are listed in ROADMAP's "What's
+next", item 1. Open questions 32 to 34 (time-travel debugging, effects of stored functions, an
+online playground) are in SPECS.md.
+
 Runtime and tools:
+- `eye run` doesn't serve a program's `impl Contract` over HTTP on its `@port`: a served
+  contract is called only from inside its own program. 6.4's round trip and the playground's
+  contracts demo need it; no task holds it.
 - `http.get` and `ai.generate` should retry an unreachable service the way contract calls do
   (see the risk above).
 - `ai.generate` has no `reasoning_effort` parameter; the TypeScript digest sends "medium".
 - Replacing a key's value in a map (`m |> insert(k, f(m[k]))`, counting words) still copies the
-  map, so a loop that updates one map is quadratic. Adding a set's element or a map's new key no
-  longer is: they share a `shelf` the way lists share a buffer (`interp/value.go`). Slots are
-  written once, so a replaced value needs a different structure. String building is most of
-  what is left of `plain()`'s 0.47 s.
+  map, so a loop that updates one map is quadratic. Adding a set's element or a map's new key
+  doesn't: they share a `shelf` the way lists share a buffer (`interp/value.go`). String building
+  is most of what is left of `plain()`'s 0.47 s.
+- A faulted run stays failed, and nothing restarts it (docs/guide/running.md, "Not yet"). It
+  needs a command, such as `eye runs --retry ID`, and a decision first: whether the retried run
+  replays the steps it recorded before the fault.
+- `fakes(…)` returns the plain `Handler` type, so `clock(…).calls(op)` fails only at run time; a
+  separate `Fakes` type would catch it.
+- The tutorial and guide writers hit about 20 checker and interpreter bugs on 2026-10-11, most
+  passing `eye check` and failing at run time. Session eyelang-15 holds the list; some are fixed.
+  It should become issues or tests.
 
 Checker:
-- A lambda or a named function counts its effects where it is written even when it goes where
-  a function type limits it: SPECS open question 33.
 - A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`
   wraps its result in a one-variant type to work around it.
 - `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.
-- Generic private functions: `double(2.5)` gives two errors where one would do, and calling
-  itself at a bigger type isn't detected.
-- `eye fix` doesn't add the `!` that `publish!` and `start!` now need in jobs; the call sites
-  were changed by hand.
+- Generic private functions: `double(2.5)` gives two errors where one would do. Calling itself
+  at a bigger type is reported by `eye check --lir` (7.2), not by `eye check`.
+- `eye fix` doesn't add the `!` that `publish!` and `start!` now need in jobs.
 - `check/resolve_test.go`'s unresolvable list keeps `nick` and `nickname` on purpose: a
-  migration reads the old row by name, which nothing declares, so they don't resolve. `unix` and
-  `name` left it today.
+  migration reads the old row by name, which nothing declares.
+
+Language server and editor:
+- Hover could show a private function's inferred effects.
+- The checker could skip only the declaration with a syntax error, so type errors, hover and
+  completion keep working while a file is half typed.
+- CI could cache `editors/vscode/node_modules` by `package-lock.json` (about 4 s).
 
 Library:
 - No hour-and-minute format for a time of day; the digest takes the first five characters of
   its text.
-- Fixed-width integer methods (`Int32.from`, `wrappingAdd`, bit operations) are blocked: at run
-  time a fixed-width value is a plain Int, so a method can't tell `Int32` from `Byte`. They need
-  the typed IR (#28) to record each literal's width or each call's resolved impl. `Int32.from(n)`
-  also needs calls on built-in type names.
 - Not built: `fs.lines`, reading a file as bytes, fakes for `process`, regular expressions. The
   digest's `plain()` strips HTML without them.
 
-Syntax, open since the parser freeze ended (from the 2026-10-11 lane list, none started):
-- Open questions 13 (`eye fmt` and the two forms of `if`), 14 (`if let`), 25 (naming a record's
-  type at its literal) and 31 (`Option` parameters with defaults). Each needs a decision first.
-- A character literal read as a `Byte`, so list patterns over `Bytes` work. It needs the checker
-  and possibly syntax, and the self-hosted lexer (ROADMAP "What's next", item 4) needs it.
+Syntax: open questions 13 (`eye fmt` and the two forms of `if`), 14 (`if let`), 25 (naming a
+record's type at its literal) and 31 (`Option` parameters with defaults) each need a decision
+before work starts.
 
 Lab:
 - `trains.watch` (`testdata/lab/trains/trains.eye`) is a `while true` loop that sleeps 45 s. Since
   checkpoints (7.3), each wake replays only the steps since the statement it is in, so its record
-  stays small; no restart pattern is needed. The homelab picks this up when its pin moves past
-  the checkpoint commit. Runs it saved before replay once, then keep checkpoints.
-
-## Next work, in order
-
-This follows ROADMAP's "What's next", with what today changed:
-
-1. Done: #69 (C.5). `eye fmt DIR` writes each public function's `uses` clause by default, as
-   the user chose; `--syntax-only` turns it off, and a file formatted alone stays syntax-only.
-   SPECS §12 and the decision log ("Writing effects") have the rule. It didn't touch `syntax/`.
-2. C.8 (#71), deferred by the user. Approvals are stubbed instead: the lab answers only with
-   `eye approve` and `eye decline`, and `approving` sends the operator a message saying how,
-   with no buttons. `testdata/programs/jobs/approvals.eye` and
-   `TestApprovalWaitsAcrossRestartsAndExpires` show waiting, `within:`, Expired, decline and a
-   restart of `eye run` around it. Buttons come back with #71's answers by id.
-3. Done: C.11 (#74), module roots. `testdata/lab/deploy/digest` has no symbolic links; its
-   `eye.toml` says `modules = ["../.."]`. **For eyelang-af:** from this commit on, the image
-   copies the whole lab (`cp -R testdata/lab /lab`) and the program is `/lab/deploy/digest`, not
-   `/program`, so the pod's command, `eye runs` and the inbox path change when the pin moves past
-   it (testdata/lab/README.md, "The image"). Next: 6.2 (#54), `@port` and `@allow`, now
-   unblocked.
-4. Phase 6's exit test: 6.6 (#58), Notify generated from its contract, and 6.8 (#60), the
-   `agents` module, which needs 6.7 (#59), model `tools:`.
-5. 7.1 (#28), the typed IR, and 7.3 (#76), saved frames, both pulled into v0.3.
-
-## Each session's state
-
-What every session that worked today said was left, at the end of the day. Claims are in
-`task next`; each owner releases its own with `task claim -- --release WHO` when the user says so.
-
-- **eyelang-20 (phase 5, v0.2.0, merges into dev).** Nothing unmerged. Claim: `dev` (merges in
-  the main checkout) and `tools/next`; the next session that merges takes the `dev` claim.
-  Open: a loop that replaces values in one map is quadratic (above).
-- **eyelang-77 (lanes B to F, this handoff).** All lanes stopped and merged, `track/runtime-wip`
-  last. Its worktrees `handoff` and `runtime` are merged and can be removed.
-- **eyelang-55 (language server, parser).** Nothing unmerged; `ts-parser`, `list-append`,
-  `list-comment`, `lsp-*` and `builtin-decls` are merged and removed. Claim: `internal/lsp`
-  except completion, `check/index.go`, `check/resolve_test.go`. Not started, nobody owns them:
-  - hover shows a private function's inferred effects;
-  - the checker works around a syntax error, skipping only the declaration that has it, so type
-    errors, hover and completion keep working while a file is half typed.
-  For the next syntax change: golden messages in `testdata/syntax/invalid/diagnostics.txt`
-  (`go test ./syntax -run TestSyntaxErrors -update`), conformance against tree-sitter in the
-  same process, `tree-sitter-eyelang/src` committed and diffed by `task generated`. `eye` stays
-  cgo-free; the tests need a C compiler. Keep the tree-sitter binding in
-  `tree-sitter-eyelang/src`: Go's build cache doesn't see C files included from another
-  directory.
-- **eyelang-42 (docs site).** Merged (`docs-site` at 1b2cb22); a VitePress dev server still runs
-  from that worktree on http://localhost:5173. Its claim marks `docs/` as written by hand: tell
-  them, or the user, before large changes there. Open: about 20 checker and interpreter bugs the
-  tutorial and guide writers hit, most passing `eye check` and failing at run time. eyelang-15
-  holds the full list and asked the user whether to file them; lane B may have fixed some.
-  `track/robustness` fixed `Int * Duration` (and `Size / Int`), iterating a view, `?` not
-  wrapping `String` errors, and `ai.generate` for maps, tuples, `Time` and `Size`. Still open: a
-  faulted run stays failed, and nothing restarts it (docs/guide/running.md, "Not yet"). That is a
-  missing command, `eye runs --retry ID` or similar, and needs a decision first: whether the
-  retried run replays the steps it recorded before the fault.
-- **eyelang-3b (editor and tasks).** Nothing open. Claim: `editors/vscode` and the `vscode:*`
-  tasks; the rest of `Taskfile.yml` is shared. Open, low priority: CI could cache
-  `editors/vscode/node_modules` by `package-lock.json` (about 4 s); the extension's README
-  doesn't say whether hover works while a program has type errors.
-- **eyelang-17 (completion).** Merged; its worktrees are removed and its claim released.
-- **eyelang-af (homelab deploy).** In the stacks-homelab repository; see "The digest in the
-  homelab" above.
-
-## How today ran
-
-- Several sessions shared the laptop, and the disk filled once (ENOSPC). Keep to two or three
-  lanes, use targeted tests while iterating, and run one full `task check` at a time. Don't run
-  `task fuzz` while the disk is tight. When the shared Go cache breaks, a private `GOCACHE` in
-  the scratchpad works.
-- eyelang-20 merged into dev in the main checkout. It rebased lanes onto one another, ran the full
-  check, and fast-forwarded. A lane whose branch was rebased by the merger continues with
-  `git rebase --onto dev OLD_TIP`.
-- Decided today, and recorded in SPECS.md's decision log:
-  - every proposal in [docs/internals/proposals.md](docs/internals/proposals.md);
-  - the C back end, with the `zig cc` that `eye` ships;
-  - string positions are `Offset`s;
-  - effect names (`publish Bus.pinged`, `secret "name"`);
-  - a step's result must be saveable;
-  - private functions are generic;
-  - `with` binds a fake handler;
-  - the formatter writes public functions' `uses` clauses (#69).
-- Closed today: #62 (`extern type` replaces `Handle`) and #68 (`NonZero` divisors). #72 was
-  closed by its commit.
+  stays small. The homelab gets this when its pin moves past the checkpoint commit; runs saved
+  before it replay once, then keep checkpoints.

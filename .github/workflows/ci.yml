@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history and its tags, so that `task next -- --check` can tell when
+          # ROADMAP's "What's next" was checked before the last release.
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
