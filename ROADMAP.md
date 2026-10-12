@@ -78,8 +78,9 @@ session), the digest in the homelab, and findings that have no issue yet.
    memory in six of nine. The owner accepted the
    [benchmark review](docs/internals/reviews/benchmarks-review-2026-10-12.md) on 2026-10-12: no
    language rule is in the way, every gap is the C back end's. 7.8 (checked against the
-   interpreter at both levels) is done; now 7.14 (cheap fixes: one unit, an allocator, static
-   variants, number formatting). Then 7.13 (values laid out by type) with 7.5 (counting in the low IR), then 7.9
+   interpreter at both levels) and 7.14 (cheap fixes: one unit, an allocator, static variants,
+   number formatting, constant division) are done: native code now takes 1.90× Go's time on the
+   geometric mean, down from 2.87×, and beats Go on strings and logs. Now 7.13 (values laid out by type) with 7.5 (counting in the low IR), then 7.9
    (core gaps in C) and 7.6 with B′ hosting (one static binary, Go linked
    through cgo); 7.11 (faster than Go, the owner's bar) throughout; 7.12 last; S.2 (the runner in
    Eyelang) after v0.4. 7.10 is done: a digest morning crosses between compiled code and the

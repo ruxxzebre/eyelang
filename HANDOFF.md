@@ -4,8 +4,9 @@ What `task next` and ROADMAP.md's "What's next" can't hold: the state of the hom
 findings that have no issue yet. Delete an item once it is done or moved to an issue, and the
 file once nothing is left.
 
-In flight on 2026-10-12, in a worktree of the coordinating session, to be merged into `dev` by
-it: 7.14 (#118, cheap native fixes). 7.8 (#111) and G.20 (#119) are merged. If they are merged, `git
+In flight on 2026-10-12, in worktrees of the coordinating session, to be merged into `dev` by
+it: 7.13 with 7.5 (#117, #78; the low IR's layouts and counting are written, the C back end
+switches over next) and the audit's runtime bugs (#127 to #138). 7.8, 7.14 and G.20 are merged. If they are merged, `git
 worktree list` shows nothing under `.claude/worktrees` and ROADMAP marks them done. If one is
 still open with no worktree, it was never merged: start it again from its issue.
 
