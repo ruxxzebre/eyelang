@@ -7,17 +7,18 @@ programs, the tour in section 3 included. `eye check` checks types, exhaustive m
 (a first slice of phase 2; ROADMAP.md says what is left). The lab's real workloads, written in
 Eyelang in [testdata/lab](testdata/lab), check and pass their tests; the rules they changed say
 "from the lab" in the decision log. Contracts call their services over HTTP, and model calls go to
-an OpenAI-compatible gateway. Eyelang 1, the
+Anthropic, OpenAI or an OpenAI-compatible gateway. Eyelang 1, the
 Monkey-style tree-walking interpreter that served as a testing ground, has been removed; it is kept
 at the tag `eyelang-1` (see [What happens to Eyelang 1](#21-what-happens-to-eyelang-1)).
 
 Eyelang 2 is a general-purpose, statically typed, compiled language for **software that keeps state
-and waits**: services, automations, schedulers and agents that run for days, hold data, call other
-systems that fail, and spend most of their time waiting. It is designed to make such programs as
-simple to write as a script and correct by construction. Typically that means data spread across
-many entities (users, devices, game worlds, apps) and jobs that run briefly and then wait for
-minutes, hours or days. It is not a configuration DSL: every feature below is an ordinary language
-construct that also works outside that domain.
+and waits**: services, automations, schedulers and agents that run for days, wait for people, hold
+data, call other services that fail, and spend most of their time waiting. It lets you write such a
+program as plainly as a script, and its compiler catches the mistakes such programs usually ship
+with. Typically that means data spread across many entities (users, devices, game worlds, apps) and
+jobs that run briefly and then wait for minutes, hours or days. It is not a configuration DSL:
+every feature below is an ordinary language construct that also works outside that domain.
+Section 1 lists what the language promises and the principles it is designed by.
 
 ## Contents
 
@@ -70,29 +71,86 @@ Words this document uses in one sense, and names that mean different things in d
 
 ## 1. Goals
 
-- **Good programs are the point.** A feature earns its place by the programs written with it:
-  correct, fast, lean on memory, well organised and easy to change. The obvious way to write
-  something should be the right way. [CLAUDE.md](CLAUDE.md) turns this into a guide for decisions.
-- **Concise and pleasant.** Little ceremony, inference inside bodies, one obvious way to do each
-  thing, and errors, formatting and editor support that ship with every feature.
-- **A good general language first.** Values with no shared mutation, variants with exhaustive
-  matching, traits and generics, inferred types, structured concurrency, and no nulls or exceptions.
-  The domain constructs (entities, jobs, views, contracts) sit on top of a core that stands on its
-  own.
-- **Good enough to host itself.** The core must be comfortable for systems code: parsers, stores,
-  type checkers. Eyelang's own compiler should be writable in Eyelang once it compiles to native
-  code (v0.4).
-- **Waiting is cheap.** A job that is waiting is a saved record in the store, not a process or a
-  thread. Resuming one takes milliseconds.
-- **State has an owner.** Every piece of stored state belongs to exactly one entity. Changes inside
-  eyelang are atomic, and changes to other services are keyed and reconciled, never blindly retried.
-- **Everything a reviewer needs is in the diff.** Public signatures state their types and effects,
-  and every point where a job can pause is marked with `!`.
-- **Small and predictable for agents.** Coding agents write most of the changes, so there is one
-  obvious way to do each thing, strict checks, and tests that can't flake.
-- **Low memory.** Compiled to native code with reference counting (no tracing GC). A waiting job
-  holds no thread, stack or record in memory: the journal and the Postgres store keep its record
-  on disk and only its handle, about 140 bytes, in RAM (section 15).
+**Eyelang lets you write a program that runs for days (waits for people, keeps state, calls
+services that fail) as plainly as a script, and the compiler catches the mistakes such programs
+usually ship with.** Two lists follow from that. The **promises** say what a user gets; the README
+and the docs site are written from them. The **principles** say how we decide; every change to the
+language is weighed against them, and [CLAUDE.md](CLAUDE.md) points here instead of keeping a copy.
+
+**Promises.** Each is a rule of the language, and its section says how it holds.
+
+1. **Waiting is one line.** `sleep!(3 days)`, `next!(notify.answered, within: 6 h)` and
+   `@on(daily(07:40, in: "Europe/Dublin"))` replace the queue, the cron and the `next_run_at`
+   column. A waiting run is a record on disk, not a thread: the journal and the Postgres store keep
+   only a handle of about 140 bytes in memory, and the run survives restarts
+   ([section 15](#15-jobs-and-waiting)).
+2. **Replays can't go wrong.** Every durable step in a job is marked `!`, and a resumed run gets
+   each step's recorded result instead of calling again. Reading stored state in a job outside a
+   step, or keeping a value that can't be saved across a `!`, is a compile error; Temporal finds
+   the same mistake at replay time ([sections 12](#12-effects-and-signatures) and
+   [15](#15-jobs-and-waiting)). A change to a job's code where runs are paused is refused when
+   `eye run` starts, or faults the run when it replays (open question 41).
+3. **State has one owner.** An entity's data changes only through its own methods, and each call
+   tree is one transaction that commits whole or not at all, with no locks to write
+   ([section 14](#14-entities)).
+4. **Outside calls are typed and settle once.** A contract types every call to another service,
+   and a model call names the Eyelang type its reply must have
+   ([section 19](#19-ai-models-and-agents)). A command sent again with the same key doesn't do
+   its work twice, and a contract decides whether its commands need one (`@key(required)`). A
+   lost reply is `Uncertain`, and where the contract declares `@reconcile`, `.reconcile!()` asks
+   the service what happened instead of guessing. The runtime sends again only what is
+   safe to repeat, such as a request that never reached the service ([section 17](#17-contracts-talking-to-other-services)).
+5. **Days of behaviour test in milliseconds.** A test's clock moves only when it calls
+   `advance(3 days)`, its store is in memory, `random` has a fixed seed, and `with fakes(…)`
+   replays recorded replies ([section 20](#20-time-secrets-tests)). The approvals tutorial's
+   tests, which cover days of waiting, run in about 5 ms. A test without `fakes(…)` can still
+   reach the real network (open question 45).
+
+Under the promises is a small, strict core language: no null and no exceptions (`Result` instead),
+values instead of shared objects, exhaustive `match`, effects in public signatures with `uses`,
+and `mut` marked at the call.
+
+**Principles.** When a choice comes up, weigh it against these, roughly in this order.
+
+1. **Good programs come out.** A feature earns its place by the programs written with it: correct,
+   fast, lean on memory, well organised, easy to change, and a pleasure to read, type and review.
+   Prefer the design that makes the obvious program the correct one. If the easy way to write
+   something is the wrong way, the language is wrong. How the compiler feels to work on comes
+   second.
+2. **Values, not shared objects.** Data is immutable, mutation is local and visible (`mut`), and
+   nothing is aliased. State that several parts of a program share lives in entities (promise 3).
+   This is why parallel code has no data races, and why compiled code needs no garbage collector.
+3. **Performance by construction.** Native code, reference counting with in-place updates when a
+   value is unique, no tracing GC and no GC pauses, and waiting that costs no memory (promise 1).
+   Don't add a feature whose cost is hidden or unbounded. Today `eye build` compiles the core
+   language to a native binary; entities, jobs, views and contracts run in the interpreter
+   (`eye run`), written in Go, until compiled programs are hosted by the runner (ROADMAP 7.6).
+4. **Concise, without being cryptic.** Little ceremony, inference inside bodies, and one obvious
+   way to do each thing. A line of Eyelang says what it does, and nothing extra. Prefer words to
+   symbols unless the symbol is already universal.
+5. **Organisation is enforced, not suggested.** State has one owner, effects appear in public
+   signatures, matches are exhaustive, and the formatter has no options. Structure that matters is
+   checked by the compiler, not left to convention.
+6. **Developer experience is part of the language.** Error messages point at exact spans and say
+   what to do. Tools are fast. Tests are deterministic. Editor support, formatting and docs ship
+   with each feature, not after it.
+7. **Strict, but never clumsy.** Every rule must pay for itself in ordinary code. When a rule makes
+   normal code awkward, as a reserved `start` did for every lexer, change the rule.
+8. **Visible where it matters.** Costs, effects and risks show at the place they happen: `!` for a
+   durable step, `mut` for a change, `uses` for effects, `dyn` for a run-time lookup, `unreachable`
+   for a stop, and budgets for what a model may spend. Everything a reviewer needs is in the diff:
+   a change to a public signature's types or effects, or to where a job can pause, shows there.
+   Everything else stays quiet.
+9. **A general language first.** Values with no shared mutation, variants with exhaustive
+   matching, traits and generics, inferred types, structured concurrency, and no null or
+   exceptions. Entities, jobs, views, contracts and AI calls sit on a core that stands on its own.
+   The target is a core good enough for systems code (parsers, stores, type checkers) and for
+   Eyelang's own compiler. That is not reached yet: of the compiler, only the lexer is written in
+   Eyelang (`testdata/programs/lexer`), and self-hosting comes after v0.4.
+10. **Agents are first-class users.** Coding agents write much of the code, so the language stays
+    small and predictable. One obvious way to do each thing, strict types, canonical formatting,
+    explicit signatures and tests that replay recorded replies make their work checkable, and the
+    same things make it pleasant for people.
 
 ## 2. Decision log
 
@@ -100,7 +158,7 @@ Words this document uses in one sense, and names that mean different things in d
 |---|---|---|
 | Core model | **Entities** hold shared data; **jobs** are durable functions; **views** react to conditions across many entities | Data has a home, waiting has a home, and cross-entity conditions don't need polling |
 | Waiting | **Only jobs wait.** Entity methods are short atomic transactions | No state changes in the middle of a method; every method is all-or-nothing |
-| Transactions | **Entity methods and served operations stay inside the program**: they change state, call pure code and other entities' methods, start jobs and publish events, which happen only when the transaction commits, and they can't use `net`, `fs`, `process`, `clock`, `random`, `env`, `ffi`, `secret` or `wait`. Output (`print`, `log`) is allowed (section 14) | The runtime may run a transaction again after a conflict, so a call to a service or a file write in one would happen twice, which pillar 4's keyed calls exist to prevent; what commits with the transaction happens once. A line of output written twice harms no one. The clock is outside too: a method takes the time from its caller, so a retry sees the same time. From the spec review of 2026-10-12: methods could call services and sleep |
+| Transactions | **Entity methods and served operations stay inside the program**: they change state, call pure code and other entities' methods, start jobs and publish events, which happen only when the transaction commits, and they can't use `net`, `fs`, `process`, `clock`, `random`, `env`, `ffi`, `secret` or `wait`. Output (`print`, `log`) is allowed (section 14) | The runtime may run a transaction again after a conflict, so a call to a service or a file write in one would happen twice, which the keyed calls of promise 4 (section 1) exist to prevent; what commits with the transaction happens once. A line of output written twice harms no one. The clock is outside too: a method takes the time from its caller, so a retry sees the same time. From the spec review of 2026-10-12: methods could call services and sleep |
 | Wait marker | A **`!` suffix** on every durable step in a job, which is every call that may pause or has an outside effect: `sleep!(20 min)`, `notify.send!(…)` | Every save point is visible in code review |
 | Checkpoints | Every `!` call in a job is a recorded **step**: its result is saved and it runs once. A **checkpoint** is a run's saved place, its live variables and statement, taken at the statements of the job's body once steps have been taken; a run resumes from its latest and replays only the steps since (section 15) | No separate `step` keyword is needed |
 | Entity lifecycle | **Virtual**: an entity exists on first use. Ending one with protected state needs an `Approval` | No create/exists dance; deletion always involves a human |
@@ -193,8 +251,8 @@ Words this document uses in one sense, and names that mean different things in d
 | Calls without a contract | **`http.get` and `ai.generate` try a service that can't be reached again for about a minute, as a contract's query does, and then return `Err`** with the reason in words, instead of ending the run as `Unavailable`: their results already say how they fail. `ai.generate` also tries again on 429 and 5xx answers. A request that reached the service and had no answer isn't sent again (sections 17 and 19). Decided 2026-10-12 | Network rules in a new pod take effect seconds after it starts, and the digest's 07:40 run, missed while the pod was down, runs right then: contract calls waited for the network, and these two failed at once. They declare their failures, so a program that reads pages can report one it couldn't read and go on. Sending again only what never arrived keeps a slow page from holding a run for minutes, and a model call from being paid twice. From the lab, 2026-10-12 |
 | One retry rule | **The runtime tries again only where the program didn't ask to see the failure**: an operation that declares `http.HttpError` gets it at once; one that declares no failures, and `http.get` and `ai.generate`, whose results always declare theirs, try again for about a minute what never reached the service (section 17). Making declared-failure operations retry too was weighed and left: it would hide a minute inside each try of a program's own wait, and take away the only way to see a failure at once. Decided 2026-10-12 | The owner asked for one rule. The digest polls Miniflux's `me`, declared `Result(User, http.HttpError)`, every minute for up to six hours; that program chose its wait, and the built-ins' callers never could. From the lab, 2026-10-12 |
 | Commands that return a record | **A command may return a record as well as a variant type; its result is `Uncertain(key)` too, matched with an `Uncertain(_)` arm, and a field read before that is an error.** Arms after an `Uncertain(_)` arm see the reply as declared (section 17). Decided 2026-10-12 | A service that answers with the thing it made, as Miniflux answers a new category, had to be wrapped in a one-variant type for `Uncertain` to be matched. The lost reply is the same either way; only reading a field of what may not be there needs stopping |
-| Waiting runs leave RAM | **A run's record is in memory only while the run is ready.** A run that waits or has ended keeps a handle in memory (its number, job, when it wakes, what wakes it, where it resumes); the journal and the Postgres store keep its record on disk and read it back when the run wakes or something asks for it, and opening a store reads no waiting run's record (section 15). Decided 2026-10-12 | Waiting that costs no memory is a pillar, and the records were what it cost: 20,000 runs sleeping for a day took 32 MB with their records in memory, and take 7 MB with their handles. A waiting run needs nothing of its record until it wakes; what the runner asks of it before then, when it wakes and what wakes it, fits in the handle |
-| Element assignment | **`xs[i] = v` and `xs[i] += v` change an element of a `List` in a `var` or a `mut` parameter, and `m[key] = v` inserts or replaces a `Map`'s value; an index out of range is a fault** (section 7). Accepted by the owner on 2026-10-12 | Changing one element was a rebuild, linear where every other language is constant, and the lexer's string stack paid it on every brace. It is local, visible mutation, as `p.x = v` is for records, and in place when the list is unique, so no pillar moves. Reading stays an `Option`, since a missing element is a case code handles; writing where there is no element is a bug, like a negative shift, and a fault says so where a quiet no-op would lose the write. A map has no such edge: `=` is total there, and `m[key] += v`, which would need the missing key's value, is an error that names `m[key] = (m[key] ?? 0) + v`. From the benchmark review ([docs/internals/reviews/benchmarks-review-2026-10-12.md](docs/internals/reviews/benchmarks-review-2026-10-12.md), section 4) |
+| Waiting runs leave RAM | **A run's record is in memory only while the run is ready.** A run that waits or has ended keeps a handle in memory (its number, job, when it wakes, what wakes it, where it resumes); the journal and the Postgres store keep its record on disk and read it back when the run wakes or something asks for it, and opening a store reads no waiting run's record (section 15). Decided 2026-10-12 | Waiting that costs no memory is a promise (section 1), and the records were what it cost: 20,000 runs sleeping for a day took 32 MB with their records in memory, and take 7 MB with their handles. A waiting run needs nothing of its record until it wakes; what the runner asks of it before then, when it wakes and what wakes it, fits in the handle |
+| Element assignment | **`xs[i] = v` and `xs[i] += v` change an element of a `List` in a `var` or a `mut` parameter, and `m[key] = v` inserts or replaces a `Map`'s value; an index out of range is a fault** (section 7). Accepted by the owner on 2026-10-12 | Changing one element was a rebuild, linear where every other language is constant, and the lexer's string stack paid it on every brace. It is local, visible mutation, as `p.x = v` is for records, and in place when the list is unique, so no principle moves. Reading stays an `Option`, since a missing element is a case code handles; writing where there is no element is a bug, like a negative shift, and a fault says so where a quiet no-op would lose the write. A map has no such edge: `=` is total there, and `m[key] += v`, which would need the missing key's value, is an error that names `m[key] = (m[key] ?? 0) + v`. From the benchmark review ([docs/internals/reviews/benchmarks-review-2026-10-12.md](docs/internals/reviews/benchmarks-review-2026-10-12.md), section 4) |
 | Hex and binary literals | **`0xC2` and `0b1010`, with `_` between digits, are integer literals of any integer type**; the prefix is lower case, and `eye fmt` keeps the base and writes hex digits upper case (section 4). Accepted by the owner on 2026-10-12 | The notation is universal, and byte-level code is unreadable in decimal: UTF-8's ranges were `194..=223` with `0xC2..=0xDF` in a comment. Keeping the base the author chose keeps a mask a mask; one case for the digits is the formatter's one style. A leading `0` stays decimal, so `007` is 7, not octal |
 | String patterns over bytes | **Where `Bytes` or a `List(Byte)` are matched, a string literal is its bytes in UTF-8**: alone it matches exactly them, and as an element of a list pattern it stands for them in a row, so `["..=", ..]` is a prefix (section 9). Accepted by the owner on 2026-10-12 | A typing rule on syntax that exists, as a character literal is already a `Byte` where one is expected: `"continue"` instead of eight character literals, and no new prefix syntax. Exhaustiveness sees the list patterns they are |
 | Bytes that aren't text | **`fs.readBytes` and `fs.writeBytes` read and write a file's bytes, and `toBytes(xs)` makes `Bytes` of a `List(Byte)`** (sections 5 and 12). Accepted by the owner on 2026-10-12 | `Bytes` came only from a string, so a lexer couldn't be given, or tested on, a file that isn't UTF-8. `toBytes` is named as `toSet`, `toList` and `toText` are; with element assignment on a `List(Byte)` it is how bytes are built one at a time, while `Bytes` themselves stay unchanged values whose slices share storage |
@@ -203,6 +261,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Schemas aren't recursive | **A type that holds itself, `()`, `Char`, `Byte`, `Bytes` and the fixed-width integers have no `Schema`**, so `eye check` refuses asking a model for them, at the call (section 19); a tool that returns `()` answers `null`. Decided by the owner on 2026-10-12 | Anthropic's structured outputs take no recursive schema and OpenAI's strict mode limits them, so a `$ref` schema would work with one provider and not the other; the checker and the runtime now refuse the same types, where before the run faulted at the call. A tree is asked for as a flat list with parent names |
 | Midnight is `00:00` | **A time of day goes from `00:00` to `23:59:59`; `24:00` is not a time**, and a literal that names no real date or time is an error at it (section 4). Decided by the owner on 2026-10-12 | Each time of day has one spelling, so `daily(24:00, …)` can't mean two moments, and a schedule at `25:00` no longer fires at 01:00. The end of a day is the next day's `00:00` |
 | What recordings witness | **The recordings that count are those the tests replay with `fakes(m, from: "…")`; a read is a field access or a pattern that looks inside a field; a variant matched without reading its fields needs no recording** (section 17). Decided by the owner on 2026-10-12 | The tests' recordings are the ones checked against the contract and kept current, so they are the record of what the service sends; a stray JSON file isn't. Exhaustive matches must name every variant, so naming one can't need a witness, but using what it holds does. A contract with no recordings, or one the program serves, has no recordings to hold its reads to |
+| Promises and principles | **Two lists, both in section 1: five promises say what a user gets, and the principles say how we decide.** The README and the docs site are written from the promises; CLAUDE.md points to the principles instead of keeping its own list, and its five pillars became promises (waiting, state, outside calls) or principles (values, not shared objects; visible where it matters). Decided by the owner on 2026-10-13 | The main idea was written six times (the spec's goals, CLAUDE.md's pillars and its rules for deciding, the README, the site's home and why pages), and the copies had drifted: one said tests "can't flake", one that every call is keyed, one that native compilation comes later. A list for readers and a list for deciding serve different people, and one place for each keeps them true |
 
 ## 3. A tour
 
@@ -3254,3 +3313,12 @@ operator. All binary operators associate to the left except `??`, which associat
     literal where a `Regex` is expected could be too: `let tag: Regex = "<[^>]*>"`. Separately,
     `\` and `{` are escapes in a string, so `\d{4}` is written `"\\d\{4}"`; a raw string would
     let a pattern read as it is written everywhere else. Which of these, if either, is worth it?
+45. **Tests that reach the network.** "Tests replay recorded replies" is a promise (section 1),
+    but only a `with fakes(…)` makes it hold. Without one, a test's contract call goes to the
+    service when its address is set in the environment, such as `NOTIFY_URL`, and faults only
+    when it isn't; `http.get` goes to the page, and `ai.generate` to a provider whose key is
+    set. So a test can pass on one machine and fail on another, or send a real message.
+    `eye test --live` already names the modules that may reach their services (section 20).
+    Should a call to another service in a test, outside `--live` and without `fakes(…)` for its
+    module, be an error that names the `with fakes(…)` to add? Then a test with no recordings
+    yet would need `--live` to run at all.

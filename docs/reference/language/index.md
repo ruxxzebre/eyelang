@@ -7,12 +7,13 @@ title: "Language reference"
 # Language reference
 
 Eyelang 2 is a general-purpose, statically typed, compiled language for **software that keeps state
-and waits**: services, automations, schedulers and agents that run for days, hold data, call other
-systems that fail, and spend most of their time waiting. It is designed to make such programs as
-simple to write as a script and correct by construction. Typically that means data spread across
-many entities (users, devices, game worlds, apps) and jobs that run briefly and then wait for
-minutes, hours or days. It is not a configuration DSL: every feature below is an ordinary language
-construct that also works outside that domain.
+and waits**: services, automations, schedulers and agents that run for days, wait for people, hold
+data, call other services that fail, and spend most of their time waiting. It lets you write such a
+program as plainly as a script, and its compiler catches the mistakes such programs usually ship
+with. Typically that means data spread across many entities (users, devices, game worlds, apps) and
+jobs that run briefly and then wait for minutes, hours or days. It is not a configuration DSL:
+every feature below is an ordinary language construct that also works outside that domain.
+[Section 1](/design/goals) lists what the language promises and the principles it is designed by.
 
 ## Glossary
 

@@ -1,8 +1,9 @@
 # Working on Eyelang
 
-Eyelang 2 is a statically typed, compiled language for programs that manage data across many
-entities and run jobs that mostly wait. This file is the guide for decisions while it is being
-designed and built, for people and coding agents alike. The language is defined in
+Eyelang 2 lets you write a program that runs for days (waits for people, keeps state, calls
+services that fail) as plainly as a script, and its compiler catches the mistakes such programs
+usually ship with. This file is the guide for working on it while it is being designed and built,
+for people and coding agents alike. The language is defined in
 [SPECS.md](SPECS.md), the syntax in [tree-sitter-eyelang/grammar.js](tree-sitter-eyelang/grammar.js),
 and the plan in [ROADMAP.md](ROADMAP.md); progress lives in the GitHub issues.
 
@@ -19,56 +20,40 @@ checked before the latest release.
 
 ## The main idea
 
-**Eyelang is for software that keeps state and waits:** services, automations, schedulers and agents
-that run for days, hold data, call other systems that fail, and spend most of their time waiting.
-It makes such programs as simple to write as a script, and correct by construction.
+**Eyelang lets you write a program that runs for days (waits for people, keeps state, calls
+services that fail) as plainly as a script, and the compiler catches the mistakes such programs
+usually ship with.** Five promises say what a user gets:
 
-Five pillars carry the idea. Everything else, including the functional core and safe parallelism,
-is a means to them:
+1. **Waiting is one line.**
+2. **Replays can't go wrong.**
+3. **State has one owner.**
+4. **Outside calls are typed and settle once.**
+5. **Days of behaviour test in milliseconds.**
 
-1. **Values, not shared objects.** Immutable data, local and visible mutation (`mut`), no aliasing.
-   This is why parallel code has no data races and memory needs no garbage collector.
-2. **State has an owner.** Shared data lives in entities with atomic methods.
-3. **Waiting is free and durable.** Jobs pause on `!` steps for as long as they need, cost no memory
-   while they wait, and survive restarts.
-4. **Boundaries are typed and failure is explicit.** Contracts for services, schemas for AI calls,
-   keyed and reconciled calls, `Result` instead of exceptions.
-5. **Costs and effects are visible.** `uses`, `!`, `mut`, `dyn`, budgets.
+Everything else, the core language and safe parallelism included, is a means to them. The
+promises, what each one means, and the principles we decide by live in
+[SPECS.md section 1](SPECS.md#1-goals); this file doesn't keep a copy. The README and the docs site
+are written from the promises, so a change that moves one changes them too.
 
 **Scope test:** a feature belongs if it makes the general core better for everyone, or makes
-stateful, waiting, failure-prone programs simpler or safer, and it breaks none of the pillars.
+stateful, waiting, failure-prone programs simpler or safer, and it breaks no promise or principle.
 Long-running AI agents pass easily; a GUI toolkit or class inheritance would not.
 
 ## How to decide
 
-When a choice comes up, weigh it against these, roughly in this order.
+Weigh every choice against the principles in [SPECS.md section 1](SPECS.md#1-goals), roughly in
+their order. Read them there; in short:
 
-1. **Good programs come out.** We are building a fast, concise language that is a pleasure to read,
-   type and review, and a feature earns its place by the programs it produces: correct, fast, lean
-   on memory, well organised and easy to change. Prefer the design that makes the obvious program
-   the correct one. If the easy way to write something is the wrong way, the language is wrong.
-   How the compiler feels to work on comes second.
-2. **Performance by construction.** Native code, reference counting with in-place updates, no GC
-   pauses, and waiting that costs no memory. Don't add features whose cost is hidden or unbounded.
-3. **Concise, without being cryptic.** Little ceremony, inference inside bodies, one obvious way to
-   do each thing. A line of Eyelang should say what it does, and nothing extra. Prefer words to
-   symbols unless the symbol is already universal.
-4. **Organisation is enforced, not suggested.** State has one owner, effects appear in public
-   signatures, matches are exhaustive, the formatter has no options. Structure that matters is
-   checked by the compiler, not left to convention.
-5. **Developer experience is part of the language.** Error messages point at exact spans and say
-   what to do. Tools are fast. Tests are deterministic. Editor support, formatting and docs ship
-   with the features, not after them.
-6. **Strict, but never clumsy.** Every rule must pay for itself in ordinary code. When a rule makes
-   normal code awkward (as a reserved `start` did for every lexer), change the rule.
-7. **Visible where it matters.** Pillar 5 in practice: costs and risks show at the place they happen: `!` for a durable
-   step, `mut` for a change, `uses` for effects, `dyn` for a run-time lookup, `unreachable` for a
-   stop. Everything else stays quiet.
-8. **A general language first.** Entities, jobs, views, contracts and AI calls sit on a core that
-   stands on its own, good enough to write Eyelang's own compiler in.
-9. **Agents are first-class users.** Much of the code will be written by coding agents. Strict
-   types, canonical formatting, explicit signatures and recorded tests make their work checkable,
-   and the same things make it pleasant for people.
+1. Good programs come out: the obvious program is the correct one.
+2. Values, not shared objects.
+3. Performance by construction: no hidden or unbounded costs.
+4. Concise, without being cryptic.
+5. Organisation is enforced, not suggested.
+6. Developer experience is part of the language.
+7. Strict, but never clumsy.
+8. Visible where it matters: `!`, `mut`, `uses`, `dyn`, `unreachable`, budgets.
+9. A general language first, good enough one day to host its own compiler.
+10. Agents are first-class users.
 
 ### When to add syntax
 
@@ -94,6 +79,8 @@ scope test above and the steps below.
 - **Spec first.** A language change starts in SPECS.md: the rule, an example, and a decision-log
   row if it is a decision. Ideas that aren't settled yet go to the open questions at the end of
   the spec.
+- **Writing an Eyelang program** (the lab's workloads in `testdata/lab`, examples, test
+  programs)? Read [docs/writing-eyelang.md](docs/writing-eyelang.md) first.
 - **Syntax changes touch three places together:** `grammar.js` (and `src/scanner.c` if newlines,
   braces or strings are involved), the Go parser in `syntax/`, and tests in
   `tree-sitter-eyelang/test/corpus` and `testdata/syntax`. Then run `task generate`.
@@ -153,7 +140,7 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 
 | Path | What it is |
 |---|---|
-| `SPECS.md` | The language: goals, decisions, rules, grammar sketch, open questions |
+| `SPECS.md` | The language: promises and principles (section 1), decisions, rules, grammar sketch, open questions |
 | `ROADMAP.md` | Phases, versions and tasks, each linked to an issue |
 | `tree-sitter-eyelang/` | The grammar (the definition of the syntax), its scanner, corpus and queries |
 | `syntax/` | Lexer, lossless parser, typed views, formatter; `syntax/gen` generates the views |
