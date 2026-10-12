@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"eyelang/check"
@@ -31,11 +32,19 @@ type server struct {
 }
 
 // rootOf returns the directory of the program the file at path belongs to.
+// In a workspace held in memory that is the nearest directory, from the
+// file's up to the root, whose eye.toml is open: a directory below the root
+// with one is a program of its own.
 func (s *server) rootOf(path string) string {
-	if s.root != "" {
-		return s.root
+	if s.root == "" {
+		return check.Root(path)
 	}
-	return check.Root(path)
+	for d := filepath.Dir(path); d != s.root && strings.HasPrefix(d, s.root+string(filepath.Separator)); d = filepath.Dir(d) {
+		if s.docs[pathURI(filepath.Join(d, "eye.toml"))] != nil {
+			return d
+		}
+	}
+	return s.root
 }
 
 func (s *server) run() error {

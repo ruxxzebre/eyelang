@@ -67,3 +67,30 @@ func TestWorkspace(t *testing.T) {
 		t.Error("Format() of a file with syntax errors succeeded")
 	}
 }
+
+// TestWorkspacePrograms checks a workspace of two programs: a directory with
+// an eye.toml of its own is a program, which finds the modules of the
+// directory above through its modules, and whose problems are its own.
+func TestWorkspacePrograms(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "nowhere")
+	at := func(p string) string { return filepath.Join(root, filepath.FromSlash(p)) }
+	w := NewWorkspace(root)
+	w.Set(at("eye.toml"), nil)
+	w.Set(at("shapes/shapes.eye"), []byte("## The area of a square.\npub fn area(side: Int) -> Int = side * side\n"))
+	w.Set(at("main.eye"), []byte("import shapes\n\npub fn main() uses {stdio} { print(\"{shapes.area(2)}\") }\n"))
+	w.Set(at("other/eye.toml"), []byte("modules = [\"..\"]\n"))
+	w.Set(at("other/other.eye"), []byte("import shapes\n\nfn twice() -> Int = shapes.area(3) * 2\n"))
+	if got := w.Programs(); len(got) != 2 || got[0] != root || got[1] != at("other") {
+		t.Errorf("Programs() = %v", got)
+	}
+	if diags := w.Check(); len(diags) != 0 {
+		t.Fatalf("Check() = %v; want nothing", diags)
+	}
+	if h, ok := w.Hover(at("other/other.eye"), Position{Line: 2, Character: 28}); !ok || !strings.Contains(h, "The area of a square.") {
+		t.Errorf("Hover(area) in the other program = %q, %v", h, ok)
+	}
+	w.Set(at("other/other.eye"), []byte("import shapes\n\nfn twice() -> Int = shapes.area(\"3\") * 2\n"))
+	if diags := w.Check(); len(diags) != 1 || diags[0].Path != at("other/other.eye") {
+		t.Errorf("Check() = %v; want one problem in other/other.eye", diags)
+	}
+}

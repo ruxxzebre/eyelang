@@ -49,12 +49,33 @@ type Diagnostic struct {
 	Message string `json:"message"`
 }
 
-// Check checks the whole program, every module of it, and returns its
-// problems, those of each file in the order they are in it.
+// Programs returns the directories of the workspace's programs: the root,
+// then each directory below it whose eye.toml is open, sorted. A module two
+// programs import is checked in both.
+func (w *Workspace) Programs() []string {
+	out := []string{w.s.root}
+	for _, p := range w.Paths() {
+		if filepath.Base(p) == "eye.toml" && filepath.Dir(p) != w.s.root {
+			out = append(out, filepath.Dir(p))
+		}
+	}
+	return out
+}
+
+// Check checks every program, every module of each, and returns their
+// problems, those of each file in the order they are in it, each once.
 func (w *Workspace) Check() []Diagnostic {
 	out := []Diagnostic{}
-	res := w.s.checkAll(w.s.root, "")
 	seen := map[Diagnostic]bool{}
+	for _, root := range w.Programs() {
+		out = w.checkProgram(root, out, seen)
+	}
+	return out
+}
+
+// checkProgram adds the problems of the program at root to out.
+func (w *Workspace) checkProgram(root string, out []Diagnostic, seen map[Diagnostic]bool) []Diagnostic {
+	res := w.s.checkAll(root, "")
 	for _, d := range res.Diagnostics {
 		diag := Diagnostic{Message: d.Message}
 		if f := d.Pos.File; f != nil {

@@ -134,8 +134,13 @@ func (s *server) checked(path string) *check.Result {
 	return check.Check(root, check.Options{Overlay: s.overlay(root), Module: filepath.Dir(path)})
 }
 
-// overlay holds the text of the open documents below root.
+// overlay holds the text of the open documents below root. In a workspace
+// held in memory it holds them all, since a program there may import from
+// the directories above it (eye.toml's modules), which are nowhere else.
 func (s *server) overlay(root string) map[string][]byte {
+	if s.root != "" {
+		root = s.root
+	}
 	overlay := map[string][]byte{}
 	for uri, d := range s.docs {
 		if p, ok := uriPath(uri); ok && strings.HasPrefix(p, root+string(filepath.Separator)) {
