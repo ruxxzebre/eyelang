@@ -43,10 +43,10 @@ entity Player(id: PlayerId) {
   Because entity methods have no outside side effects, the runtime can safely retry one after a
   conflict.
 - **Reading from a job:** `w.read!()` returns a snapshot, whose type is the entity's name
-  (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field,
-  which counts the transactions that changed the entity: 0 when it is new, then one more for each.
-  Snapshots go stale, and commands can name the version they were based on (see `@fresh` in
-  [section 17](/reference/language/contracts-talking-to-other-services)). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
+  (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field, a
+  `Version` that counts the transactions that changed the entity: 0 when it is new, then one more
+  for each. Snapshots go stale, and commands can name the version they were based on (see
+  `@fresh` in [section 17](/reference/language/contracts-talking-to-other-services)). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
 - **Evolution:** `@version(N)` numbers the shape of an entity's stored state (1 without it), and
   every row records the version it was saved with; it isn't the snapshot's `version`, which counts
   transactions.

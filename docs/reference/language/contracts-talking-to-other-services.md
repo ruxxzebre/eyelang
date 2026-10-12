@@ -90,7 +90,59 @@ type Delivery =
   each `@on(event(…))` job.
 - **`@fresh`** on a command adds a required `basedOn: Version` argument and `Stale`/`Expired`
   outcomes, so an old command can't act on newer state.
-- **`@destructive`** on a command adds a required `Approval` argument.
+  - `basedOn` comes after the parameters the command declares, and before `key`. It is the
+    version of the state the caller read, as the service gave it; an entity's snapshot has one in
+    its `version` field ([section 14](/reference/language/entities)), and an integer literal can be one.
+  - `Stale` means the state changed after that version, and `Expired` that what the command was
+    based on is gone, so it can never apply. Neither does anything. `Expired` is the same variant
+    `approval!` gives.
+  - Both join the variants of the command's result, so a `match` on it handles them, and until it
+    does, the result can't be passed where the declared type is expected, as with `Uncertain`.
+    Reconciling resolves `Uncertain` and keeps them.
+  - A command whose result isn't a variant type, or already has a variant `Stale` or `Expired`,
+    can't be `@fresh`.
+- **`@destructive`** on a command adds a required `Approval` argument, `approval`, after the
+  parameters it declares (and after `basedOn`), and before `key`. Only `approval!` makes an
+  `Approval`, so a program calls the command only after a person said yes.
+
+  ```eye
+  # shelves/shelves.eye
+  pub type Shelf = { id: String, items: List(String), version: Version }
+
+  @port(3004)
+  contract Shelves {
+    query shelf(id: String) -> Shelf
+
+    @fresh                                  # clear(id, basedOn)
+    command clear(id: String) -> Cleared
+
+    @destructive                            # burn(id, approval)
+    command burn(id: String) -> Burned
+  }
+
+  # main.eye: reads again when the shelf changed in between
+  job tidy(id: String) {
+    let shelf = shelves.shelf!(id)
+    match shelves.clear!(id, basedOn: shelf.version) {
+      Cleared(n) => Log(id).add!("cleared {n}")
+      Stale => {
+        let _ = tidy.start!(id)
+      }
+      Expired | Uncertain(_) => ()
+    }
+  }
+
+  # a program that serves Shelves answers from its entity's snapshot
+  impl shelves.Shelves {
+    fn clear(id, basedOn) {
+      let rack = Rack(id).read()
+      if rack.gone { return Expired }
+      if rack.version != basedOn { return Stale }
+      Cleared(count: Rack(id).empty())
+    }
+    # and fn shelf(id), fn burn(id, approval)
+  }
+  ```
 - **A contract's operations are its module's functions.** A module that declares one contract offers
   its commands and queries by name: `notify.send!(…)` for `contract Notify { command send … }`.
 - **Serving a contract.** A program written in Eyelang serves a contract with `impl Contract { … }`:
@@ -118,6 +170,11 @@ type Delivery =
   - Lists, sets and tuples are arrays, and a map with string keys is an object.
   - An `Instant` is an RFC 3339 string, a `Date` `"2026-10-12"`, a `Duration` a number of
     milliseconds, and a `Size` a number of bytes.
+  - A `Version` is a number or a string, as the service gave it; a snapshot's is a number. An
+    `Approval` is `{ "what": "…", "by": "…" }`.
+  - The outcomes a contract adds to a command are objects tagged with `"kind"`, whatever the
+    shape of the command's own variants: `{ "kind": "Stale" }`, `{ "kind": "Expired" }` and
+    `{ "kind": "Uncertain", "key": "…" }`. A reader takes `"Stale"` and `"Expired"` alone too.
 
   Fields that a type doesn't declare are ignored when a value is read, so a service can add some
   without breaking its callers.
@@ -145,6 +202,11 @@ type Delivery =
     and `field: "…"` puts it in the body too.
   - `status: { 202: Pending }` reads a reply with that status as that variant, from the fields of
     the body. Any other success is read as the operation's result type.
+  - A `@fresh` command sends `basedOn` and a `@destructive` one `approval` as arguments, like the
+    others (`based_on` with `names: snake`). A reply of 409 to a `@fresh` command is `Stale` and
+    one of 410 is `Expired`, unless `status:` maps those codes; `status: { 412: Stale }` maps
+    another. The service can't check an approval, only record it, so `@allow` is what limits who
+    may send one.
   - `@auth(bearer: "secret")`, or `@auth(header: "X-Auth-Token", secret: "secret")`, sends a
     secret with every request.
   - A refused request (a 4xx that `status:` doesn't name) ends the run with a fault that shows the

@@ -93,6 +93,7 @@ construct that also works outside that domain.
 | Serving contracts | **A program serves a contract with `impl Contract { … }`**: one function per operation, with the contract's types and defaults, run as one transaction; a command with `@key` takes the key last | A service written in Eyelang shares one contract with its callers, and a key can name an entity, so repeats need no dedupe table. From the lab: Notify, written in Eyelang |
 | Serving over HTTP | **`eye run` serves each contract a program serves on its `@port`, read the way a caller sends it**: the `@http` route picks the operation, arguments and replies are in the one JSON shape, `@auth` is checked before any code runs (401), each request is one transaction, and a result has the status `status:` gives its variant, else 200. `NOTIFY_PORT` moves the port, `0` to any free one (section 17) | Callers and servers agree because both read the same attributes, and the key, not a cache of replies, makes a repeat safe, as for any service. From the lab: Notify written in Eyelang must answer the lab's other programs |
 | Ports and callers | **`@port` is where a service listens, and `@allow` who may reach it, checked at compile time.** A contract a program serves must declare `@port`; a contract without one is a service outside the network, reached at its configured URL, that any module may call. `@allow(m, …)` lists the modules that may call its operations (besides its own module, the modules that serve it, and tests); each name is a module the program can import; `@allow(nobody)` lets no module call it; `@allow` needs `@port` (section 17) | The lab's own Notify has a port and four callers, which network policy can be written from, while Telegram, Miniflux and NetBird are outside services with no port of ours to guard: a rule that every called contract declares a port would have given them made-up ones. Callers get the port from the contract, so a call can't go to a wrong one |
+| Fresh and destructive commands | **`@fresh` adds a `basedOn: Version` parameter and the outcomes `Stale` and `Expired`; `@destructive` adds an `approval: Approval` parameter.** Both come after the declared parameters, before `key`, and a served `impl` takes them too. `Stale` means the state changed since that version, `Expired` that what the command was based on is gone; `Expired` is the one `approval!` gives. A `Version` has `==` and no order; a snapshot's `version` is one. Over HTTP they travel as arguments, a reply of 409 is `Stale` and 410 `Expired`, and both outcomes are objects tagged with `"kind"` (section 17) | The check-then-act race is the usual bug in programs that act on another service's state, and the fix (send the version you read, let the service refuse) is easy to forget, so the contract asks for it and the match must handle the refusal. Two outcomes because a caller does different things: read again after `Stale`, give up after `Expired`. Reusing `approval!`'s `Expired` keeps one word for "too late" |
 | Events | **Published when the transaction commits, and handled once per key.** `@on(event(e))` starts one run per event, and `@key(field)` on the event makes a repeat start nothing; `next!` counts every event published since the run's previous step | A reply that comes quickly is never missed, and a message the bus delivers twice never starts a second run. From the lab: a button pressed seconds after its question, and Telegram updates delivered again after a restart |
 | Queries | **Pipelines** (`filter`, `map`, …), compiled to SQL when the source is an entity set | The same code as for lists |
 | Reactions | **Views trigger jobs**: `@on(enters(view))`, `@on(leaves(view))` | Replaces most polling cron jobs |
@@ -386,7 +387,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   anywhere, and it can't be confused with `Ref(Player)`.
 - **Special types:** `Secret(a)` (no printing, no saving), `Approval` (only a human approval flow
   can create one; its `what` and `by` say what was approved and by whom), `Key` (an idempotency
-  key), `Run(a)` (a started job). A value that foreign code owns has an `extern type` (section 18).
+  key), `Version` (the version of some state, which a `@fresh` command names; it has `==` and no
+  order, and an integer literal can be one), `Run(a)` (a started job). A value that foreign code owns has an `extern type` (section 18).
 - **Opaque types:** `pub opaque type Lexer = { … }` exports the type but not its fields, so other
   modules use it only through its functions and methods.
 - **String literals take the type expected,** as record literals do: where a `Key` or a `Zone` is
@@ -1022,10 +1024,10 @@ entity Player(id: PlayerId) {
   Because entity methods have no outside side effects, the runtime can safely retry one after a
   conflict.
 - **Reading from a job:** `w.read!()` returns a snapshot, whose type is the entity's name
-  (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field,
-  which counts the transactions that changed the entity: 0 when it is new, then one more for each.
-  Snapshots go stale, and commands can name the version they were based on (see `@fresh` in
-  section 17). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
+  (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field, a
+  `Version` that counts the transactions that changed the entity: 0 when it is new, then one more
+  for each. Snapshots go stale, and commands can name the version they were based on (see
+  `@fresh` in section 17). Outside a job, in a test for instance, `w.read()` gives a snapshot without `!`.
 - **Evolution:** `@version(N)` numbers the shape of an entity's stored state (1 without it), and
   every row records the version it was saved with; it isn't the snapshot's `version`, which counts
   transactions.
@@ -1304,7 +1306,59 @@ type Delivery =
   each `@on(event(…))` job.
 - **`@fresh`** on a command adds a required `basedOn: Version` argument and `Stale`/`Expired`
   outcomes, so an old command can't act on newer state.
-- **`@destructive`** on a command adds a required `Approval` argument.
+  - `basedOn` comes after the parameters the command declares, and before `key`. It is the
+    version of the state the caller read, as the service gave it; an entity's snapshot has one in
+    its `version` field (section 14), and an integer literal can be one.
+  - `Stale` means the state changed after that version, and `Expired` that what the command was
+    based on is gone, so it can never apply. Neither does anything. `Expired` is the same variant
+    `approval!` gives.
+  - Both join the variants of the command's result, so a `match` on it handles them, and until it
+    does, the result can't be passed where the declared type is expected, as with `Uncertain`.
+    Reconciling resolves `Uncertain` and keeps them.
+  - A command whose result isn't a variant type, or already has a variant `Stale` or `Expired`,
+    can't be `@fresh`.
+- **`@destructive`** on a command adds a required `Approval` argument, `approval`, after the
+  parameters it declares (and after `basedOn`), and before `key`. Only `approval!` makes an
+  `Approval`, so a program calls the command only after a person said yes.
+
+  ```eye
+  # shelves/shelves.eye
+  pub type Shelf = { id: String, items: List(String), version: Version }
+
+  @port(3004)
+  contract Shelves {
+    query shelf(id: String) -> Shelf
+
+    @fresh                                  # clear(id, basedOn)
+    command clear(id: String) -> Cleared
+
+    @destructive                            # burn(id, approval)
+    command burn(id: String) -> Burned
+  }
+
+  # main.eye: reads again when the shelf changed in between
+  job tidy(id: String) {
+    let shelf = shelves.shelf!(id)
+    match shelves.clear!(id, basedOn: shelf.version) {
+      Cleared(n) => Log(id).add!("cleared {n}")
+      Stale => {
+        let _ = tidy.start!(id)
+      }
+      Expired | Uncertain(_) => ()
+    }
+  }
+
+  # a program that serves Shelves answers from its entity's snapshot
+  impl shelves.Shelves {
+    fn clear(id, basedOn) {
+      let rack = Rack(id).read()
+      if rack.gone { return Expired }
+      if rack.version != basedOn { return Stale }
+      Cleared(count: Rack(id).empty())
+    }
+    # and fn shelf(id), fn burn(id, approval)
+  }
+  ```
 - **A contract's operations are its module's functions.** A module that declares one contract offers
   its commands and queries by name: `notify.send!(…)` for `contract Notify { command send … }`.
 - **Serving a contract.** A program written in Eyelang serves a contract with `impl Contract { … }`:
@@ -1332,6 +1386,11 @@ type Delivery =
   - Lists, sets and tuples are arrays, and a map with string keys is an object.
   - An `Instant` is an RFC 3339 string, a `Date` `"2026-10-12"`, a `Duration` a number of
     milliseconds, and a `Size` a number of bytes.
+  - A `Version` is a number or a string, as the service gave it; a snapshot's is a number. An
+    `Approval` is `{ "what": "…", "by": "…" }`.
+  - The outcomes a contract adds to a command are objects tagged with `"kind"`, whatever the
+    shape of the command's own variants: `{ "kind": "Stale" }`, `{ "kind": "Expired" }` and
+    `{ "kind": "Uncertain", "key": "…" }`. A reader takes `"Stale"` and `"Expired"` alone too.
 
   Fields that a type doesn't declare are ignored when a value is read, so a service can add some
   without breaking its callers.
@@ -1359,6 +1418,11 @@ type Delivery =
     and `field: "…"` puts it in the body too.
   - `status: { 202: Pending }` reads a reply with that status as that variant, from the fields of
     the body. Any other success is read as the operation's result type.
+  - A `@fresh` command sends `basedOn` and a `@destructive` one `approval` as arguments, like the
+    others (`based_on` with `names: snake`). A reply of 409 to a `@fresh` command is `Stale` and
+    one of 410 is `Expired`, unless `status:` maps those codes; `status: { 412: Stale }` maps
+    another. The service can't check an approval, only record it, so `@allow` is what limits who
+    may send one.
   - `@auth(bearer: "secret")`, or `@auth(header: "X-Auth-Token", secret: "secret")`, sends a
     secret with every request.
   - A refused request (a 4xx that `status:` doesn't name) ends the run with a fault that shows the
