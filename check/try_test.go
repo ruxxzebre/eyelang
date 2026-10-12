@@ -18,37 +18,37 @@ func TestTryReturnsFromItsFunction(t *testing.T) {
 		want []string
 	}{
 		{"a function that returns an Int", `fn g(x: Option(Int)) -> Int = x? + 1`, []string{
-			"1:31: ? on an Option returns its None from g, but g returns Int: give a default with ?? value, match the None, or return an Option",
+			"1:32: ? on an Option returns its None from g, but g returns Int: give a default with ?? value, match the None, or return an Option",
 		}},
 		{"a function that returns nothing", `fn g(x: Option(Int)) {
   let n = x?
   print("{n}")
 }`, []string{
-			"2:11: ? on an Option returns its None from g, but g returns (): give a default with ?? value, match the None, or return an Option",
+			"2:12: ? on an Option returns its None from g, but g returns (): give a default with ?? value, match the None, or return an Option",
 		}},
 		{"an inferred function decides its result from its body", `fn g(x: Option(Int)) = x? + 1
 fn h(x: Option(Int)) = Some(x? + 1)`, []string{
-			"1:24: ? on an Option returns its None from g, but g returns Int: give a default with ?? value, match the None, or return an Option",
+			"1:25: ? on an Option returns its None from g, but g returns Int: give a default with ?? value, match the None, or return an Option",
 		}},
 		{"a lambda returns from itself", `fn g(xs: List(Option(Int))) -> Option(List(Int)) {
   let ns = xs |> map(fn x: x? + 1)
   let ms = xs |> map(fn x: Some(x? + 1))
   Some(ns)
 }`, []string{
-			"2:28: ? on an Option returns its None from this lambda, but this lambda returns Int: give a default with ?? value, match the None, or return an Option",
+			"2:29: ? on an Option returns its None from this lambda, but this lambda returns Int: give a default with ?? value, match the None, or return an Option",
 		}},
 		{"a job", `job sync(x: Option(Int)) {
   let n = x?
   print("{n}")
 }`, []string{
-			"2:11: ? on an Option returns its None from job sync, but job sync returns (): give a default with ?? value, match the None, or return an Option",
+			"2:12: ? on an Option returns its None from job sync, but job sync returns (): give a default with ?? value, match the None, or return an Option",
 		}},
 		{"a Result in a lambda returns from the lambda too", `fn g(xs: List(String)) -> Result(List(Int), String) {
   let ns = xs |> map(fn s: parseInt(s)? + 1)
   let ms = xs |> map(fn s: Ok(parseInt(s)? + 1))
   Ok(ns)
 }`, []string{
-			"2:28: ? on a Result needs a function that returns a Result, and this lambda returns Int",
+			"2:39: ? on a Result needs a function that returns a Result, and this lambda returns Int",
 		}},
 		{"what is fine", `fn second(xs: List(Int)) -> Option(Int) = Some(xs[1]? * 2)
 fn total(x: Option(Int)) -> Int = (x ?? 0) + 1

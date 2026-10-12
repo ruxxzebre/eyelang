@@ -2649,6 +2649,8 @@ func (t pendingTry) settle() {
 // function whose result is res: an Option's None needs an Option, and a
 // Result's error a Result whose error type is it or holds it.
 func (x *fnCheck) tryInto(e *ir.Try, k *tcon, res typ) {
+	// Errors here are about the function `?` returns from, so they point at
+	// the `?`, not at the value before it.
 	c := x.c
 	ret, ok := prune(res).(*tcon)
 	if !ok {
@@ -2657,13 +2659,13 @@ func (x *fnCheck) tryInto(e *ir.Try, k *tcon, res typ) {
 	if k.decl == c.ts.option {
 		if ret.decl != c.ts.option {
 			who := x.who()
-			c.typeErrorf(e.Pos, "? on an Option returns its None from %s, but %s returns %s: give a default with ?? value, match the None, or return an Option",
+			c.typeErrorf(questionMark(e), "? on an Option returns its None from %s, but %s returns %s: give a default with ?? value, match the None, or return an Option",
 				who, who, show(ret))
 		}
 		return
 	}
 	if ret.decl != c.ts.result {
-		c.typeErrorf(e.Pos, "? on a Result needs a function that returns a Result, and %s returns %s", x.who(), show(ret))
+		c.typeErrorf(questionMark(e), "? on a Result needs a function that returns a Result, and %s returns %s", x.who(), show(ret))
 		return
 	}
 	if d, ok := prune(ret.args[1]).(*tcon); ok && d.decl != nil {
@@ -2671,13 +2673,22 @@ func (x *fnCheck) tryInto(e *ir.Try, k *tcon, res typ) {
 	} else if x.kind == kindLambda {
 		e.Wrap = nil // lowering gave the enclosing function's, which a lambda's `?` doesn't return to
 	}
-	if x.intoProblem(k.args[1], ret.args[1], e.Pos) {
+	if x.intoProblem(k.args[1], ret.args[1], questionMark(e)) {
 		return
 	}
 	if !x.converts(k.args[1], ret.args[1]) {
-		c.typeErrorf(e.Pos, "? can't pass on a %s from a function whose error is %s: none of its variants holds a %s; use .mapErr(…)?",
+		c.typeErrorf(questionMark(e), "? can't pass on a %s from a function whose error is %s: none of its variants holds a %s; use .mapErr(…)?",
 			show(k.args[1]), show(ret.args[1]), show(k.args[1]))
 	}
+}
+
+// questionMark is where the `?` of e is: the last character of its span.
+func questionMark(e *ir.Try) ir.Pos {
+	p := e.Pos
+	if p.End > p.Offset {
+		p.Offset = p.End - 1
+	}
+	return p
 }
 
 // who names the function `?` returns from, for messages.

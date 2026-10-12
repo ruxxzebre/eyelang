@@ -263,7 +263,7 @@ fn k(xs: List(String)) -> Result(List(Int), E) {
   let ns = xs.map(f)
   Ok([])
 }`, []string{
-			"2:66: ? on a Result needs a function that returns a Result, and this lambda returns Int",
+			"2:77: ? on a Result needs a function that returns a Result, and this lambda returns Int",
 		}},
 		{"? on a value whose type a later call gives", `fn g() -> Int {
   let f = fn x: x? + 1
@@ -279,8 +279,8 @@ fn i() -> Option(Int) {
 }
 fn priv(x) = Some(x? + 1)
 fn gen(x: a) -> Option(a) = x?`, []string{
-			"2:17: ? on an Option returns its None from this lambda, but this lambda returns Int",
-			"6:22: ? on a Result needs a function that returns a Result, and this lambda returns Option(Int)",
+			"2:18: ? on an Option returns its None from this lambda, but this lambda returns Int",
+			"6:23: ? on a Result needs a function that returns a Result, and this lambda returns Option(Int)",
 			"10:22: ? passes on the error of a Result or the None of an Option; this is Int",
 			"13:19: is this an Option or a Result? Nothing here says, so ? can't tell what it passes on; write its type where the value is bound",
 			"14:29: ? passes on the error of a Result or the None of an Option; this is a",

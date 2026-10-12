@@ -217,7 +217,7 @@ type Other = | Other
 fn parse(s: String) -> Result(Int, ParseError) = Err(NotANumber(s))
 fn wraps(s: String) -> Result(Int, CountError) = Ok(parse(s)?)
 fn wrong(s: String) -> Result(Int, Other) = Ok(parse(s)?)`,
-			[]string{"6:48: ? can't pass on a ParseError from a function whose error is Other"}},
+			[]string{"6:56: ? can't pass on a ParseError from a function whose error is Other"}},
 		{"a match covers every variant", `type Shape = | Circle(Float) | Square(Float) | Dot
 fn area(s: Shape) -> Float = match s {
   Circle(r) => r * r
@@ -903,7 +903,7 @@ fn f() {
 }`, []string{"4:20: xs is passed as mut and read in the same call"}},
 		{"? needs a Result or an Option, and a function that returns one", `fn f(o: Option(Int)) -> Result(Int, String) = Ok(o?)
 fn g(n: Int) -> Option(Int) = Some(n?)`, []string{
-			"1:50: ? on an Option returns its None from f, but f returns Result(Int, String): give a default with ?? value, match the None, or return an Option",
+			"1:51: ? on an Option returns its None from f, but f returns Result(Int, String): give a default with ?? value, match the None, or return an Option",
 			"2:36: ? passes on the error of a Result or the None of an Option; this is Int",
 		}},
 		{"nothing converts implicitly", `fn f() = 1 + 2.0`, []string{"1:10: expected Int, found Float"}},
