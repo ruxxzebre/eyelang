@@ -90,10 +90,6 @@ type Category struct {
 	Title string     `json:"title"`
 }
 
-// What creating a category gave. A command's lost reply can only be told
-// apart in a variant type, so the category is wrapped in one.
-type Created = Category
-
 // A subscribed feed, and whether Miniflux can read it.
 type Subscription struct {
 	FeedURL  string   `json:"feed_url"`
@@ -294,8 +290,8 @@ func (c *MinifluxClient) Categories(ctx context.Context) ([]Category, error) {
 }
 
 // CreateCategory is POST /v1/categories.
-func (c *MinifluxClient) CreateCategory(ctx context.Context, args CreateCategoryArgs) (Created, error) {
-	var zero Created
+func (c *MinifluxClient) CreateCategory(ctx context.Context, args CreateCategoryArgs) (Category, error) {
+	var zero Category
 	r := newCall("miniflux.createCategory", "POST", "/v1/categories")
 	if err := r.put("body", "title", args.Title); err != nil {
 		return zero, err
@@ -308,9 +304,9 @@ func (c *MinifluxClient) CreateCategory(ctx context.Context, args CreateCategory
 		return zero, err
 	}
 	if status >= 200 && status < 300 {
-		v, err := plain[Created](reply)
+		v, err := plain[Category](reply)
 		if err != nil {
-			return zero, r.badReply(status, "Created", err)
+			return zero, r.badReply(status, "Category", err)
 		}
 		return v, nil
 	}
@@ -427,7 +423,7 @@ type MinifluxService interface {
 
 	Categories(ctx context.Context) ([]Category, error)
 
-	CreateCategory(ctx context.Context, args CreateCategoryArgs) (Created, error)
+	CreateCategory(ctx context.Context, args CreateCategoryArgs) (Category, error)
 
 	Feeds(ctx context.Context) ([]Subscription, error)
 

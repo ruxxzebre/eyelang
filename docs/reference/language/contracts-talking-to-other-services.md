@@ -113,9 +113,11 @@ type Delivery =
           - protocol: TCP
             port: 3001
   ```
-- **Commands** return a variant type, and every command can also return `Uncertain(key)`: its
-  reply was lost, so the other service may or may not have acted. Until it is reconciled, or a
-  `match` handles `Uncertain(_)`, the result can't be passed where the declared type is expected. With `@reconcile(query)`,
+- **Commands** return a variant type or a record, and every command can also return
+  `Uncertain(key)`: its reply was lost, so the other service may or may not have acted. Until it
+  is reconciled, or a `match` handles `Uncertain(_)`, the result can't be passed where the
+  declared type is expected, and a record's fields can't be read. Past an `Uncertain(_)` arm the
+  reply wasn't lost: `match miniflux.createCategory!(title:) { Uncertain(_) => …, c => c.id }`. With `@reconcile(query)`,
   `.reconcile!()` resolves it by asking the query, which returns `Option` of the command's outcome:
   `Some` is the outcome, and `None` means the command never arrived, so it is sent again with the
   same key, which can't do it twice. A command without `@reconcile`, such as one to a service that

@@ -6,7 +6,7 @@
 import home.{UserId}
 import http
 import notify.{Priority, Format, MessageId, Delivery, Refusal, Choice, QuestionId, Asked, Answered}
-import miniflux.{CategoryId, Feed, Entry, Entries, User, Refreshed, Category, Created, Subscription, Subscribed}
+import miniflux.{CategoryId, Feed, Entry, Entries, User, Refreshed, Category, Subscription, Subscribed}
 import telegram.{ChatId, UpdateId, MessageRef, Button, Update, UpdateBody, Sending}
 import authentik.{Person}
 import flaresolverr.{Proxy, Solution, Solved}
@@ -91,9 +91,6 @@ contract Echo {
 
   @http("POST /category")
   query category(value: Category) -> Category
-
-  @http("POST /created")
-  query created(value: Created) -> Created
 
   @http("POST /subscription")
   query subscription(value: Subscription) -> Subscription

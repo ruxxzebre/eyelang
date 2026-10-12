@@ -264,13 +264,7 @@ func (c *checker) constructors(t typ, rows [][]ir.Pattern) ([]ctor, bool) {
 				}
 				out = append(out, k)
 			}
-			if x.fresh && c.ts.stale != nil && c.ts.expired != nil {
-				out = append(out, ctor{name: "Stale", variant: c.ts.stale}, ctor{name: "Expired", variant: c.ts.expired})
-			}
-			if x.uncertain && c.ts.uncert != nil {
-				out = append(out, ctor{name: "Uncertain", variant: c.ts.uncert, fields: []typ{tKey}})
-			}
-			return out, true
+			return append(out, c.outcomeCtors(x)...), true
 		}
 		if x.decl == nil && x.entity == nil {
 			switch x.name {
@@ -289,12 +283,27 @@ func (c *checker) constructors(t typ, rows [][]ir.Pattern) ([]ctor, bool) {
 				}
 				k.fields = append(k.fields, ft)
 			}
-			return []ctor{k}, true
+			// A command that returns a record may come back as an
+			// outcome it adds instead.
+			return append([]ctor{k}, c.outcomeCtors(x)...), true
 		}
 	case *ttuple:
 		return []ctor{{tuple: true, fields: x.elems}}, true
 	}
 	return nil, false
+}
+
+// outcomeCtors are the outcomes a command adds to the type it returns:
+// Stale and Expired for a @fresh one, and Uncertain(key).
+func (c *checker) outcomeCtors(x *tcon) []ctor {
+	var out []ctor
+	if x.fresh && c.ts.stale != nil && c.ts.expired != nil {
+		out = append(out, ctor{name: "Stale", variant: c.ts.stale}, ctor{name: "Expired", variant: c.ts.expired})
+	}
+	if x.uncertain && c.ts.uncert != nil {
+		out = append(out, ctor{name: "Uncertain", variant: c.ts.uncert, fields: []typ{tKey}})
+	}
+	return out
 }
 
 // recordNames lists the fields of a record or snapshot type, when rows match

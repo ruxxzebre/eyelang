@@ -39,12 +39,6 @@ export interface Category {
   title: string;
 }
 
-/**
- * What creating a category gave. A command's lost reply can only be told
- * apart in a variant type, so the category is wrapped in one.
- */
-export type Created = Category;
-
 /** A subscribed feed, and whether Miniflux can read it. */
 export interface Subscription {
   feed_url: string;
@@ -162,7 +156,7 @@ export class MinifluxClient {
   }
 
   /** It is POST /v1/categories. */
-  async createCategory(args: CreateCategoryArgs): Promise<Created | Uncertain> {
+  async createCategory(args: CreateCategoryArgs): Promise<Category | Uncertain> {
     const call = newCall("miniflux.createCategory", "POST", "/v1/categories");
     put(call, "body", "title", args.title);
     let reply: Reply;
@@ -175,7 +169,7 @@ export class MinifluxClient {
       return { kind: "Uncertain", key: "" };
     }
     if (reply.status >= 200 && reply.status < 300) {
-      return parse(call, reply) as Created;
+      return parse(call, reply) as Category;
     }
     if (reply.status >= 500) {
       return { kind: "Uncertain", key: "" };
@@ -273,7 +267,7 @@ export interface MinifluxService {
 
   categories(): Promise<Category[]>;
 
-  createCategory(args: Required<CreateCategoryArgs>): Promise<Created>;
+  createCategory(args: Required<CreateCategoryArgs>): Promise<Category>;
 
   feeds(): Promise<Subscription[]>;
 

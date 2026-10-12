@@ -25,10 +25,6 @@ pub type Refreshed = | Refreshed
 ## A category of feeds. Titles are unique: Miniflux refuses a second one.
 pub type Category = { id: CategoryId, title: String }
 
-## What creating a category gave. A command's lost reply can only be told
-## apart in a variant type, so the category is wrapped in one.
-pub type Created = | Created(Category)
-
 ## A subscribed feed, and whether Miniflux can read it.
 pub type Subscription = {
   feedUrl: String,
@@ -68,7 +64,7 @@ contract Miniflux {
   query categories() -> List(Category)
 
   @http("POST /v1/categories")
-  command createCategory(title: String) -> Created
+  command createCategory(title: String) -> Category
 
   @http("GET /v1/feeds")
   query feeds() -> List(Subscription)

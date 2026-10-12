@@ -146,8 +146,6 @@ Runtime and tools:
   It should become issues or tests.
 
 Checker:
-- A command that returns a record can't have `Uncertain` matched. The lab's `createCategory`
-  wraps its result in a one-variant type to work around it.
 - `consume` isn't inferred from `@on(event(…))`, because a job has no `uses` clause.
 - Generic private functions: `double(2.5)` gives two errors where one would do. Calling itself
   at a bigger type is reported by `eye check --lir` (7.2), not by `eye check`.

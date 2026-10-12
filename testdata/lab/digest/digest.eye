@@ -426,10 +426,10 @@ fn made(title: String) -> miniflux.CategoryId =
       Some(c) => c.id
       None => match miniflux.createCategory!(title:) {
         Uncertain(_) => unreachable("Miniflux's answer to making the category {title} was lost twice")
-        Created(c) => c.id
+        c => c.id
       }
     }
-    Created(c) => c.id
+    c => c.id
   }
 
 fn gather(since: Instant, until: Instant) -> News {

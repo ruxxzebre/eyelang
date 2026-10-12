@@ -94,7 +94,6 @@ async function echoChecks(where: string, c: EchoClient): Promise<void> {
   await same(w("Refreshed"), c.refreshed({ value: "Refreshed" }), "Refreshed");
   const category: echo.Category = { id: 7, title: "News" };
   await same(w("Category"), c.category({ value: category }), category);
-  await same(w("Created"), c.created({ value: category }), category);
   const subscription: echo.Subscription = { feedUrl: "https://news.example/feed", title: "News", category, parsingErrorCount: 2, parsingErrorMessage: "timeout" };
   await same(w("Subscription"), c.subscription({ value: subscription }), subscription);
   const subscribed: echo.Subscribed[] = [

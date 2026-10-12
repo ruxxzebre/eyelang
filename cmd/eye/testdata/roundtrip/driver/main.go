@@ -264,10 +264,6 @@ func echoChecks(ctx context.Context, where string, c *echo.EchoClient) {
 		same(w("Category"), v, err, category)
 	}
 	{
-		v, err := c.Created(ctx, echo.CreatedArgs{Value: category})
-		same(w("Created"), v, err, category)
-	}
-	{
 		want := echo.Subscription{FeedURL: "https://news.example/feed", Title: "News", Category: category, ParsingErrorCount: 2, ParsingErrorMessage: "timeout"}
 		v, err := c.Subscription(ctx, echo.SubscriptionArgs{Value: want})
 		same(w("Subscription"), v, err, want)
@@ -451,7 +447,7 @@ func minifluxChecks(ctx context.Context) {
 	}
 	{
 		v, err := c.CreateCategory(ctx, miniflux.CreateCategoryArgs{Title: "Lab"})
-		same("miniflux.createCategory", v, err, miniflux.Created{ID: 7, Title: "Lab"})
+		same("miniflux.createCategory", v, err, miniflux.Category{ID: 7, Title: "Lab"})
 	}
 	{
 		v, err := c.Feeds(ctx)

@@ -3,7 +3,7 @@
 # as module fakeminiflux, and gives the copy's Miniflux contract a port. Its
 # answers show what each request carried.
 
-import miniflux.{CategoryId, Category, Entries, Created, Subscription}
+import miniflux.{CategoryId, Category, Entries, Subscription}
 
 impl miniflux.Miniflux {
   fn me() = Ok({ id: 1, username: "lab" })
@@ -23,7 +23,7 @@ impl miniflux.Miniflux {
 
   fn categories() = [{ id: CategoryId(1), title: "News" }]
 
-  fn createCategory(title) = Created({ id: CategoryId(7), title })
+  fn createCategory(title) = { id: CategoryId(7), title }
 
   fn feeds() -> List(Subscription) = [
     {

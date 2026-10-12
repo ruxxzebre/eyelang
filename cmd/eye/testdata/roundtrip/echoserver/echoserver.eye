@@ -22,7 +22,6 @@ impl echo.Echo {
   fn user(value) = value
   fn refreshed(value) = value
   fn category(value) = value
-  fn created(value) = value
   fn subscription(value) = value
   fn subscribed(value) = value
   fn chatId(value) = value

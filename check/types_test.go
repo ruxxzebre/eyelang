@@ -273,6 +273,26 @@ job j(text: String) {
 		{"an Uncertain result can't pass for an outcome", `import svc
 fn f(text: String) -> svc.Sent = svc.send!(text, key: "k")`,
 			[]string{"2:34: this command's reply may have been lost"}},
+		{"a command that returns a record may come back Uncertain", `type Category = { id: Int, title: String }
+contract Store {
+  @key(required)
+  command create(title: String) -> Category
+}
+fn id(t: String) -> Int uses {net Store.create} = match create(t, key: "k") {
+  Uncertain(_) => 0
+  c => c.id
+}
+fn category(t: String) -> Option(Category) uses {net Store.create} = match create(t, key: "k") {
+  Uncertain(_) => None
+  c => Some(c)
+}
+fn fields(t: String) -> Int uses {net Store.create} = match create(t, key: "k") {
+  { id, .. } => id
+}
+fn read(t: String) -> Int uses {net Store.create} = create(t, key: "k").id`, []string{
+			"14:55: this match doesn't handle Uncertain(_): add an arm for it, or `_ => …`",
+			"17:53: this command's reply may have been lost, so it may be Uncertain(key): match it with an Uncertain(_) arm, or reconcile it with .reconcile!(), before reading its id",
+		}},
 		{"reconcile needs a @reconcile query", `import svc
 job j(text: String) {
   let r = svc.raw!(text).reconcile!()

@@ -1237,7 +1237,7 @@ func (c *checker) opType(op *ir.Op) typ {
 	}
 	ret := c.fromExpr(op.Return, env, false)
 	if op.Command {
-		if r, ok := ret.(*tcon); ok && r.decl != nil && len(r.decl.Variants) > 0 {
+		if r, ok := ret.(*tcon); ok && r.decl != nil {
 			cp := *r
 			cp.uncertain, cp.reconcilable, cp.fresh = true, op.Reconcile != "", op.Fresh
 			ret = &cp
@@ -2277,6 +2277,15 @@ func (x *fnCheck) field(e *ir.Field) typ {
 			return c.unknownf(e.Pos, "%s", c.opaqueMessage(d, "field "+e.Name))
 		}
 		if t, ok := c.fieldType(r, e.Name); ok {
+			if r.uncertain || r.fresh {
+				// A command that returns a record may come back as an
+				// outcome it adds instead, which has no fields.
+				may := "Uncertain(key): match it with an Uncertain(_) arm, or reconcile it with .reconcile!(),"
+				if r.fresh {
+					may = "Uncertain, Stale or Expired: match it with arms for them"
+				}
+				c.typeErrorf(e.Pos, "this command's reply may have been lost, so it may be %s before reading its %s", may, e.Name)
+			}
 			c.useField(e, r, e.Name)
 			if row := c.ts.rowOf[r.decl]; row != nil && r.decl != nil {
 				row.reads = append(row.reads, rowRead{e.Name, e.Pos})
@@ -2746,16 +2755,40 @@ func (x *fnCheck) match(e *ir.Match, want typ) typ {
 	if result == nil {
 		result = c.fresh()
 	}
+	matched := scrutinee // what the arms after an Uncertain(_) arm can be
 	for i := range e.Arms {
 		arm := &e.Arms[i]
-		arm.Pattern = x.bindPattern(arm.Pattern, scrutinee, e.Pos)
+		arm.Pattern = x.bindPattern(arm.Pattern, matched, e.Pos)
 		if arm.Guard != nil {
 			x.check(arm.Guard, tBool)
+		} else if k, ok := prune(matched).(*tcon); ok && k.uncertain && x.handlesUncertain(arm.Pattern) {
+			// Past an arm that takes Uncertain(_), the reply wasn't lost.
+			certain := *k
+			certain.uncertain, certain.reconcilable = false, false
+			matched = &certain
 		}
 		x.check(arm.Body, result)
 	}
 	x.top.matches = append(x.top.matches, pendingMatch{e, scrutinee})
 	return result
+}
+
+// handlesUncertain reports whether a pattern takes every Uncertain(key).
+func (x *fnCheck) handlesUncertain(p ir.Pattern) bool {
+	switch p := p.(type) {
+	case ir.PVariant:
+		if p.Variant != x.c.ts.uncert || len(p.Args) > 1 {
+			return false
+		}
+		return len(p.Args) == 0 || wildLike(p.Args[0])
+	case ir.POr:
+		for _, a := range p.Alts {
+			if x.handlesUncertain(a) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // try checks `x?`: a Result's error passes to the caller, wrapped in the
