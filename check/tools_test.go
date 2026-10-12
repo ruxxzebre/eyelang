@@ -108,7 +108,7 @@ fn wipe(id: Int, approval: String) {}`, []string{
 		}},
 		{"a Tool can't be saved", `
 job keep(tools: List(ai.Tool)) {}`, []string{
-			"main.eye:20:1: keep's argument tools is a Tool, which can't be saved, and a job's arguments are",
+			"main.eye:20:1: keep's argument tools is a Tool, which can't be saved, and a job's arguments are saved with its run: pass what can be saved instead, and get the rest in the job",
 		}},
 	}
 	for _, c := range cases {

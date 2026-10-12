@@ -714,7 +714,11 @@ job j(xs: List(Int)) {
 			"10:21: in a job, stamp uses clock, so each call of it is a durable step, and named as a value its calls aren't recorded: pass a lambda that calls it with !",
 		}},
 		{"a job's arguments are saved", `job j(token: Secret(String)) { sleep!(1 min) }`,
-			[]string{"1:1: j's argument token is a Secret, which can't be saved"}},
+			[]string{"1:1: j's argument token is a Secret, which can't be saved, and a job's arguments are saved with its run: pass what can be saved instead, and get the rest in the job"}},
+		{"a job's argument of function type is reported once", `job apply(f: fn(Int) -> Int) {
+  sleep!(1 min)
+  log.info("{f(2)}")
+}`, []string{"1:1: apply's argument f is a function, which can't be saved, and a job's arguments are saved with its run: pass what the function needs instead, and call it in the job"}},
 		{"what can't be saved isn't held across a !", `fn adder(n: Int) -> fn(Int) -> Int = fn x: x + n
 fn double(n: Int) -> Int = n * 2
 job j() {

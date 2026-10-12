@@ -224,7 +224,7 @@ main.eye:14:64: retry keeps call across a waiting call, so the function given fo
 A job's arguments are saved too:
 
 ```text
-main.eye:93:1: hold's argument token is a Secret, which can't be saved, and a job's arguments are
+main.eye:93:1: hold's argument token is a Secret, which can't be saved, and a job's arguments are saved with its run: pass what can be saved instead, and get the rest in the job
 ```
 
 A step's result is saved too, so a step can't return one of them. In a job, read a secret, or use

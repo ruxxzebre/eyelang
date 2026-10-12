@@ -1173,7 +1173,11 @@ func (c *checker) checkJobArgs(j *ir.Job) {
 	for _, p := range j.Func.Params {
 		if p.Slot < len(slots) {
 			if what := c.unsaveable(slots[p.Slot]); what != "" {
-				c.typeErrorf(j.Pos, "%s's argument %s is %s, which can't be saved, and a job's arguments are", j.Name, p.Name, withArticle(what))
+				fix := "pass what can be saved instead, and get the rest in the job"
+				if isFn(slots[p.Slot]) {
+					fix = "pass what the function needs instead, and call it in the job"
+				}
+				c.typeErrorf(j.Pos, "%s's argument %s is %s, which can't be saved, and a job's arguments are saved with its run: %s", j.Name, p.Name, withArticle(what), fix)
 			}
 		}
 	}
@@ -1381,6 +1385,15 @@ func (c *checker) checkSave(fn *ir.Func, waiting bool) *saveFrame {
 		return false
 	}
 	reported := map[int]bool{}
+	// A job's argument that can't be saved is reported once, by
+	// checkJobArgs, not again at each use after a wait.
+	if !waiting {
+		for s := range params {
+			if s < len(slots) && c.unsaveable(slots[s]) != "" {
+				reported[s] = true
+			}
+		}
+	}
 	// A loop that waits keeps what it walks across the wait, to find its
 	// place when the run resumes.
 	for _, l := range fors {
