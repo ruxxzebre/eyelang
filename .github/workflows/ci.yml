@@ -22,12 +22,12 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # The zig that tools/zig pins builds the C the compiler emits; fetched once per pin.
+      # The zig that internal/zig pins builds the C the compiler emits; fetched once per pin.
       - name: Cache zig
         uses: actions/cache@v6
         with:
           path: ~/.cache/eyelang/zig
-          key: zig-${{ runner.os }}-${{ hashFiles('tools/zig/main.go') }}
+          key: zig-${{ runner.os }}-${{ hashFiles('internal/zig/zig.go') }}
 
       - name: Fetch zig
         run: go run ./tools/zig version
