@@ -238,6 +238,10 @@ void ey_free(ey_obj *o) {
 		break;
 	case EY_LIST: {
 		ey_list *l = (ey_list *)o;
+		if (l->owner) {
+			ey_drop(l->owner);
+			break;
+		}
 		ey_drop_n(t->args[0], l->items, l->len);
 		free(l->items);
 		break;

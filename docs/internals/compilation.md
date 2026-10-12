@@ -227,7 +227,7 @@ laid out by type"), and the back end prints it as a C type:
   inline (`ey_b3`, or `ey_b3_v1` for a variant); a variant without fields is the immediate word
   `(n << 1) | 1`, so `Leaf` allocates nothing;
 - lists, sets and maps are pointers to buffers that hold their elements inline: a `List(Token)`
-  is one array of 24-byte tokens;
+  is one array of 24-byte tokens, and a slice of a list shares its buffer;
 - a closure is an object with its code and its captures inline (`NAME_cl`), a `dyn Trait` an
   object with the value inline and the impl's table;
 - `String`, `Bytes`, `Key`, `Zone`, `Instant`, a `Range` and the results of commands are still
@@ -294,8 +294,8 @@ apart, compares, shows, collects and updates a value of each layout), at both `-
 and checks the output is `eye test`'s line for line (durations aside); a program joins as soon
 as it compiles. It also builds core for all five targets and runs a `main`. `cgen/updates_test.go`
 times the update loops that copied natively until 7.5 (an append through a helper, a map insert
-through a `let`, a record updated from its own list) at two sizes and fails if one grows
-quadratically again. Valgrind can't check for
+through a `let`, a record updated from its own list) and a list taken apart by slices, which
+copied until 7.13, at two sizes, and fails if one grows quadratically again. Valgrind can't check for
 leaks, since it doesn't see the heap of a static musl binary; instead `cgen/alloc_test.go` runs
 the test binaries of core, traits, the lexer and cgen's programs, and a `main`, with `EYE_ALLOCS`,
 and checks that every object is freed by exit except those a failing test left.
@@ -417,8 +417,12 @@ how a variant type says which variant a value is. `TestLayouts` checks it for ea
   for its default, and a fresh variable rely on it.
 - **Lists of fixed-size values are arrays of them.** A `List(Token)` is one buffer of 24-byte
   tokens, a `List(Byte)` one of bytes, a `Map(String, Int)` arrays of views and words; reading an
-  element copies it out (and dups its counted fields). A list is one word, so a slice of a list
-  (`xs[2..5]`) copies its elements; `String` and `Bytes` slices share.
+  element copies it out (and dups its counted fields). A list is one word, a pointer to a list
+  object; a slice of a list (`xs[2..5]`) is a list object whose items point into its list's
+  buffer and which holds that list (`owner`), so it costs one small object whatever its length,
+  as SPECS section 5 says. A slice changes in place never: `+=` or `xs[i] = v` on one copies
+  what it covers first. (The first design copied list slices; the spec promised sharing, and the
+  `owner` field costs nothing on lists that aren't slices.)
 - **Strings and bytes are views** `{p, len, own}`: where the bytes start, how many, and the
   counted buffer that holds them (null for a literal, which is static). A slice, `split`,
   `lines`, `words` and `trim` share the buffer; `s += t` appends in place when the view holds the

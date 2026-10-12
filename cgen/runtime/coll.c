@@ -36,6 +36,7 @@ static ey_list *list_alloc(const ey_type *ty, int64_t cap) {
 	ey_list *l = ey_alloc(sizeof(ey_list), ty);
 	l->len = 0;
 	l->cap = cap;
+	l->owner = 0;
 	l->items = xmalloc((size_t)(cap * (int64_t)ty->args[0]->size));
 	return l;
 }
@@ -43,6 +44,7 @@ static ey_list *list_alloc(const ey_type *ty, int64_t cap) {
 ey_v ey_list_take(const ey_type *ty, int64_t n, void *items) {
 	ey_list *l = ey_alloc(sizeof(ey_list), ty);
 	l->len = l->cap = n;
+	l->owner = 0;
 	l->items = items ? items : xmalloc(1);
 	return EY_V(l);
 }
@@ -380,9 +382,11 @@ ey_v eyb_map_insert(ey_v mv, const void *k, const void *v) {
 /* ---------------------------------------------------------------- updates in place */
 
 static bool alone(ey_v v) { return EY_OBJ(v)->rc == 1; }
+/* a list can change in place when it is alone and not a slice */
+static bool list_alone(ey_v v) { return alone(v) && !EY_LIST(v)->owner; }
 
 ey_v eyo_list_add(ey_v l, const void *x) {
-	if (!alone(l)) {
+	if (!list_alone(l)) {
 		ey_v r = eyb_list_add(l, x);
 		ey_drop(l);
 		return r;
@@ -398,7 +402,7 @@ ey_v eyo_list_add(ey_v l, const void *x) {
 }
 
 ey_v eyo_list_concat(ey_v l, ey_v other) {
-	if (!alone(l) || l == other) {
+	if (!list_alone(l) || l == other) {
 		ey_v r = eyb_list_concat(l, other);
 		ey_drop(l);
 		return r;
@@ -510,7 +514,18 @@ ey_v eyb_list_slice(ey_v l, ey_v start, ey_v end, uint32_t flags) {
 	ey_list *a = EY_LIST(l);
 	int64_t lo, hi;
 	eyb_bounds(start, end, flags, a->len, &lo, &hi);
-	return ey_list_new(a->h.ty, hi - lo, ITEM(a->items, lo, ESIZE(a)));
+	if (lo == 0 && hi == a->len) {
+		ey_dup(l);
+		return l;
+	}
+	if (hi - lo < 2) return ey_list_new(a->h.ty, hi - lo, ITEM(a->items, lo, ESIZE(a)));
+	/* a slice shares its list's buffer, and keeps the list alive */
+	ey_list *r = ey_alloc(sizeof(ey_list), a->h.ty);
+	r->len = r->cap = hi - lo;
+	r->items = ITEM(a->items, lo, ESIZE(a));
+	r->owner = a->owner ? a->owner : l;
+	ey_dup(r->owner);
+	return EY_V(r);
 }
 
 void eyb_seq_end(ey_v c, bool last, void *out, const ey_type *opt) {
@@ -882,7 +897,7 @@ void *eyo_list_slot(const char *at, ey_v *p, ey_v i) {
 		ey_buf_char(&b, 0);
 		ey_faultf(at, "index %s is out of range for a list of %lld", b.b, (long long)a->len);
 	}
-	if (!alone(*p)) {
+	if (!list_alone(*p)) {
 		ey_v c = ey_list_new(a->h.ty, a->len, a->items);
 		ey_drop(*p);
 		*p = c;

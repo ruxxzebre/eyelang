@@ -182,6 +182,7 @@ typedef struct ey_list {
 	ey_obj h;
 	int64_t len, cap;
 	char *items;
+	ey_v owner; /* a slice: the list whose buffer items points into, which holds the elements */
 } ey_list;
 
 /* A Set (vals is NULL) or a Map, in insertion order; index holds each

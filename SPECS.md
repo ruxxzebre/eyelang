@@ -3212,7 +3212,9 @@ operator. All binary operators associate to the left except `??`, which associat
 38. **Slices and memory.** `xs[2..5]` and `bytes[i..]` share storage with what they come from
     (section 5), so a 10-byte slice keeps a 100 MB `Bytes` alive, a cost nothing shows. What is a
     slice's type, the type it was cut from or one of its own, and should keeping a small slice of
-    a large value copy it? Compiled by `eye build` today, a slice copies what it covers, so
+    a large value copy it? Compiled by `eye build`, a list's slice shares its buffer since 7.13,
+    but a slice of `Bytes` or a string still copies what it covers until they are held as views
+    (docs/internals/compilation.md, section 2), so
     matching `src[pos..]` once a token makes a lexer quadratic; the lexer of S.1
     (`testdata/programs/lexer`) matches a few bytes at a time, `src[pos..pos + 3]`, for that
     reason.

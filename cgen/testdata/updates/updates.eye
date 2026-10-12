@@ -50,6 +50,21 @@ fn bagged(n: Int) -> Bag {
   p
 }
 
+# A list taken apart from the front, a slice at a time: each slice
+# shares the list's storage (SPECS section 5), so the loop is linear; a
+# slice that copied would make it quadratic.
+fn sliced(n: Int) -> Int {
+  var xs = (0..n) |> toList
+  var seen = 0
+  for i in 0..n {
+    if xs[0] == Some(i) {
+      seen += 1
+    }
+    xs = xs[1..]
+  }
+  seen
+}
+
 # The size of what a loop made, for timing it from the command line:
 # `updates append 40000`.
 fn run(loop: String, n: Int) -> Int {
@@ -58,6 +73,7 @@ fn run(loop: String, n: Int) -> Int {
     "append" => appended(n).size()
     "insert" => inserted(n).size()
     "with" => bagged(n).items.size()
+    "slice" => sliced(n)
     _ => -1
   }
 }
@@ -94,10 +110,15 @@ test "a record updated from its own field" {
   expect(p.items[2999] == Some(2999))
 }
 
+test "a list taken apart by slices" {
+  expect(sliced(3000) == 3000 && sliced(0) == 0)
+}
+
 test "the command line names a loop" {
   expect(run("add", 10) == 10)
   expect(run("append", 10) == 10)
   expect(run("insert", 10) == 10)
   expect(run("with", 10) == 10)
+  expect(run("slice", 10) == 10)
   expect(run("other", 10) == -1)
 }

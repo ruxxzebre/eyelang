@@ -32,6 +32,7 @@ var slowLoops = []struct {
 	{"append", 1_000_000, 4_000_000, false}, // xs = push(xs, i), fn push(xs, x) = xs.add(x); linear since 7.5
 	{"insert", 100_000, 400_000, false},     // let next = m.insert(i, i); m = next; linear since 7.5
 	{"with", 1_000_000, 4_000_000, false},   // p = { p with items: p.items.add(i) }; linear since 7.5
+	{"slice", 1_000_000, 4_000_000, false},  // xs = xs[1..]; linear since 7.13, when slices began to share
 }
 
 // TestSlowLoops builds testdata/updates' main at -O2, times each slow loop

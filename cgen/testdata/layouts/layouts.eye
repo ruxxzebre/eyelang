@@ -199,3 +199,26 @@ test "maps grow, find keys made apart, and remove" {
   let words = ["pear", "apple", "fig", "apple"] |> sort
   expect(words == ["apple", "apple", "fig", "pear"])
 }
+
+fn tail(xs: List(String)) -> List(String) = xs[1..]
+
+test "list slices share, and change apart" {
+  var xs = ["a", "b", "c", "d", "e"]
+  var mid = xs[1..4]
+  let inner = mid[1..]
+  expect(mid == ["b", "c", "d"] && inner == ["c", "d"])
+  xs[2] = "C"
+  mid += ["x"]
+  mid[0] = "B"
+  expect(xs == ["a", "b", "C", "d", "e"] && mid == ["B", "c", "d", "x"] && inner == ["c", "d"])
+  var rest = tail(["p", "q", "r"])
+  rest = rest.add("s")
+  expect(rest == ["q", "r", "s"] && rest[..1] == ["q"] && rest[5..] == [])
+  var tokens: List(Token) = []
+  for i in 0..10 {
+    tokens += [{ kind: Number, start: i, end: i + 1, space: false }]
+  }
+  let last = tokens[7..]
+  expect(last.size() == 3 && last[0] == Some({ kind: Number, start: 7, end: 8, space: false }))
+  expect(last |> map(fn t: t.start) |> sum == 24)
+}
