@@ -9,28 +9,86 @@
 #include "eye.h"
 #include "builtins.h"
 
-#define SCALAR(id, k) const ey_type id = {k, 0, NULL, NULL, NULL, NULL}
-SCALAR(ey_t_unit, EY_UNIT);
-SCALAR(ey_t_bool, EY_BOOL);
-SCALAR(ey_t_float, EY_FLOAT);
-SCALAR(ey_t_char, EY_CHAR);
-SCALAR(ey_t_byte, EY_BYTE);
-SCALAR(ey_t_int32, EY_INT32);
-SCALAR(ey_t_int64, EY_INT64);
-SCALAR(ey_t_uint32, EY_UINT32);
-SCALAR(ey_t_uint64, EY_UINT64);
-SCALAR(ey_t_duration, EY_DURATION);
-SCALAR(ey_t_size, EY_SIZE);
-SCALAR(ey_t_date, EY_DATE);
-SCALAR(ey_t_time, EY_TIME);
-SCALAR(ey_t_never, EY_NEVER);
-SCALAR(ey_t_int, EY_INT);
-SCALAR(ey_t_string, EY_STRING);
-SCALAR(ey_t_bytes, EY_BYTES);
-SCALAR(ey_t_iter, EY_ITER);
-SCALAR(ey_t_loop, EY_LOOP);
-SCALAR(ey_t_big, EY_BIG);
-SCALAR(ey_t_instant, EY_INSTANT);
+#define SCALAR(id, k, sz) const ey_type id = {.kind = k, .size = sz, .align = sz, .repr = EY_R_SCALAR}
+#define WORD(id, k) const ey_type id = {.kind = k, .size = 8, .align = 8, .repr = EY_R_WORD}
+SCALAR(ey_t_unit, EY_UNIT, 1);
+SCALAR(ey_t_bool, EY_BOOL, 1);
+SCALAR(ey_t_float, EY_FLOAT, 8);
+SCALAR(ey_t_char, EY_CHAR, 4);
+SCALAR(ey_t_byte, EY_BYTE, 1);
+SCALAR(ey_t_int32, EY_INT32, 4);
+SCALAR(ey_t_int64, EY_INT64, 8);
+SCALAR(ey_t_uint32, EY_UINT32, 4);
+SCALAR(ey_t_uint64, EY_UINT64, 8);
+SCALAR(ey_t_duration, EY_DURATION, 8);
+SCALAR(ey_t_size, EY_SIZE, 8);
+SCALAR(ey_t_date, EY_DATE, 8);
+SCALAR(ey_t_time, EY_TIME, 4);
+SCALAR(ey_t_never, EY_NEVER, 1);
+WORD(ey_t_int, EY_INT);
+WORD(ey_t_string, EY_STRING);
+WORD(ey_t_bytes, EY_BYTES);
+WORD(ey_t_iter, EY_ITER);
+WORD(ey_t_loop, EY_LOOP);
+WORD(ey_t_big, EY_BIG);
+WORD(ey_t_instant, EY_INSTANT);
+
+/* ---------------------------------------------------------------- words and scalars */
+
+static bool signed_kind(uint32_t k) {
+	switch (k) {
+	case EY_INT32:
+	case EY_INT64:
+	case EY_DURATION:
+	case EY_SIZE:
+	case EY_DATE:
+	case EY_TIME:
+		return true;
+	}
+	return false;
+}
+
+ey_v ey_load_v(const ey_type *t, const void *p) {
+	switch (t->size) {
+	case 1:
+		return *(const uint8_t *)p;
+	case 2:
+		return *(const uint16_t *)p;
+	case 4:
+		if (signed_kind(t->kind)) return (ey_v)(int64_t) * (const int32_t *)p;
+		return *(const uint32_t *)p;
+	case 8:
+		return *(const uint64_t *)p;
+	}
+	return 0;
+}
+
+void ey_store_v(const ey_type *t, void *p, ey_v v) {
+	switch (t->size) {
+	case 1:
+		*(uint8_t *)p = (uint8_t)v;
+		break;
+	case 2:
+		*(uint16_t *)p = (uint16_t)v;
+		break;
+	case 4:
+		*(uint32_t *)p = (uint32_t)v;
+		break;
+	case 8:
+		*(uint64_t *)p = v;
+		break;
+	}
+}
+
+void ey_dup_n(const ey_type *t, void *p, int64_t n) {
+	if (!ey_counted(t)) return;
+	for (int64_t i = 0; i < n; i++) ey_dup_at(t, (char *)p + i * (int64_t)t->size);
+}
+
+void ey_drop_n(const ey_type *t, void *p, int64_t n) {
+	if (!ey_counted(t)) return;
+	for (int64_t i = 0; i < n; i++) ey_drop_at(t, (char *)p + i * (int64_t)t->size);
+}
 
 /* ---------------------------------------------------------------- memory */
 
@@ -106,20 +164,25 @@ void *ey_alloc(size_t size, const ey_type *ty) {
 	ey_obj *o = ey_mem_alloc(size);
 	ey_allocs++;
 	o->rc = 1;
+	o->tag = 0;
 	o->ty = ty;
 	return o;
 }
 
 /* The size of an object as it was allocated, which freeing it needs. */
 static size_t obj_size(const ey_obj *o) {
-	switch (o->ty->kind) {
+	const ey_type *t = o->ty;
+	switch (t->kind) {
 	case EY_TUPLE:
 	case EY_RECORD:
+		return t->objsize;
 	case EY_VARIANT:
-	case EY_RANGE:
-		return sizeof(ey_agg) + ((const ey_agg *)o)->n * sizeof(ey_v);
+		return t->variants[o->tag].objsize;
 	case EY_FN:
-		return sizeof(ey_fn) + ((const ey_fn *)o)->n * sizeof(ey_v);
+	case EY_DYN:
+		return t->objsize;
+	case EY_RANGE:
+		return sizeof(ey_range_obj);
 	case EY_STRING:
 	case EY_BYTES: {
 		const ey_str *s = (const ey_str *)o;
@@ -132,8 +195,6 @@ static size_t obj_size(const ey_obj *o) {
 	case EY_SET:
 	case EY_MAP:
 		return sizeof(ey_map);
-	case EY_DYN:
-		return sizeof(ey_dyn);
 	case EY_INSTANT:
 		return sizeof(ey_instant);
 	default:
@@ -146,46 +207,46 @@ void ey_free_obj(ey_obj *o, size_t size) {
 	ey_mem_free(o, size);
 }
 
+/* drop_fields drops the n fields of types ts at offsets offs from base */
+static void drop_fields(char *base, uint32_t n, const ey_type *const *ts, const uint32_t *offs) {
+	for (uint32_t i = 0; i < n; i++) ey_drop_at(ts[i], base + offs[i]);
+}
+
 void ey_free(ey_obj *o) {
 	const ey_type *t = o->ty;
 	switch (t->kind) {
 	case EY_TUPLE:
 	case EY_RECORD:
-	case EY_FN: {
-		ey_v *f = t->kind == EY_FN ? ((ey_fn *)o)->cap : ((ey_agg *)o)->f;
-		uint32_t n = t->kind == EY_FN ? ((ey_fn *)o)->n : ((ey_agg *)o)->n;
-		for (uint32_t i = 0; i < n && i < t->n; i++) ey_drop_as(t->args[i], f[i]);
+	case EY_FN:
+		drop_fields((char *)o, t->n, t->args, t->offs);
 		break;
-	}
 	case EY_VARIANT: {
-		ey_agg *a = (ey_agg *)o;
-		const ey_variant *v = &t->variants[a->tag];
-		for (uint32_t i = 0; i < a->n && i < v->n; i++) ey_drop_as(v->fields[i], a->f[i]);
+		const ey_variant *v = &t->variants[o->tag];
+		drop_fields((char *)o, v->n, v->fields, v->offs);
 		break;
 	}
 	case EY_RANGE: {
-		ey_agg *a = (ey_agg *)o;
-		ey_drop_as(t->args[0], a->f[0]);
-		ey_drop_as(t->args[0], a->f[1]);
+		ey_range_obj *r = (ey_range_obj *)o;
+		if (ey_counted(t->args[0])) {
+			ey_drop(r->start);
+			ey_drop(r->end);
+		}
 		break;
 	}
 	case EY_DYN:
-		ey_drop_as(t->args[0], ((ey_dyn *)o)->val);
+		ey_drop_at(t->args[0], EY_DYN_VAL(o));
 		break;
 	case EY_LIST: {
 		ey_list *l = (ey_list *)o;
-		if (ey_counted(t->args[0]))
-			for (int64_t i = 0; i < l->len; i++) ey_drop(l->items[i]);
+		ey_drop_n(t->args[0], l->items, l->len);
 		free(l->items);
 		break;
 	}
 	case EY_SET:
 	case EY_MAP: {
 		ey_map *m = (ey_map *)o;
-		if (ey_counted(t->args[0]))
-			for (int64_t i = 0; i < m->len; i++) ey_drop(m->keys[i]);
-		if (m->vals && t->n > 1 && ey_counted(t->args[1]))
-			for (int64_t i = 0; i < m->len; i++) ey_drop(m->vals[i]);
+		ey_drop_n(t->args[0], m->keys, m->len);
+		if (m->vals) ey_drop_n(t->args[1], m->vals, m->len);
 		free(m->keys);
 		free(m->vals);
 		free(m->index);
@@ -343,7 +404,7 @@ _Noreturn void ey_unsupported(const char *at, const char *what) {
 	ey_faultf(at, "the C back end doesn't support %s yet", what);
 }
 
-_Noreturn void ey_expect_failed(const char *at, ey_v src, ey_v lsrc, const ey_type *lt, ey_v l) {
+_Noreturn void ey_expect_failed(const char *at, ey_v src, ey_v lsrc, const ey_type *lt, const void *l) {
 	ey_buf b = {0};
 	ey_buf_str(&b, "expected ");
 	ey_buf_add(&b, EY_STR(src)->b, EY_STR(src)->len);
@@ -369,10 +430,13 @@ void ey_eprintln(ey_v s) {
 	fputc('\n', stderr);
 }
 
-ey_v eyb_env_get(ey_v name, const ey_type *opt) {
+void eyb_env_get(ey_v name, void *out, const ey_type *opt) {
 	const char *v = getenv(EY_STR(name)->b);
-	if (!v) return ey_none(opt);
-	return ey_some(opt, ey_str_c(v));
+	if (!v) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, ey_str_c(v));
 }
 
 static void write_parts(ey_buf *b, int n, const ey_v *parts) {
@@ -485,17 +549,23 @@ static void write_indented(ey_buf *out, const char *s, int64_t n) {
  * without dropping what it holds (7.12 frees them). */
 static uint64_t faulted;
 
-/* The slots of the globals computed so far, which the count drops. */
-static ey_v **globals;
+/* The slots of the globals computed so far, and their types, which the
+ * count drops. */
+static struct {
+	void *slot;
+	const ey_type *ty;
+} *globals;
 static int nglobals, cglobals;
 
-void ey_keep_global(ey_v *slot) {
+void ey_keep_global(void *slot, const ey_type *t) {
 	if (nglobals == cglobals) {
 		cglobals = cglobals ? cglobals * 2 : 16;
-		globals = realloc(globals, sizeof(ey_v *) * (size_t)cglobals);
+		globals = realloc(globals, sizeof *globals * (size_t)cglobals);
 		if (!globals) ey_out_of_memory();
 	}
-	globals[nglobals++] = slot;
+	globals[nglobals].slot = slot;
+	globals[nglobals].ty = t;
+	nglobals++;
 }
 
 /* With EYE_ALLOCS set, a program writes how many objects it made and freed
@@ -503,8 +573,8 @@ void ey_keep_global(ey_v *slot) {
  * freed failing tests left: "allocs 10 frees 8 faulted 2". */
 static void report_allocs(void) {
 	for (int i = 0; i < nglobals; i++) {
-		ey_drop(*globals[i]);
-		*globals[i] = 0;
+		ey_drop_at(globals[i].ty, globals[i].slot);
+		memset(globals[i].slot, 0, globals[i].ty->size);
 	}
 	fflush(stdout);
 	fprintf(stderr, "allocs %llu frees %llu faulted %llu\n", (unsigned long long)ey_allocs, (unsigned long long)ey_frees,

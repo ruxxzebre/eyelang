@@ -42,6 +42,8 @@ type Program struct {
 	MainErrShow *Func
 	// Layouts says how each type's values are laid out; Count sets it.
 	Layouts *Layouts
+	// Counted reports that Count has run.
+	Counted bool
 }
 
 // Kind says what a function instance is, which the runtime needs to know.

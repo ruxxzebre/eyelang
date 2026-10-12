@@ -60,11 +60,11 @@ pub fn main() -> Int = 0
 		"t":    "struct 24/8 counted {kind@16 start@0 end@8 spaceBefore@17 newlineBefore@18 missing@19} niche@0",
 		"p":    "struct 40/8 counted {x@0 y@8 vx@16 vy@24 bounces@32} niche@0",
 		"q":    "struct 16/8 {x@0 y@8}",
-		"b":    "box 8/8 counted {a@8 b@32 c@56} niche@0",
-		"tr":   "box 8/8 counted recursive tag box [Leaf=1 | Node{0@8 1@16}=1] niche@0",
+		"b":    "box 8/8 counted {a@16 b@40 c@64} niche@0",
+		"tr":   "box 8/8 counted recursive tag box [Leaf=1 | Node{0@16 1@24}=1] niche@0",
 		"s":    "struct 24/8 tag field@0/1 [Circle{r@8}=0 | Rect{w@8 h@16}=1] niche@0",
 		"id":   "string 24/8 counted {p@0 len@8 own@16} niche@0",
-		"l":    "box 8/8 counted recursive {name@8 next@32} niche@0",
+		"l":    "box 8/8 counted recursive {name@16 next@40} niche@0",
 		"oi":   "struct 8/8 counted tag niche@0/8 [Some{0@0} | None=0] niche@0",
 		"ol":   "struct 8/8 counted tag niche@0/8 [Some{0@0} | None=0] niche@0",
 		"os":   "struct 24/8 counted tag niche@0/8 [Some{0@0} | None=0] niche@0",
@@ -90,6 +90,11 @@ pub fn main() -> Int = 0
 		}
 		if got := ls.Of(p.Ty).String(); got != w {
 			t.Errorf("%s: %s is laid out as\n\t%s\nwant\n\t%s", p.Name, p.Ty, got, w)
+		}
+		// One word, dup'ed and dropped as a word.
+		word := map[string]bool{"b": true, "tr": true, "l": true, "oi": true, "ol": true, "ot": true, "oo": true, "xs": true, "m": true}[p.Name]
+		if got := ls.Of(p.Ty).Word(); got != word {
+			t.Errorf("%s: %s is a word: %v, want %v", p.Name, p.Ty, got, word)
 		}
 	}
 }

@@ -110,23 +110,31 @@ static ey_v reason(int err) {
 	return ey_buf_take(&b);
 }
 
-static ey_v fs_err(const ey_type *res, ey_v p, int err, const char *why) {
+static void fs_err(void *out, const ey_type *res, ey_v p, int err, const char *why) {
 	const ey_type *t = fs_error(res);
 	uint32_t tag = err == ENOENT ? 0 : (err == EACCES || err == EPERM) ? 1 : err == EEXIST ? 2 : 3;
-	ey_agg *a = ey_agg_new(t, tag, tag == 3 ? 2 : 1);
 	ey_dup(p);
-	a->f[0] = p;
-	if (tag == 3) a->f[1] = why ? ey_str_c(why) : reason(err);
-	return ey_err(res, EY_V(a));
+	ey_v text = tag == 3 ? (why ? ey_str_c(why) : reason(err)) : 0;
+	ey_tmp e;
+	ey_variant_make(t, e.b, tag, (const void *const[]){&p, &text});
+	ey_err(res, out, e.b);
+}
+
+static void ok_unit(void *out, const ey_type *res) {
+	uint8_t unit = 0;
+	ey_ok(res, out, &unit);
 }
 
 /* read_file reads a whole file: as a String, which must be UTF-8, when
  * text is set, and as Bytes otherwise. */
-static ey_v read_file(ey_v p, const ey_type *res, bool text) {
+static void read_file(ey_v p, void *out, const ey_type *res, bool text) {
 	char *full = path(p);
 	FILE *f = fopen(full, "rb");
 	free(full);
-	if (!f) return fs_err(res, p, errno, NULL);
+	if (!f) {
+		fs_err(out, res, p, errno, NULL);
+		return;
+	}
 	ey_buf b = {0};
 	char chunk[65536];
 	size_t n;
@@ -135,35 +143,44 @@ static ey_v read_file(ey_v p, const ey_type *res, bool text) {
 	fclose(f);
 	if (failed) {
 		free(b.b);
-		return fs_err(res, p, failed, NULL);
+		fs_err(out, res, p, failed, NULL);
+		return;
 	}
 	if (!text) {
 		ey_v bytes = ey_str_new(b.b ? b.b : "", b.len, &ey_t_bytes);
 		free(b.b);
-		return ey_ok(res, bytes);
+		ey_ok_v(res, out, bytes);
+		return;
 	}
 	if (!ey_utf8_valid(b.b ? b.b : "", b.len)) {
 		free(b.b);
-		return fs_err(res, p, EILSEQ, "not UTF-8 text");
+		fs_err(out, res, p, EILSEQ, "not UTF-8 text");
+		return;
 	}
-	return ey_ok(res, ey_buf_take(&b));
+	ey_ok_v(res, out, ey_buf_take(&b));
 }
 
-ey_v eyb_fs_read_text(ey_v p, const ey_type *res) { return read_file(p, res, true); }
+void eyb_fs_read_text(ey_v p, void *out, const ey_type *res) { read_file(p, out, res, true); }
 
-ey_v eyb_fs_read_bytes(ey_v p, const ey_type *res) { return read_file(p, res, false); }
+void eyb_fs_read_bytes(ey_v p, void *out, const ey_type *res) { read_file(p, out, res, false); }
 
-ey_v eyb_fs_write_text(ey_v p, ey_v text, bool append, const ey_type *res) {
+void eyb_fs_write_text(ey_v p, ey_v text, bool append, void *out, const ey_type *res) {
 	char *full = path(p);
 	FILE *f = fopen(full, append ? "ab" : "wb");
 	free(full);
-	if (!f) return fs_err(res, p, errno, NULL);
+	if (!f) {
+		fs_err(out, res, p, errno, NULL);
+		return;
+	}
 	ey_str *s = EY_STR(text);
 	size_t w = fwrite(s->b, 1, (size_t)s->len, f);
 	int err = w != (size_t)s->len ? errno : 0;
 	if (fclose(f) != 0 && !err) err = errno;
-	if (err) return fs_err(res, p, err, NULL);
-	return ey_ok(res, 0);
+	if (err) {
+		fs_err(out, res, p, err, NULL);
+		return;
+	}
+	ok_unit(out, res);
 }
 
 bool eyb_fs_exists(ey_v p) {
@@ -176,11 +193,14 @@ bool eyb_fs_exists(ey_v p) {
 
 static int cmp_names(const void *a, const void *b) { return ey_str_cmp(*(const ey_v *)a, *(const ey_v *)b); }
 
-ey_v eyb_fs_list(ey_v p, const ey_type *res) {
+void eyb_fs_list(ey_v p, void *out, const ey_type *res) {
 	char *full = path(p);
 	DIR *d = opendir(full);
 	free(full);
-	if (!d) return fs_err(res, p, errno, NULL);
+	if (!d) {
+		fs_err(out, res, p, errno, NULL);
+		return;
+	}
 	ey_v *names = NULL;
 	int64_t n = 0, cap = 0;
 	struct dirent *e;
@@ -189,15 +209,16 @@ ey_v eyb_fs_list(ey_v p, const ey_type *res) {
 		if (n == cap) {
 			cap = cap ? cap * 2 : 16;
 			names = realloc(names, sizeof(ey_v) * (size_t)cap);
+			if (!names) ey_out_of_memory();
 		}
 		names[n++] = ey_str_c(e->d_name);
 	}
 	closedir(d);
 	if (n > 1) qsort(names, (size_t)n, sizeof(ey_v), cmp_names);
-	return ey_ok(res, ey_list_take(res->variants[0].fields[0], n, names));
+	ey_ok_v(res, out, ey_list_take(res->variants[0].fields[0], n, names));
 }
 
-ey_v eyb_fs_make_dir(ey_v p, const ey_type *res) {
+void eyb_fs_make_dir(ey_v p, void *out, const ey_type *res) {
 	char *full = path(p);
 	size_t len = strlen(full);
 	for (size_t i = 1; i <= len; i++) {
@@ -207,7 +228,8 @@ ey_v eyb_fs_make_dir(ey_v p, const ey_type *res) {
 			if (mkdir_one(full) != 0 && errno != EEXIST) {
 				int err = errno;
 				free(full);
-				return fs_err(res, p, err, NULL);
+				fs_err(out, res, p, err, NULL);
+				return;
 			}
 			full[i] = c;
 		}
@@ -215,11 +237,14 @@ ey_v eyb_fs_make_dir(ey_v p, const ey_type *res) {
 	struct stat st;
 	bool dir = stat(full, &st) == 0 && S_ISDIR(st.st_mode);
 	free(full);
-	if (!dir) return fs_err(res, p, ENOTDIR, NULL);
-	return ey_ok(res, 0);
+	if (!dir) {
+		fs_err(out, res, p, ENOTDIR, NULL);
+		return;
+	}
+	ok_unit(out, res);
 }
 
-ey_v eyb_fs_remove(ey_v p, const ey_type *res) {
+void eyb_fs_remove(ey_v p, void *out, const ey_type *res) {
 	char *full = path(p);
 	struct stat st;
 	int r;
@@ -229,18 +254,20 @@ ey_v eyb_fs_remove(ey_v p, const ey_type *res) {
 		r = remove(full);
 	int err = errno;
 	free(full);
-	if (r != 0) return fs_err(res, p, err, NULL);
-	return ey_ok(res, 0);
+	if (r != 0) {
+		fs_err(out, res, p, err, NULL);
+		return;
+	}
+	ok_unit(out, res);
 }
 
 /* ---------------------------------------------------------------- process */
 
-static ey_v not_started(const ey_type *res, ey_v program, ey_v why) {
-	ey_agg *a = ey_agg_new(res->variants[1].fields[0], 0, 2);
+static void not_started(void *out, const ey_type *res, ey_v program, ey_v why) {
 	ey_dup(program);
-	a->f[0] = program;
-	a->f[1] = why;
-	return ey_err(res, EY_V(a));
+	ey_tmp e;
+	ey_variant_make(res->variants[1].fields[0], e.b, 0, (const void *const[]){&program, &why});
+	ey_err(res, out, e.b);
 }
 
 #ifndef _WIN32
@@ -265,35 +292,36 @@ static ey_v valid_text(ey_buf *b) {
 }
 #endif
 
-ey_v eyb_process_run(ey_v program, ey_v args, ey_v input, ey_v dir, const ey_type *res) {
+/* dir is an Option(String) of type dirt */
+void eyb_process_run(ey_v program, ey_v args, ey_v input, const void *dir, const ey_type *dirt, void *out, const ey_type *res) {
 #ifdef _WIN32
-	(void)args, (void)input, (void)dir;
-	return not_started(res, program, ey_str_c("the C back end doesn't run programs on Windows yet"));
+	(void)args, (void)input, (void)dir, (void)dirt;
+	not_started(out, res, program, ey_str_c("the C back end doesn't run programs on Windows yet"));
 #else
 	ey_list *al = EY_LIST(args);
 	char **argv = calloc((size_t)al->len + 2, sizeof(char *));
 	argv[0] = EY_STR(program)->b;
-	for (int64_t i = 0; i < al->len; i++) argv[i + 1] = EY_STR(al->items[i])->b;
+	for (int64_t i = 0; i < al->len; i++) argv[i + 1] = EY_STR(((ey_v *)al->items)[i])->b;
 	char *cwd = NULL;
-	ey_agg *d = EY_AGG(dir);
-	if (d->tag == 0)
-		cwd = path(d->f[0]);
+	if (ey_variant_of(dirt, dir) == 0)
+		cwd = path(*(ey_v *)ey_variant_field(dirt, dir, 0, 0));
 	else if (work_dir())
 		cwd = strdup(work_dir());
-	int in[2], out[2], errp[2], status[2];
-	if (pipe(in) || pipe(out) || pipe(errp) || pipe(status)) {
+	int in[2], outp[2], errp[2], status[2];
+	if (pipe(in) || pipe(outp) || pipe(errp) || pipe(status)) {
 		free(argv);
 		free(cwd);
-		return not_started(res, program, reason(errno));
+		not_started(out, res, program, reason(errno));
+		return;
 	}
 	fcntl(status[1], F_SETFD, FD_CLOEXEC);
 	pid_t pid = fork();
 	if (pid == 0) {
 		dup2(in[0], 0);
-		dup2(out[1], 1);
+		dup2(outp[1], 1);
 		dup2(errp[1], 2);
 		close(in[1]);
-		close(out[0]);
+		close(outp[0]);
 		close(errp[0]);
 		close(status[0]);
 		int err = 0;
@@ -309,23 +337,28 @@ ey_v eyb_process_run(ey_v program, ey_v args, ey_v input, ey_v dir, const ey_typ
 	free(argv);
 	free(cwd);
 	close(in[0]);
-	close(out[1]);
+	close(outp[1]);
 	close(errp[1]);
 	close(status[1]);
-	if (pid < 0) return not_started(res, program, reason(errno));
+	if (pid < 0) {
+		not_started(out, res, program, reason(errno));
+		return;
+	}
 	int err = 0;
 	if (read(status[0], &err, sizeof err) == (ssize_t)sizeof err) {
 		close(status[0]);
 		close(in[1]);
-		close(out[0]);
+		close(outp[0]);
 		close(errp[0]);
 		waitpid(pid, NULL, 0);
 		if (err == ENOENT) {
 			ey_buf b = {0};
 			ey_buf_printf(&b, "exec: \"%s\": executable file not found in $PATH", EY_STR(program)->b);
-			return not_started(res, program, ey_buf_take(&b));
+			not_started(out, res, program, ey_buf_take(&b));
+			return;
 		}
-		return not_started(res, program, reason(err));
+		not_started(out, res, program, reason(err));
+		return;
 	}
 	close(status[0]);
 	/* write the input and read both outputs as they come */
@@ -339,7 +372,7 @@ ey_v eyb_process_run(ey_v program, ey_v args, ey_v input, ey_v dir, const ey_typ
 		struct pollfd fds[3];
 		int nf = 0;
 		if (open_in) fds[nf++] = (struct pollfd){in[1], POLLOUT, 0};
-		if (open_out) fds[nf++] = (struct pollfd){out[0], POLLIN, 0};
+		if (open_out) fds[nf++] = (struct pollfd){outp[0], POLLIN, 0};
 		if (open_err) fds[nf++] = (struct pollfd){errp[0], POLLIN, 0};
 		if (poll(fds, (nfds_t)nf, -1) < 0) {
 			if (errno == EINTR) continue;
@@ -360,11 +393,11 @@ ey_v eyb_process_run(ey_v program, ey_v args, ey_v input, ey_v dir, const ey_typ
 			ssize_t r = read(fds[i].fd, chunk, sizeof chunk);
 			if (r <= 0) {
 				close(fds[i].fd);
-				if (fds[i].fd == out[0]) open_out = false;
+				if (fds[i].fd == outp[0]) open_out = false;
 				else open_err = false;
 				continue;
 			}
-			ey_buf_add(fds[i].fd == out[0] ? &ob : &eb, chunk, r);
+			ey_buf_add(fds[i].fd == outp[0] ? &ob : &eb, chunk, r);
 		}
 	}
 	signal(SIGPIPE, old);
@@ -372,17 +405,19 @@ ey_v eyb_process_run(ey_v program, ey_v args, ey_v input, ey_v dir, const ey_typ
 	waitpid(pid, &st, 0);
 	int code = WIFEXITED(st) ? WEXITSTATUS(st) : -1;
 	const ey_type *output = res->variants[0].fields[0];
-	ey_agg *o = ey_agg_new(output, 0, 3);
 	/* Output's fields in their declared order: status, stdout, stderr */
+	ey_v fields[3];
 	for (uint32_t i = 0; i < 3; i++) {
 		const char *name = output->names[i];
 		if (!strcmp(name, "status"))
-			o->f[i] = EY_SMALL(code);
+			fields[i] = EY_SMALL(code);
 		else if (!strcmp(name, "stdout"))
-			o->f[i] = valid_text(&ob);
+			fields[i] = valid_text(&ob);
 		else
-			o->f[i] = valid_text(&eb);
+			fields[i] = valid_text(&eb);
 	}
-	return ey_ok(res, EY_V(o));
+	ey_tmp o;
+	ey_tuple_make(output, o.b, (const void *const[]){&fields[0], &fields[1], &fields[2]});
+	ey_ok(res, out, o.b);
 #endif
 }

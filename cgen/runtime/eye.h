@@ -1,15 +1,29 @@
 /* The core runtime of compiled Eyelang programs (ROADMAP 7.4).
  *
- * Every Eyelang value is one 64-bit word, ey_v:
+ * Values are laid out by type (7.13, lir.Layouts; compilation.md section 2,
+ * "Values laid out by type"). The back end holds each value as its type's
+ * layout says, and tells the runtime how with the type's descriptor:
  *
- *   - a scalar's bits: Bool, Char, Byte and the other fixed-width integers
- *     (signed ones sign-extended), Float (its IEEE bits), Duration (ns),
- *     Size (bytes), Date (days since 1970-01-01), Time (seconds since
- *     midnight) and () (0);
- *   - an Int: a small integer n as (n << 1) | 1, or a pointer to a big
- *     integer, which is never in the small range;
- *   - anything else: a pointer to a heap object, which starts with a
- *     reference count and its type's descriptor.
+ *   - a scalar at its own width: Bool and Byte (1 byte), Char, Int32,
+ *     UInt32 and Time (4), Int64, UInt64, Float, Duration, Size and Date
+ *     (8); () as one byte;
+ *   - an enum, a variant type whose variants have no fields, as its
+ *     variant's number (EY_R_ENUM);
+ *   - a word, ey_v (EY_R_WORD): an Int (a small integer n as (n << 1) | 1,
+ *     or a pointer to a big integer), a pointer to an object of the runtime
+ *     (a String or Bytes, a List, Set or Map, a closure, a dyn value, an
+ *     Iter, an Instant, a Range), a box (a pointer to an object holding a
+ *     large or recursive record, tuple or variant, or for a variant without
+ *     fields the immediate (n << 1) | 1), or a variant type whose variants
+ *     without fields are spare values of such a word: Option(Int)'s None is
+ *     0, its Some(n) is n's word;
+ *   - a struct (EY_R_STRUCT): a record, tuple or variant type of at most
+ *     64 bytes, inline, at the offsets its descriptor gives.
+ *
+ * A word below 4096 or odd is never a pointer: that is what a variant type
+ * uses for the variants without fields it holds in a word, and what makes
+ * ey_dup and ey_drop of any word safe. All-zero bits are a value whose drop
+ * does nothing.
  *
  * A type with one variant of one field, named like the type (a newtype,
  * such as the prelude's Offset), is represented as its field.
@@ -18,8 +32,9 @@
  * a value is dropped after its last use, a parameter a function only reads
  * is borrowed, and an update whose operand dies there takes it (the eyo_
  * functions) and changes it in place when it holds the only reference.
- * Built-ins borrow their arguments and give owned results. Counts are not
- * atomic: a program runs on one thread.
+ * Built-ins borrow their arguments and give owned results; one that makes a
+ * value that isn't a word or a scalar writes it where its out argument
+ * points. Counts are not atomic: a program runs on one thread.
  */
 #ifndef EYE_H
 #define EYE_H
@@ -57,7 +72,7 @@ enum {
 	EY_NEVER,
 	/* An Int: small, or a pointer to a big integer. */
 	EY_INT,
-	/* Heap objects. */
+	/* The runtime's objects, held as words. */
 	EY_BIG,
 	EY_STRING,
 	EY_BYTES,
@@ -65,67 +80,84 @@ enum {
 	EY_LIST,
 	EY_SET,
 	EY_MAP,
-	EY_TUPLE,
-	EY_RECORD,
-	EY_VARIANT,
 	EY_FN,
 	EY_DYN,
 	EY_RANGE,
 	EY_ITER,
-	EY_LOOP /* a for loop's walk, which no Eyelang value is */
+	EY_LOOP, /* a for loop's walk, which no Eyelang value is */
+	/* Declared and structural types, laid out by type. */
+	EY_TUPLE,
+	EY_RECORD,
+	EY_VARIANT
 };
+
+/* How a value of a type is held (lir.Repr). */
+enum { EY_R_NONE, EY_R_SCALAR, EY_R_WORD, EY_R_ENUM, EY_R_STRUCT };
+
+/* How a variant type's value says which variant it is (lir.TagKind). */
+enum { EY_TAG_NONE, EY_TAG_FIELD, EY_TAG_NICHE, EY_TAG_BOX };
 
 typedef struct ey_type ey_type;
 
-typedef struct ey_agg ey_agg;
-
 typedef struct ey_variant {
 	const char *name;
-	uint32_t n;                  /* fields */
+	uint32_t n;                   /* fields */
 	const ey_type *const *fields;
-	const char *const *names;    /* "" for a positional field */
-	ey_agg *unit;                /* without fields: its one static, immortal value */
+	const char *const *names;     /* "" for a positional field */
+	const uint32_t *offs;         /* where each field is: in the value, or in a box's object */
+	uint64_t value;               /* its number, its niche's value, or its immediate word */
+	uint32_t objsize;             /* in a box: the size of its object */
 } ey_variant;
 
-/* A type's descriptor: what showing, comparing, hashing and freeing a
- * value of it needs. The back end writes one for each type a program
- * uses. */
+/* A type's descriptor: its layout, and what showing, comparing, hashing,
+ * copying and freeing a value of it needs. The back end writes one for each
+ * type a program uses. */
 struct ey_type {
 	uint32_t kind;
-	uint32_t n;                  /* args, fields or variants */
-	const char *name;            /* a declared type's name */
-	const ey_type *const *args;  /* elements, fields, captures; a dyn's or range's one */
-	const char *const *names;    /* a record's field names */
+	uint32_t n;                   /* args, fields or variants */
+	uint32_t size, align;         /* of a value where it is held */
+	uint8_t repr;                 /* EY_R_* */
+	uint8_t boxed;                /* a record, tuple or variant type in a box */
+	uint8_t tag;                  /* a variant type's EY_TAG_* */
+	uint8_t tagsize;              /* EY_TAG_FIELD, EY_TAG_NICHE: the tag's bytes, at tagoff */
+	uint32_t tagoff;
+	uint32_t objsize;             /* a boxed record or tuple, a closure, a dyn value: its object's size */
+	const char *name;             /* a declared type's name */
+	const ey_type *const *args;   /* elements, fields, captures; a dyn's, a range's one */
+	const char *const *names;     /* a record's field names */
+	const uint32_t *offs;         /* where each field or capture is */
 	const ey_variant *variants;
+	void (*drop)(void *);         /* a counted struct's: drops what it holds */
+	void (*dup)(void *);          /* a counted struct's: dups what it holds */
 };
 
 extern const ey_type ey_t_unit, ey_t_bool, ey_t_float, ey_t_char, ey_t_byte, ey_t_int32,
 	ey_t_int64, ey_t_uint32, ey_t_uint64, ey_t_duration, ey_t_size, ey_t_date, ey_t_time,
 	ey_t_never, ey_t_int, ey_t_string, ey_t_bytes, ey_t_iter, ey_t_loop, ey_t_big, ey_t_instant;
 
-static inline bool ey_counted(const ey_type *t) { return t->kind >= EY_INT; }
+static inline bool ey_counted(const ey_type *t) {
+	return t->repr == EY_R_WORD || (t->repr == EY_R_STRUCT && t->drop != NULL);
+}
 
 /* ---------------------------------------------------------------- objects */
 
-#define EY_IMMORTAL INT64_MIN
+#define EY_IMMORTAL INT32_MIN
 
+/* No value is larger than this (lir.MaxInline): a larger record is boxed.
+ * The runtime holds a value it works on in a buffer of this size. */
+#define EY_MAXVAL 64
+typedef struct ey_tmp {
+	_Alignas(8) char b[EY_MAXVAL];
+} ey_tmp;
+
+/* Every heap object starts with this: its count (negative for a static
+ * object, which is never freed; a count that would overflow becomes one),
+ * 32 bits its kind uses (a boxed variant's number), and its descriptor. */
 typedef struct ey_obj {
-	int64_t rc; /* EY_IMMORTAL for a static object */
+	int32_t rc;
+	uint32_t tag;
 	const ey_type *ty;
 } ey_obj;
-
-/* A record, a variant, a tuple or a range: fields in their declared order.
- * A range's are its start, its end and flags (EY_RANGE_*). */
-struct ey_agg {
-	ey_obj h;
-	uint32_t tag;
-	uint32_t n;
-	ey_v f[];
-};
-
-#define EY_RANGE_INCLUSIVE 1
-#define EY_RANGE_NO_START 2
-#define EY_RANGE_NO_END 4
 
 /* A String (UTF-8) or Bytes; b ends with a NUL that len doesn't count.
  * cap is how many bytes b has room for, NUL included, once an append in
@@ -144,10 +176,12 @@ typedef struct ey_big {
 	uint32_t d[]; /* the magnitude, least significant limb first */
 } ey_big;
 
+/* A List: its elements laid out one after another, each its element
+ * type's size. */
 typedef struct ey_list {
 	ey_obj h;
 	int64_t len, cap;
-	ey_v *items;
+	char *items;
 } ey_list;
 
 /* A Set (vals is NULL) or a Map, in insertion order; index holds each
@@ -155,30 +189,47 @@ typedef struct ey_list {
 typedef struct ey_map {
 	ey_obj h;
 	int64_t len, cap;
-	ey_v *keys, *vals;
+	char *keys, *vals;
 	int32_t *index;
 	int64_t icap;
 } ey_map;
 
-typedef struct ey_fn ey_fn;
-typedef ey_v (*ey_code)(ey_fn *self, const ey_v *args);
+/* A range: its start and end as words (an Int's word, or a scalar's bits)
+ * and flags (EY_RANGE_*). */
+typedef struct ey_range_obj {
+	ey_obj h;
+	ey_v start, end;
+	uint32_t flags;
+} ey_range_obj;
 
-/* A closure: its code and what it captured. */
+#define EY_RANGE_INCLUSIVE 1
+#define EY_RANGE_NO_START 2
+#define EY_RANGE_NO_END 4
+
+typedef struct ey_fn ey_fn;
+/* A closure's code: it writes its result where out points, and reads its
+ * arguments, which it borrows, where args[i] point. */
+typedef void (*ey_code)(ey_fn *self, void *out, void *const *args);
+
+/* A closure: its code, and what it captured after it, as the closure's
+ * descriptor lays them out. */
 struct ey_fn {
 	ey_obj h;
 	ey_code code;
-	uint32_t n;
-	ey_v cap[];
+	uint64_t pad;
 };
 
-typedef ey_v (*ey_method)(ey_v self, const ey_v *args);
+/* A dyn method: the value it is called on, where its result goes, and its
+ * arguments. */
+typedef void (*ey_method)(void *self, void *out, void *const *args);
 
-/* A dyn Trait: the value and its type's table of the trait's methods. */
+/* A dyn Trait: its type's table of the trait's methods, and the value
+ * after it, as its descriptor's args[0] lays it out. */
 typedef struct ey_dyn {
 	ey_obj h;
 	const ey_method *methods;
-	ey_v val;
 } ey_dyn;
+#define EY_DYN_VAL(v) ((void *)((char *)(uintptr_t)(v) + sizeof(ey_dyn)))
 
 typedef struct ey_zone ey_zone;
 
@@ -210,13 +261,15 @@ typedef struct ey_lazy {
 } ey_lazy;
 
 #define EY_OBJ(v) ((ey_obj *)(uintptr_t)(v))
-#define EY_AGG(v) ((ey_agg *)(uintptr_t)(v))
 #define EY_STR(v) ((ey_str *)(uintptr_t)(v))
 #define EY_LIST(v) ((ey_list *)(uintptr_t)(v))
 #define EY_MAP(v) ((ey_map *)(uintptr_t)(v))
 #define EY_FNP(v) ((ey_fn *)(uintptr_t)(v))
 #define EY_DYNP(v) ((ey_dyn *)(uintptr_t)(v))
+#define EY_RANGEP(v) ((ey_range_obj *)(uintptr_t)(v))
 #define EY_V(p) ((ey_v)(uintptr_t)(p))
+/* the value of type T off bytes into what p points at */
+#define EY_AT(T, p, off) (*(T *)((char *)(p) + (off)))
 
 /* Blocks of memory from the runtime's allocator: free lists by size class
  * for small blocks, malloc for large ones. Freeing or growing a block
@@ -225,35 +278,48 @@ void *ey_mem_alloc(size_t n);
 void ey_mem_free(void *p, size_t n);
 void *ey_mem_realloc(void *p, size_t old, size_t n);
 
-/* Objects: ey_alloc makes one with a count of 1; ey_free frees one whose
- * count reached 0, and what it holds; ey_free_obj gives back its memory.
- * ey_allocs and ey_frees count objects made and freed (EYE_ALLOCS). */
+/* Objects: ey_alloc makes one with a count of 1, which the caller fills;
+ * ey_free frees one whose count reached 0, and what it holds; ey_free_obj
+ * gives back its memory. ey_allocs and ey_frees count objects made and
+ * freed (EYE_ALLOCS). */
 void ey_free(ey_obj *o);
 void ey_free_obj(ey_obj *o, size_t size);
 void *ey_alloc(size_t size, const ey_type *ty);
 extern uint64_t ey_allocs, ey_frees;
 
+/* whether a word points at an object */
+static inline bool ey_is_obj(ey_v v) { return (v & 1) == 0 && v >= 4096; }
+
 static inline void ey_dup(ey_v v) {
-	if ((v & 1) == 0 && v != 0) {
+	if (ey_is_obj(v)) {
 		ey_obj *o = EY_OBJ(v);
-		if (o->rc != EY_IMMORTAL) o->rc++;
+		if (o->rc > 0) o->rc++; /* past INT32_MAX it wraps to static */
 	}
 }
 
 static inline void ey_drop(ey_v v) {
-	if ((v & 1) == 0 && v != 0) {
+	if (ey_is_obj(v)) {
 		ey_obj *o = EY_OBJ(v);
-		if (o->rc != EY_IMMORTAL && --o->rc == 0) ey_free(o);
+		if (o->rc > 0 && --o->rc == 0) ey_free(o);
 	}
 }
 
-/* dup or drop a value of type t, which may not be counted */
-static inline void ey_dup_as(const ey_type *t, ey_v v) {
-	if (ey_counted(t)) ey_dup(v);
+/* dup or drop the value of type t at p */
+static inline void ey_dup_at(const ey_type *t, void *p) {
+	if (t->repr == EY_R_WORD)
+		ey_dup(*(ey_v *)p);
+	else if (t->repr == EY_R_STRUCT && t->dup)
+		t->dup(p);
 }
-static inline void ey_drop_as(const ey_type *t, ey_v v) {
-	if (ey_counted(t)) ey_drop(v);
+static inline void ey_drop_at(const ey_type *t, void *p) {
+	if (t->repr == EY_R_WORD)
+		ey_drop(*(ey_v *)p);
+	else if (t->repr == EY_R_STRUCT && t->drop)
+		t->drop(p);
 }
+/* dup n values of type t laid out from p */
+void ey_dup_n(const ey_type *t, void *p, int64_t n);
+void ey_drop_n(const ey_type *t, void *p, int64_t n);
 
 _Noreturn void ey_out_of_memory(void);
 
@@ -276,6 +342,12 @@ static inline double ey_v2f(ey_v v) {
 	memcpy(&d, &v, sizeof d);
 	return d;
 }
+
+/* A scalar's, an enum's or a word's value at p as a word, and back: signed
+ * scalars are sign-extended, Float is its bits. What the runtime works on
+ * as words. */
+ey_v ey_load_v(const ey_type *t, const void *p);
+void ey_store_v(const ey_type *t, void *p, ey_v v);
 
 /* ---------------------------------------------------------------- Int */
 
@@ -391,58 +463,80 @@ static inline ey_v ey_str_c(const char *s) { return ey_str_new(s, (int64_t)strle
 ey_v ey_concat(int n, const ey_v *parts);
 bool ey_str_eq(ey_v a, ey_v b);
 int ey_str_cmp(ey_v a, ey_v b);
+uint64_t ey_str_hash(ey_v s);
 int64_t ey_utf8_decode(const char *s, int64_t n, uint32_t *r); /* bytes taken; 1 with U+FFFD for an invalid byte */
 bool ey_utf8_valid(const char *s, int64_t n);
 
 /* ---------------------------------------------------------------- values in general */
 
-bool ey_eq(const ey_type *t, ey_v a, ey_v b);
-int ey_cmp(const ey_type *t, ey_v a, ey_v b);
-uint64_t ey_hash(const ey_type *t, ey_v v);
-void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested);
-ey_v ey_show(const ey_type *t, ey_v v);
+/* By the type's descriptor, of values where a and b point. */
+bool ey_eq(const ey_type *t, const void *a, const void *b);
+int ey_cmp(const ey_type *t, const void *a, const void *b);
+uint64_t ey_hash(const ey_type *t, const void *p);
+void ey_show_to(ey_buf *b, const ey_type *t, const void *p, bool nested);
+ey_v ey_show(const ey_type *t, const void *p);
 ey_v ey_show_int(ey_v v); /* an Int in decimal */
 void ey_float_write(ey_buf *b, double d);
 
-/* ---------------------------------------------------------------- aggregates */
+/* ---------------------------------------------------------------- records, tuples and variants */
 
-/* A new aggregate; for a variant without fields (n is 0), its static value. */
-ey_agg *ey_agg_new(const ey_type *ty, uint32_t tag, uint32_t n);
-/* Makes the aggregate *p points at uniquely owned, copying it if it is
- * shared, so that a field can be set in place. */
-void ey_agg_own(ey_v *p);
-ey_v ey_some(const ey_type *opt, ey_v v);  /* takes v */
-ey_v ey_none(const ey_type *opt);
-ey_v ey_ok(const ey_type *res, ey_v v);    /* takes v */
-ey_v ey_err(const ey_type *res, ey_v v);   /* takes v */
+/* Which variant the value of variant type t at p is, and where field i of
+ * it is. */
+uint32_t ey_variant_of(const ey_type *t, const void *p);
+void *ey_variant_field(const ey_type *t, const void *p, uint32_t tag, uint32_t i);
+/* Writes the variant tag of t with fields[i] where out points, taking the
+ * fields; a box is allocated for a boxed type. */
+void ey_variant_make(const ey_type *t, void *out, uint32_t tag, const void *const *fields);
+/* Where field i of the record or tuple of type t at p is, and a new one,
+ * taking its fields. */
+void *ey_field(const ey_type *t, const void *p, uint32_t i);
+void ey_tuple_make(const ey_type *t, void *out, const void *const *fields);
+/* Makes the box *p points at uniquely owned, copying it if it is shared,
+ * so that a field can be set in place. */
+void ey_box_own(ey_v *p);
+/* Option and Result, taking v: v points at a value of the payload's type;
+ * the _v forms take a scalar's, an enum's or a word's value as a word. */
+void ey_some(const ey_type *opt, void *out, const void *v);
+void ey_none(const ey_type *opt, void *out);
+void ey_ok(const ey_type *res, void *out, const void *v);
+void ey_err(const ey_type *res, void *out, const void *v);
+void ey_some_v(const ey_type *opt, void *out, ey_v v);
+void ey_ok_v(const ey_type *res, void *out, ey_v v);
+void ey_err_v(const ey_type *res, void *out, ey_v v);
 ey_v ey_range(const ey_type *ty, ey_v start, ey_v end, uint32_t flags);
 
 /* ---------------------------------------------------------------- closures */
 
-ey_fn *ey_fn_new(const ey_type *ty, ey_code code, uint32_t n);
-static inline ey_v ey_call(ey_v f, const ey_v *args) { return EY_FNP(f)->code(EY_FNP(f), args); }
+ey_fn *ey_fn_new(const ey_type *ty, ey_code code);
+static inline void ey_call(ey_v f, void *out, void *const *args) { EY_FNP(f)->code(EY_FNP(f), out, args); }
+/* a capture of a closure */
+#define EY_CAP(T, f, off) EY_AT(T, f, off)
 
 /* ---------------------------------------------------------------- collections */
 
-ey_v ey_list_new(const ey_type *ty, int64_t n, const ey_v *items); /* dups items */
-ey_v ey_list_take(const ey_type *ty, int64_t n, ey_v *items);      /* takes items and the array */
-ey_v ey_set_new(const ey_type *ty, int64_t n, const ey_v *items);
-ey_v ey_map_new(const ey_type *ty, int64_t n, const ey_v *keys, const ey_v *vals);
-/* The same, taking what they are given: a literal's collection. */
-ey_v ey_list_from(const ey_type *ty, int64_t n, const ey_v *items);
-ey_v ey_set_from(const ey_type *ty, int64_t n, const ey_v *items);
-ey_v ey_map_from(const ey_type *ty, int64_t n, const ey_v *keys, const ey_v *vals);
-int64_t ey_map_find(ey_map *m, ey_v key);
+/* A List of n elements of its element type from items: _new dups them,
+ * _from takes them (a literal's list), _take takes them and the array. */
+ey_v ey_list_new(const ey_type *ty, int64_t n, const void *items);
+ey_v ey_list_from(const ey_type *ty, int64_t n, void *const *items);
+ey_v ey_list_take(const ey_type *ty, int64_t n, void *items);
+/* the address of element i of a list */
+static inline void *ey_list_item(ey_list *l, int64_t i) { return l->items + i * (int64_t)l->h.ty->args[0]->size; }
+ey_v ey_set_new(const ey_type *ty, int64_t n, const void *items);
+ey_v ey_set_from(const ey_type *ty, int64_t n, void *const *items);
+ey_v ey_map_new(const ey_type *ty, int64_t n, const void *keys, const void *vals);
+ey_v ey_map_from(const ey_type *ty, int64_t n, void *const *keys, void *const *vals);
+int64_t ey_map_find(ey_map *m, const void *key);
 int64_t ey_coll_size(ey_v c);
 /* Iter values (iter.c) */
 ey_v ey_lazy_of(ey_v coll, const ey_type *elem); /* an Iter is its own */
 ey_v ey_lazy_then(ey_v it, int op, ey_v fn, int64_t n, ey_v other, const ey_type *out);
 ey_v ey_lazy_list(ey_v it, const ey_type *list); /* walks it to its end */
 void ey_lazy_free(ey_obj *o);
-/* A for loop's walk of anything a loop can walk, one element ahead. */
+/* A for loop's walk of anything a loop can walk, one element ahead; next
+ * writes the element, which the caller owns, where out points. */
 ey_v ey_loop_new(ey_v coll, const ey_type *elem);
 bool ey_loop_more(ey_v loop);
-ey_v ey_loop_next(ey_v loop);
+void ey_loop_next(ey_v loop, void *out);
 void ey_loop_free(ey_obj *o);
 
 /* ---------------------------------------------------------------- time */
@@ -479,7 +573,8 @@ typedef struct ey_program {
 } ey_program;
 
 int ey_start(const ey_program *p, int argc, char **argv);
-void ey_keep_global(ey_v *slot); /* a global's value, which the count of objects drops at exit */
+/* a global's value, of type t, which the count of objects drops at exit */
+void ey_keep_global(void *slot, const ey_type *t);
 ey_v ey_args(const ey_type *list);
 void ey_print(int n, const ey_v *parts);
 void ey_log(const char *level, int n, const ey_v *parts);

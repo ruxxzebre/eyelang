@@ -61,10 +61,11 @@ const (
 	// here; past it copies and the dups of many fields cost more than a
 	// box's one count.
 	MaxInline = 64
-	// HeaderSize is the size of a heap object's header: a 32-bit count and
-	// 32 bits the object's kind uses (a boxed variant's number, a closure's
-	// size, …). A box's fields start after it.
-	HeaderSize = 8
+	// HeaderSize is the size of a heap object's header: a 32-bit count, 32
+	// bits the object's kind uses (a boxed variant's number), and its
+	// type's descriptor, so that the runtime can free any object it holds
+	// as a word. A box's fields start after it.
+	HeaderSize = 16
 	// wordSize is the size of a pointer and of an Int.
 	wordSize = 8
 )
@@ -187,6 +188,30 @@ type Layouts struct {
 	// their layouts: a back end whose values aren't laid out by type yet
 	// counts by its own rule.
 	CountedBy func(ir.Ty) bool
+	// Objects names built-in types a back end holds as objects of its
+	// runtime rather than as their layout says, while it moves to them.
+	Objects map[string]bool
+}
+
+// Word reports whether a value of the layout is one word whose drop and
+// dup are a word's: an Int, a box, an object, or a variant type whose
+// variants without fields are spare values of such a word, as
+// Option(Int) and Option(List(a)) are.
+func (l *Layout) Word() bool {
+	switch l.Repr {
+	case ReprInt, ReprBox, ReprObject:
+		return true
+	case ReprStruct:
+		if l.Tag.Kind != TagNiche || l.Size != wordSize {
+			return false
+		}
+		for _, v := range l.Variants {
+			if len(v.Fields) > 0 {
+				return len(v.Fields) == 1 && v.Fields[0].Offset == 0 && v.Fields[0].L.Word()
+			}
+		}
+	}
+	return false
 }
 
 // NewLayouts is an empty table of layouts.
@@ -257,7 +282,7 @@ var scalarLayouts = map[string]struct {
 func (ls *Layouts) compute(t ir.Ty) *Layout {
 	switch x := t.(type) {
 	case ir.TNever:
-		return &Layout{Ty: t, Repr: ReprNone, Align: 1}
+		return &Layout{Ty: t, Repr: ReprNone, Size: 1, Align: 1, Scalar: "uint8_t"}
 	case *ir.TTuple:
 		slots := make([]Slot, len(x.Elems))
 		for i, e := range x.Elems {
@@ -277,7 +302,7 @@ func object(t ir.Ty) *Layout {
 }
 
 func (ls *Layouts) con(c *ir.TCon) *Layout {
-	if c.Entity != nil {
+	if c.Entity != nil || c.Decl == nil && ls.Objects[c.Name] {
 		return object(c)
 	}
 	if d := c.Decl; d != nil {
@@ -316,7 +341,7 @@ func (ls *Layouts) con(c *ir.TCon) *Layout {
 	}
 	switch c.Name {
 	case "()":
-		return &Layout{Ty: c, Repr: ReprNone, Align: 1}
+		return &Layout{Ty: c, Repr: ReprNone, Size: 1, Align: 1, Scalar: "uint8_t"}
 	case "Int", "Version":
 		return &Layout{Ty: c, Repr: ReprInt, Size: wordSize, Align: wordSize, Counted: true, Niche: wordNiche}
 	case "NonZero":

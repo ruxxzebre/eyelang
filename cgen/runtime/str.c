@@ -190,7 +190,7 @@ static int64_t find(ey_str *s, int64_t from, ey_str *part) {
 	return -1;
 }
 
-ey_v eyb_str_index_of(ey_v s, ey_v part, ey_v from, bool has_from, const ey_type *opt) {
+void eyb_str_index_of(ey_v s, ey_v part, ey_v from, bool has_from, void *out, const ey_type *opt) {
 	ey_str *p = EY_STR(s);
 	int64_t f = 0;
 	if (has_from) {
@@ -198,8 +198,11 @@ ey_v eyb_str_index_of(ey_v s, ey_v part, ey_v from, bool has_from, const ey_type
 		f = o < 0 ? 0 : o > p->len ? p->len : o;
 	}
 	int64_t i = find(p, f, EY_STR(part));
-	if (i < 0) return ey_none(opt);
-	return ey_some(opt, EY_SMALL(i));
+	if (i < 0) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, EY_SMALL(i));
 }
 
 static int64_t clamp_offset(ey_v o, int64_t n) {
@@ -207,46 +210,67 @@ static int64_t clamp_offset(ey_v o, int64_t n) {
 	return v < 0 ? 0 : v > n ? n : v;
 }
 
-ey_v eyb_str_slice(ey_v s, ey_v range, const ey_type *opt) {
+void eyb_str_slice(ey_v s, ey_v range, void *out, const ey_type *opt) {
 	ey_str *p = EY_STR(s);
-	ey_agg *r = EY_AGG(range);
-	int64_t lo = r->f[2] & EY_RANGE_NO_START ? 0 : clamp_offset(r->f[0], p->len);
-	int64_t hi = r->f[2] & EY_RANGE_NO_END ? p->len : clamp_offset(r->f[1], p->len);
-	if ((r->f[2] & EY_RANGE_INCLUSIVE) && !(r->f[2] & EY_RANGE_NO_END) && hi < p->len) {
-		if (!char_start(p, hi)) return ey_none(opt);
+	ey_range_obj *r = EY_RANGEP(range);
+	int64_t lo = r->flags & EY_RANGE_NO_START ? 0 : clamp_offset(r->start, p->len);
+	int64_t hi = r->flags & EY_RANGE_NO_END ? p->len : clamp_offset(r->end, p->len);
+	if ((r->flags & EY_RANGE_INCLUSIVE) && !(r->flags & EY_RANGE_NO_END) && hi < p->len) {
+		if (!char_start(p, hi)) {
+			ey_none(opt, out);
+			return;
+		}
 		uint32_t c;
 		hi += ey_utf8_decode(p->b + hi, p->len - hi, &c);
 	}
-	if (hi < lo) return ey_some(opt, ey_str_new("", 0, &ey_t_string));
-	if (!char_start(p, lo) || !char_start(p, hi)) return ey_none(opt);
-	return ey_some(opt, ey_str_new(p->b + lo, hi - lo, &ey_t_string));
+	if (hi < lo) {
+		ey_some_v(opt, out, ey_str_new("", 0, &ey_t_string));
+		return;
+	}
+	if (!char_start(p, lo) || !char_start(p, hi)) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, ey_str_new(p->b + lo, hi - lo, &ey_t_string));
 }
 
-ey_v eyb_str_step(const char *at, ey_v s, ey_v off, ey_v by, bool has_by, bool forward, const ey_type *opt) {
+void eyb_str_step(const char *at, ey_v s, ey_v off, ey_v by, bool has_by, bool forward, void *out, const ey_type *opt) {
 	ey_str *p = EY_STR(s);
 	int64_t i = EY_IS_SMALL(off) ? EY_SMALL_VAL(off) : -1;
 	int64_t n = has_by ? count(at, by) : 1;
-	if (!char_start(p, i)) return ey_none(opt);
+	if (!char_start(p, i)) {
+		ey_none(opt, out);
+		return;
+	}
 	for (; n > 0; n--) {
 		if (forward) {
-			if (i == p->len) return ey_none(opt);
+			if (i == p->len) {
+				ey_none(opt, out);
+				return;
+			}
 			uint32_t r;
 			i += ey_utf8_decode(p->b + i, p->len - i, &r);
 		} else {
-			if (i == 0) return ey_none(opt);
+			if (i == 0) {
+				ey_none(opt, out);
+				return;
+			}
 			i -= last_rune_len(p->b, i);
 		}
 	}
-	return ey_some(opt, EY_SMALL(i));
+	ey_some_v(opt, out, EY_SMALL(i));
 }
 
-ey_v eyb_str_char_at(ey_v s, ey_v off, const ey_type *opt) {
+void eyb_str_char_at(ey_v s, ey_v off, void *out, const ey_type *opt) {
 	ey_str *p = EY_STR(s);
 	int64_t i = EY_IS_SMALL(off) ? EY_SMALL_VAL(off) : -1;
-	if (i == p->len || !char_start(p, i)) return ey_none(opt);
+	if (i == p->len || !char_start(p, i)) {
+		ey_none(opt, out);
+		return;
+	}
 	uint32_t r;
 	ey_utf8_decode(p->b + i, p->len - i, &r);
-	return ey_some(opt, r);
+	ey_some_v(opt, out, r);
 }
 
 ey_v eyb_str_replace(ey_v s, ey_v a, ey_v b) {
@@ -383,14 +407,15 @@ ey_v eyb_str_lines(ey_v s, const ey_type *list) {
 
 ey_v eyb_str_chars(ey_v s, const ey_type *list) {
 	ey_str *p = EY_STR(s);
-	ey_v *items = NULL;
-	int64_t n = 0, cap = 0;
+	uint32_t *items = malloc(sizeof(uint32_t) * (size_t)(p->len + 1));
+	if (!items) ey_out_of_memory();
+	int64_t n = 0;
 	for (int64_t i = 0; i < p->len;) {
 		uint32_t r;
 		i += ey_utf8_decode(p->b + i, p->len - i, &r);
-		push(&items, &n, &cap, r);
+		items[n++] = r;
 	}
-	return list_of(list, items, n);
+	return ey_list_take(list, n, items);
 }
 
 ey_v eyb_str_case(ey_v s, bool upper) {
@@ -409,28 +434,32 @@ ey_v eyb_str_bytes(ey_v s) { return ey_str_new(EY_STR(s)->b, EY_STR(s)->len, &ey
 
 /* ---------------------------------------------------------------- characters */
 
-ey_v eyb_from_code(ey_v n, const ey_type *opt) {
-	if (!EY_IS_SMALL(n)) return ey_none(opt);
-	int64_t c = EY_SMALL_VAL(n);
-	if (c < 0 || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff)) return ey_none(opt);
-	return ey_some(opt, (ey_v)c);
+void eyb_from_code(ey_v n, void *out, const ey_type *opt) {
+	int64_t c = EY_IS_SMALL(n) ? EY_SMALL_VAL(n) : -1;
+	if (c < 0 || c > 0x10ffff || (c >= 0xd800 && c <= 0xdfff)) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, (ey_v)c);
 }
 
 /* ---------------------------------------------------------------- Bytes */
 
-ey_v eyb_bytes_index(ey_v b, ey_v i, const ey_type *opt) {
+void eyb_bytes_index(ey_v b, ey_v i, void *out, const ey_type *opt) {
 	ey_str *p = EY_STR(b);
-	if (!EY_IS_SMALL(i)) return ey_none(opt);
-	int64_t k = EY_SMALL_VAL(i);
-	if (k < 0 || k >= p->len) return ey_none(opt);
-	return ey_some(opt, (unsigned char)p->b[k]);
+	int64_t k = EY_IS_SMALL(i) ? EY_SMALL_VAL(i) : -1;
+	if (k < 0 || k >= p->len) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, (unsigned char)p->b[k]);
 }
 
-ey_v eyb_bytes_at(const char *at, ey_v b, ey_v i) {
+uint8_t eyb_bytes_at(const char *at, ey_v b, ey_v i) {
 	ey_str *p = EY_STR(b);
 	int64_t k = EY_IS_SMALL(i) ? EY_SMALL_VAL(i) : -1;
 	if (k < 0 || k >= p->len) ey_fault(at, "index out of range");
-	return (unsigned char)p->b[k];
+	return (uint8_t)p->b[k];
 }
 
 /* bounds clamps a range of indexes to [0, n], as the interpreter does */
@@ -456,27 +485,31 @@ ey_v eyb_bytes_slice(ey_v b, ey_v start, ey_v end, uint32_t flags) {
 	return ey_str_new(p->b + lo, hi - lo, p->h.ty);
 }
 
-bool eyb_bytes_contains(ey_v b, ey_v x) {
+bool eyb_bytes_contains(ey_v b, uint8_t x) {
 	ey_str *p = EY_STR(b);
-	return p->len > 0 && memchr(p->b, (int)x, (size_t)p->len) != NULL;
+	return p->len > 0 && memchr(p->b, x, (size_t)p->len) != NULL;
 }
 
-ey_v eyb_bytes_to_text(ey_v b, const ey_type *opt) {
+void eyb_bytes_to_text(ey_v b, void *out, const ey_type *opt) {
 	ey_str *p = EY_STR(b);
-	if (!ey_utf8_valid(p->b, p->len)) return ey_none(opt);
-	return ey_some(opt, ey_str_new(p->b, p->len, &ey_t_string));
+	if (!ey_utf8_valid(p->b, p->len)) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, ey_str_new(p->b, p->len, &ey_t_string));
 }
 
 /* ---------------------------------------------------------------- numbers from text */
 
-static ey_v err_text(const ey_type *res, const char *what, ey_str *s) {
+static void err_text(void *out, const ey_type *res, const char *what, ey_str *s) {
 	ey_buf b = {0};
 	ey_buf_str(&b, what);
-	ey_show_to(&b, &ey_t_string, EY_V(s), true);
-	return ey_err(res, ey_buf_take(&b));
+	ey_v sv = EY_V(s);
+	ey_show_to(&b, &ey_t_string, &sv, true);
+	ey_err_v(res, out, ey_buf_take(&b));
 }
 
-ey_v eyb_parse_int(const char *at, ey_v s, ey_v base, bool has_base, const ey_type *res) {
+void eyb_parse_int(const char *at, ey_v s, ey_v base, bool has_base, void *out, const ey_type *res) {
 	ey_str *p = EY_STR(s);
 	int64_t b = 10;
 	if (has_base && (!ey_int_i64_of(base, &b) || b < 2 || b > 36)) ey_fault(at, "parseInt's base: is from 2 to 36");
@@ -485,14 +518,20 @@ ey_v eyb_parse_int(const char *at, ey_v s, ey_v base, bool has_base, const ey_ty
 	ey_v n;
 	bool ok = ey_int_parse(EY_STR(t)->b, EY_STR(t)->len, (int)b, &n);
 	ey_drop(t);
-	if (ok) return ey_ok(res, n);
-	if (b == 10) return err_text(res, "not a whole number: ", p);
+	if (ok) {
+		ey_ok_v(res, out, n);
+		return;
+	}
+	if (b == 10) {
+		err_text(out, res, "not a whole number: ", p);
+		return;
+	}
 	char what[64];
 	snprintf(what, sizeof what, "not a whole number in base %lld: ", (long long)b);
-	return err_text(res, what, p);
+	err_text(out, res, what, p);
 }
 
-ey_v eyb_parse_float(ey_v s, const ey_type *res) {
+void eyb_parse_float(ey_v s, void *out, const ey_type *res) {
 	ey_str *p = EY_STR(s);
 	ey_v t = eyb_str_trim(s);
 	ey_str *q = EY_STR(t);
@@ -508,16 +547,23 @@ ey_v eyb_parse_float(ey_v s, const ey_type *res) {
 		if (end != q->b + q->len) ok = false;
 		if (ok && errno == ERANGE && isinf(d)) {
 			ey_drop(t);
-			return err_text(res, "too large for a Float: ", p);
+			err_text(out, res, "too large for a Float: ", p);
+			return;
 		}
 	}
 	ey_drop(t);
-	if (!ok) return err_text(res, "not a number: ", p);
-	return ey_ok(res, ey_f2v(d));
+	if (!ok) {
+		err_text(out, res, "not a number: ", p);
+		return;
+	}
+	ey_ok(res, out, &d);
 }
 
-ey_v eyb_float_to_int(double d, const ey_type *opt) {
+void eyb_float_to_int(double d, void *out, const ey_type *opt) {
 	ey_v n;
-	if (!ey_int_from_f64(d, &n)) return ey_none(opt);
-	return ey_some(opt, n);
+	if (!ey_int_from_f64(d, &n)) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, n);
 }

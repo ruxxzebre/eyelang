@@ -1,68 +1,171 @@
-/* Values in general, by their type's descriptor: equality, order and
- * hashing as the interpreter has them (derived Eq, Ord and Hash), and
- * showing them exactly as the interpreter prints them (derived Show). */
+/* Values in general, by their type's descriptor, which says how they are
+ * laid out (eye.h): records, tuples and variants made and taken apart;
+ * equality, order and hashing as the interpreter has them (derived Eq, Ord
+ * and Hash); and showing values exactly as the interpreter prints them
+ * (derived Show). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "eye.h"
 
-/* ---------------------------------------------------------------- aggregates */
+/* ---------------------------------------------------------------- records, tuples and variants */
 
-ey_agg *ey_agg_new(const ey_type *ty, uint32_t tag, uint32_t n) {
-	if (n == 0 && ty->kind == EY_VARIANT && ty->variants[tag].unit) return ty->variants[tag].unit;
-	ey_agg *a = ey_alloc(sizeof(ey_agg) + n * sizeof(ey_v), ty);
-	a->tag = tag;
-	a->n = n;
-	return a;
-}
-
-/* the type of field i of an aggregate of type t with tag */
-static const ey_type *field_type(const ey_type *t, uint32_t tag, uint32_t i) {
-	switch (t->kind) {
-	case EY_VARIANT:
-		return t->variants[tag].fields[i];
-	case EY_RANGE:
-		return i < 2 ? t->args[0] : &ey_t_int64;
+static uint64_t load_u(const void *p, uint32_t size) {
+	switch (size) {
+	case 1:
+		return *(const uint8_t *)p;
+	case 2:
+		return *(const uint16_t *)p;
+	case 4:
+		return *(const uint32_t *)p;
 	default:
-		return t->args[i];
+		return *(const uint64_t *)p;
 	}
 }
 
-void ey_agg_own(ey_v *p) {
-	ey_agg *a = EY_AGG(*p);
-	if (a->h.rc == 1) return;
-	ey_agg *b = ey_agg_new(a->h.ty, a->tag, a->n);
-	memcpy(b->f, a->f, a->n * sizeof(ey_v));
-	for (uint32_t i = 0; i < a->n; i++)
-		if (ey_counted(field_type(a->h.ty, a->tag, i))) ey_dup(b->f[i]);
+static void store_u(void *p, uint32_t size, uint64_t v) {
+	switch (size) {
+	case 1:
+		*(uint8_t *)p = (uint8_t)v;
+		break;
+	case 2:
+		*(uint16_t *)p = (uint16_t)v;
+		break;
+	case 4:
+		*(uint32_t *)p = (uint32_t)v;
+		break;
+	default:
+		*(uint64_t *)p = v;
+		break;
+	}
+}
+
+uint32_t ey_variant_of(const ey_type *t, const void *p) {
+	if (t->repr == EY_R_ENUM) return (uint32_t)load_u(p, t->size);
+	switch (t->tag) {
+	case EY_TAG_FIELD:
+		return (uint32_t)load_u((const char *)p + t->tagoff, t->tagsize);
+	case EY_TAG_NICHE: {
+		uint64_t v = load_u((const char *)p + t->tagoff, t->tagsize);
+		uint32_t dataful = 0;
+		for (uint32_t i = 0; i < t->n; i++) {
+			if (t->variants[i].n == 0) {
+				if (t->variants[i].value == v) return i;
+			} else {
+				dataful = i;
+			}
+		}
+		return dataful;
+	}
+	case EY_TAG_BOX: {
+		ey_v w = *(const ey_v *)p;
+		if (!ey_is_obj(w)) {
+			for (uint32_t i = 0; i < t->n; i++)
+				if (t->variants[i].n == 0 && t->variants[i].value == w) return i;
+			return 0;
+		}
+		return EY_OBJ(w)->tag;
+	}
+	}
+	return 0;
+}
+
+void *ey_variant_field(const ey_type *t, const void *p, uint32_t tag, uint32_t i) {
+	const ey_variant *v = &t->variants[tag];
+	if (t->tag == EY_TAG_BOX) return (char *)(uintptr_t)(*(const ey_v *)p) + v->offs[i];
+	return (char *)p + v->offs[i];
+}
+
+void ey_variant_make(const ey_type *t, void *out, uint32_t tag, const void *const *fields) {
+	const ey_variant *v = &t->variants[tag];
+	if (t->repr == EY_R_ENUM) {
+		store_u(out, t->size, v->value);
+		return;
+	}
+	char *base = out;
+	if (t->tag == EY_TAG_BOX) {
+		if (v->n == 0) {
+			*(ey_v *)out = v->value;
+			return;
+		}
+		ey_obj *o = ey_alloc(v->objsize, t);
+		o->tag = tag;
+		*(ey_v *)out = EY_V(o);
+		base = (char *)o;
+	} else {
+		memset(out, 0, t->size);
+		if (t->tag == EY_TAG_FIELD || (t->tag == EY_TAG_NICHE && v->n == 0))
+			store_u(base + t->tagoff, t->tagsize, v->value);
+	}
+	for (uint32_t i = 0; i < v->n; i++) memcpy(base + v->offs[i], fields[i], v->fields[i]->size);
+}
+
+void *ey_field(const ey_type *t, const void *p, uint32_t i) {
+	if (t->boxed) return (char *)(uintptr_t)(*(const ey_v *)p) + t->offs[i];
+	return (char *)p + t->offs[i];
+}
+
+void ey_tuple_make(const ey_type *t, void *out, const void *const *fields) {
+	char *base = out;
+	if (t->boxed) {
+		ey_obj *o = ey_alloc(t->objsize, t);
+		*(ey_v *)out = EY_V(o);
+		base = (char *)o;
+	} else {
+		memset(out, 0, t->size);
+	}
+	for (uint32_t i = 0; i < t->n; i++) memcpy(base + t->offs[i], fields[i], t->args[i]->size);
+}
+
+void ey_box_own(ey_v *p) {
+	ey_obj *o = EY_OBJ(*p);
+	if (o->rc == 1) return;
+	const ey_type *t = o->ty;
+	size_t size;
+	uint32_t n;
+	const ey_type *const *ts;
+	const uint32_t *offs;
+	if (t->kind == EY_VARIANT) {
+		const ey_variant *v = &t->variants[o->tag];
+		size = v->objsize, n = v->n, ts = v->fields, offs = v->offs;
+	} else {
+		size = t->objsize, n = t->n, ts = t->args, offs = t->offs;
+	}
+	ey_obj *q = ey_alloc(size, t);
+	q->tag = o->tag;
+	memcpy(q + 1, o + 1, size - sizeof(ey_obj));
+	for (uint32_t i = 0; i < n; i++) ey_dup_at(ts[i], (char *)q + offs[i]);
 	ey_drop(*p);
-	*p = EY_V(b);
+	*p = EY_V(q);
 }
 
-static ey_v variant1(const ey_type *t, uint32_t tag, ey_v v) {
-	ey_agg *a = ey_agg_new(t, tag, 1);
-	a->f[0] = v;
-	return EY_V(a);
+void ey_some(const ey_type *opt, void *out, const void *v) { ey_variant_make(opt, out, 0, (const void *const[]){v}); }
+void ey_none(const ey_type *opt, void *out) { ey_variant_make(opt, out, 1, NULL); }
+void ey_ok(const ey_type *res, void *out, const void *v) { ey_variant_make(res, out, 0, (const void *const[]){v}); }
+void ey_err(const ey_type *res, void *out, const void *v) { ey_variant_make(res, out, 1, (const void *const[]){v}); }
+
+static void make_v(const ey_type *t, void *out, uint32_t tag, ey_v w) {
+	uint64_t tmp = 0;
+	ey_store_v(t->variants[tag].fields[0], &tmp, w);
+	ey_variant_make(t, out, tag, (const void *const[]){&tmp});
 }
 
-ey_v ey_some(const ey_type *opt, ey_v v) { return variant1(opt, 0, v); }
-ey_v ey_none(const ey_type *opt) { return EY_V(ey_agg_new(opt, 1, 0)); }
-ey_v ey_ok(const ey_type *res, ey_v v) { return variant1(res, 0, v); }
-ey_v ey_err(const ey_type *res, ey_v v) { return variant1(res, 1, v); }
+void ey_some_v(const ey_type *opt, void *out, ey_v v) { make_v(opt, out, 0, v); }
+void ey_ok_v(const ey_type *res, void *out, ey_v v) { make_v(res, out, 0, v); }
+void ey_err_v(const ey_type *res, void *out, ey_v v) { make_v(res, out, 1, v); }
 
 ey_v ey_range(const ey_type *ty, ey_v start, ey_v end, uint32_t flags) {
-	ey_agg *a = ey_agg_new(ty, 0, 3);
-	a->f[0] = start;
-	a->f[1] = end;
-	a->f[2] = flags;
-	return EY_V(a);
+	ey_range_obj *r = ey_alloc(sizeof(ey_range_obj), ty);
+	r->start = start;
+	r->end = end;
+	r->flags = flags;
+	return EY_V(r);
 }
 
-ey_fn *ey_fn_new(const ey_type *ty, ey_code code, uint32_t n) {
-	ey_fn *f = ey_alloc(sizeof(ey_fn) + n * sizeof(ey_v), ty);
+ey_fn *ey_fn_new(const ey_type *ty, ey_code code) {
+	ey_fn *f = ey_alloc(ty->objsize, ty);
 	f->code = code;
-	f->n = n;
 	return f;
 }
 
@@ -73,55 +176,70 @@ static bool float_eq(double a, double b) {
 	return a == b && signbit(a) == signbit(b);
 }
 
-bool ey_eq(const ey_type *t, ey_v a, ey_v b) {
+#define WORDOF(p) (*(const ey_v *)(p))
+#define DBL(p) (*(const double *)(p))
+
+bool ey_eq(const ey_type *t, const void *a, const void *b) {
 	switch (t->kind) {
 	case EY_UNIT:
 	case EY_NEVER:
 		return true;
 	case EY_FLOAT:
-		return float_eq(ey_v2f(a), ey_v2f(b));
+		return float_eq(DBL(a), DBL(b));
 	case EY_INT:
-		return ey_int_eq(a, b);
+		return ey_int_eq(WORDOF(a), WORDOF(b));
 	case EY_STRING:
 	case EY_BYTES:
-		return ey_str_eq(a, b);
+		return ey_str_eq(WORDOF(a), WORDOF(b));
 	case EY_INSTANT:
-		return ((ey_instant *)(uintptr_t)a)->ns == ((ey_instant *)(uintptr_t)b)->ns;
+		return ((ey_instant *)(uintptr_t)WORDOF(a))->ns == ((ey_instant *)(uintptr_t)WORDOF(b))->ns;
 	case EY_LIST: {
-		ey_list *x = EY_LIST(a), *y = EY_LIST(b);
+		ey_list *x = EY_LIST(WORDOF(a)), *y = EY_LIST(WORDOF(b));
 		if (x->len != y->len) return false;
 		for (int64_t i = 0; i < x->len; i++)
-			if (!ey_eq(t->args[0], x->items[i], y->items[i])) return false;
+			if (!ey_eq(t->args[0], ey_list_item(x, i), ey_list_item(y, i))) return false;
 		return true;
 	}
 	case EY_SET:
 	case EY_MAP: {
-		ey_map *x = EY_MAP(a), *y = EY_MAP(b);
+		ey_map *x = EY_MAP(WORDOF(a)), *y = EY_MAP(WORDOF(b));
 		if (x->len != y->len) return false;
+		uint32_t ks = t->args[0]->size;
 		for (int64_t i = 0; i < x->len; i++) {
-			int64_t j = ey_map_find(y, x->keys[i]);
+			int64_t j = ey_map_find(y, x->keys + i * ks);
 			if (j < 0) return false;
-			if (t->kind == EY_MAP && !ey_eq(t->args[1], x->vals[i], y->vals[j])) return false;
+			if (t->kind == EY_MAP) {
+				uint32_t vs = t->args[1]->size;
+				if (!ey_eq(t->args[1], x->vals + i * vs, y->vals + j * vs)) return false;
+			}
 		}
 		return true;
 	}
+	case EY_RANGE: {
+		ey_range_obj *x = EY_RANGEP(WORDOF(a)), *y = EY_RANGEP(WORDOF(b));
+		return x->flags == y->flags && ey_eq(t->args[0], &x->start, &y->start) && ey_eq(t->args[0], &x->end, &y->end);
+	}
 	case EY_TUPLE:
 	case EY_RECORD:
-	case EY_VARIANT:
-	case EY_RANGE: {
-		ey_agg *x = EY_AGG(a), *y = EY_AGG(b);
-		if (x->tag != y->tag || x->n != y->n) return false;
-		for (uint32_t i = 0; i < x->n; i++)
-			if (!ey_eq(field_type(t, x->tag, i), x->f[i], y->f[i])) return false;
+		for (uint32_t i = 0; i < t->n; i++)
+			if (!ey_eq(t->args[i], ey_field(t, a, i), ey_field(t, b, i))) return false;
+		return true;
+	case EY_VARIANT: {
+		uint32_t x = ey_variant_of(t, a), y = ey_variant_of(t, b);
+		if (x != y) return false;
+		const ey_variant *v = &t->variants[x];
+		for (uint32_t i = 0; i < v->n; i++)
+			if (!ey_eq(v->fields[i], ey_variant_field(t, a, x, i), ey_variant_field(t, b, x, i))) return false;
 		return true;
 	}
 	case EY_DYN: {
 		/* a dyn value's own descriptor says what is inside */
-		ey_dyn *x = EY_DYNP(a), *y = EY_DYNP(b);
-		return x->h.ty == y->h.ty && ey_eq(x->h.ty->args[0], x->val, y->val);
+		ey_dyn *x = EY_DYNP(WORDOF(a)), *y = EY_DYNP(WORDOF(b));
+		return x->h.ty == y->h.ty && ey_eq(x->h.ty->args[0], EY_DYN_VAL(x), EY_DYN_VAL(y));
 	}
 	default:
-		return a == b;
+		if (t->repr == EY_R_WORD) return WORDOF(a) == WORDOF(b);
+		return ey_load_v(t, a) == ey_load_v(t, b);
 	}
 }
 
@@ -129,45 +247,51 @@ bool ey_eq(const ey_type *t, ey_v a, ey_v b) {
 
 #define CMP(x, y) ((x) < (y) ? -1 : (x) > (y))
 
-int ey_cmp(const ey_type *t, ey_v a, ey_v b) {
+int ey_cmp(const ey_type *t, const void *a, const void *b) {
 	switch (t->kind) {
 	case EY_INT:
-		return ey_int_cmp(a, b);
+		return ey_int_cmp(WORDOF(a), WORDOF(b));
 	case EY_FLOAT:
-		return CMP(ey_v2f(a), ey_v2f(b));
+		return CMP(DBL(a), DBL(b));
 	case EY_STRING:
 	case EY_BYTES:
-		return ey_str_cmp(a, b);
-	case EY_CHAR:
+		return ey_str_cmp(WORDOF(a), WORDOF(b));
 	case EY_INT32:
 	case EY_INT64:
 	case EY_DURATION:
 	case EY_SIZE:
 	case EY_DATE:
 	case EY_TIME:
-		return CMP((int64_t)a, (int64_t)b);
+		return CMP((int64_t)ey_load_v(t, a), (int64_t)ey_load_v(t, b));
 	case EY_BOOL:
 	case EY_BYTE:
+	case EY_CHAR:
 	case EY_UINT32:
 	case EY_UINT64:
-		return CMP(a, b);
+		return CMP(ey_load_v(t, a), ey_load_v(t, b));
 	case EY_INSTANT:
-		return CMP(((ey_instant *)(uintptr_t)a)->ns, ((ey_instant *)(uintptr_t)b)->ns);
+		return CMP(((ey_instant *)(uintptr_t)WORDOF(a))->ns, ((ey_instant *)(uintptr_t)WORDOF(b))->ns);
 	case EY_LIST: {
-		ey_list *x = EY_LIST(a), *y = EY_LIST(b);
+		ey_list *x = EY_LIST(WORDOF(a)), *y = EY_LIST(WORDOF(b));
 		for (int64_t i = 0; i < x->len && i < y->len; i++) {
-			int c = ey_cmp(t->args[0], x->items[i], y->items[i]);
+			int c = ey_cmp(t->args[0], ey_list_item(x, i), ey_list_item(y, i));
 			if (c) return c;
 		}
 		return CMP(x->len, y->len);
 	}
 	case EY_TUPLE:
 	case EY_RECORD:
+		for (uint32_t i = 0; i < t->n; i++) {
+			int c = ey_cmp(t->args[i], ey_field(t, a, i), ey_field(t, b, i));
+			if (c) return c;
+		}
+		return 0;
 	case EY_VARIANT: {
-		ey_agg *x = EY_AGG(a), *y = EY_AGG(b);
-		if (x->tag != y->tag) return CMP(x->tag, y->tag);
-		for (uint32_t i = 0; i < x->n && i < y->n; i++) {
-			int c = ey_cmp(field_type(t, x->tag, i), x->f[i], y->f[i]);
+		uint32_t x = ey_variant_of(t, a), y = ey_variant_of(t, b);
+		if (x != y) return CMP(x, y);
+		const ey_variant *v = &t->variants[x];
+		for (uint32_t i = 0; i < v->n; i++) {
+			int c = ey_cmp(v->fields[i], ey_variant_field(t, a, x, i), ey_variant_field(t, b, x, i));
 			if (c) return c;
 		}
 		return 0;
@@ -190,15 +314,24 @@ static uint64_t fin(uint64_t x) {
 
 static uint64_t mix(uint64_t h, uint64_t x) { return fin(h ^ (x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2))); }
 
-uint64_t ey_hash(const ey_type *t, ey_v v) {
+uint64_t ey_str_hash(ey_v v) {
+	ey_str *s = EY_STR(v);
+	uint64_t h = 1469598103934665603ULL;
+	for (int64_t i = 0; i < s->len; i++) h = (h ^ (unsigned char)s->b[i]) * 1099511628211ULL;
+	return fin(h);
+}
+
+uint64_t ey_hash(const ey_type *t, const void *p) {
 	switch (t->kind) {
 	case EY_UNIT:
+	case EY_NEVER:
 		return 0;
 	case EY_FLOAT: {
-		double d = ey_v2f(v);
-		return isnan(d) ? 0x7ff8 : fin(v);
+		double d = DBL(p);
+		return isnan(d) ? 0x7ff8 : fin(ey_f2v(d));
 	}
 	case EY_INT: {
+		ey_v v = WORDOF(p);
 		if (EY_IS_SMALL(v)) return fin(v);
 		ey_big *g = (ey_big *)(uintptr_t)v;
 		uint64_t h = (uint64_t)g->neg;
@@ -206,45 +339,53 @@ uint64_t ey_hash(const ey_type *t, ey_v v) {
 		return h;
 	}
 	case EY_STRING:
-	case EY_BYTES: {
-		ey_str *s = EY_STR(v);
-		uint64_t h = 1469598103934665603ULL;
-		for (int64_t i = 0; i < s->len; i++) h = (h ^ (unsigned char)s->b[i]) * 1099511628211ULL;
-		return fin(h);
-	}
+	case EY_BYTES:
+		return ey_str_hash(WORDOF(p));
 	case EY_INSTANT:
-		return fin((uint64_t)((ey_instant *)(uintptr_t)v)->ns);
+		return fin((uint64_t)((ey_instant *)(uintptr_t)WORDOF(p))->ns);
 	case EY_LIST: {
-		ey_list *l = EY_LIST(v);
+		ey_list *l = EY_LIST(WORDOF(p));
 		uint64_t h = 7;
-		for (int64_t i = 0; i < l->len; i++) h = mix(h, ey_hash(t->args[0], l->items[i]));
+		for (int64_t i = 0; i < l->len; i++) h = mix(h, ey_hash(t->args[0], ey_list_item(l, i)));
 		return h;
 	}
 	case EY_SET:
 	case EY_MAP: {
 		/* the same whatever the order */
-		ey_map *m = EY_MAP(v);
+		ey_map *m = EY_MAP(WORDOF(p));
 		uint64_t h = 11;
+		uint32_t ks = t->args[0]->size;
 		for (int64_t i = 0; i < m->len; i++) {
-			uint64_t e = ey_hash(t->args[0], m->keys[i]);
-			if (t->kind == EY_MAP) e = mix(e, ey_hash(t->args[1], m->vals[i]));
+			uint64_t e = ey_hash(t->args[0], m->keys + i * ks);
+			if (t->kind == EY_MAP) e = mix(e, ey_hash(t->args[1], m->vals + i * t->args[1]->size));
 			h += fin(e);
 		}
 		return h;
 	}
-	case EY_TUPLE:
-	case EY_RECORD:
-	case EY_VARIANT:
 	case EY_RANGE: {
-		ey_agg *a = EY_AGG(v);
-		uint64_t h = mix(13, a->tag);
-		for (uint32_t i = 0; i < a->n; i++) h = mix(h, ey_hash(field_type(t, a->tag, i), a->f[i]));
+		ey_range_obj *r = EY_RANGEP(WORDOF(p));
+		return mix(mix(mix(17, r->flags), ey_hash(t->args[0], &r->start)), ey_hash(t->args[0], &r->end));
+	}
+	case EY_TUPLE:
+	case EY_RECORD: {
+		uint64_t h = 13;
+		for (uint32_t i = 0; i < t->n; i++) h = mix(h, ey_hash(t->args[i], ey_field(t, p, i)));
 		return h;
 	}
-	case EY_DYN:
-		return ey_hash(EY_DYNP(v)->h.ty->args[0], EY_DYNP(v)->val);
+	case EY_VARIANT: {
+		uint32_t x = ey_variant_of(t, p);
+		const ey_variant *v = &t->variants[x];
+		uint64_t h = mix(13, x);
+		for (uint32_t i = 0; i < v->n; i++) h = mix(h, ey_hash(v->fields[i], ey_variant_field(t, p, x, i)));
+		return h;
+	}
+	case EY_DYN: {
+		ey_dyn *d = EY_DYNP(WORDOF(p));
+		return ey_hash(d->h.ty->args[0], EY_DYN_VAL(d));
+	}
 	default:
-		return fin(v);
+		if (t->repr == EY_R_WORD) return fin(WORDOF(p));
+		return fin(ey_load_v(t, p));
 	}
 }
 
@@ -397,79 +538,84 @@ static void show_size(ey_buf *b, int64_t s) {
 	ey_buf_str(b, " B");
 }
 
+
 void ey_instant_write(ey_buf *b, ey_v v); /* time.c */
 
-static void show_list(ey_buf *b, const ey_type *t, const ey_v *items, int64_t n) {
+static void show_items(ey_buf *b, const ey_type *t, const char *items, int64_t n) {
 	for (int64_t i = 0; i < n; i++) {
 		if (i > 0) ey_buf_str(b, ", ");
-		ey_show_to(b, t, items[i], true);
+		ey_show_to(b, t, items + i * (int64_t)t->size, true);
 	}
 }
 
-void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested) {
+void ey_show_to(ey_buf *b, const ey_type *t, const void *p, bool nested) {
 	switch (t->kind) {
 	case EY_UNIT:
 		ey_buf_str(b, "()");
 		return;
 	case EY_BOOL:
-		ey_buf_str(b, v ? "true" : "false");
+		ey_buf_str(b, *(const uint8_t *)p ? "true" : "false");
 		return;
 	case EY_FLOAT: {
 		int64_t start = b->len;
-		ey_float_write(b, ey_v2f(v));
+		ey_float_write(b, DBL(p));
 		bool plain = true;
 		for (int64_t i = start; i < b->len; i++)
 			if (strchr(".eEn", b->b[i])) plain = false;
 		if (plain) ey_buf_str(b, ".0");
 		return;
 	}
-	case EY_CHAR:
+	case EY_CHAR: {
+		uint32_t r = *(const uint32_t *)p;
 		if (nested) {
 			ey_buf_char(b, '\'');
-			quote_rune(b, (uint32_t)v, '\'');
+			quote_rune(b, r, '\'');
 			ey_buf_char(b, '\'');
 		} else {
-			ey_buf_rune(b, (uint32_t)v);
+			ey_buf_rune(b, r);
 		}
 		return;
+	}
 	case EY_BYTE:
 	case EY_UINT32:
 	case EY_UINT64:
-		ey_buf_u64(b, v, 0);
+		ey_buf_u64(b, ey_load_v(t, p), 0);
 		return;
 	case EY_INT32:
 	case EY_INT64:
-		ey_buf_i64(b, (int64_t)v);
+		ey_buf_i64(b, (int64_t)ey_load_v(t, p));
 		return;
 	case EY_DURATION:
-		show_duration(b, (int64_t)v);
+		show_duration(b, (int64_t)ey_load_v(t, p));
 		return;
 	case EY_SIZE:
-		show_size(b, (int64_t)v);
+		show_size(b, (int64_t)ey_load_v(t, p));
 		return;
 	case EY_DATE: {
 		int64_t y, m, d;
-		ey_civil_from_days((int64_t)v, &y, &m, &d);
+		ey_civil_from_days((int64_t)ey_load_v(t, p), &y, &m, &d);
 		ey_buf_printf(b, "%04lld-%02lld-%02lld", (long long)y, (long long)m, (long long)d);
 		return;
 	}
 	case EY_TIME: {
-		int64_t s = (int64_t)v;
+		int64_t s = (int64_t)ey_load_v(t, p);
 		ey_buf_printf(b, "%02lld:%02lld", (long long)(s / 3600), (long long)(s / 60 % 60));
 		if (s % 60) ey_buf_printf(b, ":%02lld", (long long)(s % 60));
 		return;
 	}
 	case EY_INT:
-		ey_int_write(b, v);
+		ey_int_write(b, WORDOF(p));
 		return;
-	case EY_STRING:
+	case EY_STRING: {
+		ey_str *s = EY_STR(WORDOF(p));
 		if (nested)
-			quote(b, EY_STR(v));
+			quote(b, s);
 		else
-			ey_buf_add(b, EY_STR(v)->b, EY_STR(v)->len);
+			ey_buf_add(b, s->b, s->len);
 		return;
+	}
 	case EY_BYTES: {
-		ey_str *s = EY_STR(v);
+		ey_str *s = EY_STR(WORDOF(p));
 		ey_buf_char(b, '[');
 		for (int64_t i = 0; i < s->len; i++) {
 			if (i) ey_buf_str(b, ", ");
@@ -479,26 +625,28 @@ void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested) {
 		return;
 	}
 	case EY_INSTANT:
-		ey_instant_write(b, v);
+		ey_instant_write(b, WORDOF(p));
 		return;
-	case EY_LIST:
+	case EY_LIST: {
+		ey_list *l = EY_LIST(WORDOF(p));
 		ey_buf_char(b, '[');
-		show_list(b, t->args[0], EY_LIST(v)->items, EY_LIST(v)->len);
+		show_items(b, t->args[0], l->items, l->len);
 		ey_buf_char(b, ']');
 		return;
+	}
 	case EY_SET: {
-		ey_map *m = EY_MAP(v);
+		ey_map *m = EY_MAP(WORDOF(p));
 		if (m->len == 0) {
 			ey_buf_str(b, "{}");
 			return;
 		}
 		ey_buf_char(b, '{');
-		show_list(b, t->args[0], m->keys, m->len);
+		show_items(b, t->args[0], m->keys, m->len);
 		ey_buf_char(b, '}');
 		return;
 	}
 	case EY_MAP: {
-		ey_map *m = EY_MAP(v);
+		ey_map *m = EY_MAP(WORDOF(p));
 		if (m->len == 0) {
 			ey_buf_str(b, "{}");
 			return;
@@ -506,48 +654,44 @@ void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested) {
 		ey_buf_str(b, "{ ");
 		for (int64_t i = 0; i < m->len; i++) {
 			if (i > 0) ey_buf_str(b, ", ");
-			ey_show_to(b, t->args[0], m->keys[i], true);
+			ey_show_to(b, t->args[0], m->keys + i * (int64_t)t->args[0]->size, true);
 			ey_buf_str(b, ": ");
-			ey_show_to(b, t->args[1], m->vals[i], true);
+			ey_show_to(b, t->args[1], m->vals + i * (int64_t)t->args[1]->size, true);
 		}
 		ey_buf_str(b, " }");
 		return;
 	}
-	case EY_TUPLE: {
-		ey_agg *a = EY_AGG(v);
+	case EY_TUPLE:
 		ey_buf_char(b, '(');
-		for (uint32_t i = 0; i < a->n; i++) {
+		for (uint32_t i = 0; i < t->n; i++) {
 			if (i > 0) ey_buf_str(b, ", ");
-			ey_show_to(b, t->args[i], a->f[i], true);
+			ey_show_to(b, t->args[i], ey_field(t, p, i), true);
 		}
 		ey_buf_char(b, ')');
 		return;
-	}
-	case EY_RECORD: {
-		ey_agg *a = EY_AGG(v);
+	case EY_RECORD:
 		ey_buf_str(b, "{ ");
-		for (uint32_t i = 0; i < a->n; i++) {
+		for (uint32_t i = 0; i < t->n; i++) {
 			if (i > 0) ey_buf_str(b, ", ");
 			ey_buf_str(b, t->names[i]);
 			ey_buf_str(b, ": ");
-			ey_show_to(b, t->args[i], a->f[i], true);
+			ey_show_to(b, t->args[i], ey_field(t, p, i), true);
 		}
 		ey_buf_str(b, " }");
 		return;
-	}
 	case EY_VARIANT: {
-		ey_agg *a = EY_AGG(v);
-		const ey_variant *vr = &t->variants[a->tag];
+		uint32_t tag = ey_variant_of(t, p);
+		const ey_variant *vr = &t->variants[tag];
 		ey_buf_str(b, vr->name);
-		if (a->n == 0) return;
+		if (vr->n == 0) return;
 		ey_buf_char(b, '(');
-		for (uint32_t i = 0; i < a->n; i++) {
+		for (uint32_t i = 0; i < vr->n; i++) {
 			if (i > 0) ey_buf_str(b, ", ");
 			if (vr->names[i][0]) {
 				ey_buf_str(b, vr->names[i]);
 				ey_buf_str(b, ": ");
 			}
-			ey_show_to(b, vr->fields[i], a->f[i], true);
+			ey_show_to(b, vr->fields[i], ey_variant_field(t, p, tag, i), true);
 		}
 		ey_buf_char(b, ')');
 		return;
@@ -556,14 +700,16 @@ void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested) {
 		ey_buf_str(b, "fn ");
 		ey_buf_str(b, t->name ? t->name : "lambda");
 		return;
-	case EY_DYN:
-		ey_show_to(b, EY_DYNP(v)->h.ty->args[0], EY_DYNP(v)->val, nested);
+	case EY_DYN: {
+		ey_dyn *d = EY_DYNP(WORDOF(p));
+		ey_show_to(b, d->h.ty->args[0], EY_DYN_VAL(d), nested);
 		return;
+	}
 	case EY_RANGE: {
-		ey_agg *a = EY_AGG(v);
-		if (!(a->f[2] & EY_RANGE_NO_START)) ey_show_to(b, t->args[0], a->f[0], true);
-		ey_buf_str(b, a->f[2] & EY_RANGE_INCLUSIVE ? "..=" : "..");
-		if (!(a->f[2] & EY_RANGE_NO_END)) ey_show_to(b, t->args[0], a->f[1], true);
+		ey_range_obj *r = EY_RANGEP(WORDOF(p));
+		if (!(r->flags & EY_RANGE_NO_START)) ey_show_to(b, t->args[0], &r->start, true);
+		ey_buf_str(b, r->flags & EY_RANGE_INCLUSIVE ? "..=" : "..");
+		if (!(r->flags & EY_RANGE_NO_END)) ey_show_to(b, t->args[0], &r->end, true);
 		return;
 	}
 	default:
@@ -582,30 +728,30 @@ ey_v ey_show_int(ey_v v) {
 	return ey_buf_take(&b);
 }
 
-ey_v ey_show(const ey_type *t, ey_v v) {
+ey_v ey_show(const ey_type *t, const void *p) {
 	switch (t->kind) {
 	case EY_INT:
-		return ey_show_int(v);
+		return ey_show_int(WORDOF(p));
 	case EY_INT32:
 	case EY_INT64: {
 		char s[24];
-		char *p = ey_fmt_i64(s + sizeof s, (int64_t)v);
-		return ey_str_new(p, s + sizeof s - p, &ey_t_string);
+		char *q = ey_fmt_i64(s + sizeof s, (int64_t)ey_load_v(t, p));
+		return ey_str_new(q, s + sizeof s - q, &ey_t_string);
 	}
 	case EY_BYTE:
 	case EY_UINT32:
 	case EY_UINT64: {
 		char s[24];
-		char *p = ey_fmt_u64(s + sizeof s, v);
-		return ey_str_new(p, s + sizeof s - p, &ey_t_string);
+		char *q = ey_fmt_u64(s + sizeof s, ey_load_v(t, p));
+		return ey_str_new(q, s + sizeof s - q, &ey_t_string);
 	}
 	case EY_STRING:
-		ey_dup(v); /* a String shows as itself */
-		return v;
+		ey_dup(WORDOF(p)); /* a String shows as itself */
+		return WORDOF(p);
 	default:
 		break;
 	}
 	ey_buf b = {0};
-	ey_show_to(&b, t, v, false);
+	ey_show_to(&b, t, p, false);
 	return ey_buf_take(&b);
 }

@@ -59,20 +59,28 @@ ey_v eyb_fixed(const char *at, int op, int bits, bool sign, ey_v a, ey_v b) {
 	return 0;
 }
 
-ey_v eyb_fixed_checked(int op, int bits, bool sign, ey_v a, ey_v b, const ey_type *opt) {
+void eyb_fixed_checked(int op, int bits, bool sign, ey_v a, ey_v b, void *out, const ey_type *opt) {
 	if (bits == 64) {
 		if (sign) {
 			int64_t r;
 			bool over = op == 0 ? __builtin_add_overflow((int64_t)a, (int64_t)b, &r)
 			            : op == 1 ? __builtin_sub_overflow((int64_t)a, (int64_t)b, &r)
 			                      : __builtin_mul_overflow((int64_t)a, (int64_t)b, &r);
-			return over ? ey_none(opt) : ey_some(opt, (uint64_t)r);
+			if (over)
+				ey_none(opt, out);
+			else
+				ey_some_v(opt, out, (uint64_t)r);
+			return;
 		}
 		uint64_t r;
 		bool over = op == 0 ? __builtin_add_overflow(a, b, &r)
 		            : op == 1 ? __builtin_sub_overflow(a, b, &r)
 		                      : __builtin_mul_overflow(a, b, &r);
-		return over ? ey_none(opt) : ey_some(opt, r);
+		if (over)
+			ey_none(opt, out);
+		else
+			ey_some_v(opt, out, r);
+		return;
 	}
 	/* narrower types: exact in 64 bits, then checked against the bounds */
 	int64_t x = sign ? (int64_t)a : (int64_t)(a & mask(bits));
@@ -80,11 +88,13 @@ ey_v eyb_fixed_checked(int op, int bits, bool sign, ey_v a, ey_v b, const ey_typ
 	int64_t r = op == 0 ? x + y : op == 1 ? x - y : x * y;
 	int64_t lo = sign ? -((int64_t)1 << (bits - 1)) : 0;
 	int64_t hi = sign ? ((int64_t)1 << (bits - 1)) - 1 : (int64_t)mask(bits);
-	if (r < lo || r > hi) return ey_none(opt);
-	return ey_some(opt, (uint64_t)r);
+	if (r < lo || r > hi)
+		ey_none(opt, out);
+	else
+		ey_some_v(opt, out, (uint64_t)r);
 }
 
-ey_v eyb_fixed_from(ey_v n, int bits, bool sign, const ey_type *opt) {
+void eyb_fixed_from(ey_v n, int bits, bool sign, void *out, const ey_type *opt) {
 	bool fits;
 	if (bits == 64 && !sign)
 		fits = ey_int_fits(n, 0, 0, true);
@@ -94,8 +104,10 @@ ey_v eyb_fixed_from(ey_v n, int bits, bool sign, const ey_type *opt) {
 		fits = ey_int_fits(n, -((int64_t)1 << (bits - 1)), ((int64_t)1 << (bits - 1)) - 1, false);
 	else
 		fits = ey_int_fits(n, 0, (int64_t)mask(bits), false);
-	if (!fits) return ey_none(opt);
-	return ey_some(opt, ey_int_bits(n));
+	if (!fits)
+		ey_none(opt, out);
+	else
+		ey_some_v(opt, out, ey_int_bits(n));
 }
 
 ey_v eyb_fixed_to_int(int bits, bool sign, ey_v a) {
@@ -106,16 +118,23 @@ ey_v eyb_fixed_to_int(int bits, bool sign, ey_v a) {
 
 /* ---------------------------------------------------------------- enums */
 
+/* the variants of an enum, by their numbers */
 ey_v eyb_enum_variants(const ey_type *t, const ey_type *list) {
-	ey_v *items = malloc(sizeof(ey_v) * (t->n ? t->n : 1));
-	for (uint32_t i = 0; i < t->n; i++) items[i] = EY_V(ey_agg_new(t, i, 0));
+	char *items = malloc((size_t)t->size * (t->n ? t->n : 1));
+	if (!items) ey_out_of_memory();
+	for (uint32_t i = 0; i < t->n; i++) ey_variant_make(t, items + i * t->size, i, NULL);
 	return ey_list_take(list, t->n, items);
 }
 
-ey_v eyb_enum_parse(ey_v name, const ey_type *opt) {
+void eyb_enum_parse(ey_v name, void *out, const ey_type *opt) {
 	const ey_type *t = opt->variants[0].fields[0];
-	for (uint32_t i = 0; i < t->n; i++)
-		if (strcmp(t->variants[i].name, EY_STR(name)->b) == 0 && (int64_t)strlen(t->variants[i].name) == EY_STR(name)->len)
-			return ey_some(opt, EY_V(ey_agg_new(t, i, 0)));
-	return ey_none(opt);
+	for (uint32_t i = 0; i < t->n; i++) {
+		if (strcmp(t->variants[i].name, EY_STR(name)->b) == 0 && (int64_t)strlen(t->variants[i].name) == EY_STR(name)->len) {
+			ey_tmp v;
+			ey_variant_make(t, v.b, i, NULL);
+			ey_some(opt, out, v.b);
+			return;
+		}
+	}
+	ey_none(opt, out);
 }

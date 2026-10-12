@@ -34,6 +34,10 @@ import (
 //
 // Faults leak what is live, until runs get regions (7.12).
 func Count(p *Program) {
+	if p.Counted {
+		return
+	}
+	p.Counted = true
 	if p.Layouts == nil {
 		p.Layouts = NewLayouts()
 	}

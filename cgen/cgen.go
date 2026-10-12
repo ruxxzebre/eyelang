@@ -75,6 +75,10 @@ type gen struct {
 	tests      []testRoot
 	main       *lir.Func
 	errs       []error
+	// how values are laid out (types.go), and the C structs that holds
+	lay        *lir.Layouts
+	structs    map[string]*cstruct
+	structList []*cstruct
 }
 
 type testRoot struct {
@@ -99,18 +103,20 @@ func Generate(prog *ir.Program, low *lir.Program, opts Options) ([]File, error) 
 		reach: map[*lir.Func]bool{}, names: map[*lir.Func]string{},
 		descs: map[string]*desc{}, closDesc: map[*lir.Func]string{}, dynTab: map[*lir.DynTable]string{},
 		tramps: map[*lir.Func]bool{}, methods: map[*lir.Func]bool{}, wrapKeys: map[string]string{},
-		zones: map[string]bool{},
+		zones: map[string]bool{}, structs: map[string]*cstruct{},
 	}
 	g.unsupportedDecls()
 	if len(g.errs) > 0 {
 		return nil, joinErrors(g.errs)
 	}
-	// The low IR says where values are dup'ed and dropped (7.5), by this
-	// back end's rule for which values are counted.
+	// Values are laid out by type (7.13), but for the built-in types the
+	// runtime still holds as objects; the low IR says where they are
+	// dup'ed and dropped (7.5).
 	if low.Layouts == nil {
 		low.Layouts = lir.NewLayouts()
+		low.Layouts.Objects = objects
 	}
-	low.Layouts.CountedBy = counted
+	g.lay = low.Layouts
 	lir.Count(low)
 	g.roots()
 	if len(g.errs) > 0 {
@@ -371,131 +377,12 @@ func scalarName(t ir.Ty) string {
 	return ""
 }
 
-var scalarDescs = map[string]string{
-	"()": "&ey_t_unit", "Bool": "&ey_t_bool", "Float": "&ey_t_float", "Char": "&ey_t_char",
-	"Byte": "&ey_t_byte", "Int32": "&ey_t_int32", "Int64": "&ey_t_int64", "UInt32": "&ey_t_uint32",
-	"UInt64": "&ey_t_uint64", "Duration": "&ey_t_duration", "Size": "&ey_t_size", "Date": "&ey_t_date",
-	"Time": "&ey_t_time", "Never": "&ey_t_never", "Int": "&ey_t_int", "String": "&ey_t_string",
-	"Zone": "&ey_t_string", "Key": "&ey_t_string", "Bytes": "&ey_t_bytes", "Instant": "&ey_t_instant",
-	"Iter": "&ey_t_iter",
-}
-
-// counted reports whether values of t carry a reference count: an Int, or
-// anything on the heap.
-func counted(t ir.Ty) bool {
-	switch scalarName(t) {
-	case "()", "Bool", "Float", "Char", "Byte", "Int32", "Int64", "UInt32", "UInt64",
-		"Duration", "Size", "Date", "Time", "Never":
-		return false
-	}
-	return true
-}
-
 // widths are the fixed-width integer types: bits, and whether signed.
 var widths = map[string]struct {
 	bits   int
 	signed bool
 }{
 	"Byte": {8, false}, "Int32": {32, true}, "Int64": {64, true}, "UInt32": {32, false}, "UInt64": {64, false},
-}
-
-// desc is the C expression of t's descriptor, writing one if needed.
-func (g *gen) desc(t ir.Ty) string {
-	t = rep(t)
-	if n := scalarName(t); n != "" {
-		if d, ok := scalarDescs[n]; ok {
-			return d
-		}
-	}
-	if t == nil {
-		return "&ey_t_unit"
-	}
-	key := lir.TypeKey(t)
-	if d, ok := g.descs[key]; ok {
-		return "&" + d.name
-	}
-	d := &desc{name: fmt.Sprintf("ey_d%d", len(g.descs)), ty: t}
-	g.descs[key] = d
-	g.descQueue = append(g.descQueue, d)
-	return "&" + d.name
-}
-
-// define writes a descriptor's definition.
-func (g *gen) define(d *desc) string {
-	var b strings.Builder
-	list := func(suffix string, ts []ir.Ty) string {
-		if len(ts) == 0 {
-			return "NULL"
-		}
-		parts := make([]string, len(ts))
-		for i, t := range ts {
-			parts[i] = g.desc(t)
-		}
-		fmt.Fprintf(&b, "static const ey_type *const %s_%s[] = {%s};\n", d.name, suffix, strings.Join(parts, ", "))
-		return d.name + "_" + suffix
-	}
-	names := func(suffix string, ns []string) string {
-		if len(ns) == 0 {
-			return "NULL"
-		}
-		parts := make([]string, len(ns))
-		for i, n := range ns {
-			parts[i] = cstring(n)
-		}
-		fmt.Fprintf(&b, "static const char *const %s_%s[] = {%s};\n", d.name, suffix, strings.Join(parts, ", "))
-		return d.name + "_" + suffix
-	}
-	kind, n, name, args, fnames, variants := "EY_UNIT", 0, "NULL", "NULL", "NULL", "NULL"
-	switch t := d.ty.(type) {
-	case *ir.TCon:
-		switch {
-		case t.Decl != nil && len(t.Decl.Variants) > 0:
-			kind, n, name = "EY_VARIANT", len(t.Decl.Variants), cstring(t.Decl.Name)
-			var vs []string
-			for i, v := range t.Decl.Variants {
-				var fts []ir.Ty
-				var fns []string
-				for j, f := range v.Fields {
-					fts = append(fts, lir.VariantFieldTy(t, v, j))
-					fns = append(fns, f.Name)
-				}
-				fl := list(fmt.Sprintf("v%d_f", i), fts)
-				nl := names(fmt.Sprintf("v%d_n", i), fns)
-				// A variant without fields is one static value, never freed.
-				unit := "NULL"
-				if len(v.Fields) == 0 {
-					unit = fmt.Sprintf("&%s_u%d", d.name, i)
-					fmt.Fprintf(&b, "static ey_agg %s_u%d = {{EY_IMMORTAL, &%s}, %d, 0};\n", d.name, i, d.name, i)
-				}
-				vs = append(vs, fmt.Sprintf("{%s, %d, %s, %s, %s}", cstring(v.Name), len(v.Fields), fl, nl, unit))
-			}
-			fmt.Fprintf(&b, "static const ey_variant %s_vs[] = {%s};\n", d.name, strings.Join(vs, ", "))
-			variants = d.name + "_vs"
-		case t.Decl != nil:
-			fns, fts, ok := lir.RecordFields(t)
-			if !ok {
-				g.errorf(t.Decl.Pos, "the C back end can't lay out the type %s", t)
-			}
-			kind, n, name = "EY_RECORD", len(fns), cstring(t.Decl.Name)
-			args, fnames = list("f", fts), names("n", fns)
-		case t.Name == "List" || t.Name == "Set" || t.Name == "Map" || t.Name == "Range":
-			kind, n = "EY_"+strings.ToUpper(t.Name), len(t.Args)
-			args = list("a", t.Args)
-		default:
-			g.errorf(ir.Pos{}, "the C back end doesn't support values of type %s yet", t)
-		}
-	case *ir.TTuple:
-		kind, n = "EY_TUPLE", len(t.Elems)
-		args = list("a", t.Elems)
-	case *ir.TFun:
-		kind, name = "EY_FN", `"fn"`
-	case *ir.TDyn:
-		kind, name = "EY_DYN", cstring(t.Trait.Name)
-	default:
-		g.errorf(ir.Pos{}, "the C back end doesn't support values of type %s yet", d.ty)
-	}
-	fmt.Fprintf(&b, "const ey_type %s = {%s, %d, %s, %s, %s, %s};\n", d.name, kind, n, name, args, fnames, variants)
-	return b.String()
 }
 
 // closureDesc is the descriptor of the closures of f: their captures'
@@ -579,7 +466,7 @@ func (fs *fileState) str(s string, ty string) string {
 	name := fmt.Sprintf("%s_s%d", fs.prefix, fs.n)
 	fs.n++
 	fs.strs[key] = name
-	fmt.Fprintf(&fs.decls, "static struct { ey_obj h; int64_t len, cap; char b[%d]; } %s = {{EY_IMMORTAL, %s}, %d, 0, %s};\n",
+	fmt.Fprintf(&fs.decls, "static struct { ey_obj h; int64_t len, cap; char b[%d]; } %s = {{EY_IMMORTAL, 0, %s}, %d, 0, %s};\n",
 		len(s)+1, name, ty, len(s), cstring(s))
 	fs.strs[key] = "EY_V(&" + name + ")"
 	return fs.strs[key]
@@ -609,21 +496,35 @@ func (fs *fileState) bigInt(n *big.Int) string {
 	if n.Sign() < 0 {
 		neg = 1
 	}
-	fmt.Fprintf(&fs.decls, "static struct { ey_obj h; int32_t neg; uint32_t n; uint32_t d[%d]; } %s = {{EY_IMMORTAL, &ey_t_big}, %d, %d, {%s}};\n",
+	fmt.Fprintf(&fs.decls, "static struct { ey_obj h; int32_t neg; uint32_t n; uint32_t d[%d]; } %s = {{EY_IMMORTAL, 0, &ey_t_big}, %d, %d, {%s}};\n",
 		len(limbs), name, neg, len(limbs), strings.Join(limbs, ", "))
 	fs.strs[key] = "EY_V(&" + name + ")"
 	return fs.strs[key]
 }
 
-// signature is f's C prototype.
+// resultTy is the type of what f returns. A global's instance says () for
+// its result; what it returns has the global's type.
+func (g *gen) resultTy(f *lir.Func) ir.Ty {
+	if f.Kind == lir.KindGlobal {
+		for _, b := range f.Blocks {
+			if r, ok := b.Term.(*lir.Return); ok && r.Value != nil {
+				return r.Value.Ty
+			}
+		}
+	}
+	return f.Result
+}
+
+// signature is f's C prototype: each parameter and the result as its type
+// is laid out, a `mut` one as the address of the caller's variable.
 func (g *gen) signature(f *lir.Func) string {
 	var params []string
 	mut := mutParams(f)
 	for i, p := range f.Params {
 		if mut[i] {
-			params = append(params, fmt.Sprintf("ey_v *v%d", p.ID))
+			params = append(params, fmt.Sprintf("%s *v%d", g.ctype(p.Ty), p.ID))
 		} else {
-			params = append(params, fmt.Sprintf("ey_v v%d", p.ID))
+			params = append(params, fmt.Sprintf("%s v%d", g.ctype(p.Ty), p.ID))
 		}
 	}
 	if hasDefaults(f) {
@@ -632,32 +533,12 @@ func (g *gen) signature(f *lir.Func) string {
 	if len(params) == 0 {
 		params = []string{"void"}
 	}
-	return fmt.Sprintf("ey_v %s(%s)", g.names[f], strings.Join(params, ", "))
+	return fmt.Sprintf("%s %s(%s)", g.ctype(g.resultTy(f)), g.names[f], strings.Join(params, ", "))
 }
 
 // mutParams says which of f's parameters are `mut`: passed as the address
 // of the caller's variable, whose value the function changes.
-func mutParams(f *lir.Func) []bool {
-	mut := make([]bool, len(f.Params))
-	src := f.Src
-	if src == nil || f.Kind == lir.KindLambda {
-		return mut
-	}
-	i := 0
-	if src.Entity != nil || src.HasSelf {
-		if i < len(mut) {
-			mut[i] = src.MutSelf
-		}
-		i++
-	}
-	for _, p := range src.Params {
-		if i < len(mut) {
-			mut[i] = p.Mut
-		}
-		i++
-	}
-	return mut
-}
+func mutParams(f *lir.Func) []bool { return lir.MutParams(f) }
 
 // hasDefaults reports whether f has parameters with defaults: a call that
 // leaves them out says so in a mask, bit i for parameter i.
@@ -673,11 +554,27 @@ func hasDefaults(f *lir.Func) bool {
 	return false
 }
 
-// programH declares what the files share.
+// programH declares what the files share: the structs values are held in,
+// the descriptors and every function's prototype.
 func (g *gen) programH() string {
 	var b strings.Builder
 	b.WriteString("/* Generated by eye build from the low IR. Don't edit. */\n")
 	b.WriteString("#ifndef EYE_PROGRAM_H\n#define EYE_PROGRAM_H\n#include <math.h>\n#include \"eye.h\"\n#include \"builtins.h\"\n\n")
+	// The closures' structs name the values' structs.
+	var clos strings.Builder
+	for _, f := range g.closures() {
+		cl := g.closureStruct(f)
+		if cl == "" {
+			continue
+		}
+		fmt.Fprintf(&clos, "typedef struct %s {\n\tey_fn h;\n", cl)
+		for i, p := range f.Params[:captures(f)] {
+			fmt.Fprintf(&clos, "\t%s c%d;\n", g.ctype(p.Ty), i)
+		}
+		fmt.Fprintf(&clos, "} %s;\n", cl)
+	}
+	b.WriteString(g.structDefs())
+	b.WriteString(clos.String())
 	var names []string
 	for _, d := range g.descs {
 		names = append(names, d.name)
@@ -699,13 +596,13 @@ func (g *gen) programH() string {
 	for _, f := range g.funcs {
 		fmt.Fprintf(&b, "%s;\n", g.signature(f))
 		if g.tramps[f] {
-			fmt.Fprintf(&b, "ey_v %s_tr(ey_fn *self, const ey_v *a);\n", g.names[f])
+			fmt.Fprintf(&b, "void %s_tr(ey_fn *self, void *out, void *const *a);\n", g.names[f])
 		}
 		if g.methods[f] {
-			fmt.Fprintf(&b, "ey_v %s_dm(ey_v self, const ey_v *a);\n", g.names[f])
+			fmt.Fprintf(&b, "void %s_dm(void *self, void *out, void *const *a);\n", g.names[f])
 		}
 		if f.Kind == lir.KindGlobal {
-			fmt.Fprintf(&b, "ey_v %s_g(void);\n", g.names[f])
+			fmt.Fprintf(&b, "%s %s_g(void);\n", g.ctype(g.resultTy(f)), g.names[f])
 		}
 	}
 	for _, p := range g.wrapProtos {
@@ -713,6 +610,17 @@ func (g *gen) programH() string {
 	}
 	b.WriteString("#endif\n")
 	return b.String()
+}
+
+// closures are the functions the program makes closures of, in the order
+// their descriptors were named.
+func (g *gen) closures() []*lir.Func {
+	var clos []*lir.Func
+	for f := range g.closDesc {
+		clos = append(clos, f)
+	}
+	sort.Slice(clos, func(i, j int) bool { return g.closDesc[clos[i]] < g.closDesc[clos[j]] })
+	return clos
 }
 
 // programC writes the descriptors, the dyn tables, the zones and the
@@ -725,27 +633,26 @@ func (g *gen) programC() string {
 	// name more.
 	zones := g.zoneTables()
 	entry := g.entry()
-	var clos []*lir.Func
-	for f := range g.closDesc {
-		clos = append(clos, f)
-	}
-	sort.Slice(clos, func(i, j int) bool { return g.closDesc[clos[i]] < g.closDesc[clos[j]] })
-	for _, f := range clos {
+	for _, f := range g.closures() {
 		n := captures(f)
-		var caps []string
-		for _, p := range f.Params[:n] {
+		cl := g.closureStruct(f)
+		var caps, offs []string
+		for i, p := range f.Params[:n] {
 			caps = append(caps, g.desc(p.Ty))
+			offs = append(offs, fmt.Sprintf("offsetof(%s, c%d)", cl, i))
 		}
-		args := "NULL"
+		fields := map[string]string{"kind": "EY_FN", "n": fmt.Sprint(n), "size": "8", "align": "8", "repr": "EY_R_WORD", "objsize": "sizeof(ey_fn)"}
 		if n > 0 {
 			fmt.Fprintf(&defs, "static const ey_type *const %s_a[] = {%s};\n", g.closDesc[f], strings.Join(caps, ", "))
-			args = g.closDesc[f] + "_a"
+			fmt.Fprintf(&defs, "static const uint32_t %s_o[] = {%s};\n", g.closDesc[f], strings.Join(offs, ", "))
+			fields["args"], fields["offs"], fields["objsize"] = g.closDesc[f]+"_a", g.closDesc[f]+"_o", fmt.Sprintf("sizeof(%s)", cl)
 		}
 		name := f.Name
 		if f.Src != nil && f.Kind != lir.KindLambda {
 			name = f.Src.Name
 		}
-		fmt.Fprintf(&defs, "const ey_type %s = {EY_FN, %d, %s, %s, NULL, NULL};\n", g.closDesc[f], n, cstring(name), args)
+		fields["name"] = cstring(name)
+		fmt.Fprintf(&defs, "const ey_type %s = {%s};\n", g.closDesc[f], initializer(fields))
 	}
 	var tabs []*lir.DynTable
 	for t := range g.dynTab {
@@ -768,7 +675,9 @@ func (g *gen) programC() string {
 		fmt.Fprintf(&defs, "const ey_method %s[] = {%s};\n", name, strings.Join(ms, ", "))
 		inner := g.desc(t.Type)
 		fmt.Fprintf(&defs, "static const ey_type *const %s_a[] = {%s};\n", name, inner)
-		fmt.Fprintf(&defs, "const ey_type %s_d = {EY_DYN, 1, %s, %s_a, NULL, NULL};\n", name, cstring(t.Trait.Name), name)
+		fields := map[string]string{"kind": "EY_DYN", "n": "1", "size": "8", "align": "8", "repr": "EY_R_WORD",
+			"objsize": fmt.Sprintf("sizeof(ey_dyn) + sizeof(%s)", g.ctype(t.Type)), "name": cstring(t.Trait.Name), "args": name + "_a"}
+		fmt.Fprintf(&defs, "const ey_type %s_d = {%s};\n", name, initializer(fields))
 	}
 	for i := 0; i < len(g.descQueue); i++ {
 		defs.WriteString(g.define(g.descQueue[i]))
@@ -814,31 +723,32 @@ func (g *gen) entry() string {
 		if hasDefaults(m) {
 			args = append(args, "0")
 		}
-		fmt.Fprintf(&b, "\tey_v r = %s(%s);\n", g.names[m], strings.Join(args, ", "))
+		fmt.Fprintf(&b, "\t%s r = %s(%s);\n", g.ctype(m.Result), g.names[m], strings.Join(args, ", "))
+		rd := g.desc(m.Result)
 		if c, ok := rep(m.Result).(*ir.TCon); ok && c.Name == "Result" && len(c.Args) == 2 {
-			show := fmt.Sprintf("ey_show(%s, EY_AGG(r)->f[0])", g.desc(c.Args[1]))
+			et := g.ctype(c.Args[1])
+			errv := fmt.Sprintf("(*(%s *)ey_variant_field(%s, &r, 1, 0))", et, rd)
+			show := fmt.Sprintf("ey_show(%s, &%s)", g.desc(c.Args[1]), errv)
 			if s := g.low.MainErrShow; s != nil && g.reach[s] {
-				arg := "EY_AGG(r)->f[0]"
-				if len(s.Modes) > 0 && s.Modes[0] == lir.Owned && counted(c.Args[1]) {
-					arg = "(ey_dup(EY_AGG(r)->f[0]), EY_AGG(r)->f[0])"
+				arg := errv
+				if len(s.Modes) > 0 && s.Modes[0] == lir.Owned {
+					if st := g.dupStmt(c.Args[1], errv); st != "" {
+						fmt.Fprintf(&b, "\tif (ey_variant_of(%s, &r) == 1) { %s }\n", rd, st)
+					}
 				}
 				show = g.names[s] + "(" + arg + ")"
 				if hasDefaults(s) {
 					show = g.names[s] + "(" + arg + ", 0)"
 				}
 			}
-			fmt.Fprintf(&b, "\tif (EY_AGG(r)->tag == 1) {\n\t\tey_v s = %s;\n\t\tey_eprintln(s);\n\t\tey_drop(s);\n\t\tey_drop(r);\n", show)
+			fmt.Fprintf(&b, "\tif (ey_variant_of(%s, &r) == 1) {\n\t\tey_v s = %s;\n\t\tey_eprintln(s);\n\t\tey_drop(s);\n\t\tey_drop_at(%s, &r);\n", rd, show, rd)
 			if dropArgs {
 				b.WriteString("\t\tey_drop(args);\n")
 			}
 			b.WriteString("\t\texit(1);\n\t}\n")
 		}
 		// What main made is dropped, so that a count of objects balances.
-		if counted(m.Result) {
-			b.WriteString("\tey_drop(r);\n")
-		} else {
-			b.WriteString("\t(void)r;\n")
-		}
+		fmt.Fprintf(&b, "\tey_drop_at(%s, &r);\n", rd)
 		if dropArgs {
 			b.WriteString("\tey_drop(args);\n")
 		}

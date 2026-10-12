@@ -406,7 +406,10 @@ bool ey_int_parse(const char *s, int64_t len, int base, ey_v *out) {
 	return true;
 }
 
-ey_v eyb_int_div_rem(ey_v a, ey_v b, bool rem, const ey_type *opt) {
-	if (b == EY_SMALL(0)) return ey_none(opt);
-	return ey_some(opt, rem ? ey_int_mod("<rem>", a, b) : ey_int_div("<div>", a, b));
+void eyb_int_div_rem(ey_v a, ey_v b, bool rem, void *out, const ey_type *opt) {
+	if (b == EY_SMALL(0)) {
+		ey_none(opt, out);
+		return;
+	}
+	ey_some_v(opt, out, rem ? ey_int_mod("<rem>", a, b) : ey_int_div("<div>", a, b));
 }

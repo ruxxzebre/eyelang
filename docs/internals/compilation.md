@@ -183,14 +183,14 @@ have kept `eye` small.
 ### The C back end as built
 
 Task 7.4 (2026-10-12) built the back end for the core language: package `cgen` and
-`eye build`. It is what this section describes, with what 7.14 and 7.5 (counting) changed since.
+`eye build`. It is what this section describes, with what 7.14, 7.5 (counting) and 7.13 (layouts) changed since.
 
 **What `eye build` does.** It checks the program, lowers it to low IR (`lir.Lower`), and writes
 C11: one file per module (`m_main.c`, `m_tally.c`, …), `program.h` with every prototype and
 type descriptor, and `program.c` with the descriptors, the `dyn` tables, the time zones the
 program names, and the entry point. Every position the low IR marks (`lir.At`) becomes a
 `#line` directive, so a debugger or a crash report names the `.eye` line. The runtime's C, about
-4,400 lines in `cgen/runtime`, is embedded in `eye` and compiled with every program. `eye` runs
+5,000 lines in `cgen/runtime`, is embedded in `eye` and compiled with every program. `eye` runs
 the pinned zig (`internal/zig`) as a separate process; `eye` itself has no cgo.
 
 - `-O2` by default, `-O0 -g` with `-g`; always `-std=c11 -fwrapv -fno-strict-aliasing`.
@@ -211,24 +211,37 @@ the pinned zig (`internal/zig`) as a separate process; `eye` itself has no cgo.
 - zig is fetched once into the user's cache from ziglang.org and checked against the checksum
   `internal/zig` pins, rather than shipped inside the release archives.
 
-**Values.** Every value is one 64-bit word, `ey_v` (`cgen/runtime/eye.h`). Section 2, "Values
-laid out by type", is the design that replaces this (7.13); the low IR chooses the layouts, and
-the back end switches to them next. It prints the low IR's counting already ("Counting" below).
+**Values.** Since 7.13 each type has the layout the low IR chooses for it (section 2, "Values
+laid out by type"), and the back end prints it as a C type:
 
-- scalars are their bits: `Bool`, `Char`, `Byte` and the fixed-width integers (signed ones
-  sign-extended), `Float`, `Duration` (ns), `Size`, `Date` (days since 1970), `Time` (seconds
-  since midnight) and `()`;
-- an `Int` is a small integer `n` as `(n << 1) | 1`, or a pointer to a big integer;
-- everything else is a pointer to a heap object, which starts with a reference count and its
-  type's descriptor.
+- scalars are their bits in their own width: `Bool` and `Byte` 1 byte, `Char`, `Int32`,
+  `UInt32` and `Time` 4, `Int64`, `UInt64`, `Float` (a `double`), `Duration`, `Size` and `Date` 8;
+  `()` is one unused byte;
+- an `Int` is a word: a small integer `n` as `(n << 1) | 1`, or a pointer to a big integer;
+- an enum is its variant's number, a byte;
+- a record, tuple or variant type of at most 64 bytes is a C struct (`ey_s12`), passed and
+  returned by value, with its own inline `ey_dup_s12` and `ey_drop_s12` that touch only its
+  counted fields; `Option(Int)`, `Option(String)` and `Option(Kind)` use a niche, so `None`
+  costs nothing, and `Option(Float)` or a `Result` a tag in front of the variants' fields;
+- a larger or recursive record or variant type is a box, a pointer to an object with its fields
+  inline (`ey_b3`, or `ey_b3_v1` for a variant); a variant without fields is the immediate word
+  `(n << 1) | 1`, so `Leaf` allocates nothing;
+- lists, sets and maps are pointers to buffers that hold their elements inline: a `List(Token)`
+  is one array of 24-byte tokens;
+- a closure is an object with its code and its captures inline (`NAME_cl`), a `dyn Trait` an
+  object with the value inline and the impl's table;
+- `String`, `Bytes`, `Key`, `Zone`, `Instant`, a `Range` and the results of commands are still
+  pointers to objects (`Layouts.Objects`); strings become views next.
 
-A descriptor (`ey_type`) is what showing, comparing, hashing and freeing a value needs: its kind,
-and its fields', elements' or variants' descriptors. The back end writes one per type the program
-uses, so derived `Eq`, `Ord`, `Hash` and `Show` are runtime functions driven by descriptors, not
-generated code per type. A newtype (one variant with one field, such as `Offset`) is its field.
-Records, variants and tuples are one object with their fields in declared order; a variant
-also holds its tag. A `dyn Trait` is an object with the value and a table of the impl's
-methods. A closure is its code and its captures.
+A heap object starts with a 16-byte header: a 32-bit count (`EY_IMMORTAL` for a static one, and
+a count that would overflow wraps to it), 32 bits for a boxed variant's number, and the type's
+descriptor. A descriptor (`ey_type`) says how the type is laid out: size, alignment, the offset
+of each field and each variant's fields, the tag or niche, and for a struct its generated dup and
+drop. Derived `Eq`, `Ord`, `Hash` and `Show`, the collections and lazy iterators are runtime
+functions that walk values through it, given a pointer to each value; the runtime's builtins
+take their arguments by pointer when they are not a word and write their results through an
+out-pointer. A newtype (one variant with one field, such as `Offset`) is its field. A closure is
+called through `void code(ey_fn *self, void *out, void *const *args)`, whatever its types.
 
 **The runtime** (`cgen/runtime`, written for this back end):
 
@@ -252,8 +265,9 @@ form (`eyo_list_add`, `eyo_map_insert`, `eyo_concat`, …), which takes its oper
 `take`n is moved out of its record and left empty when the record is unique; a closure's
 trampoline and a `dyn` method's wrapper dup the arguments of parameters the function owns.
 Nothing else in the back end decides a count. Faults in a test `longjmp` out and leak what was
-live, as the plan for faults (section 2) allows until runs get regions. A variant without fields (`None`, `Leaf`,
-an enum's cases) is one static, immortal value per type, which counting leaves alone.
+live, as the plan for faults (section 2) allows until runs get regions. A value whose type
+holds nothing counted (a scalar, an enum, a struct of those) is never dupped or dropped, and a
+struct's dup and drop touch only its counted fields.
 
 **Counts of objects.** The runtime counts the objects it makes and frees. With `EYE_ALLOCS` set,
 a binary writes `allocs N frees M faulted K` to stderr when it exits, after dropping its globals;
@@ -262,8 +276,8 @@ a binary writes `allocs N frees M faulted K` to stderr when it exits, after drop
 **Updates in place.** An update whose operand's last use it is (`s += t`, `s = "{s}…"`,
 `xs += ys`, `xs = xs.add(x)`, `m = m.insert(k, v)`, a set's `add`, `remove`, `{ r with … }`)
 takes the operand and changes it in place when its count is one, growing strings and lists by
-doubling, and copies it first otherwise; a field assignment makes its record unique through
-`ey_agg_own`. Before 7.5 only six exact `v = op(v, …)` shapes were in place; now the shape
+doubling, and copies it first otherwise; a field assignment changes an inline record in
+place, and makes a boxed one unique first through `ey_box_own`. Before 7.5 only six exact `v = op(v, …)` shapes were in place; now the shape
 around the update doesn't matter: the native plan's slow loops (an append through a helper, a
 map insert through a `let`, `p = { p with items: p.items.add(i) }`) take 8 ms for 1M appends,
 7 ms for 100k inserts and 12 ms for 1M updates, and grow linearly.
@@ -275,7 +289,8 @@ A program that declares one gets an error that names what it declares and says `
 
 **Tests.** `cgen/cgen_test.go` builds the tests of every program in `testdata/programs` and
 `cgen/testdata` that `eye build` compiles (today core, traits, the lexer, a program of failing
-tests, one of in-place updates and one of slow updates), at both `-O0 -g` and `-O2`, runs them,
+tests, one of in-place updates, one of slow updates, numbers, and `layouts`, which makes, takes
+apart, compares, shows, collects and updates a value of each layout), at both `-O0 -g` and `-O2`, runs them,
 and checks the output is `eye test`'s line for line (durations aside); a program joins as soon
 as it compiles. It also builds core for all five targets and runs a `main`. `cgen/updates_test.go`
 times the update loops that copied natively until 7.5 (an append through a helper, a map insert
@@ -412,7 +427,8 @@ how a variant type says which variant a value is. `TestLayouts` checks it for ea
   and 32-bit offsets would cap strings at 4 GB.
 - **`Int` stays a tagged word.** fib with Eyelang's `Int` rule runs at Go's speed (the review,
   section 2); the tag costs almost nothing beyond the overflow check.
-- **Heap objects** start with an 8-byte header: a 32-bit count (a static object's is negative and
+- **Heap objects** start with a 16-byte header (8 in the first design; the descriptor pointer
+  stays while the runtime's generic code walks objects): a 32-bit count (a static object's is negative and
   never changes, and a count that would overflow becomes static, so the object lives on) and 32
   bits the object's kind uses, a boxed variant's number for one. A box holds no descriptor: its
   drop is generated for its type. The buffers of lists, maps and sets, closures and `dyn` values

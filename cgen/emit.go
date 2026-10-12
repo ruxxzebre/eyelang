@@ -29,10 +29,14 @@ type fn struct {
 	loops map[*lir.Value]bool
 }
 
+func newFn(g *gen, fs *fileState, f *lir.Func) *fn {
+	return &fn{g: g, fs: fs, f: f, mut: map[*lir.Value]bool{}, param: map[*lir.Value]int{}, consts: map[*lir.Value]*lir.Const{}, defs: map[*lir.Value]int{}, loops: map[*lir.Value]bool{}}
+}
+
 // function writes f, and what calls it as a closure, a dyn method or a
 // global.
 func (g *gen) function(fs *fileState, f *lir.Func) string {
-	e := &fn{g: g, fs: fs, f: f, mut: map[*lir.Value]bool{}, param: map[*lir.Value]int{}, consts: map[*lir.Value]*lir.Const{}, defs: map[*lir.Value]int{}, loops: map[*lir.Value]bool{}}
+	e := newFn(g, fs, f)
 	e.at = cstring(posString(f.Src.Pos))
 	mut := mutParams(f)
 	for i, p := range f.Params {
@@ -58,6 +62,14 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 					locals = append(locals, d)
 				}
 			}
+			if c, ok := in.(*lir.Call); ok {
+				for _, i := range c.Mut {
+					e.defs[c.Args[i]]++
+				}
+			}
+			if d := lir.Dst(in); d != nil {
+				e.defs[d]++
+			}
 		}
 	}
 	fmt.Fprintf(&e.b, "/* %s %s */\n", f.Kind, strings.ReplaceAll(f.Name, "*/", "* /"))
@@ -67,19 +79,7 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 	// Every local starts empty: zero, which drops to nothing. The low IR
 	// says where each value is dup'ed and dropped (lir.Count).
 	for _, v := range locals {
-		fmt.Fprintf(&e.b, "\tey_v v%d = 0;\n", v.ID)
-	}
-	for _, b := range f.Blocks {
-		for _, in := range b.Instrs {
-			if d := lir.Dst(in); d != nil {
-				e.defs[d]++
-			}
-			if c, ok := in.(*lir.Call); ok {
-				for _, i := range c.Mut {
-					e.defs[c.Args[i]]++
-				}
-			}
-		}
+		fmt.Fprintf(&e.b, "\t%s v%d = {0};\n", g.ctype(v.Ty), v.ID)
 	}
 	if hasDefaults(f) {
 		e.b.WriteString("\t(void)absent;\n")
@@ -103,46 +103,50 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 func (e *fn) extras() {
 	g, f := e.g, e.f
 	name := g.names[f]
-	// A closure and a dyn table lend their arguments; one a parameter owns
-	// is dup'ed for it.
+	// A closure and a dyn table lend their arguments, by their addresses;
+	// one a parameter owns is dup'ed for it.
 	call := func(first []string, from string, skip int) string {
 		args := append([]string(nil), first...)
 		for i := skip; i < len(f.Params); i++ {
-			args = append(args, fmt.Sprintf("%s[%d]", from, i-skip))
+			args = append(args, fmt.Sprintf("(*(%s *)%s[%d])", g.ctype(f.Params[i].Ty), from, i-skip))
 		}
 		var dups strings.Builder
 		for i, a := range args {
-			if i < len(f.Modes) && f.Modes[i] == lir.Owned && counted(f.Params[i].Ty) {
-				fmt.Fprintf(&dups, "\tey_dup(%s);\n", a)
+			if i < len(f.Modes) && f.Modes[i] == lir.Owned {
+				if st := g.dupStmt(f.Params[i].Ty, a); st != "" {
+					fmt.Fprintf(&dups, "\t%s\n", st)
+				}
 			}
 		}
 		if hasDefaults(f) {
 			args = append(args, "0")
 		}
-		return fmt.Sprintf("%s\treturn %s(%s);\n", dups.String(), name, strings.Join(args, ", "))
+		return fmt.Sprintf("%s\t*(%s *)out = %s(%s);\n", dups.String(), g.ctype(g.resultTy(f)), name, strings.Join(args, ", "))
 	}
 	if g.tramps[f] {
 		n := captures(f)
 		var caps []string
-		for i := 0; i < n; i++ {
-			caps = append(caps, fmt.Sprintf("self->cap[%d]", i))
-		}
-		fmt.Fprintf(&e.b, "ey_v %s_tr(ey_fn *self, const ey_v *a) {\n\t(void)self;\n\t(void)a;\n%s}\n\n", name, call(caps, "a", n))
-	}
-	if g.methods[f] {
-		fmt.Fprintf(&e.b, "ey_v %s_dm(ey_v self, const ey_v *a) {\n\t(void)a;\n%s}\n\n", name, call([]string{"self"}, "a", 1))
-	}
-	if f.Kind == lir.KindGlobal {
-		// A global's instance says () for its result; what it returns has
-		// the global's type.
-		keep := ""
-		for _, b := range f.Blocks {
-			if r, ok := b.Term.(*lir.Return); ok && r.Value != nil && counted(r.Value.Ty) {
-				keep = "\n\t\tey_keep_global(&value);"
-				break
+		self := ""
+		if cl := g.closureStruct(f); cl != "" {
+			self = fmt.Sprintf("\t%s *cl = (%s *)self;\n", cl, cl)
+			for i := 0; i < n; i++ {
+				caps = append(caps, fmt.Sprintf("cl->c%d", i))
 			}
 		}
-		fmt.Fprintf(&e.b, "ey_v %s_g(void) {\n\tstatic bool done;\n\tstatic ey_v value;\n\tif (!done) {\n\t\tvalue = %s();\n\t\tdone = true;%s\n\t}\n\treturn value;\n}\n\n", name, name, keep)
+		fmt.Fprintf(&e.b, "void %s_tr(ey_fn *self, void *out, void *const *a) {\n\t(void)self;\n\t(void)a;\n%s%s}\n\n", name, self, call(caps, "a", n))
+	}
+	if g.methods[f] {
+		self := fmt.Sprintf("(*(%s *)self)", g.ctype(f.Params[0].Ty))
+		fmt.Fprintf(&e.b, "void %s_dm(void *self, void *out, void *const *a) {\n\t(void)a;\n%s}\n\n", name, call([]string{self}, "a", 1))
+	}
+	if f.Kind == lir.KindGlobal {
+		rt := g.resultTy(f)
+		keep := ""
+		if g.counted(rt) {
+			keep = fmt.Sprintf("\n\t\tey_keep_global(&value, %s);", g.desc(rt))
+		}
+		ct := g.ctype(rt)
+		fmt.Fprintf(&e.b, "%s %s_g(void) {\n\tstatic bool done;\n\tstatic %s value;\n\tif (!done) {\n\t\tvalue = %s();\n\t\tdone = true;%s\n\t}\n\treturn value;\n}\n\n", ct, name, ct, name, keep)
 	}
 }
 
@@ -188,6 +192,36 @@ func (e *fn) v(x *lir.Value) string {
 		return fmt.Sprintf("(*v%d)", x.ID)
 	}
 	return fmt.Sprintf("v%d", x.ID)
+}
+
+// ct is the C type of a value.
+func (e *fn) ct(x *lir.Value) string { return e.g.ctype(x.Ty) }
+
+// word is a scalar's, an enum's or a word's value as a word, which runtime
+// functions over words take: signed scalars sign-extended, a Float's bits.
+func (e *fn) word(x *lir.Value) string {
+	switch {
+	case e.g.isWord(x.Ty):
+		return e.v(x)
+	case scalarName(x.Ty) == "Float":
+		return fmt.Sprintf("ey_f2v(%s)", e.v(x))
+	}
+	switch scalarName(x.Ty) {
+	case "Int32", "Int64", "Duration", "Size", "Date", "Time":
+		return fmt.Sprintf("(ey_v)(int64_t)%s", e.v(x))
+	}
+	return fmt.Sprintf("(ey_v)%s", e.v(x))
+}
+
+// fromWord is a word a runtime function gives as a value of type t.
+func (e *fn) fromWord(t ir.Ty, w string) string {
+	switch {
+	case e.g.isWord(t):
+		return w
+	case scalarName(t) == "Float":
+		return fmt.Sprintf("ey_v2f(%s)", w)
+	}
+	return fmt.Sprintf("(%s)%s", e.g.ctype(t), w)
 }
 
 // smallConst reports whether x is an Int constant in the small range,
@@ -238,12 +272,17 @@ func (e *fn) assign(dst *lir.Value, expr string) {
 // own result (min, max): a reference of its own.
 func (e *fn) dupped(dst *lir.Value, expr string) {
 	e.assign(dst, expr)
-	if counted(dst.Ty) {
-		e.printf("ey_dup(%s);", e.v(dst))
+	if st := e.g.dupStmt(dst.Ty, e.v(dst)); st != "" {
+		e.printf("%s", st)
 	}
 }
 
-// array is a C compound literal of values, or NULL for none.
+// zero sets dst to all-zero bits: nothing, or a left-out argument.
+func (e *fn) zero(dst *lir.Value) {
+	e.printf("memset(&%s, 0, sizeof %s);", e.v(dst), e.v(dst))
+}
+
+// array is a C compound literal of words, or NULL for none.
 func (e *fn) array(vs []*lir.Value) string {
 	if len(vs) == 0 {
 		return "NULL"
@@ -253,6 +292,18 @@ func (e *fn) array(vs []*lir.Value) string {
 		parts[i] = e.v(x)
 	}
 	return "(ey_v[]){" + strings.Join(parts, ", ") + "}"
+}
+
+// ptrs is a C compound literal of the values' addresses, or NULL for none.
+func (e *fn) ptrs(vs []*lir.Value) string {
+	if len(vs) == 0 {
+		return "NULL"
+	}
+	parts := make([]string, len(vs))
+	for i, x := range vs {
+		parts[i] = "&" + e.v(x)
+	}
+	return "(void *[]){" + strings.Join(parts, ", ") + "}"
 }
 
 func (e *fn) instr(in lir.Instr) {
@@ -265,12 +316,12 @@ func (e *fn) instr(in lir.Instr) {
 	case *lir.Move:
 		e.assign(x.Dst, e.v(x.Src))
 	case *lir.Dup:
-		if counted(x.V.Ty) {
-			e.printf("ey_dup(%s);", e.v(x.V))
+		if st := e.g.dupStmt(x.V.Ty, e.v(x.V)); st != "" {
+			e.printf("%s", st)
 		}
 	case *lir.Drop:
-		if counted(x.V.Ty) {
-			e.printf("ey_drop(%s);", e.v(x.V))
+		if st := e.g.dropStmt(x.V.Ty, e.v(x.V)); st != "" {
+			e.printf("%s", st)
 		}
 	case *lir.Call:
 		e.call(x)
@@ -282,7 +333,7 @@ func (e *fn) instr(in lir.Instr) {
 		if x.Durable {
 			e.errorf("the C back end doesn't compile durable steps (`!`) yet: jobs run in the Go runner")
 		}
-		e.assign(x.Dst, fmt.Sprintf("ey_call(%s, %s)", e.v(x.Callee), e.array(x.Args)))
+		e.printf("ey_call(%s, &%s, %s);", e.v(x.Callee), e.v(x.Dst), e.ptrs(x.Args))
 	case *lir.CallDyn:
 		k := -1
 		for i, m := range x.Trait.Order {
@@ -294,7 +345,7 @@ func (e *fn) instr(in lir.Instr) {
 			e.errorf("%s has no method %s", x.Trait.Name, x.Method)
 			return
 		}
-		e.assign(x.Dst, fmt.Sprintf("EY_DYNP(%s)->methods[%d](EY_DYNP(%s)->val, %s)", e.v(x.Recv), k, e.v(x.Recv), e.array(x.Args)))
+		e.printf("EY_DYNP(%s)->methods[%d](EY_DYN_VAL(%s), &%s, %s);", e.v(x.Recv), k, e.v(x.Recv), e.v(x.Dst), e.ptrs(x.Args))
 	case *lir.Op:
 		e.op(x)
 	case *lir.Derived:
@@ -304,14 +355,14 @@ func (e *fn) instr(in lir.Instr) {
 	case *lir.MakeVariant:
 		e.makeVariant(x)
 	case *lir.MakeTuple:
-		e.makeAgg(x.Dst, e.g.desc(x.Dst.Ty), 0, x.Elems, nil)
+		e.makeFields(x.Dst, x.Elems, nil)
 	case *lir.MakeList:
 		// The new collection takes its elements.
-		e.assign(x.Dst, fmt.Sprintf("ey_list_from(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.array(x.Elems)))
+		e.assign(x.Dst, fmt.Sprintf("ey_list_from(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.ptrs(x.Elems)))
 	case *lir.MakeSet:
-		e.assign(x.Dst, fmt.Sprintf("ey_set_from(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.array(x.Elems)))
+		e.assign(x.Dst, fmt.Sprintf("ey_set_from(%s, %d, %s)", e.g.desc(x.Dst.Ty), len(x.Elems), e.ptrs(x.Elems)))
 	case *lir.MakeMap:
-		e.assign(x.Dst, fmt.Sprintf("ey_map_from(%s, %d, %s, %s)", e.g.desc(x.Dst.Ty), len(x.Keys), e.array(x.Keys), e.array(x.Values)))
+		e.assign(x.Dst, fmt.Sprintf("ey_map_from(%s, %d, %s, %s)", e.g.desc(x.Dst.Ty), len(x.Keys), e.ptrs(x.Keys), e.ptrs(x.Values)))
 	case *lir.MakeClosure:
 		e.closure(x.Dst, x.Fn, x.Captures)
 	case *lir.MakeDyn:
@@ -320,49 +371,26 @@ func (e *fn) instr(in lir.Instr) {
 			name = fmt.Sprintf("ey_dt%d", len(e.g.dynTab))
 			e.g.dynTab[x.Table] = name
 		}
-		e.printf("{ ey_dyn *d_ = ey_alloc(sizeof(ey_dyn), &%s_d); d_->methods = %s; d_->val = %s; %s = EY_V(d_); }", name, name, e.v(x.Src), e.v(x.Dst))
+		e.printf("{ ey_dyn *d_ = ey_alloc(sizeof(ey_dyn) + sizeof(%s), &%s_d); d_->methods = %s; *(%s *)EY_DYN_VAL(d_) = %s; %s = EY_V(d_); }",
+			e.ct(x.Src), name, name, e.ct(x.Src), e.v(x.Src), e.v(x.Dst))
 	case *lir.Field:
-		i := e.fieldIndex(x.Src.Ty, x.Name)
-		if x.Take {
-			// Moved out of a record about to be rebuilt: left empty when
-			// the record is unique, which the update then fills.
-			e.printf("{ ey_agg *a_ = EY_AGG(%s); %s = a_->f[%d]; if (a_->h.rc == 1) a_->f[%d] = 0; else ey_dup(%s); }",
-				e.v(x.Src), e.v(x.Dst), i, i, e.v(x.Dst))
-			return
-		}
-		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), i))
+		e.field(x.Dst, x.Src, e.fieldIndex(x.Src.Ty, x.Name), x.Take)
 	case *lir.TupleGet:
-		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), x.Index))
+		e.field(x.Dst, x.Src, x.Index, false)
 	case *lir.Payload:
 		if newtype(x.Variant) {
 			e.assign(x.Dst, e.v(x.Src))
 			return
 		}
-		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->f[%d]", e.v(x.Src), x.Index))
+		e.assign(x.Dst, e.payload(x.Src, variantIndex(x.Variant), x.Index))
 	case *lir.IsVariant:
 		if newtype(x.Variant) {
 			e.assign(x.Dst, "1")
 			return
 		}
-		e.assign(x.Dst, fmt.Sprintf("EY_AGG(%s)->tag == %d", e.v(x.Src), variantIndex(x.Variant)))
+		e.assign(x.Dst, e.isVariant(x.Src, variantIndex(x.Variant)))
 	case *lir.Update:
-		// In place, the update takes its record and changes it when it is
-		// unique; otherwise it borrows the record and copies it. Either
-		// way it takes the new fields and drops the ones they replace.
-		if x.InPlace {
-			e.printf("{ ey_v u_ = %s;", e.v(x.Src))
-		} else {
-			e.printf("{ ey_v u_ = %s; ey_dup(u_);", e.v(x.Src))
-		}
-		e.printf("  ey_agg_own(&u_);")
-		for i, n := range x.Names {
-			k := e.fieldIndex(x.Src.Ty, n)
-			if counted(fieldType(x.Src.Ty, n)) {
-				e.printf("  ey_drop(EY_AGG(u_)->f[%d]);", k)
-			}
-			e.printf("  EY_AGG(u_)->f[%d] = %s;", k, e.v(x.Fields[i]))
-		}
-		e.printf("  %s = u_; }", e.v(x.Dst))
+		e.update(x)
 	case *lir.SetPlace:
 		e.setPlace(x)
 	case *lir.Global:
@@ -381,11 +409,11 @@ func (e *fn) term(t lir.Term) {
 		e.printf("goto b%d;", x.Else.ID)
 	case *lir.Return:
 		// The returned value is owned: the low IR dup'ed it if it had to.
-		r := "0"
-		if x.Value != nil {
-			r = e.v(x.Value)
+		if x.Value == nil {
+			e.printf("return 0;")
+			return
 		}
-		e.printf("return %s;", r)
+		e.printf("return %s;", e.v(x.Value))
 	case *lir.Stop:
 		e.printf("ey_fault(%s, %s);", e.at, cstring(x.Why))
 	default:
@@ -400,7 +428,7 @@ func (e *fn) constant(c *lir.Const) {
 	name := scalarName(t)
 	switch v := c.Value.(type) {
 	case lir.Absent, ir.Unit:
-		e.assign(c.Dst, "0")
+		e.zero(c.Dst)
 	case bool:
 		if v {
 			e.assign(c.Dst, "1")
@@ -421,13 +449,13 @@ func (e *fn) constant(c *lir.Const) {
 		e.g.zones[v] = true
 		e.assign(c.Dst, e.fs.str(v, "&ey_t_string"))
 	case ir.Duration:
-		e.assign(c.Dst, fmt.Sprintf("(ey_v)INT64_C(%d)", int64(v)))
+		e.assign(c.Dst, fmt.Sprintf("INT64_C(%d)", int64(v)))
 	case ir.Size:
-		e.assign(c.Dst, fmt.Sprintf("(ey_v)INT64_C(%d)", int64(v)))
+		e.assign(c.Dst, fmt.Sprintf("INT64_C(%d)", int64(v)))
 	case ir.Date:
-		e.assign(c.Dst, fmt.Sprintf("(ey_v)INT64_C(%d)", daysFromCivil(v.Year, v.Month, v.Day)))
+		e.assign(c.Dst, fmt.Sprintf("INT64_C(%d)", daysFromCivil(v.Year, v.Month, v.Day)))
 	case ir.TimeOfDay:
-		e.assign(c.Dst, fmt.Sprintf("(ey_v)%d", v.Hour*3600+v.Minute*60+v.Second))
+		e.assign(c.Dst, fmt.Sprintf("%d", v.Hour*3600+v.Minute*60+v.Second))
 	case ir.Instant:
 		e.assign(c.Dst, e.instant(v, e.fs.str(v.Zone, "&ey_t_string")))
 	default:
@@ -457,7 +485,7 @@ func (e *fn) number(dst *lir.Value, name string, n *big.Int) {
 		// Two's complement bits; a value outside the type, such as the
 		// 2147483648 that -2147483648 negates, keeps its 64 bits.
 		bits := new(big.Int).And(n, new(big.Int).SetUint64(math.MaxUint64)).Uint64()
-		e.assign(dst, fmt.Sprintf("UINT64_C(%d)", bits))
+		e.assign(dst, fmt.Sprintf("(%s)UINT64_C(%d)", e.ct(dst), bits))
 	default:
 		e.assign(dst, e.fs.bigInt(n))
 	}
@@ -466,13 +494,13 @@ func (e *fn) number(dst *lir.Value, name string, n *big.Int) {
 func floatLit(f float64) string {
 	switch {
 	case math.IsInf(f, 1):
-		return "ey_f2v(HUGE_VAL)"
+		return "HUGE_VAL"
 	case math.IsInf(f, -1):
-		return "ey_f2v(-HUGE_VAL)"
+		return "(-HUGE_VAL)"
 	case math.IsNaN(f):
-		return "ey_f2v(NAN)"
+		return "NAN"
 	}
-	return "ey_f2v(" + strconv.FormatFloat(f, 'x', -1, 64) + ")"
+	return "(" + strconv.FormatFloat(f, 'x', -1, 64) + ")"
 }
 
 // daysFromCivil is the days from 1970-01-01 to a date, as the runtime's
@@ -536,18 +564,65 @@ func (e *fn) fieldIndex(t ir.Ty, name string) int {
 	return 0
 }
 
-// makeAgg sets dst to a new record, variant or tuple, with fields in
-// order, which it takes.
-func (e *fn) makeAgg(dst *lir.Value, desc string, tag int, fields []*lir.Value, order []int) {
-	e.printf("{ ey_agg *a_ = ey_agg_new(%s, %d, %d);", desc, tag, len(fields))
-	for i, f := range fields {
-		k := i
-		if order != nil {
-			k = order[i]
-		}
-		e.printf("  a_->f[%d] = %s;", k, e.v(f))
+// fieldTys are the types of a record's or tuple's fields, in order.
+func fieldTys(t ir.Ty) []ir.Ty {
+	t = rep(t)
+	if tt, ok := t.(*ir.TTuple); ok {
+		return tt.Elems
 	}
-	e.printf("  %s = EY_V(a_); }", e.v(dst))
+	_, types, _ := lir.RecordFields(t)
+	return types
+}
+
+// fieldLv is the C lvalue of field i of the record or tuple in src: in the
+// struct, or in its box.
+func (e *fn) fieldLv(src string, t ir.Ty, i int) string {
+	if e.g.layout(t).Repr == lir.ReprBox {
+		return fmt.Sprintf("((%s *)(uintptr_t)%s)->f%d", e.g.boxOf(t, -1).name, src, i)
+	}
+	return fmt.Sprintf("%s.f%d", src, i)
+}
+
+// field reads field i of the record or tuple in src: borrowed, or taken out
+// of a record about to be rebuilt, which is left empty when it is inline
+// or unique.
+func (e *fn) field(dst, src *lir.Value, i int, take bool) {
+	lv := e.fieldLv(e.v(src), src.Ty, i)
+	if !take {
+		e.assign(dst, lv)
+		return
+	}
+	if e.g.layout(src.Ty).Repr != lir.ReprBox {
+		e.printf("%s = %s; memset(&%s, 0, sizeof %s);", e.v(dst), lv, lv, lv)
+		return
+	}
+	e.printf("%s = %s; if (EY_OBJ(%s)->rc == 1) memset(&%s, 0, sizeof %s); else { %s }",
+		e.v(dst), lv, e.v(src), lv, lv, e.g.dupStmt(dst.Ty, e.v(dst)))
+}
+
+// makeFields sets dst to a new record or tuple, with the fields given in
+// the order of order (the field each is), which it takes.
+func (e *fn) makeFields(dst *lir.Value, fields []*lir.Value, order []int) {
+	idx := func(i int) int {
+		if order != nil {
+			return order[i]
+		}
+		return i
+	}
+	if e.g.layout(dst.Ty).Repr == lir.ReprBox {
+		b := e.g.boxOf(dst.Ty, -1).name
+		e.printf("{ %s *b_ = ey_alloc(sizeof(%s), %s);", b, b, e.g.desc(dst.Ty))
+		for i, f := range fields {
+			e.printf(" b_->f%d = %s;", idx(i), e.v(f))
+		}
+		e.printf(" %s = EY_V(b_); }", e.v(dst))
+		return
+	}
+	parts := make([]string, len(fields))
+	for i, f := range fields {
+		parts[i] = fmt.Sprintf(".f%d = %s", idx(i), e.v(f))
+	}
+	e.assign(dst, fmt.Sprintf("(%s){%s}", e.ct(dst), strings.Join(parts, ", ")))
 }
 
 func (e *fn) makeRecord(x *lir.MakeRecord) {
@@ -564,7 +639,101 @@ func (e *fn) makeRecord(x *lir.MakeRecord) {
 		e.errorf("a record of type %s needs all %d of its fields", x.Dst.Ty, len(names))
 		return
 	}
-	e.makeAgg(x.Dst, e.g.desc(x.Dst.Ty), 0, x.Fields, order)
+	e.makeFields(x.Dst, x.Fields, order)
+}
+
+// update writes `{ r with … }`: in place, it takes its record and changes
+// it when it is unique; otherwise it borrows it and copies it. Either way
+// it takes the new fields and drops the ones they replace.
+func (e *fn) update(x *lir.Update) {
+	t := x.Src.Ty
+	replaced := map[int]*lir.Value{}
+	for i, n := range x.Names {
+		replaced[e.fieldIndex(t, n)] = x.Fields[i]
+	}
+	if e.g.layout(t).Repr == lir.ReprBox {
+		b := e.g.boxOf(t, -1).name
+		e.printf("{ ey_v u_ = %s;", e.v(x.Src))
+		if !x.InPlace {
+			e.printf(" ey_dup(u_);")
+		}
+		e.printf(" ey_box_own(&u_);")
+		for i, ft := range fieldTys(t) {
+			v, ok := replaced[i]
+			if !ok {
+				continue
+			}
+			lv := fmt.Sprintf("((%s *)(uintptr_t)u_)->f%d", b, i)
+			if st := e.g.dropStmt(ft, lv); st != "" {
+				e.printf(" %s", st)
+			}
+			e.printf(" %s = %s;", lv, e.v(v))
+		}
+		e.printf(" %s = u_; }", e.v(x.Dst))
+		return
+	}
+	d := e.v(x.Dst)
+	e.printf("%s = %s;", d, e.v(x.Src))
+	for i, ft := range fieldTys(t) {
+		lv := fmt.Sprintf("%s.f%d", d, i)
+		v, ok := replaced[i]
+		switch {
+		case !ok && !x.InPlace:
+			if st := e.g.dupStmt(ft, lv); st != "" {
+				e.printf(" %s", st)
+			}
+		case ok:
+			if x.InPlace {
+				if st := e.g.dropStmt(ft, lv); st != "" {
+					e.printf(" %s", st)
+				}
+			}
+			e.printf(" %s = %s;", lv, e.v(v))
+		}
+	}
+}
+
+// isVariant is the C test that the variant-type value in x is variant k.
+func (e *fn) isVariant(x *lir.Value, k int) string {
+	l := e.g.layout(x.Ty)
+	src := e.v(x)
+	switch {
+	case l.Repr == lir.ReprEnum:
+		return fmt.Sprintf("%s == %d", src, k)
+	case l.Tag.Kind == lir.TagNone:
+		return "1"
+	case l.Tag.Kind == lir.TagBox:
+		v := l.Variants[k]
+		if len(v.Fields) == 0 {
+			return fmt.Sprintf("%s == UINT64_C(%d)", src, v.Value)
+		}
+		others := 0
+		for _, w := range l.Variants {
+			if len(w.Fields) > 0 {
+				others++
+			}
+		}
+		if others == 1 {
+			return fmt.Sprintf("ey_is_obj(%s)", src)
+		}
+		return fmt.Sprintf("(ey_is_obj(%s) && EY_OBJ(%s)->tag == %d)", src, src, k)
+	case l.Tag.Kind == lir.TagNiche:
+		return "(" + nicheIs(l, k, "&"+src) + ")"
+	}
+	return fmt.Sprintf("%s.tag == %d", src, k)
+}
+
+// payload is the C lvalue of field i of variant k of the value in x.
+func (e *fn) payload(x *lir.Value, k, i int) string {
+	l := e.g.layout(x.Ty)
+	src := e.v(x)
+	switch {
+	case l.Tag.Kind == lir.TagBox:
+		return fmt.Sprintf("((%s *)(uintptr_t)%s)->f%d", e.g.boxOf(x.Ty, k).name, src, i)
+	case l.Word():
+		return src // the payload is the word itself
+	}
+	return src + "." + fieldPath(l, k, i)
 }
 
 func (e *fn) makeVariant(x *lir.MakeVariant) {
@@ -572,58 +741,101 @@ func (e *fn) makeVariant(x *lir.MakeVariant) {
 		e.assign(x.Dst, e.v(x.Args[0]))
 		return
 	}
-	if len(x.Args) == 0 {
-		// The variant's static value, which counting leaves alone.
-		e.assign(x.Dst, fmt.Sprintf("EY_V((%s)->variants[%d].unit)", e.g.desc(x.Dst.Ty), variantIndex(x.Variant)))
-		return
+	k := variantIndex(x.Variant)
+	l := e.g.layout(x.Dst.Ty)
+	d := e.v(x.Dst)
+	switch {
+	case l.Repr == lir.ReprEnum:
+		e.assign(x.Dst, fmt.Sprint(k))
+	case l.Tag.Kind == lir.TagBox:
+		if len(x.Args) == 0 {
+			e.assign(x.Dst, fmt.Sprintf("UINT64_C(%d)", l.Variants[k].Value))
+			return
+		}
+		b := e.g.boxOf(x.Dst.Ty, k).name
+		e.printf("{ %s *b_ = ey_alloc(sizeof(%s), %s); b_->h.tag = %d;", b, b, e.g.desc(x.Dst.Ty), k)
+		for i, a := range x.Args {
+			e.printf(" b_->f%d = %s;", i, e.v(a))
+		}
+		e.printf(" %s = EY_V(b_); }", d)
+	case l.Word():
+		if len(x.Args) == 0 {
+			e.assign(x.Dst, fmt.Sprintf("UINT64_C(%d)", l.Variants[k].Value))
+		} else {
+			e.assign(x.Dst, e.v(x.Args[0]))
+		}
+	case l.Tag.Kind == lir.TagNone || (l.Tag.Kind == lir.TagNiche && len(x.Args) > 0):
+		parts := make([]string, len(x.Args))
+		for i, a := range x.Args {
+			parts[i] = fmt.Sprintf(".f%d = %s", i, e.v(a))
+		}
+		e.assign(x.Dst, fmt.Sprintf("(%s){%s}", e.ct(x.Dst), strings.Join(parts, ", ")))
+	case l.Tag.Kind == lir.TagNiche:
+		e.zero(x.Dst)
+		e.printf("EY_AT(uint%d_t, &%s, %d) = UINT64_C(%d);", l.Tag.Size*8, d, l.Tag.Offset, l.Variants[k].Value)
+	default:
+		e.zero(x.Dst)
+		e.printf("%s.tag = %d;", d, k)
+		for i, a := range x.Args {
+			e.printf(" %s.%s = %s;", d, fieldPath(l, k, i), e.v(a))
+		}
 	}
-	e.makeAgg(x.Dst, e.g.desc(x.Dst.Ty), variantIndex(x.Variant), x.Args, nil)
 }
 
 // closure sets dst to a closure of fn with its captures, which it takes.
 func (e *fn) closure(dst *lir.Value, f *lir.Func, caps []*lir.Value) {
-	e.printf("{ ey_fn *c_ = ey_fn_new(%s, %s_tr, %d);", e.g.closureDesc(f), e.g.names[f], len(caps))
-	for i, c := range caps {
-		e.printf("  c_->cap[%d] = %s;", i, e.v(c))
+	cl := e.g.closureStruct(f)
+	if cl == "" {
+		e.assign(dst, fmt.Sprintf("EY_V(ey_fn_new(%s, %s_tr))", e.g.closureDesc(f), e.g.names[f]))
+		return
 	}
-	e.printf("  %s = EY_V(c_); }", e.v(dst))
+	e.printf("{ %s *c_ = (%s *)ey_fn_new(%s, %s_tr);", cl, cl, e.g.closureDesc(f), e.g.names[f])
+	for i, c := range caps {
+		e.printf(" c_->c%d = %s;", i, e.v(c))
+	}
+	e.printf(" %s = EY_V(c_); }", e.v(dst))
 }
 
 // setPlace writes a variable, or a field or element inside it, with the
-// value it takes: each record and list on the path is made uniquely owned
+// value it takes: each box and list on the path is made uniquely owned
 // first, copied if it is shared, and what the place held is dropped.
 func (e *fn) setPlace(x *lir.SetPlace) {
 	if len(x.Path) == 0 {
 		e.assign(x.Var, e.v(x.Src))
 		return
 	}
-	e.printf("{ ey_v *p_ = &%s;", e.v(x.Var))
 	t := x.Var.Ty
+	e.printf("{ void *p_ = &%s;", e.v(x.Var))
 	for _, s := range x.Path {
 		if s.Index != nil {
 			if kind(&lir.Value{Ty: t}) == "Map" {
 				// A map's value is the last step (SPECS.md §7): insert or
 				// replace it, in place when the map is unique. The map
 				// keeps references of its own.
-				e.printf("  *p_ = eyo_map_insert(*p_, %s, %s);", e.v(s.Index), e.v(x.Src))
-				if counted(x.Src.Ty) {
-					e.printf("  ey_drop(%s);", e.v(x.Src))
+				e.printf(" *(ey_v *)p_ = eyo_map_insert(*(ey_v *)p_, &%s, &%s);", e.v(s.Index), e.v(x.Src))
+				if st := e.g.dropStmt(x.Src.Ty, e.v(x.Src)); st != "" {
+					e.printf(" %s", st)
 				}
-				e.printf("}")
+				e.printf(" }")
 				return
 			}
-			e.printf("  p_ = eyo_list_slot(%s, p_, %s);", e.at, e.v(s.Index))
-			t = lir.ElemOf(lir.Resolve(t))
+			e.printf(" p_ = eyo_list_slot(%s, (ey_v *)p_, %s);", e.at, e.v(s.Index))
+			t = lir.ElemOf(rep(t))
 			continue
 		}
 		k := e.fieldIndex(t, s.Field)
-		e.printf("  ey_agg_own(p_); p_ = &EY_AGG(*p_)->f[%d];", k)
+		if e.g.layout(t).Repr == lir.ReprBox {
+			e.printf(" ey_box_own((ey_v *)p_); p_ = &((%s *)(uintptr_t)*(ey_v *)p_)->f%d;", e.g.boxOf(t, -1).name, k)
+		} else {
+			e.printf(" p_ = &((%s *)p_)->f%d;", e.g.ctype(t), k)
+		}
 		t = fieldType(t, s.Field)
 	}
-	if counted(x.Src.Ty) {
-		e.printf("  ey_drop(*p_);")
+	lv := fmt.Sprintf("(*(%s *)p_)", e.g.ctype(t))
+	if st := e.g.dropStmt(t, lv); st != "" {
+		e.printf(" %s", st)
 	}
-	e.printf("  *p_ = %s; }", e.v(x.Src))
+	e.printf(" %s = %s; }", lv, e.v(x.Src))
 }
 
 // call calls an instance: `mut` arguments by their variable's address, and
@@ -646,7 +858,7 @@ func (e *fn) call(x *lir.Call) {
 			}
 		case e.absent(a):
 			mask |= 1 << uint(i)
-			args = append(args, "0")
+			args = append(args, e.v(a)) // zero
 		default:
 			args = append(args, e.v(a))
 		}
@@ -657,8 +869,9 @@ func (e *fn) call(x *lir.Call) {
 	e.assign(x.Dst, fmt.Sprintf("%s(%s)", e.g.names[callee], strings.Join(args, ", ")))
 }
 
-// derived calls a derived trait's method, which the runtime answers from
-// the type's descriptor.
+// derived calls a derived trait's method: on a scalar or an enum by C's
+// own operators, and on anything else in the runtime, from the type's
+// descriptor.
 func (e *fn) derived(x *lir.Derived) {
 	if x.Method == "variants" {
 		c, _ := rep(x.Dst.Ty).(*ir.TCon)
@@ -675,24 +888,37 @@ func (e *fn) derived(x *lir.Derived) {
 	}
 	a := x.Args[0]
 	d := e.g.desc(a.Ty)
+	enum := e.g.layout(a.Ty).Repr == lir.ReprEnum
 	switch x.Method {
 	case "show":
 		if d == "&ey_t_int" {
 			e.assign(x.Dst, fmt.Sprintf("ey_show_int(%s)", e.v(a)))
 			return
 		}
-		e.assign(x.Dst, fmt.Sprintf("ey_show(%s, %s)", d, e.v(a)))
+		e.assign(x.Dst, fmt.Sprintf("ey_show(%s, &%s)", d, e.v(a)))
 	case "eq":
-		e.assign(x.Dst, fmt.Sprintf("ey_eq(%s, %s, %s)", d, e.v(a), e.v(x.Args[1])))
+		if enum {
+			e.assign(x.Dst, fmt.Sprintf("%s == %s", e.v(a), e.v(x.Args[1])))
+			return
+		}
+		e.assign(x.Dst, fmt.Sprintf("ey_eq(%s, &%s, &%s)", d, e.v(a), e.v(x.Args[1])))
 	case "cmp":
-		e.assign(x.Dst, fmt.Sprintf("EY_SMALL(ey_cmp(%s, %s, %s))", d, e.v(a), e.v(x.Args[1])))
+		if enum {
+			e.assign(x.Dst, fmt.Sprintf("EY_SMALL((%s > %s) - (%s < %s))", e.v(a), e.v(x.Args[1]), e.v(a), e.v(x.Args[1])))
+			return
+		}
+		e.assign(x.Dst, fmt.Sprintf("EY_SMALL(ey_cmp(%s, &%s, &%s))", d, e.v(a), e.v(x.Args[1])))
 	case "hash":
-		e.assign(x.Dst, fmt.Sprintf("EY_SMALL((int64_t)(ey_hash(%s, %s) >> 2))", d, e.v(a)))
+		e.assign(x.Dst, fmt.Sprintf("EY_SMALL((int64_t)(ey_hash(%s, &%s) >> 2))", d, e.v(a)))
 	case "parse":
-		e.assign(x.Dst, fmt.Sprintf("eyb_enum_parse(%s, %s)", e.v(a), e.g.desc(x.Dst.Ty)))
+		e.printf("eyb_enum_parse(%s, &%s, %s);", e.v(a), e.v(x.Dst), e.g.desc(x.Dst.Ty))
 	case "index":
-		// The variant's place in T.variants(): its tag, as IsVariant reads it.
-		e.assign(x.Dst, fmt.Sprintf("EY_SMALL((int64_t)EY_AGG(%s)->tag)", e.v(a)))
+		// The variant's place in T.variants(), its number.
+		if enum {
+			e.assign(x.Dst, fmt.Sprintf("EY_SMALL((int64_t)%s)", e.v(a)))
+			return
+		}
+		e.assign(x.Dst, fmt.Sprintf("EY_SMALL((int64_t)ey_variant_of(%s, &%s))", d, e.v(a)))
 	default:
 		e.errorf("the C back end doesn't derive %s yet", x.Method)
 	}
