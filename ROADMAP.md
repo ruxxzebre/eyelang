@@ -34,9 +34,9 @@ yet.
   what is deployed and how to read its runs). Its first scheduled morning is 2026-10-12 07:40
   Europe/Dublin. The criterion closes after one good morning run; replacing the TypeScript
   digest is the user's decision.
-- Closed tasks whose exit tests weren't met: carry-over tasks C.6 and C.7 under the phases
-  (10,000 waiting tasks; the spec's examples through the checker). C.1 (`end(ok)`), C.2
-  (`lock!`, `allDone!`, `firstDone!`) and C.3 (`cron`) are done.
+- Every carry-over task (C.1 to C.11) is done: the exit tests that closed tasks of v0.1 and v0.2
+  left unmet are met, the last being 10,000 waiting tasks within a memory budget (C.6) and every
+  SPECS.md example passing the checker (C.7).
 - Approvals are answered by id, and only by the person asked (C.8, done 2026-10-12), so the
   lab's approvals have buttons again. Who may publish an answer at all is open question 35.
 - Pipelines over entity sets compiled to SQL (decision log, "Queries") were listed for v0.2 and
