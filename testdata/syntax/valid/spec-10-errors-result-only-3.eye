@@ -1,6 +1,9 @@
 # SPECS.md section 10, example 3.
-fn summary(latencies: List(Int), sent: Int, failed: Int) -> String {
-  let mean = latencies.average() ?? 0.0
-  let failedPerHundred = (failed * 100).div(sent) ?? 0
-  "{mean} ms on average, {failedPerHundred} of every 100 failed"
+# The example is a list of statements, wrapped in a function.
+fn example() {
+  let avg = total / 3
+  match nonzero(count) {
+    Some(n) => total / n
+    None => 0
+  }
 }

@@ -178,6 +178,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Calls that come back | **A call tree is one transaction, and an entity has one state in it**: a call that comes back to an entity whose method is still running starts from the tree's changes, the outer method goes on from the call's changes as from a `mut self` call, reads in the tree see the state in progress, and the entity commits once (from 2026-10-12, section 14) | Each call loaded its own copy and the last to finish won, so `A.ping` calling `B.pong` calling `A.bump` lost a write without a word. Refusing re-entry would be simpler, but it rejects programs that "the whole call tree commits together" invites |
 | Model tools | **A function declared with `fn` and named where an `ai.Tool` is expected converts to one**, as a value converts to `dyn Trait`; its parameters and result need `Schema`. Its effects count where it is named, and a model call's own effect is `net Ai.generate`, not `net`. In a job each model reply and each tool result is a step (section 19) | `tools: [searchIssues, label]` holds functions of different types, which no rule typed. A conversion keeps what a schema needs, the name, the `##` comment and the types, without a wrapper to write. A call whose own effect was `net` made every public caller list `net`, which covers any tool, so a new tool never showed in review. Recording each step keeps a restarted conversation from running a tool twice. From the spec review of 2026-10-12 |
 | Destructive tools | **`@destructive` adds `approval: Approval` to a function as to a command, and a model's call of one is approved through `ai.generate`'s `approve:`**, a function, usually `fn call: approval!(call, from: someone, within: …)`, called once for each call; without it the call is declined (section 19) | One meaning for the attribute: what it marks runs only with a person's consent, which the type shows. "Until someone approves" named no one; asking through `approval!` answers whom with its `from:`, and keeps its rules (answers by `id`, only from the person asked) with no second way to ask. A function rather than `approver:` and `within:` arguments, which would copy `approval!`'s. From the spec review of 2026-10-12 |
+| `?` in a lambda | **A lambda's `?` returns from the lambda, so the lambda's result must be an `Option` for an `Option`'s `None` and a `Result` for an error, which is wrapped into the lambda's error type.** `?` on an `Option` in a function, job or lambda that doesn't return one is an error that names what it returns and points to `??` (section 10, from 2026-10-12) | `return` can't leave a lambda, so `?` returning from the enclosing function would be the one way out, and the interpreter already returned from the lambda. Checking against the enclosing function let `xs \|> map(fn x: x? + 1)` put a `None` where an `Int` belongs, and `fn g(x: Option(Int)) -> Int = x? + 1` returned a `None` from a function that returns `Int` |
 
 ## 3. A tour
 
@@ -726,6 +727,18 @@ it a compile error, which is how a new outcome from another service reaches ever
 - Expected failures are values: `Result(T, E)` and domain variants such as `Refused` and
   `Uncertain`. Postfix `?` returns the error to the caller: `let p = Player(id).profile()?`. In a
   function that returns an `Option`, `?` on an `Option` returns `None`.
+- **`?` needs somewhere to return to.** On an `Option` it needs a function that returns an
+  `Option`, and on a `Result` one that returns a `Result`; anywhere else it is an error that says
+  what the function returns. For a `None` there, give a default with `??`, match the `Option`, or
+  make the function return an `Option`. The same holds in a job and in a lambda, and a lambda's
+  `?` returns from the lambda, not from the function it is written in, so the lambda's own result
+  decides, and an error is wrapped into the lambda's error type.
+
+  ```eye
+  fn next(x: Option(Int)) -> Int = x? + 1          # error: next returns Int, not an Option
+  fn nextOr(x: Option(Int)) -> Int = (x ?? 0) + 1
+  fn doubled(xs: List(Option(Int))) -> List(Option(Int)) = xs |> map(fn x: Some(x? * 2))
+  ```
 - **Converting errors.** When the caller's error type has exactly one variant whose payload is the
   error's type, `?` wraps the error in it. With none or several, write the conversion:
   `.mapErr(Variant)?` or `.mapErr(fn e: …)?`.

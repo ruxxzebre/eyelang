@@ -809,7 +809,7 @@ fn f() {
 }`, []string{"2:15: a closure can't capture n, a mut parameter"}},
 		{"? needs a Result or an Option, and a function that returns one", `fn f(o: Option(Int)) -> Result(Int, String) = Ok(o?)
 fn g(n: Int) -> Option(Int) = Some(n?)`, []string{
-			"1:50: ? on an Option needs a function that returns an Option, and this one returns Result(Int, String)",
+			"1:50: ? on an Option returns its None from f, but f returns Result(Int, String): give a default with ?? value, match the None, or return an Option",
 			"2:36: ? passes on the error of a Result or the None of an Option; this is Int",
 		}},
 		{"nothing converts implicitly", `fn f() = 1 + 2.0`, []string{"1:10: expected Int, found Float"}},

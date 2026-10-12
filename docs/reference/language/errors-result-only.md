@@ -9,6 +9,18 @@ title: "Errors: Result only"
 - Expected failures are values: `Result(T, E)` and domain variants such as `Refused` and
   `Uncertain`. Postfix `?` returns the error to the caller: `let p = Player(id).profile()?`. In a
   function that returns an `Option`, `?` on an `Option` returns `None`.
+- **`?` needs somewhere to return to.** On an `Option` it needs a function that returns an
+  `Option`, and on a `Result` one that returns a `Result`; anywhere else it is an error that says
+  what the function returns. For a `None` there, give a default with `??`, match the `Option`, or
+  make the function return an `Option`. The same holds in a job and in a lambda, and a lambda's
+  `?` returns from the lambda, not from the function it is written in, so the lambda's own result
+  decides, and an error is wrapped into the lambda's error type.
+
+  ```eye
+  fn next(x: Option(Int)) -> Int = x? + 1          # error: next returns Int, not an Option
+  fn nextOr(x: Option(Int)) -> Int = (x ?? 0) + 1
+  fn doubled(xs: List(Option(Int))) -> List(Option(Int)) = xs |> map(fn x: Some(x? * 2))
+  ```
 - **Converting errors.** When the caller's error type has exactly one variant whose payload is the
   error's type, `?` wraps the error in it. With none or several, write the conversion:
   `.mapErr(Variant)?` or `.mapErr(fn e: …)?`.

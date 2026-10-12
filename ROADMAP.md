@@ -520,7 +520,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.14 A lambda's record literal takes its type from where the result goes | [#97](https://github.com/ruxxzebre/eyelang/issues/97) |
 | G.15 Any function can be called as a method on its first argument | [#98](https://github.com/ruxxzebre/eyelang/issues/98) |
 | G.16 `average` and `div`, so `NonZero` division rarely needs a `match` (done) | [#99](https://github.com/ruxxzebre/eyelang/issues/99) |
-| G.17 `?` on an `Option` outside a function that returns an `Option` is an error | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |
+| G.17 `?` on an `Option` outside a function that returns an `Option` is an error (done) | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |
 | G.18 `eye doc` never deletes a folder it didn't write | [#108](https://github.com/ruxxzebre/eyelang/issues/108) |
 | G.19 A test can read a run's result; `run.join()` doesn't fail at run time after checking | [#109](https://github.com/ruxxzebre/eyelang/issues/109) |
 

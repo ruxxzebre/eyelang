@@ -117,6 +117,7 @@ type fnCheck struct {
 	kind    fnKind
 	slots   []typ
 	ret     typ // what `return` returns: the outermost function's result
+	res     typ // what `?` returns from: a lambda's own result; nil means ret
 	self    typ
 	entity  *ir.Entity
 	env     typeEnv // the function's type variables
@@ -129,12 +130,22 @@ type fnCheck struct {
 	// "in a job" or "in a waiting function", and "" elsewhere. It is set
 	// on the outermost function.
 	durable string
-	callAt  *ir.Pos  // where to report an operator of this generic body, for one call
+	callAt  *ir.Pos // where to report an operator of this generic body, for one call
 	records []pendingRecord
 	matches []pendingMatch
 	lets    []pendingLet
 	calls   []pendingCall
 	reqs    []requirement
+	tries   []pendingTry
+}
+
+// pendingTry is a `?` whose function's result wasn't known where it was
+// checked: an inferred function's, or a lambda's.
+type pendingTry struct {
+	x   *fnCheck // the function `?` returns from
+	e   *ir.Try
+	k   *tcon // the Option or Result it is applied to
+	res typ
 }
 
 type pendingRecord struct {
@@ -565,6 +576,9 @@ func (x *fnCheck) finish() {
 	}
 	for _, call := range x.calls {
 		call.call.Expected = toExpr(defaultLiteral(call.t))
+	}
+	for _, t := range x.tries {
+		t.x.tryInto(t.e, t.k, t.res)
 	}
 	x.settleRequirements()
 }
@@ -2297,7 +2311,6 @@ func (x *fnCheck) match(e *ir.Match, want typ) typ {
 func (x *fnCheck) try(e *ir.Try) typ {
 	c := x.c
 	t := prune(x.check(e.X, nil))
-	ret, _ := prune(x.ret).(*tcon)
 	k, ok := t.(*tcon)
 	if !ok || k.decl == nil {
 		if _, isVar := t.(*tvar); !isVar {
@@ -2307,31 +2320,70 @@ func (x *fnCheck) try(e *ir.Try) typ {
 		}
 		return c.fresh()
 	}
-	switch k.decl {
-	case c.ts.option:
-		if ret != nil && ret.decl != c.ts.option && ret.decl != nil {
-			c.typeErrorf(e.Pos, "? on an Option needs a function that returns an Option, and this one returns %s", show(ret))
-		}
-		return k.args[0]
-	case c.ts.result:
-		if ret == nil {
-			return k.args[0]
-		}
-		if ret.decl != c.ts.result {
-			c.typeErrorf(e.Pos, "? on a Result needs a function that returns a Result, and this one returns %s", show(ret))
-			return k.args[0]
-		}
-		if x.intoProblem(k.args[1], ret.args[1], e.Pos) {
-			return k.args[0]
-		}
-		if !x.converts(k.args[1], ret.args[1]) {
-			c.typeErrorf(e.Pos, "? can't pass on a %s from a function whose error is %s: none of its variants holds a %s; use .mapErr(…)?",
-				show(k.args[1]), show(ret.args[1]), show(k.args[1]))
-		}
-		return k.args[0]
+	if k.decl != c.ts.option && k.decl != c.ts.result {
+		c.typeErrorf(e.Pos, "? passes on the error of a Result or the None of an Option; this is %s", show(t))
+		return c.fresh()
 	}
-	c.typeErrorf(e.Pos, "? passes on the error of a Result or the None of an Option; this is %s", show(t))
-	return c.fresh()
+	res := x.res
+	if res == nil {
+		res = x.ret
+	}
+	if _, open := prune(res).(*tvar); open {
+		// An inferred function's or a lambda's result: the rest of the
+		// code decides it.
+		x.top.tries = append(x.top.tries, pendingTry{x: x, e: e, k: k, res: res})
+	} else {
+		x.tryInto(e, k, res)
+	}
+	return k.args[0]
+}
+
+// tryInto checks that `?` on k can return its None or its error from a
+// function whose result is res: an Option's None needs an Option, and a
+// Result's error a Result whose error type is it or holds it.
+func (x *fnCheck) tryInto(e *ir.Try, k *tcon, res typ) {
+	c := x.c
+	ret, ok := prune(res).(*tcon)
+	if !ok {
+		return // still open, or an error was reported
+	}
+	if k.decl == c.ts.option {
+		if ret.decl != c.ts.option {
+			who := x.who()
+			c.typeErrorf(e.Pos, "? on an Option returns its None from %s, but %s returns %s: give a default with ?? value, match the None, or return an Option",
+				who, who, show(ret))
+		}
+		return
+	}
+	if ret.decl != c.ts.result {
+		c.typeErrorf(e.Pos, "? on a Result needs a function that returns a Result, and this one returns %s", show(ret))
+		return
+	}
+	if d, ok := prune(ret.args[1]).(*tcon); ok && d.decl != nil {
+		e.Wrap = d.decl // a lambda's own error type, or an inferred one
+	}
+	if x.intoProblem(k.args[1], ret.args[1], e.Pos) {
+		return
+	}
+	if !x.converts(k.args[1], ret.args[1]) {
+		c.typeErrorf(e.Pos, "? can't pass on a %s from a function whose error is %s: none of its variants holds a %s; use .mapErr(…)?",
+			show(k.args[1]), show(ret.args[1]), show(k.args[1]))
+	}
+}
+
+// who names the function `?` returns from, for messages.
+func (x *fnCheck) who() string {
+	switch {
+	case x.kind == kindLambda:
+		return "this lambda"
+	case x.kind == kindJob:
+		return "job " + x.fn.Name
+	case x.kind == kindTest:
+		return "this test"
+	case x.fn.Name == "":
+		return "this function"
+	}
+	return x.fn.Name
 }
 
 // converts reports whether an error of type from can become one of type to:
@@ -2445,6 +2497,7 @@ func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 		x.expect(e.Pos, w.params[0].t, &ttuple{elems: elems})
 		f.ret = w.ret
 		f.params = []fparam{{t: w.params[0].t}}
+		inner.res = f.ret
 		inner.check(e.Func.Body, f.ret)
 		return f
 	}
@@ -2456,6 +2509,7 @@ func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 		f.params = append(f.params, fparam{name: p.Name, t: t})
 	}
 	ret := f.ret
+	inner.res = ret // `?` in the lambda returns from it
 	if r, ok := prune(ret).(*tcon); ok && r.name == "()" && r.decl == nil {
 		inner.check(e.Func.Body, discard)
 	} else {

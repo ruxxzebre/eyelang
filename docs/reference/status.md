@@ -139,7 +139,7 @@ entities, jobs, views and contracts (v0.4): `eye build` compiles the core langua
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| `?` on `Result` and `Option` | ✓ | ✓ | ✓ | [core: errors](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L124) |
+| `?` on `Result` and `Option` | ✓ | ✓ (the function, job or lambda it returns from must return an `Option` or a `Result` in turn; a lambda's `?` returns from the lambda and wraps into its error type) | ✓ | [core: errors](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L124), [core: wrap](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/wrap.eye#L42), [try_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/try_test.go#L14) |
 | `?` wraps the error in the one variant that holds it | ✓ | ✓ | ✓ | [core: errors](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L127), [core: wrap](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/wrap.eye#L34), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L96) |
 | `.mapErr(…)` | ✓ | ✓ | ✓ | [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L120) |
 | `Problem` and `.context(…)` | ✓ | ✓ | ✓ | [core: problems](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/problems.eye#L16), [problem_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/problem_test.go) |

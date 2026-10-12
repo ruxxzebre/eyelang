@@ -38,3 +38,15 @@ test "? wraps a String, a record and an Int error in the variant that holds it" 
   expect(load("a longer name") == Err(Code(21)))
   expect(noted("") == Err(Note("no path")))
 }
+
+# A lambda's `?` returns from the lambda, so it wraps into the lambda's own
+# error type, not the error type of the function it is written in.
+fn loadEach(paths: List(String)) -> Result(List(Result(Int, LoadError)), NoteError) {
+  let first = readText(paths[0] ?? "")?
+  Ok(paths |> map(fn path: Ok(decode(readText(path)?)? + size(first))))
+}
+
+test "? in a lambda wraps into the lambda's error type" {
+  expect(loadEach(["ab", ""]) == Ok([Ok(20), Err(Unreadable("no path"))]))
+  expect(loadEach([]) == Err(Note("no path")))
+}
