@@ -613,6 +613,37 @@ job fine() {
     sleep!(1 min)
   }
 }`, []string{"5:13: pick is a function, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop"}},
+		{"a waiting function holds nothing that can't be saved across a !", `fn send(t: Secret(String)) -> Int = 1
+fn late(t: Secret(String)) -> Int uses {wait} {
+  sleep!(1 min)
+  send(t)
+}
+fn early(t: Secret(String)) -> Int uses {wait} {
+  let n = send(t)
+  sleep!(1 min)
+  n
+}
+fn retry(times: Int, call: fn() -> Int) -> Int uses {wait} {
+  var n = 0
+  while n < times {
+    n = n + call()
+    sleep!(1 s)
+  }
+  n
+}
+fn walk(xs: List(Int)) uses {wait} {
+  for x in xs |> iter() |> map(fn x: x + 1) {
+    sleep!(1 s)
+  }
+}
+fn main(t: Secret(String)) -> Int uses {wait} {
+  sleep(1 min)
+  send(t)
+}`, []string{
+			"4:8: t is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`",
+			"14:13: call is a function, which can't be saved, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop",
+			"20:28: this loop walks an Iter, which can't be saved, and its body waits, so a resumed run couldn't find its place: collect it with toList before the loop",
+		}},
 		{"/ and % take a NonZero divisor", `fn a(t: Int, n: Int) -> Int = t / n
 fn b(t: Int) -> Int = t % 0
 fn c(t: Int, n: Int) -> Int = match nonzero(n) {
@@ -839,7 +870,7 @@ fn f() {
   let n = fn (a: Int, b): a + b
   let names = [1, 2] |> map(fn (i: String): i)
 }`, []string{"5:29: expected Int, found String"}},
-		{"a type variable times an Int is what its bound says",`fn double(n: t) -> t where t: Mul(Int, t) = n * 2
+		{"a type variable times an Int is what its bound says", `fn double(n: t) -> t where t: Mul(Int, t) = n * 2
 fn twice(n: t) -> t where t: Add(t, t) = n + n
 fn half(n: t) -> t where t: Mul(Int, t) = n * 0.5
 fn more(n: t) -> t = n * 2

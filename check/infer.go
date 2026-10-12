@@ -41,11 +41,13 @@ type typeState struct {
 	// sigs are each checked body's parameter and result types, and exprs
 	// the expressions checked and the type each has, written into the IR
 	// once every type is known (typedir.go).
-	sigs     map[*ir.Func]*tfun
-	exprs    []typedExpr
-	jobSlots map[*ir.Func][]typ // slot types of job bodies, for the Save check
-	steps    []stepResult       // a job's `!` calls and what they return, for the Save check
-	forIters map[*ir.For]typ    // the type of what each for loop walks, for the Save check
+	sigs  map[*ir.Func]*tfun
+	exprs []typedExpr
+	// saveSlots are the slot types of jobs and waiting functions, whose
+	// frames a run saves, for the Save check.
+	saveSlots map[*ir.Func][]typ
+	steps     []stepResult    // a job's `!` calls and what they return, for the Save check
+	forIters  map[*ir.For]typ // the type of what each for loop walks, for the Save check
 	// inferred says how far a function whose types are inferred has got,
 	// and schemes holds the generic type each one has once it is checked.
 	inferred map[*ir.Func]inferState
@@ -205,7 +207,7 @@ func (c *checker) checkTypes() {
 	c.ts = &typeState{
 		params: map[*ir.Func][]typ{}, results: map[*ir.Func]typ{}, globals: map[*ir.Global]typ{},
 		checking: map[*ir.Global]bool{}, effects: map[*ir.Func]map[string]bool{},
-		callees: map[*ir.Func][]*ir.Func{}, jobSlots: map[*ir.Func][]typ{}, forIters: map[*ir.For]typ{},
+		callees: map[*ir.Func][]*ir.Func{}, saveSlots: map[*ir.Func][]typ{}, forIters: map[*ir.For]typ{},
 		lambdaEffects: map[*ir.Func]map[string]bool{}, lambdaCallees: map[*ir.Func][]*ir.Func{},
 		sigs: map[*ir.Func]*tfun{}, unkeyed: map[*ir.Func][]unkeyedStart{},
 		inferred: map[*ir.Func]inferState{}, schemes: map[*ir.Func]*scheme{},
@@ -390,8 +392,8 @@ func (c *checker) checkBody(b body) {
 	}
 	c.ts.sigs[b.fn] = sig
 	x.body(ret)
-	if b.kind == kindJob {
-		c.ts.jobSlots[b.fn] = x.slots
+	if x.durable != "" {
+		c.ts.saveSlots[b.fn] = x.slots
 	}
 }
 

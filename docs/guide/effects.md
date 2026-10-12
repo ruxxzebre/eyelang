@@ -190,7 +190,8 @@ eye run runs main every time it starts, and kick starts ring without a key, so e
 
 A job's state is saved at every `!`, so everything it still needs after a `!` must be something
 that can be saved. A `Secret`, a function or a value of an `extern type`, which foreign code owns,
-can't:
+can't. The same goes for a waiting function, whose variables, parameters included, are part of
+the run's state:
 
 ```text
 main.eye:94:11: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`

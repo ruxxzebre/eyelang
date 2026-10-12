@@ -50,7 +50,14 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   than on its first. `eye runs` keeps the last 20 steps a checkpoint dropped, and counts the
   rest.
 - **Only values that can be saved** (types with `Save`) may be live across a `!`. Holding a socket,
-  file handle or `Secret` across a `!` is a compile error.
+  file handle or `Secret` across a `!` is a compile error. This holds in a waiting function too,
+  for its parameters as for its other variables, since compiled jobs save its frame at each `!`
+  (section 22); the interpreter, which replays the function instead, keeps the same rule so that
+  a program checks the same however it runs. `fn post(token: Secret(String)) uses {wait} {
+  sleep!(1 min); send!(token) }` is an error at `token`, which says that a `Secret` can't be
+  saved and that `token` is still needed after a waiting call. A function
+  value can't be saved either, so a waiting function can't call a callback it was given after a
+  `!` (open question 42).
 - **A job reads stored state only in steps.** A resumed run must see what it saw, so every read
   of entities in a job is a recorded step: `w.read!()` gives one entity's snapshot, and
   `idleWorlds.read!()` a view's snapshots, as a list, as `World.all.read!()` gives every

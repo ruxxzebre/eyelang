@@ -108,11 +108,14 @@ func (c *checker) checkEffects() {
 			if kinds[f] == kindPlain && hasSteps(f) && m.Main != f {
 				// A waiting function's steps are the job's (SPECS.md §12).
 				c.checkSteps(f, "in a waiting function", all)
+				// Its frame is part of the run's saved state (SPECS.md §15).
+				c.checkSave(f)
 			}
 		}
 		for _, j := range m.Jobs {
 			c.checkSteps(j.Func, "in a job", all)
-			c.checkSave(j)
+			c.checkJobArgs(j)
+			c.checkSave(j.Func)
 		}
 	}
 }
@@ -1103,10 +1106,6 @@ func withArticle(what string) string {
 	return "a " + what
 }
 
-// checkSave reports a value that can't be saved but is still needed after
-// a `!` in a job, where the job's state is saved (SPECS.md §15). Uses are
-// found in source order; a value needed again on a later turn of a loop
-// isn't seen yet.
 // stepResult is a `!` call in a job and the type of what it returns.
 type stepResult struct {
 	job *ir.Func
@@ -1137,11 +1136,10 @@ func (c *checker) checkStepResults(all map[*ir.Func]map[string]bool) {
 	}
 }
 
-func (c *checker) checkSave(j *ir.Job) {
-	slots := c.ts.jobSlots[j.Func]
-	if slots == nil {
-		return
-	}
+// checkJobArgs reports a job's argument that can't be saved: a run is
+// started with its arguments, and keeps them.
+func (c *checker) checkJobArgs(j *ir.Job) {
+	slots := c.ts.saveSlots[j.Func]
 	for _, p := range j.Func.Params {
 		if p.Slot < len(slots) {
 			if what := c.unsaveable(slots[p.Slot]); what != "" {
@@ -1149,8 +1147,20 @@ func (c *checker) checkSave(j *ir.Job) {
 			}
 		}
 	}
+}
+
+// checkSave reports a value that can't be saved but is still needed after
+// a `!` in a job or a waiting function, whose frames are the run's saved
+// state (SPECS.md §15). A parameter is one of its frame's variables. Uses
+// are found in source order; a value needed again on a later turn of a
+// loop isn't seen yet.
+func (c *checker) checkSave(fn *ir.Func) {
+	slots := c.ts.saveSlots[fn]
+	if slots == nil {
+		return
+	}
 	defined := map[int]int{} // slot → where it is bound
-	for _, p := range j.Func.Params {
+	for _, p := range fn.Params {
 		defined[p.Slot] = -1
 	}
 	// A value is needed after a waiting call when one comes between where
@@ -1195,7 +1205,7 @@ func (c *checker) checkSave(j *ir.Job) {
 			}
 		}
 	}
-	walkJob(j.Func.Body, visit)
+	walkFrame(fn.Body, visit)
 	waitsIn := func(start, end int) bool {
 		for _, w := range waits {
 			if w > start && w <= end {
@@ -1245,9 +1255,10 @@ func (c *checker) checkSave(j *ir.Job) {
 	}
 }
 
-// walkJob walks a job's body for the Save check: a lambda's captures are
-// uses where the lambda is written, and its body isn't the job's.
-func walkJob(e ir.Expr, visit func(ir.Expr, bool)) {
+// walkFrame walks a job's or a waiting function's body for the Save check:
+// a lambda's captures are uses where the lambda is written, and its body
+// isn't the frame's.
+func walkFrame(e ir.Expr, visit func(ir.Expr, bool)) {
 	walk(e, false, func(x ir.Expr, waiting bool) bool {
 		if l, ok := x.(*ir.Lambda); ok {
 			for _, capt := range l.Func.Captures {

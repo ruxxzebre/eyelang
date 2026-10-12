@@ -120,8 +120,10 @@ child run and reading entities or views is a `!` step in it, a call that only co
 and a task it starts only computes. Written without `!`, such a call would run again each time
 the run replays the function, so it is an error that says where: `in a waiting function, env.get
 uses env, so calling it is a durable step: write env.get!(…)`, `in a waiting function, an entity
-call is a durable step: write bump!(…)`. `main` is not a waiting function, whatever it calls.
-Only a run records steps, so
+call is a durable step: write bump!(…)`. Its variables, parameters included, are part of the
+run's saved state as a job's are, so one that holds what can't be saved, such as a `Secret`,
+can't be live across a `!` in it ([section 15](/reference/language/jobs-and-waiting)). `main` is not a waiting function, whatever it
+calls. Only a run records steps, so
 neither `main` nor a test can call a waiting function, with `!` or without: `summarise has
 durable steps, which only a job records, so main can't call it: start a job that does`.
 

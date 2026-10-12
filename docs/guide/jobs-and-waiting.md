@@ -89,7 +89,8 @@ main.eye:34:10: in a job, an entity call is a durable step: write read!(…)
 ### Only values that can be saved
 
 A value that is live across a `!` is saved with the run, so it must be a value that can be saved.
-A `Secret` can't, so holding one across a wait is an error:
+A `Secret` can't, so holding one across a wait is an error, in a job or in a waiting function it
+calls, where a parameter counts as well:
 
 ```text
 main.eye:4:14: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`

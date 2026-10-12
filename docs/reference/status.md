@@ -226,7 +226,7 @@ entities, jobs, views and contracts (v0.4): `eye build` compiles the core langua
 |---|---|---|---|---|
 | Jobs saved at every `!`; a resumed run never repeats a recorded call | ✓ | ✓ | ✓ | [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L88) |
 | Runs saved as bytes and finished by a new interpreter | n/a | n/a | ✓ | [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L112) |
-| Only values with `Save` live across a `!`, and as job arguments | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L180) |
+| Only values with `Save` live across a `!`, in a job or a waiting function (its parameters included), and as job arguments | ✓ | ✓ (a callback given to a waiting function can't be called after a `!`: open question 42) | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L594), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L616) |
 | Entity calls commit with the checkpoint | ✓ | ✓ | ✓ | [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L112) |
 | The store written in Eyelang, with a `Store` trait | n/a | ✓ | ✓ | [memory_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/memory_test.go#L13) |
 | The journal store for one machine: run records as JSON, a trail written as the steps it gained, one sync for the commits made before the runner does anything outside, and journals from before 2026-10-12 read as they are | n/a | n/a | ✓ | [store_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L16), [journal_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/journal_test.go) |

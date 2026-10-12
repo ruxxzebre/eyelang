@@ -471,7 +471,9 @@ The checker already knows which functions wait: a function whose effects include
    grant for `reserve!`, a child run for `join!`.
 
 What makes this possible is already checked: only values with `Save` may be live across a `!`
-(`checkSave` in `check/effects.go`), so every frame can be encoded. One hole matters here: a value
+in a job or a waiting function, parameters included (`checkSave` in `check/effects.go`), so
+every frame can be encoded. A callback given to a waiting function is the open case: a function
+value can't be saved, so one can't be called after a `!` (SPECS open question 42). One hole matters here: a value
 of an `extern type` can be held across a `!` today, while a `Handle` can't. **Decided
 2026-10-11** (open question 21): `Handle` goes, and a program's `extern type` can't be saved, so
 the hole closes when the checker enforces it (see [Proposals](/internals/proposals)).

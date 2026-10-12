@@ -211,3 +211,13 @@ title: "Open questions"
     resumes from its variables if the statement still reads the same, or ending and starting
     itself again with its state. What does `eye runs` show of the versions, and when is an old one
     dropped?
+42. **Callbacks across a `!`.** A waiting function's parameters are part of its frame, and a
+    function value can't be saved, so `fn retry(times: Int, call: fn() -> Result(a, e)) uses
+    {wait}` can't call `call` again after its `sleep!` between tries ([section 15](/reference/language/jobs-and-waiting)). Jobs already
+    can't hold a lambda across a `!`, and nothing in the repository writes such a helper yet;
+    `poll!`, `reserve!` and `lock!` take functions because the runtime keeps their state. A
+    compiled frame names a waiting lambda's code statically and saves its captures (compilation.md,
+    [section 4](/reference/language/lexical-structure)), so a closure whose captures can be saved could be saved as its code's name and
+    its captures, with the same check of the code under a paused run as a checkpoint's statement.
+    Should function values whose captures can be saved be saveable, or should such helpers be
+    built-ins?
