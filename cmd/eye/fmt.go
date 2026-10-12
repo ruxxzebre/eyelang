@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/term"
+
 	"eyelang/check"
 	"eyelang/syntax"
 )
@@ -40,6 +42,14 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if flags.NArg() == 0 {
+		if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+			fmt.Fprintln(stderr, "eye fmt: waiting for source on stdin; press Ctrl-D on an empty line to finish.")
+			if *checkOnly {
+				fmt.Fprintln(stderr, "To check the current directory instead, press Ctrl-C and run: eye fmt --check .")
+			} else {
+				fmt.Fprintln(stderr, "To format the current directory instead, press Ctrl-C and run: eye fmt .")
+			}
+		}
 		src, err := io.ReadAll(stdin)
 		if err != nil {
 			fmt.Fprintf(stderr, "eye fmt: %v\n", err)
