@@ -18,6 +18,7 @@ fn readAll(%1.ts: List(Timer)) -> List(Instant)
 b0:
   %2: fn(Timer) -> Instant = closure readAll.lambda[]
   %3: List(Instant) = builtin map(%1.ts, %2)
+  drop %2
   return %3
 
 fn shout(%1.xs: List(String)) -> ()
@@ -32,8 +33,10 @@ b2:
   %4: String = builtin iter.next(%2)
   %5.x: String = %4
   %6: () = builtin print(%5.x)
+  drop %5.x
   jump b1
 b3:
+  drop %2
   return %7
 
 lambda timers.lambda() -> Instant

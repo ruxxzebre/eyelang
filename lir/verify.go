@@ -207,6 +207,10 @@ func readsOf(in Instr) []*Value {
 		return []*Value{x.Src}
 	case *Update:
 		return append([]*Value{x.Src}, x.Fields...)
+	case *Dup:
+		return []*Value{x.V}
+	case *Drop:
+		return []*Value{x.V}
 	case *SetPlace:
 		vs := []*Value{x.Src}
 		for _, s := range x.Path {

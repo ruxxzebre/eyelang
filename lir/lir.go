@@ -12,7 +12,13 @@
 // Calls are resolved: to an instance, a built-in, the runtime (an entity
 // call, a contract's operation, a job's start), a closure's value or a dyn
 // value's table. Entities, jobs, views and contracts are lowered by passes of
-// their own (domain.go). Reference counts (dup, drop, reuse) come with 7.5.
+// their own (domain.go).
+//
+// Count (count.go) makes reference counting explicit (7.5): Dup and Drop
+// instructions, the parameters each function owns, updates in place and
+// fields taken out of a record about to be rebuilt. Layouts (layout.go)
+// says how each type's values are laid out (7.13), which also decides
+// which values are counted.
 package lir
 
 import (
@@ -34,6 +40,8 @@ type Program struct {
 	// main returns a Result whose error type has an impl of Show; without
 	// one, the error is written in its derived form (SPECS.md §13).
 	MainErrShow *Func
+	// Layouts says how each type's values are laid out; Count sets it.
+	Layouts *Layouts
 }
 
 // Kind says what a function instance is, which the runtime needs to know.
@@ -67,8 +75,31 @@ type Func struct {
 	Params []*Value
 	Result ir.Ty
 	Blocks []*Block // the first is where it starts
+	// Modes says how it takes each parameter, once Count has decided:
+	// borrowed, owned or mut. Nil before.
+	Modes  []Mode
 	values int
 }
+
+// Mode is how a function takes a parameter of a counted type (Count).
+type Mode uint8
+
+const (
+	// Borrowed: the caller keeps its reference for the call, and the
+	// function only reads the value, or dups what it keeps.
+	Borrowed Mode = iota
+	// Owned: the caller gives the function a reference, which the function
+	// drops or passes on; an update of the value is in place when the
+	// reference is the only one.
+	Owned
+	// Mut: a `mut` parameter, the address of the caller's variable, whose
+	// reference stays the caller's.
+	Mut
+)
+
+var modeNames = [...]string{"borrowed", "owned", "mut"}
+
+func (m Mode) String() string { return modeNames[m] }
 
 // Value is a named value: a variable, a parameter or an intermediate.
 type Value struct {
@@ -104,8 +135,13 @@ type (
 		Dst   *Value
 		Value any
 	}
-	// Move copies a value into a variable.
-	Move struct{ Dst, Src *Value }
+	// Move copies a value into a variable. It takes Src's reference, unless
+	// Borrow, set by Count, says that Dst only borrows what Src borrows: a
+	// `let` of a field or of a borrowed parameter, valid while that is.
+	Move struct {
+		Dst, Src *Value
+		Borrow   bool
+	}
 	// Call calls an instance. Durable marks a `!` step of a job. Mut lists
 	// the arguments passed as `mut`, by their index: the callee changes the
 	// caller's variable.
@@ -118,12 +154,18 @@ type (
 	}
 	// Builtin calls a built-in function, by its name, with named arguments
 	// as written: the back end specialises it by its arguments' types.
+	//
+	// InPlace, set by Count, says that the first argument's last use is
+	// this one and the built-in takes it: an update (add, insert, remove,
+	// concat) changes it in place when it holds the only reference, and
+	// copies it otherwise. Without it every argument is borrowed.
 	Builtin struct {
 		Dst     *Value
 		Name    string
 		Args    []*Value
 		Names   []string // each argument's name, "" for a positional one
 		Durable bool
+		InPlace bool
 	}
 	// Runtime asks the runtime: an entity's state or method, a contract's
 	// operation, a job's start, an event, a fake. Target is what it names.
@@ -151,11 +193,13 @@ type (
 		Args   []*Value
 	}
 	// Op is a built-in operator on built-in types: + - * / % == != < <= >
-	// >= ! and unary -.
+	// >= ! and unary -. InPlace, set by Count, is as for Builtin: `+` on a
+	// String, List or Set takes its first operand and appends to it.
 	Op struct {
-		Dst  *Value
-		Op   string
-		Args []*Value
+		Dst     *Value
+		Op      string
+		Args    []*Value
+		InPlace bool
 	}
 	// Derived calls a derived trait's method for a type: show, eq, cmp or
 	// hash, which the back end writes for each type.
@@ -205,11 +249,20 @@ type (
 		Table *DynTable
 	}
 	// Field reads a record's field; TupleGet a tuple's element; Payload a
-	// variant's field, once its tag is known.
+	// variant's field, once its tag is known. What they read is borrowed
+	// from Src (Count): valid while Src is, without a count of its own.
+	//
+	// Take, set by Count, moves the field out instead: Src is about to be
+	// rebuilt with a new value for it (an Update or a SetPlace later in the
+	// block), so when Src holds its record inline, or the only reference to
+	// it, the field is moved out and left empty (zero, which drops to
+	// nothing) for the update to fill; otherwise the field is dup'ed. The
+	// value is owned, so an update of it can be in place.
 	Field struct {
 		Dst  *Value
 		Src  *Value
 		Name string
+		Take bool
 	}
 	TupleGet struct {
 		Dst   *Value
@@ -229,11 +282,16 @@ type (
 		Variant *ir.Variant
 	}
 	// Update makes a record with some fields replaced: `{ r with f: v }`.
+	// InPlace, set by Count, says that this is Src's last use: the update
+	// takes Src and changes it in place when it holds the only reference,
+	// dropping the fields it replaces. Without it Src is borrowed and
+	// copied.
 	Update struct {
-		Dst    *Value
-		Src    *Value
-		Names  []string
-		Fields []*Value
+		Dst     *Value
+		Src     *Value
+		Names   []string
+		Fields  []*Value
+		InPlace bool
 	}
 	// SetPlace writes a variable's value, or a field or an element inside
 	// it: an element of a list, which must be there, or a map's value for a
@@ -253,6 +311,13 @@ type (
 	// end writes a #line directive for it. Every block whose instructions
 	// can fault starts with one. Fprint leaves it out.
 	At struct{ Pos ir.Pos }
+	// Dup adds a reference to a counted value, which an instruction after
+	// it takes: a value passed on while it is still needed, or a borrowed
+	// one that is kept (Count).
+	Dup struct{ V *Value }
+	// Drop gives up a counted value's reference: after its last use, or on
+	// the way into code that doesn't use it (Count).
+	Drop struct{ V *Value }
 )
 
 func (*Const) isInstr()       {}
@@ -280,6 +345,8 @@ func (*Update) isInstr()      {}
 func (*SetPlace) isInstr()    {}
 func (*Global) isInstr()      {}
 func (*At) isInstr()          {}
+func (*Dup) isInstr()         {}
+func (*Drop) isInstr()        {}
 
 // Step is one step of a SetPlace's path: a field, or the element at Index.
 type Step struct {
@@ -373,8 +440,12 @@ func Fprint(w io.Writer, p *Program) {
 // FprintFunc writes one instance.
 func FprintFunc(w io.Writer, f *Func) {
 	var params []string
-	for _, p := range f.Params {
-		params = append(params, p.String()+": "+tyString(p.Ty))
+	for i, p := range f.Params {
+		s := p.String() + ": " + tyString(p.Ty)
+		if i < len(f.Modes) && f.Modes[i] != Borrowed {
+			s += " " + f.Modes[i].String()
+		}
+		params = append(params, s)
 	}
 	fmt.Fprintf(w, "%s %s(%s) -> %s\n", f.Kind, f.Name, strings.Join(params, ", "), tyString(f.Result))
 	for _, b := range f.Blocks {
@@ -422,6 +493,13 @@ func dst(v *Value) string {
 	return v.String() + ": " + tyString(v.Ty) + " = "
 }
 
+func inPlace(in bool) string {
+	if in {
+		return "inplace "
+	}
+	return ""
+}
+
 func step(durable bool) string {
 	if durable {
 		return "!"
@@ -442,11 +520,14 @@ func instrString(in Instr) string {
 		}
 		return dst(x.Dst) + fmt.Sprint(x.Value)
 	case *Move:
+		if x.Borrow {
+			return dst(x.Dst) + "borrow " + x.Src.String()
+		}
 		return dst(x.Dst) + x.Src.String()
 	case *Call:
 		return dst(x.Dst) + "call" + step(x.Durable) + " " + x.Fn.Name + "(" + values(x.Args) + ")"
 	case *Builtin:
-		return dst(x.Dst) + "builtin" + step(x.Durable) + " " + x.Name + "(" + named(x.Args, x.Names) + ")"
+		return dst(x.Dst) + inPlace(x.InPlace) + "builtin" + step(x.Durable) + " " + x.Name + "(" + named(x.Args, x.Names) + ")"
 	case *Runtime:
 		return dst(x.Dst) + "runtime" + step(x.Durable) + " " + x.Op + " " + targetString(x.Target) + "(" + named(x.Args, x.Names) + ")"
 	case *CallValue:
@@ -454,7 +535,7 @@ func instrString(in Instr) string {
 	case *CallDyn:
 		return dst(x.Dst) + "calldyn " + x.Recv.String() + "." + x.Trait.Name + "." + x.Method + "(" + values(x.Args) + ")"
 	case *Op:
-		return dst(x.Dst) + "op " + x.Op + " " + values(x.Args)
+		return dst(x.Dst) + inPlace(x.InPlace) + "op " + x.Op + " " + values(x.Args)
 	case *Derived:
 		return dst(x.Dst) + "derived " + x.Method + "(" + values(x.Args) + ")"
 	case *MakeRecord:
@@ -485,6 +566,9 @@ func instrString(in Instr) string {
 	case *MakeDyn:
 		return dst(x.Dst) + "dyn " + x.Table.Trait.Name + " " + x.Src.String()
 	case *Field:
+		if x.Take {
+			return dst(x.Dst) + "take " + x.Src.String() + "." + x.Name
+		}
 		return dst(x.Dst) + x.Src.String() + "." + x.Name
 	case *TupleGet:
 		return dst(x.Dst) + fmt.Sprintf("%s.%d", x.Src, x.Index)
@@ -493,7 +577,7 @@ func instrString(in Instr) string {
 	case *IsVariant:
 		return dst(x.Dst) + x.Src.String() + " is " + x.Variant.Name
 	case *Update:
-		return dst(x.Dst) + "{" + x.Src.String() + " with " + named(x.Fields, x.Names) + "}"
+		return dst(x.Dst) + inPlace(x.InPlace) + "{" + x.Src.String() + " with " + named(x.Fields, x.Names) + "}"
 	case *SetPlace:
 		path := x.Var.String()
 		for _, p := range x.Path {
@@ -508,6 +592,10 @@ func instrString(in Instr) string {
 		return dst(x.Dst) + "global " + x.Init.Name
 	case *At:
 		return "at " + x.Pos.String()
+	case *Dup:
+		return "dup " + x.V.String()
+	case *Drop:
+		return "drop " + x.V.String()
 	}
 	return fmt.Sprintf("%T", in)
 }

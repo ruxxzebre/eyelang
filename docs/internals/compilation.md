@@ -211,7 +211,9 @@ the pinned zig (`internal/zig`) as a separate process; `eye` itself has no cgo.
 - zig is fetched once into the user's cache from ziglang.org and checked against the checksum
   `internal/zig` pins, rather than shipped inside the release archives.
 
-**Values.** Every value is one 64-bit word, `ey_v` (`cgen/runtime/eye.h`):
+**Values.** Every value is one 64-bit word, `ey_v` (`cgen/runtime/eye.h`). Section 2, "Values
+laid out by type", is the design that replaces this (7.13), and "Reference counting in the low
+IR" the counting below (7.5); the low IR has both, and the back end switches to them next.
 
 - scalars are their bits: `Bool`, `Char`, `Byte` and the fixed-width integers (signed ones
   sign-extended), `Float`, `Duration` (ns), `Size`, `Date` (days since 1970), `Time` (seconds
@@ -261,7 +263,8 @@ record's field assignment does the same through `ey_agg_own`. Measured on 2026-1
 interpreter's quadratic cases (performance review, section 1.1): 100k string appends take 18 ms
 (18 s interpreted), 20k map updates over 10k keys 2 ms (10.8 s), 1M field updates 10 ms.
 R.3 and R.4 have since made the interpreter linear on both (about 90 ms and 45 ms).
-Precise counting (7.5) extends this to values whose last use is a call, not an assignment.
+Precise counting (7.5, section 2) extends this to values whose last use is a call, not an
+assignment.
 
 **Not compiled yet.** Entities, jobs, views and contracts (the runner hosts them, 7.6),
 durable `!` steps, `with` in tests, foreign code (`@library`), and the clock and fakes of tests.
@@ -334,51 +337,187 @@ can have no Go in it and beat Go on memory.
 
 ## 2. Values and memory
 
-### Representation
+### Values laid out by type (7.13)
 
-**Recommendation**, following Lean 4 and Koka:
+The back end as first built (section 1, "The C back end as built") holds every value in one
+64-bit word, and everything that isn't a scalar or a small `Int` is a separate heap object. The
+benchmarks showed that this, not counting, is the larger cost
+([benchmark review](reviews/benchmarks-review-2026-10-12.md), sections 3 and 5): a record, an
+`Option`, an enum and every element of a `List(Token)` are objects. **Decided 2026-10-12** (the
+owner accepted the review): the low IR, which is monomorphic and so knows every type, chooses
+each type's representation, and the C back end prints it. Values without aliasing (SPECS §7) are
+what permit this: nothing can notice that a record was copied into registers, that a list holds
+its records inline, or that two strings share bytes. Go can't keep a struct it handed out a
+pointer to in a register; Eyelang never hands one out.
 
-- **Unboxed scalars:** `Bool`, `Char`, `Byte`, the fixed-width integers, `Float`, `Duration`,
-  `Size`, `Date`, `Time`, `Instant`, `()`, entity references whose identity is a scalar, and
-  variant types whose variants have no fields (an enum).
-- **`Int`** is one machine word: a small integer tagged in the low bit, or a pointer to a
-  reference-counted big integer. Arithmetic checks for overflow and spills.
-- **Heap objects** carry a header with a reference count and a tag: records, variants with
-  fields, closures, big integers, strings, and the buffers of lists, maps and sets.
-- **Strings** are UTF-8 bytes in a counted buffer. Searching and slicing count bytes, so they
-  cost nothing per step; `size`, `take` and `drop` count characters, so they walk the string
-  (decision log, "String offsets"). Open question 32 chose an `Offset` type for byte offsets;
-  at run time it is a machine word, so it changes nothing in this representation.
-- **Lists** are a counted buffer of length and capacity. A slice (`xs[2..5]`) shares the buffer,
-  as SPECS §5 says, and holds a reference to it.
-- **Maps and sets** keep insertion order, as the interpreter's do, so iteration order doesn't
-  change between the interpreter and compiled code.
-- **Records and variants** are heap objects with their fields unboxed after specialisation.
+The choice is data in the low IR, `lir.Layouts` (`lir/layout.go`): for each type, how its values
+are held (`Repr`), their size and alignment, whether they are counted, each field's offset, and
+how a variant type says which variant a value is. `TestLayouts` checks it for each kind of type.
 
-**Question:** should small records (two or three scalar fields, such as a `Range(Int)`) be passed
-by value, as Swift does, instead of allocated? It saves allocations; it costs a second
-representation in the back end.
+| Type | Held as | Bytes | Counted |
+|---|---|---:|---|
+| `()`, `Never` | nothing | 0 | no |
+| `Bool`, `Byte` | `bool`, `uint8_t` | 1 | no |
+| `Char`, `Int32`, `UInt32`, `Time` | 32-bit integers | 4 | no |
+| `Int64`, `UInt64`, `Float`, `Duration`, `Size`, `Date` | 64-bit numbers | 8 | no |
+| `Int` | a tagged word: a small integer `n` as `(n << 1) \| 1`, or a pointer to a big integer | 8 | yes (only a big one has a count) |
+| An enum (variants without fields) | its variant's number, `uint8_t` (`uint16_t` past 256 variants) | 1 | no |
+| A record, tuple or `Range` of at most 64 bytes | a C struct, by value | ≤ 64 | when a field is |
+| A variant type with fields, at most 64 bytes | a C struct: a niche or a tag, then the variants' fields over each other | ≤ 64 | when a field is |
+| A larger or recursive record or variant type | a box: a pointer to a counted object; a variant without fields is an immediate word | 8 | yes |
+| `String`, `Bytes`, `Key`, `Zone` | a view, `{p, len, own}` | 24 | yes |
+| `List`, `Set`, `Map` | a pointer to a counted buffer whose elements are laid out inline | 8 | yes |
+| `Iter`, a closure, a `dyn` value | a pointer to a counted object | 8 | yes |
+| `Instant` | `{ns, zone}`, the zone a static table | 16 | no |
+| A newtype (`Offset`), `NonZero(Int)` | its field | | as its field |
 
-### Reference counting with in-place updates
+- **Inline up to 64 bytes.** A record or tuple is a C struct passed and returned by value, its
+  fields ordered by alignment so that little is lost to padding. Up to 64 bytes it stays inline,
+  past that it is boxed. Copying 64 bytes is a few moves, less than allocating and freeing an
+  object; the C ABI passes any struct over 16 bytes in memory, so the cost is flat between 3 and 8
+  words; past 8, the copies, and the dups of many counted fields, cost more than a box's one
+  count. The benchmarks' records fit: records' `Particle` is 40 bytes (five `Int`s), the lexer's
+  `Token` 24 and its `Lexer` 48; a record of three strings (72) is boxed.
+- **Recursive types are boxed**, decided on the declarations: a type that holds itself inline,
+  through its fields, a tuple or another declared type's arguments (not through a `List`, `Map`,
+  `Set`, `Iter`, function or `dyn`, which are pointers already). In a boxed variant type a variant
+  without fields is the immediate word `(n << 1) | 1`, so it allocates nothing, and one with
+  fields is an object whose header holds `n`: `Tree`'s `Leaf` is a word and its `Node` a 24-byte
+  object (header and two children), the layout of the review's hand-written experiment that beat
+  Go.
+- **`Option` and other variant types without a box.** A variant type with one variant with
+  fields and others without uses a *niche* when it can: a value of the payload no real value
+  uses. A pointer is never below 4096, an `Int`'s or a box's word is never even and below 4096,
+  an enum's number never past its last variant, a `Bool` never past 1. So `Option(Int)` is 8
+  bytes with `None` as 0, `Option(List(a))` a pointer that `None` leaves null, `Option(String)` a
+  view whose `p` is null, `Option(Kind)` one byte, `Option(Option(Int))` 8 bytes still. Without a
+  niche (`Option(Float)`) or with two variants with fields (`Result`), a tag byte comes first and
+  the variants' fields lie over each other after it. `xs[i] ?? 0` and `m[k] ?? 0` allocate
+  nothing.
+- **Zero is empty.** All-zero bits are a value whose drop does nothing: a null pointer, an `Int`
+  word of 0, a view without an owner. A field taken out of a record (below), an argument left out
+  for its default, and a fresh variable rely on it.
+- **Lists of fixed-size values are arrays of them.** A `List(Token)` is one buffer of 24-byte
+  tokens, a `List(Byte)` one of bytes, a `Map(String, Int)` arrays of views and words; reading an
+  element copies it out (and dups its counted fields). A list is one word, so a slice of a list
+  (`xs[2..5]`) copies its elements; `String` and `Bytes` slices share.
+- **Strings and bytes are views** `{p, len, own}`: where the bytes start, how many, and the
+  counted buffer that holds them (null for a literal, which is static). A slice, `split`,
+  `lines`, `words` and `trim` share the buffer; `s += t` appends in place when the view holds the
+  buffer's only reference and ends where the buffer's bytes end. A view is three words, not
+  Go's two, because there are no pointers into the middle of an object to find its count from,
+  and 32-bit offsets would cap strings at 4 GB.
+- **`Int` stays a tagged word.** fib with Eyelang's `Int` rule runs at Go's speed (the review,
+  section 2); the tag costs almost nothing beyond the overflow check.
+- **Heap objects** start with an 8-byte header: a 32-bit count (a static object's is negative and
+  never changes, and a count that would overflow becomes static, so the object lives on) and 32
+  bits the object's kind uses, a boxed variant's number for one. A box holds no descriptor: its
+  drop is generated for its type. The buffers of lists, maps and sets, closures and `dyn` values
+  keep a pointer to their type's operations, since the runtime walks them.
+- **Counted values** are those that hold an `Int`, a string, an object or a box, directly or in
+  an inline field: only they get dups and drops (below). Scalars, enums, `Instant`, and records,
+  tuples and variants of those are copied as bits and never counted.
+
+How the generic runtime functions work over these layouts, given that the low IR is monomorphic:
+
+- **Specialised per type, from the low IR, where it matters.** For each type the program uses,
+  the back end writes its drop and its copy (dup), and its `eq`, `cmp` and `hash`, as C
+  functions, the way it already specialises generic functions. `sort` is a pdqsort written once
+  as a template in the runtime and instantiated per element type, comparing inline; a map's or
+  set's probe is instantiated per key type, hashing and comparing inline. These are the paths the
+  profiles named (`sort` through descriptors was 42% of lists; maps hash and compare through
+  `ey_hash` and `ey_eq`). Saving and loading values for the runner (7.6) is generated per type the
+  same way.
+- **Descriptors where it doesn't.** A descriptor becomes a table of a type's operations: size,
+  alignment, drop, copy, `eq`, `cmp`, `hash` and `show`. The runtime's generic code uses it where
+  speed matters less: showing values as the interpreter does, lazy `Iter` pipelines, the
+  collection functions that take a closure, and buffers it must free.
+- **Closures** have one entry the runtime can call whatever the types,
+  `void (*)(ey_fn *self, void *result, const void *const *args)`, beside the typed function a
+  direct call uses. Arguments are borrowed through it (below).
+
+**Decided 2026-10-12:** small records by value (the question this section used to ask): up to 64
+bytes, as above.
+
+### Reference counting in the low IR (7.5)
 
 The language was designed for this. SPECS §7 rules out aliasing, references and cycles, so
 counting is enough to reclaim everything, and a value with one reference can be changed in place
 without anyone seeing it.
 
-**Recommendation: Perceus**, as Koka does (Reinking, Xie, de Moura and Leijen, *Perceus:
-Garbage Free Reference Counting with Reuse*, PLDI 2021), with Lean 4's borrowed parameters
-(Ullrich and de Moura, *Counting Immutable Beans*, IFL 2019):
+The scheme is **Perceus**, as Koka does (Reinking, Xie, de Moura and Leijen, *Perceus: Garbage
+Free Reference Counting with Reuse*, PLDI 2021), with Lean 4's borrowed parameters (Ullrich and
+de Moura, *Counting Immutable Beans*, IFL 2019). **Decided 2026-10-12:** it is a pass over the low
+IR, `lir.Count` (`lir/count.go`), not decisions taken while C is printed, so that another back end
+gets it too; reuse of a matched cell and freeing a run's region on a fault are 7.12. Only counted
+types (above) take part.
 
-- **Precise counting.** The compiler inserts `dup` and `drop` from ownership: a value is dropped
-  right after its last use, not at the end of its scope. So in
-  `let ys = xs |> add(x)` with `xs` dead afterwards, `add` receives the only reference and
-  appends in place.
-- **Borrowed parameters.** A parameter that a function only reads is borrowed: the caller keeps
-  its reference and no count changes. Lean infers this; Eyelang can too, from the typed IR.
-- **Reuse.** When a `match` takes a value apart and the arm builds a value of the same size, the
-  arm reuses the memory (`{ r with f: v }` on a unique `r`, or a tree rebuilt on the way back up).
-- **In place when unique.** `+=`, field assignment, `insert`, `add` and friends check the count:
-  one means change in place, more means copy first. This is the copy on write SPECS §7 promises.
+- **Owned and borrowed values.** A value an instruction makes (a call's result, a record, a
+  list) owns one reference. It is dropped right after its last use (`drop`), or passed on by that
+  use, which takes it; a use that takes it while it is still needed takes a copy (`dup`). A field
+  read (`Field`, `TupleGet`, `Payload`), a module-level `let`, a borrowed parameter, and a `let`
+  of any of these or of a variable that stays live are *borrowed*: valid while what they borrow
+  from is, which the pass keeps alive until their last use, and never dropped. A borrowed value
+  that is kept is dup'ed where it is kept. Constants are static and never counted.
+- **Borrowed parameters**, inferred over the whole program at once as Lean does: a parameter
+  starts borrowed and becomes owned when the body keeps it (in a record, a list, a closure),
+  returns it, passes it to an owned parameter or would update it in place; the rounds repeat
+  until nothing changes. A parameter the function sets (its default) is owned, a `mut` one is
+  the caller's variable, and a lambda's parameters are borrowed, since a closure is called
+  through its value. `Func.Modes` records the result, and `eye check --lir` prints `owned` and
+  `mut` after a parameter's type.
+- **Liveness**, by the usual backward analysis over the blocks, where a use of a borrowed value
+  is also a use of what it borrows from. A value dead on one way out of a branch and live on the
+  other is dropped on the way in, in a block of its own when the target has other ways in. A
+  `mut` parameter is live where the function returns. Code that ends in a fault leaks what is
+  live, until runs get regions (7.12).
+- **In place when unique, whatever the shape around it.** An update whose operand is owned and
+  dead after it takes the operand and is marked `inplace`: a built-in's `add`, `insert`,
+  `remove` or `concat`, `+` on a `String`, `List` or `Set`, and `{ r with … }`. At run time it
+  changes the value in place when its count is one and copies it otherwise; this is the copy on
+  write SPECS §7 promises. Since the decision comes from liveness, it doesn't matter whether the
+  last use is an assignment, a call (`xs = push(xs, i)`, where `push` owns its list) or a `let`
+  (`let next = m.insert(i, i); m = next`).
+- **A field taken from a record about to be rebuilt.** In `p = { p with items: p.items.add(i) }`
+  and `p.items = p.items.add(i)`, `p` still holds the old list while the new one is made, so the
+  list's count is two and `add` would copy. When the record is rebuilt with a new value for the
+  field later in the block (an update in place, or a `SetPlace` of the field) and nothing reads
+  the field in between, the read becomes `take`: the field is moved out and left empty (zero)
+  when the record is inline or its only reference, and dup'ed otherwise. `add` is then in place,
+  and so is the update, which drops the empty field to nothing.
+- **A borrowed value whose root changes** while it is still used (the variable set again, a
+  `SetPlace` of an overlapping path, a `mut` argument) is dup'ed where it is read instead.
+- **Built-ins and the runtime borrow** every argument but an update's operand, and give an owned
+  result; what they keep (an element added to a list) they dup themselves. Closure and `dyn`
+  calls borrow their arguments too; a function with owned parameters called through a closure
+  or a `dyn` table is called through a wrapper that dups them.
+- **`i = i + 1`**, an instruction that sets a variable it reads, goes through a new value, so
+  that the old one is dropped in between.
+
+`eye check --lir` prints the result. The update loop of `cgen/testdata/updates`:
+
+```
+b2:
+  %10.i: Int = borrow %8
+  %11: Int = take %5.p.count
+  %12: Int = 1
+  %13: Int = op + %11, %12
+  drop %11
+  %14: List(Int) = take %5.p.items
+  %15: List(Int) = inplace builtin add(%14, %10.i)
+  %16: Bag = inplace {%5.p with count: %13, items: %15}
+  set %5.p = %16
+```
+
+`lir.CheckCounts` checks every program in the repository after counting
+(`TestEveryProgramLowers`): it follows each path with the number of references each value holds,
+and reports a value read, taken or dropped without one, a variable set while it still holds one,
+paths that meet with different counts, and a return that leaves anything held. On 2026-10-12,
+taking out any one of the 11,027 dups and drops the pass wrote into the repository's programs made
+it report a problem, except 4 in code that ends in a fault, which may leak; `TestCheckCountsCatches`
+keeps doing so for the golden program. `testdata/ir/counting` holds the
+golden output of each rule. The C back end prints `Dup` and `Drop` as the type's dup and drop,
+and an instruction marked `inplace` as the runtime's in-place form, which takes its operand.
 
 Three things are particular to Eyelang:
 
@@ -621,7 +760,8 @@ The passes, in order:
    transaction; a job is a function with frames; a view is a predicate; a contract's operation is
    a call into the runner. SPECS §22 asks for one pass per construct; this is where they go.
 3. Flatten into blocks and name every intermediate value.
-4. Insert reference counts and reuse (section 2).
+4. Insert reference counts (`lir.Count`, section 2) and, with 7.12, reuse; the layout of each
+   type (`lir.Layouts`) decides which values are counted.
 5. Split waiting functions into states (section 4).
 6. Print C.
 
@@ -682,7 +822,6 @@ Still open:
 - A Go host in every compiled program for v0.4? (section 1)
 - Does the runner load the compiled program as a shared library, or link into it as a static
   library built from Go? (section 1)
-- Small records by value? (section 2)
 - Does `parallelMap` use several cores? (section 2)
 - Is `List(Logger)` to `List(dyn Handler)` an implicit copy? (section 3)
 - Code size of full specialisation, measured on the self-hosted compiler. (section 3)
@@ -693,3 +832,9 @@ Decided 2026-10-11:
 - State machines in the interpreter in v0.3. (section 4)
 - "Jobs as short-lived processes" means the runner; a waiting run is a record. (section 4, and
   Proposals)
+
+Decided 2026-10-12:
+
+- Values are laid out by type, chosen in the low IR; small records by value, up to 64 bytes.
+  (section 2, 7.13)
+- Reference counting is a pass over the low IR. (section 2, 7.5)

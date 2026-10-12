@@ -1,0 +1,291 @@
+module (the program)
+
+fn total(xs)
+  call : Int
+    ref builtin sum : fn(List(Int)) -> Int
+    local xs#0 : List(Int)
+
+fn push(xs, x)
+  method .add -> builtin add : List(Int)
+    local xs#0 : List(Int)
+    local x#1 : Int
+
+fn label(name)
+  record Tag : Tag
+    name:
+      local name#0 : String
+    n:
+      lit 1 : Int
+
+fn greet(name)
+  default name
+    lit "you" : String
+  interpolate : String
+    lit "hello, " : String
+    local name#0 : String
+
+fn appended(n)
+  block : List(Int)
+    let xs#1 : ()
+      list : List(Int)
+    for i#2 : ()
+      range .. : Range(Int)
+        lit 0 : Int
+        local n#0 : Int
+      block : ()
+        assign #1 = : ()
+          call : List(Int)
+            ref fn push : fn(List(Int), Int) -> List(Int)
+            local xs#1 : List(Int)
+            local i#2 : Int
+    local xs#1 : List(Int)
+
+fn inserted(n)
+  block : Map(Int, Int)
+    let m#1 : ()
+      {} : Map(Int, Int)
+    for i#2 : ()
+      range .. : Range(Int)
+        lit 0 : Int
+        local n#0 : Int
+      block : ()
+        let next#3 : ()
+          method .insert -> builtin insert : Map(Int, Int)
+            local m#1 : Map(Int, Int)
+            local i#2 : Int
+            local i#2 : Int
+        assign #1 = : ()
+          local next#3 : Map(Int, Int)
+    local m#1 : Map(Int, Int)
+
+fn bagged(n)
+  block : Bag
+    let p#1 : ()
+      record Bag : Bag
+        count:
+          lit 0 : Int
+        items:
+          list : List(Int)
+    for i#2 : ()
+      range .. : Range(Int)
+        lit 0 : Int
+        local n#0 : Int
+      block : ()
+        assign #1 = : ()
+          with : Bag
+            local p#1 : Bag
+            count:
+              binary + : Int
+                field .count : Int
+                  local p#1 : Bag
+                lit 1 : Int
+            items:
+              method .add -> builtin add : List(Int)
+                field .items : List(Int)
+                  local p#1 : Bag
+                local i#2 : Int
+    local p#1 : Bag
+
+fn filled(n)
+  block : Bag
+    let p#1 : ()
+      record Bag : Bag
+        count:
+          lit 0 : Int
+        items:
+          list : List(Int)
+    for i#2 : ()
+      range .. : Range(Int)
+        lit 0 : Int
+        local n#0 : Int
+      block : ()
+        assign #1.items = : ()
+          method .add -> builtin add : List(Int)
+            field .items : List(Int)
+              local p#1 : Bag
+            local i#2 : Int
+        assign #1.items += : ()
+          list : List(Int)
+            local i#2 : Int
+    local p#1 : Bag
+
+fn swapped(p)
+  block : List(Int)
+    let q#1 : ()
+      local p#0 : Bag
+    let old#2 : ()
+      field .items : List(Int)
+        local q#1 : Bag
+    assign #1.items = : ()
+      list : List(Int)
+    binary + : List(Int)
+      local old#2 : List(Int)
+      field .items : List(Int)
+        local q#1 : Bag
+
+fn replaced(p)
+  block : List(Int)
+    let q#1 : ()
+      local p#0 : Bag
+    let old#2 : ()
+      field .items : List(Int)
+        local q#1 : Bag
+    assign #1 = : ()
+      record Bag : Bag
+        count:
+          lit 0 : Int
+        items:
+          list : List(Int)
+            lit 7 : Int
+    binary + : List(Int)
+      local old#2 : List(Int)
+      field .items : List(Int)
+        local q#1 : Bag
+
+fn small(xs)
+  block : Bool
+    let ys#1 : ()
+      method .add -> builtin add : List(Int)
+        local xs#0 : List(Int)
+        lit 1 : Int
+    binary && : Bool
+      binary > : Bool
+        method .size -> builtin size : Int
+          local ys#1 : List(Int)
+        lit 1 : Int
+      binary < : Bool
+        method .size -> builtin size : Int
+          local ys#1 : List(Int)
+        lit 5 : Int
+
+fn head(xs)
+  match : String
+    method .first -> builtin first : Option(String)
+      local xs#0 : List(String)
+    arm Some(s#1)
+      local s#1 : String
+    arm None
+      lit "" : String
+
+fn record(mut b, x)
+  block : ()
+    assign #0.items = : ()
+      method .add -> builtin add : List(Int)
+        field .items : List(Int)
+          local b#0 : Bag
+        local x#1 : Int
+    assign #0.count += : ()
+      lit 1 : Int
+
+fn pick(xs, ys, first)
+  block : List(Int)
+    let a#3 : ()
+      method .add -> builtin add : List(Int)
+        local xs#0 : List(Int)
+        lit 1 : Int
+    let b#4 : ()
+      method .add -> builtin add : List(Int)
+        local ys#1 : List(Int)
+        lit 2 : Int
+    if : List(Int)
+      local first#2 : Bool
+      local a#3 : List(Int)
+      else
+        local b#4 : List(Int)
+
+fn scaled(xs, k)
+  call : List(Int)
+    ref builtin map : fn(List(Int), fn(Int) -> Int) -> List(Int)
+    local xs#0 : List(Int)
+    lambda(x#0) : fn(Int) -> Int
+      capture #1
+        local k#1 : Int
+      binary * : Int
+        local x#0 : Int
+        local k#1 : Int
+
+fn uses()
+  block : Int
+    let b#0 : ()
+      record Bag : Bag
+        count:
+          lit 0 : Int
+        items:
+          list : List(Int)
+    call : ()
+      ref fn record : fn(Bag, Int)
+      mut 
+        local b#0 : Bag
+      lit 1 : Int
+    binary + : Int
+      binary + : Int
+        binary + : Int
+          binary + : Int
+            binary + : Int
+              binary + : Int
+                binary + : Int
+                  binary + : Int
+                    binary + : Int
+                      binary + : Int
+                        binary + : Int
+                          call : Int
+                            ref fn total : fn(List(Int)) -> Int
+                            call : List(Int)
+                              ref fn appended : fn(Int) -> List(Int)
+                              lit 3 : Int
+                          method .size -> builtin size : Int
+                            call : Map(Int, Int)
+                              ref fn inserted : fn(Int) -> Map(Int, Int)
+                              lit 3 : Int
+                        field .count : Int
+                          call : Bag
+                            ref fn bagged : fn(Int) -> Bag
+                            lit 3 : Int
+                      field .count : Int
+                        call : Bag
+                          ref fn filled : fn(Int) -> Bag
+                          lit 2 : Int
+                    method .size -> builtin size : Int
+                      call : List(Int)
+                        ref fn swapped : fn(Bag) -> List(Int)
+                        local b#0 : Bag
+                  method .size -> builtin size : Int
+                    call : List(Int)
+                      ref fn replaced : fn(Bag) -> List(Int)
+                      local b#0 : Bag
+                method .size -> builtin size : Int
+                  call : List(Int)
+                    ref fn pick : fn(List(Int), List(Int), Bool) -> List(Int)
+                    list : List(Int)
+                      lit 1 : Int
+                    list : List(Int)
+                      lit 2 : Int
+                    lit true : Bool
+              method .size -> builtin size : Int
+                call : List(Int)
+                  ref fn scaled : fn(List(Int), Int) -> List(Int)
+                  list : List(Int)
+                    lit 1 : Int
+                    lit 2 : Int
+                  lit 3 : Int
+            field .n : Int
+              call : Tag
+                ref fn label : fn(String) -> Tag
+                lit "x" : String
+          method .size -> builtin size : Int
+            call : String
+              ref fn greet : fn(String) -> String
+        method .size -> builtin size : Int
+          call : String
+            ref fn head : fn(List(String)) -> String
+            list : List(String)
+              lit "a" : String
+      if : Int
+        call : Bool
+          ref fn small : fn(List(Int)) -> Bool
+          list : List(Int)
+            lit 1 : Int
+        lit 1 : Int
+        else
+          lit 0 : Int
+

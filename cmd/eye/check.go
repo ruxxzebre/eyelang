@@ -71,6 +71,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 				code = exitErrors
 			}
 			if len(errs) == 0 {
+				lir.Count(low)
 				lir.Fprint(stdout, lir.Own(low, prog))
 			}
 		}

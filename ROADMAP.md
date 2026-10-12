@@ -912,6 +912,12 @@ whole-program specialisation, and jobs resuming from saved frames.
   a `let`) run in linear time; 7.8's counting allocator finds as many frees as allocations in
   every program `eye build` compiles; `eye check --lir` prints the new instructions, with golden
   tests.
+  The low IR's side is in (2026-10-12, compilation.md section 2, "Reference counting in the low
+  IR"): `lir.Count` inserts `dup` and `drop` from liveness, infers borrowed and owned
+  parameters over the whole program, marks updates `inplace` and fields `take`n from a record
+  about to be rebuilt, which makes the three slow loops' updates in place in the low IR;
+  `eye check --lir` prints them (`testdata/ir/counting`), and `lir.CheckCounts` checks that the
+  counts balance on every path of every repository program. The C back end doesn't use it yet.
 - **7.6 The runner hosts compiled programs.** The Go runner calls a compiled program's interface
   (run `main`, run a test, call an entity method, step a job, encode and decode saved types).
   Hosting is B′ (decided 2026-10-12): the runner is the program's `main`, and `eye build` links
@@ -1002,6 +1008,11 @@ whole-program specialisation, and jobs resuming from saved frames.
   without aliasing are what permit it ([benchmark review](docs/internals/reviews/benchmarks-review-2026-10-12.md)).
   **Done when:** records, maps and the lexer are within Go's time, the lexer's memory is below
   Go's, and every cross-check passes.
+  The design and the low IR's side are in (2026-10-12, compilation.md section 2, "Values laid out
+  by type"): `lir.Layouts` chooses each type's layout (enums as a byte, records and tuples up to
+  64 bytes inline, `Option` and other variant types in a niche or behind a tag without a box,
+  large and recursive types boxed, strings as shared views, lists of values inline) and says which
+  types are counted. The C back end doesn't print them yet.
 - **7.14 Cheap native fixes.** The runtime compiled with the program (one unit or LTO), a
   size-class allocator instead of musl's `malloc`, a static value per field-less variant,
   number formatting without `snprintf`, and constant division inline.

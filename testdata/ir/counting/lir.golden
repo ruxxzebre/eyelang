@@ -1,0 +1,389 @@
+fn total(%1.xs: List(Int)) -> Int
+b0:
+  %2: Int = builtin sum(%1.xs)
+  return %2
+
+fn push(%1.xs: List(Int) owned, %2.x: Int) -> List(Int)
+b0:
+  %3: List(Int) = inplace builtin add(%1.xs, %2.x)
+  return %3
+
+fn label(%1.name: String owned) -> Tag
+b0:
+  %2: Int = 1
+  %3: Tag = Tag {name: %1.name, n: %2}
+  return %3
+
+fn greet(%1.name: String owned) -> String
+b0:
+  %2: Bool = builtin absent(%1.name)
+  branch %2 b1 b2
+b1:
+  drop %1.name
+  %3: String = "you"
+  %1.name: String = %3
+  jump b2
+b2:
+  %4: String = "hello, "
+  %5: String = builtin concat(%4, %1.name)
+  drop %1.name
+  return %5
+
+fn appended(%1.n: Int) -> List(Int)
+b0:
+  %4: () = ()
+  %2: List(Int) = []
+  %3.xs: List(Int) = %2
+  %5: Int = 0
+  %6: Int = %5
+  jump b1
+b1:
+  %7: Bool = op < %6, %1.n
+  branch %7 b2 b4
+b2:
+  %8.i: Int = borrow %6
+  %9: List(Int) = call push(%3.xs, %8.i)
+  set %3.xs = %9
+  jump b3
+b3:
+  %10: Int = 1
+  %11: Int = op + %6, %10
+  drop %6
+  %6: Int = %11
+  jump b1
+b4:
+  drop %6
+  return %3.xs
+
+fn inserted(%1.n: Int) -> Map(Int, Int)
+b0:
+  %4: () = ()
+  %2: Map(Int, Int) = map {}
+  %3.m: Map(Int, Int) = %2
+  %5: Int = 0
+  %6: Int = %5
+  jump b1
+b1:
+  %7: Bool = op < %6, %1.n
+  branch %7 b2 b4
+b2:
+  %8.i: Int = borrow %6
+  %9: Map(Int, Int) = inplace builtin insert(%3.m, %8.i, %8.i)
+  %10.next: Map(Int, Int) = %9
+  set %3.m = %10.next
+  jump b3
+b3:
+  %11: Int = 1
+  %12: Int = op + %6, %11
+  drop %6
+  %6: Int = %12
+  jump b1
+b4:
+  drop %6
+  return %3.m
+
+fn bagged(%1.n: Int) -> Bag
+b0:
+  %6: () = ()
+  %2: Int = 0
+  %3: List(Int) = []
+  %4: Bag = Bag {count: %2, items: %3}
+  %5.p: Bag = %4
+  %7: Int = 0
+  %8: Int = %7
+  jump b1
+b1:
+  %9: Bool = op < %8, %1.n
+  branch %9 b2 b4
+b2:
+  %10.i: Int = borrow %8
+  %11: Int = take %5.p.count
+  %12: Int = 1
+  %13: Int = op + %11, %12
+  drop %11
+  %14: List(Int) = take %5.p.items
+  %15: List(Int) = inplace builtin add(%14, %10.i)
+  %16: Bag = inplace {%5.p with count: %13, items: %15}
+  set %5.p = %16
+  jump b3
+b3:
+  %17: Int = 1
+  %18: Int = op + %8, %17
+  drop %8
+  %8: Int = %18
+  jump b1
+b4:
+  drop %8
+  return %5.p
+
+fn filled(%1.n: Int) -> Bag
+b0:
+  %6: () = ()
+  %2: Int = 0
+  %3: List(Int) = []
+  %4: Bag = Bag {count: %2, items: %3}
+  %5.p: Bag = %4
+  %7: Int = 0
+  %8: Int = %7
+  jump b1
+b1:
+  %9: Bool = op < %8, %1.n
+  branch %9 b2 b4
+b2:
+  %10.i: Int = borrow %8
+  %11: List(Int) = take %5.p.items
+  %12: List(Int) = inplace builtin add(%11, %10.i)
+  set %5.p.items = %12
+  dup %10.i
+  %13: List(Int) = [%10.i]
+  %14: List(Int) = take %5.p.items
+  %15: List(Int) = inplace op + %14, %13
+  drop %13
+  set %5.p.items = %15
+  jump b3
+b3:
+  %16: Int = 1
+  %17: Int = op + %8, %16
+  drop %8
+  %8: Int = %17
+  jump b1
+b4:
+  drop %8
+  return %5.p
+
+fn swapped(%1.p: Bag owned) -> List(Int)
+b0:
+  %3: () = ()
+  %2.q: Bag = %1.p
+  %4: List(Int) = take %2.q.items
+  %5.old: List(Int) = %4
+  %6: List(Int) = []
+  set %2.q.items = %6
+  %7: List(Int) = %2.q.items
+  %8: List(Int) = inplace op + %5.old, %7
+  drop %2.q
+  return %8
+
+fn replaced(%1.p: Bag owned) -> List(Int)
+b0:
+  %3: () = ()
+  %2.q: Bag = %1.p
+  %4: List(Int) = %2.q.items
+  dup %4
+  %5.old: List(Int) = %4
+  drop %2.q
+  %6: Int = 0
+  %7: Int = 7
+  %8: List(Int) = [%7]
+  %9: Bag = Bag {count: %6, items: %8}
+  set %2.q = %9
+  %10: List(Int) = %2.q.items
+  %11: List(Int) = inplace op + %5.old, %10
+  drop %2.q
+  return %11
+
+fn small(%1.xs: List(Int) owned) -> Bool
+b0:
+  %5: () = ()
+  %2: Int = 1
+  %3: List(Int) = inplace builtin add(%1.xs, %2)
+  %4.ys: List(Int) = %3
+  %6: Int = builtin size(%4.ys)
+  %7: Int = 1
+  %8: Bool = op > %6, %7
+  drop %6
+  %9: Bool = %8
+  branch %8 b1 b3
+b1:
+  %10: Int = builtin size(%4.ys)
+  drop %4.ys
+  %11: Int = 5
+  %12: Bool = op < %10, %11
+  drop %10
+  %9: Bool = %12
+  jump b2
+b2:
+  return %9
+b3:
+  drop %4.ys
+  jump b2
+
+fn head(%1.xs: List(String)) -> String
+b0:
+  %2: Option(String) = builtin first(%1.xs)
+  jump b1
+b1:
+  %4: Bool = %2 is Some
+  branch %4 b2 b4
+b2:
+  %5: String = %2 as Some.0
+  %6.s: String = borrow %5
+  dup %6.s
+  %3: String = %6.s
+  drop %2
+  jump b3
+b3:
+  return %3
+b4:
+  %7: Bool = %2 is None
+  drop %2
+  branch %7 b5 b6
+b5:
+  %8: String = ""
+  %3: String = %8
+  jump b3
+b6:
+  stop: no arm matches
+
+fn record(%1.b: Bag mut, %2.x: Int) -> ()
+b0:
+  %5: () = ()
+  %3: List(Int) = take %1.b.items
+  %4: List(Int) = inplace builtin add(%3, %2.x)
+  set %1.b.items = %4
+  %6: Int = 1
+  %7: Int = take %1.b.count
+  %8: Int = op + %7, %6
+  drop %7
+  set %1.b.count = %8
+  return %5
+
+fn pick(%1.xs: List(Int) owned, %2.ys: List(Int) owned, %3.first: Bool) -> List(Int)
+b0:
+  %7: () = ()
+  %4: Int = 1
+  %5: List(Int) = inplace builtin add(%1.xs, %4)
+  %6.a: List(Int) = %5
+  %8: Int = 2
+  %9: List(Int) = inplace builtin add(%2.ys, %8)
+  %10.b: List(Int) = %9
+  branch %3.first b1 b3
+b1:
+  drop %10.b
+  %11: List(Int) = %6.a
+  jump b2
+b2:
+  return %11
+b3:
+  drop %6.a
+  %11: List(Int) = %10.b
+  jump b2
+
+fn scaled(%1.xs: List(Int), %2.k: Int owned) -> List(Int)
+b0:
+  %3: fn(Int) -> Int = closure scaled.lambda[%2.k]
+  %4: List(Int) = builtin map(%1.xs, %3)
+  drop %3
+  return %4
+
+fn uses() -> Int
+b0:
+  %5: () = ()
+  %1: Int = 0
+  %2: List(Int) = []
+  %3: Bag = Bag {count: %1, items: %2}
+  %4.b: Bag = %3
+  %6: Int = 1
+  %7: () = call record(%4.b, %6)
+  %8: Int = 3
+  %9: List(Int) = call appended(%8)
+  %10: Int = call total(%9)
+  drop %9
+  %11: Int = 3
+  %12: Map(Int, Int) = call inserted(%11)
+  %13: Int = builtin size(%12)
+  drop %12
+  %14: Int = op + %10, %13
+  drop %10
+  drop %13
+  %15: Int = 3
+  %16: Bag = call bagged(%15)
+  %17: Int = %16.count
+  %18: Int = op + %14, %17
+  drop %14
+  drop %16
+  %19: Int = 2
+  %20: Bag = call filled(%19)
+  %21: Int = %20.count
+  %22: Int = op + %18, %21
+  drop %18
+  drop %20
+  dup %4.b
+  %23: List(Int) = call swapped(%4.b)
+  %24: Int = builtin size(%23)
+  drop %23
+  %25: Int = op + %22, %24
+  drop %22
+  drop %24
+  %26: List(Int) = call replaced(%4.b)
+  %27: Int = builtin size(%26)
+  drop %26
+  %28: Int = op + %25, %27
+  drop %25
+  drop %27
+  %29: Int = 1
+  %30: List(Int) = [%29]
+  %31: Int = 2
+  %32: List(Int) = [%31]
+  %33: Bool = true
+  %34: List(Int) = call pick(%30, %32, %33)
+  %35: Int = builtin size(%34)
+  drop %34
+  %36: Int = op + %28, %35
+  drop %28
+  drop %35
+  %37: Int = 1
+  %38: Int = 2
+  %39: List(Int) = [%37, %38]
+  %40: Int = 3
+  %41: List(Int) = call scaled(%39, %40)
+  drop %39
+  %42: Int = builtin size(%41)
+  drop %41
+  %43: Int = op + %36, %42
+  drop %36
+  drop %42
+  %44: String = "x"
+  %45: Tag = call label(%44)
+  %46: Int = %45.n
+  %47: Int = op + %43, %46
+  drop %43
+  drop %45
+  %48: String = absent
+  %49: String = call greet(%48)
+  %50: Int = builtin size(%49)
+  drop %49
+  %51: Int = op + %47, %50
+  drop %47
+  drop %50
+  %52: String = "a"
+  %53: List(String) = [%52]
+  %54: String = call head(%53)
+  drop %53
+  %55: Int = builtin size(%54)
+  drop %54
+  %56: Int = op + %51, %55
+  drop %51
+  drop %55
+  %57: Int = 1
+  %58: List(Int) = [%57]
+  %59: Bool = call small(%58)
+  branch %59 b1 b3
+b1:
+  %61: Int = 1
+  %60: Int = %61
+  jump b2
+b2:
+  %63: Int = op + %56, %60
+  drop %56
+  drop %60
+  return %63
+b3:
+  %62: Int = 0
+  %60: Int = %62
+  jump b2
+
+lambda scaled.lambda(%1.k: Int, %2.x: Int) -> Int
+b0:
+  %3: Int = op * %2.x, %1.k
+  return %3

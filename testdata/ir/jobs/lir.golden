@@ -3,7 +3,7 @@ b0:
   %1: Phase = Idle
   return %1
 
-entity Kettle.brew(%1.state: Kettle) -> ()
+entity Kettle.brew(%1.state: Kettle mut) -> ()
 b0:
   %6: () = ()
   %2: Phase = %1.state.phase
@@ -17,7 +17,7 @@ b1:
 b2:
   return %6
 
-entity Kettle.finish(%1.state: Kettle) -> ()
+entity Kettle.finish(%1.state: Kettle mut) -> ()
 b0:
   %3: () = ()
   %2: Phase = Done
@@ -29,12 +29,15 @@ b0:
   %9: () = ()
   %2: Ref(Kettle) = runtime entity.ref Kettle(%1.id)
   %3: () = runtime! entity.call Kettle.brew(%2)
+  drop %2
   %4: Duration = 180000000000
   %5: () = builtin! sleep(%4)
   %6: Ref(Kettle) = runtime entity.ref Kettle(%1.id)
   %7: Kettle = runtime! entity.read -(%6)
+  drop %6
   %8.k: Kettle = %7
   %10: Phase = %8.k.phase
+  drop %8.k
   jump b1
 b1:
   %11: Bool = %10 is Brewing
@@ -42,6 +45,7 @@ b1:
 b2:
   %12: Ref(Kettle) = runtime entity.ref Kettle(%1.id)
   %13: () = runtime! entity.call Kettle.finish(%12)
+  drop %12
   jump b3
 b3:
   return %9

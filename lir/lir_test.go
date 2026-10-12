@@ -87,6 +87,12 @@ func TestEveryProgramLowers(t *testing.T) {
 			t.Errorf("%s: %v", dir, err)
 		}
 		problems := Verify(low)
+		// Counting (7.5) keeps the low IR valid, and its counts balance on
+		// every path.
+		if len(problems) == 0 {
+			Count(low)
+			problems = append(Verify(low), CheckCounts(low)...)
+		}
 		for i, p := range problems {
 			if i == 5 {
 				t.Errorf("%s: and %d more problems", dir, len(problems)-5)

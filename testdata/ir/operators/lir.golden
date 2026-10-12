@@ -19,6 +19,7 @@ b0:
   %3: Int = %1.self.cents
   %4: String = derived show(%3)
   %5: String = builtin concat(%2, %4)
+  drop %4
   return %5
 
 fn both(%1.a: Money, %2.b: Money) -> Money
@@ -39,13 +40,18 @@ b0:
   %3.price: Money = %2
   %5: Int = 2
   %6: Int = call twice<Int>(%5)
+  dup %3.price
+  dup %3.price
   %7: List(Money) = [%3.price, %3.price]
   %8: Int = 0
   %9: Money = Money {cents: %8}
   %10: Money = call total<Money>(%7, %9)
+  drop %7
   %11: Money = call refund(%3.price)
+  drop %3.price
   %12: String = call Money.show(%11)
-  %13: String = builtin concat(%12)
+  drop %11
+  %13: String = inplace builtin concat(%12)
   %14: (Int, Money, String) = (%6, %10, %13)
   return %14
 
@@ -54,7 +60,7 @@ b0:
   %2: Int = op + %1.n, %1.n
   return %2
 
-fn total<Money>(%1.xs: List(Money), %2.zero: Money) -> Money
+fn total<Money>(%1.xs: List(Money), %2.zero: Money owned) -> Money
 b0:
   %4: () = ()
   %3.sum: Money = %2.zero
@@ -67,7 +73,10 @@ b2:
   %7: Money = builtin iter.next(%5)
   %8.x: Money = %7
   %9: Money = call Money.add(%3.sum, %8.x)
+  drop %3.sum
+  drop %8.x
   set %3.sum = %9
   jump b1
 b3:
+  drop %5
   return %3.sum
