@@ -150,6 +150,45 @@ pub fn main() uses {stdio, clock} {
   })
 }
 `, "1", "waits for a channel that no task will put into or close"},
+		// A group inside another task fails once the tasks outside it have
+		// finished without helping (#138).
+		{`
+pub fn main() uses {stdio, wait} {
+  let (a, b) = both(fn {
+    taskGroup(fn group {
+      let (send, receive) = channel(capacity: 1)
+      receive.take()
+    })
+  }, fn { sleep(10 ms) })
+  print("after")
+}
+`, "", "main.eye:4:5: every task here waits for a channel that no task will put into or close"},
+		// It waits for a task outside that does put into its channel.
+		{`
+pub fn main() uses {stdio, wait} {
+  let (send, receive) = channel(capacity: 1)
+  let (got, _) = both(fn {
+    taskGroup(fn group { receive.take() })
+  }, fn {
+    sleep(10 ms)
+    send.put("hello")
+  })
+  print(got ?? "none")
+}
+`, "hello", ""},
+		// A task outside any group, stuck while its siblings wait for their
+		// own group, faults where it waits.
+		{`
+pub fn main() uses {stdio, wait} {
+  let (send, receive) = channel(capacity: 1)
+  let (got, _) = both(fn { receive.take() }, fn {
+    taskGroup(fn group {
+      group.spawn(fn { sleep(10 ms) })
+    })
+  })
+  print("after")
+}
+`, "", "main.eye:4:28: this waits for a channel that no task will put into or close"},
 	} {
 		prog := loadFiles(t, map[string]string{"main.eye": c.src})
 		var out, errs bytes.Buffer

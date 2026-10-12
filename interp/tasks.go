@@ -83,6 +83,11 @@ type cancelSignal struct{}
 type gil struct {
 	mu      sync.Mutex
 	current *taskCtx
+	// active counts the tasks that can go on: running, waiting for the
+	// lock, or waiting for anything but a channel or their own tasks.
+	// waiting are the tasks waiting for a channel (checkDeadlock).
+	active  int
+	waiting map[*rwaiter]bool
 }
 
 // task returns the task the running code belongs to, if any.
@@ -388,6 +393,11 @@ func (in *Interp) runParallel(fns []func(*Interp) Value, limit int, first bool, 
 	done := make(chan int, len(fns))
 	slots := make(chan struct{}, limit)
 	var wg sync.WaitGroup
+	// What the tasks count for checkDeadlock, changed with the lock held:
+	// each can go on until it ends, and a task that waits for them can go
+	// on once the last one has.
+	pending, owned := len(fns), false
+	root.g.active += len(fns)
 	for i, fn := range fns {
 		wg.Add(1)
 		go func(i int, fn func(*Interp) Value) {
@@ -398,6 +408,11 @@ func (in *Interp) runParallel(fns []func(*Interp) Value, limit int, first bool, 
 			root.g.mu.Lock()
 			root.g.current = t
 			results[i] = root.child(t).runTask(fn)
+			root.g.active--
+			if pending--; pending == 0 && owned {
+				root.g.active++
+			}
+			root.g.checkDeadlock()
 			root.g.mu.Unlock()
 			done <- i
 		}(i, fn)
@@ -405,6 +420,10 @@ func (in *Interp) runParallel(fns []func(*Interp) Value, limit int, first bool, 
 	// Wait without holding the lock, so the tasks can run; the first to
 	// finish cancels the rest when first is set, and a fault cancels all.
 	parent := in.currentTask()
+	if parent != nil {
+		owned = true
+		in.g.active--
+	}
 	in.g.mu.Unlock()
 	winner := -1
 	for range fns {

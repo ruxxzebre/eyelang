@@ -36,19 +36,65 @@ type chanState struct {
 }
 
 // rwaiter is a task waiting for a channel on the system clock. It counts
-// as blocked in its group until the channel changes, not until it runs
-// again, so a deadlock isn't found while it waits for the lock.
+// as waiting until the channel changes, not until it runs again, so a
+// deadlock isn't found while it waits for the lock. g is its task group,
+// if it is in one; ctx is its task's; stop wakes it when it is stuck
+// outside a group, which stuck then says.
 type rwaiter struct {
 	g     *rgroup
+	gl    *gil
+	ctx   context.Context
+	stop  chan struct{}
+	stuck bool
 	woken bool
 }
 
 func (w *rwaiter) wake() {
 	if !w.woken {
 		w.woken = true
-		if w.g != nil {
-			w.g.blocked--
+		w.gl.active++
+		delete(w.gl.waiting, w)
+	}
+}
+
+// wait counts a task that starts waiting for a channel, and looks for a
+// deadlock.
+func (gl *gil) wait(w *rwaiter) {
+	if gl.waiting == nil {
+		gl.waiting = map[*rwaiter]bool{}
+	}
+	gl.waiting[w] = true
+	gl.active--
+	gl.checkDeadlock()
+}
+
+// checkDeadlock fails what waits for channels when no task can go on: each
+// waits for a channel, or for its own tasks to finish, so none will ever
+// put into or close a channel again. Code outside tasks only waits for
+// them, so the tasks are all there is. A group with a task stuck this way
+// fails at the taskGroup call (SPECS.md §13), and a task outside a group,
+// as parallelMap and both start, faults where it waits. A task that was
+// cancelled will run again to finish, so nothing fails while one is left.
+func (gl *gil) checkDeadlock() {
+	if gl.active > 0 || len(gl.waiting) == 0 {
+		return
+	}
+	for w := range gl.waiting {
+		if w.ctx != nil && w.ctx.Err() != nil {
+			return
 		}
+	}
+	for w := range gl.waiting {
+		if g := w.g; g != nil {
+			if g.fault == nil {
+				g.fault = &Fault{Pos: g.at, Msg: "every task here waits for a channel that no task will put into or close"}
+				g.cancel()
+			}
+			continue
+		}
+		w.stuck = true
+		close(w.stop)
+		w.wake()
 	}
 }
 
@@ -68,9 +114,10 @@ type rgroup struct {
 	at      ir.Pos
 	fault   any
 	live    int  // tasks not finished
-	blocked int  // tasks waiting for a channel
-	nested  bool // started inside another task, which may serve its channels
-	done    bool
+	// owned is set when a task started the group: it waits for the
+	// group's tasks, and can go on once the last one finishes.
+	owned bool
+	done  bool
 }
 
 // changed wakes whoever waits for the channel.
@@ -111,28 +158,19 @@ func (in *Interp) waitFor(c *chanState, at ir.Pos) {
 		c.changed = make(chan struct{})
 	}
 	sig := c.changed
-	w := &rwaiter{g: t.grp}
+	w := &rwaiter{g: t.grp, gl: in.g, ctx: t.ctx, stop: make(chan struct{})}
 	c.rwait = append(c.rwait, w)
 	defer w.wake() // when cancelled
-	if g := t.grp; g != nil {
-		g.blocked++
-		g.checkDeadlock()
-	}
+	in.g.wait(w)
 	in.blocking(func(ctx context.Context) {
 		select {
 		case <-sig:
 		case <-ctx.Done():
+		case <-w.stop:
 		}
 	})
-}
-
-// checkDeadlock fails the group if every task left waits for a channel. A
-// group inside another task isn't checked: a task outside it may still
-// serve its channels.
-func (g *rgroup) checkDeadlock() {
-	if !g.nested && g.live > 0 && g.blocked == g.live && g.fault == nil {
-		g.fault = &Fault{Pos: g.at, Msg: "every task here waits for a channel that no task will put into or close"}
-		g.cancel()
+	if w.stuck {
+		deadlock()
 	}
 }
 
@@ -186,7 +224,7 @@ func (in *Interp) taskGroup(f Value, at ir.Pos) Value {
 	if parent != nil && parent.ctx != nil {
 		ctx = parent.ctx
 	}
-	g := &rgroup{root: in, at: at, nested: parent != nil}
+	g := &rgroup{root: in, at: at, owned: parent != nil}
 	g.ctx, g.cancel = context.WithCancel(ctx)
 	defer g.cancel()
 	group := &GroupVal{r: g}
@@ -195,7 +233,11 @@ func (in *Interp) taskGroup(f Value, at ir.Pos) Value {
 		result = c.callValue(f, at, group)
 		return result
 	})
-	// Wait without holding the lock, so the tasks can run.
+	// Wait without holding the lock, so the tasks can run. A task that
+	// waits for its group can't go on until the group's last task ends.
+	if g.owned {
+		in.g.active--
+	}
 	in.g.mu.Unlock()
 	g.wg.Wait()
 	in.g.mu.Lock()
@@ -214,6 +256,7 @@ func (in *Interp) taskGroup(f Value, at ir.Pos) Value {
 // the interpreter's lock held, and the task runs when the caller lets go.
 func (g *rgroup) spawn(fn func(*Interp) Value) {
 	g.live++
+	g.root.g.active++
 	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
@@ -222,11 +265,15 @@ func (g *rgroup) spawn(fn func(*Interp) Value) {
 		g.root.g.current = t
 		r := g.root.child(t).runTask(fn)
 		g.live--
+		g.root.g.active--
+		if g.live == 0 && g.owned {
+			g.root.g.active++ // the task that waits for the group goes on
+		}
 		if r.fault != nil && g.fault == nil {
 			g.fault = r.fault
 			g.cancel()
 		}
-		g.checkDeadlock()
+		g.root.g.checkDeadlock()
 		g.root.g.mu.Unlock()
 	}()
 }
