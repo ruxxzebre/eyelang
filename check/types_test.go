@@ -1022,6 +1022,25 @@ job j(login: Login) { sleep!(1 min) }`,
 job j() {
   let r: Result(Secret(String), ai.AiError) = ai.generate!(model: "m", prompt: "p")
 }`, []string{"3:47: ai.generate needs Schema, and Secret(String) has no Schema"}},
+		{"a model is asked for a type something names", `import ai
+job j() {
+  let r = ai.generate!(model: "m", prompt: "p")
+  print("{r}")
+  match ai.generate!(model: "m", prompt: "p") {
+    Ok(v) => print("{v}")
+    Err(e) => print("{e}")
+  }
+}
+type Answer = { n: Int }
+fn ask() -> Result(Answer, ai.AiError) = ai.generate!(model: "m", prompt: "p")
+job k() -> Result(Int, ai.AiError) {
+  let a = ai.generate!(model: "m", prompt: "p")?
+  let b: Answer = a
+  Ok(b.n)
+}`, []string{
+			"3:11: ai.generate needs to know the type to ask for, and nothing here says: write `let x: T = ai.generate!(…)`, or return it from a function that says its type",
+			"5:9: ai.generate needs to know the type to ask for, and nothing here says: write `let x: T = ai.generate!(…)`, or return it from a function that says its type",
+		}},
 		{"a mut parameter is passed with mut, and only it", `type Counter = { hits: Int }
 fn bump(mut c: Counter) { c.hits += 1 }
 fn look(c: Counter) -> Int = c.hits

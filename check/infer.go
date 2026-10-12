@@ -654,6 +654,13 @@ func (x *fnCheck) finish() {
 	}
 	for _, call := range x.calls {
 		call.call.Expected = toExpr(defaultLiteral(call.t))
+		if asked, ok := c.generated(call); ok {
+			free := map[*tvar]bool{}
+			freeVars(defaultLiteral(asked), free)
+			if len(free) > 0 {
+				c.typeErrorf(call.call.Pos, "ai.generate needs to know the type to ask for, and nothing here says: write `let x: T = ai.generate!(…)`, or return it from a function that says its type")
+			}
+		}
 	}
 	for _, t := range x.tries {
 		if t.k == nil {
@@ -1519,6 +1526,21 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 		}
 	}
 	return t
+}
+
+// generated is the type an ai.generate call asks a model for, if it is one.
+func (c *checker) generated(call pendingCall) (typ, bool) {
+	r, ok := call.call.Func.(*ir.Ref)
+	if !ok {
+		return nil, false
+	}
+	if fn, ok := r.Decl.(*ir.Func); !ok || fn.Host != "ai.generate" {
+		return nil, false
+	}
+	if res, ok := prune(call.t).(*tcon); ok && res.decl == c.ts.result && len(res.args) == 2 {
+		return res.args[0], true
+	}
+	return nil, false
 }
 
 func calleeName(e ir.Expr) string {

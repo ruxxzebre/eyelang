@@ -2480,7 +2480,8 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   program's `extern type` or a function has no `Schema`, so it can't be asked for.
 - **The expected type picks the schema.** `ai.generate` returns `Result(a, AiError) where a:
   Schema`, so the type comes from where the result goes: here, the job's return type. When nothing
-  says, write it: `let d: Digest = ai.generate!(…)?`.
+  says, write it: `let d: Digest = ai.generate!(…)?`; a call whose type the function doesn't
+  decide is an error at the call, since a schema can't be made for "any type".
 - **Replies are checked.** If a reply doesn't match the schema, the call asks once more with the
   problems listed, and then returns `Err(Malformed(reply, problems))`.
 - **Providers.** `ai.Provider` is `Anthropic` (the Messages API), `OpenAI` (chat completions) or
