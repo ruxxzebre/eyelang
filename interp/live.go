@@ -143,6 +143,9 @@ func (rt *runtime) skipTest(at ir.Pos, format string, args ...any) {
 // lookupSecret reads a secret as the package's lookupSecret does, and in a
 // live test keeps its value, so that a recording never holds it.
 func (in *Interp) lookupSecret(name string) (string, bool) {
+	if v, ok := in.rt.secrets[name]; ok {
+		return v, true
+	}
 	v, ok := lookupSecret(name)
 	if ok && v != "" && in.rt.live != nil {
 		in.rt.live.secrets[name] = v

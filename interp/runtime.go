@@ -3,6 +3,7 @@ package interp
 import (
 	"encoding/json"
 	"math/rand/v2"
+	"net/http"
 	"sort"
 	"strconv"
 	"time"
@@ -41,6 +42,11 @@ type runtime struct {
 	// live, in a test run with eye test --live, says which modules the
 	// real services answer for, and keeps what --record writes (live.go).
 	live *liveTest
+	// services answer contract calls in this process, by the path of the
+	// module that declares the contract, and secrets are given in place of
+	// the environment's: what RunOptions.Services and Secrets hold.
+	services map[string]http.Handler
+	secrets  map[string]string
 	// fastRetries makes retries of unreachable services immediate, in tests,
 	// and beforeRetry, when set, is called before each wait.
 	fastRetries bool

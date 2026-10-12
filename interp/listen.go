@@ -102,7 +102,10 @@ func servePort(ct *ir.Contract) (int, error) {
 // for it are answered 503.
 func (in *Interp) listen(served []*ir.Contract, w io.Writer) (stop func(), err error) {
 	rt := in.rt
-	var ls []*listener
+	ls, err := in.listeners(served)
+	if err != nil {
+		return nil, err
+	}
 	var ports []net.Listener
 	closeAll := func() {
 		for _, ln := range ports {
@@ -111,12 +114,49 @@ func (in *Interp) listen(served []*ir.Contract, w io.Writer) (stop func(), err e
 	}
 	// Every port is taken before any request is let in, so a program that
 	// can't serve one of its contracts stops before it has answered anyone.
+	for _, l := range ls {
+		port, err := servePort(l.ct)
+		if err != nil {
+			closeAll()
+			return nil, err
+		}
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			closeAll()
+			return nil, fmt.Errorf("can't serve %s on port %d: %v", contractName(l.ct), port, err)
+		}
+		l.addr = fmt.Sprintf(":%d", ln.Addr().(*net.TCPAddr).Port)
+		l.srv = &http.Server{Handler: in.handler(l), ReadHeaderTimeout: 10 * time.Second}
+		ports = append(ports, ln)
+	}
+	if in.g == nil {
+		in.g = &gil{}
+		in.g.mu.Lock() // the code running now holds it from here on
+	}
+	rt.kick = make(chan struct{}, 1)
+	for i, l := range ls {
+		go func() { _ = l.srv.Serve(ports[i]) }()
+		fmt.Fprintf(w, "eye run: serving %s on %s\n", contractName(l.ct), l.addr)
+	}
+	return func() {
+		rt.stopped = true
+		for _, l := range ls {
+			_ = l.srv.Close()
+		}
+		in.g.mu.Unlock()
+	}, nil
+}
+
+// listeners makes a listener for each served contract, with the credential
+// its @auth asks callers for and a route for each operation it implements,
+// but no port: listen takes those, and a Service answers in memory.
+func (in *Interp) listeners(served []*ir.Contract) ([]*listener, error) {
+	var ls []*listener
 	for _, ct := range served {
 		l := &listener{ct: ct}
 		if ct.HTTP.AuthSecret != "" {
-			s, ok := lookupSecret(ct.HTTP.AuthSecret)
+			s, ok := in.lookupSecret(ct.HTTP.AuthSecret)
 			if !ok {
-				closeAll()
 				return nil, fmt.Errorf("%s needs the secret %q to check its callers' @auth: set %s, or put a file %s in $EYE_SECRETS",
 					contractName(ct), ct.HTTP.AuthSecret, envName(ct.HTTP.AuthSecret), ct.HTTP.AuthSecret)
 			}
@@ -137,37 +177,9 @@ func (in *Interp) listen(served []*ir.Contract, w io.Writer) (stop func(), err e
 			}
 			l.routes = append(l.routes, &route{op: op, method: op.HTTP.Method, segments: strings.Split(op.HTTP.Path, "/")})
 		}
-		port, err := servePort(ct)
-		if err != nil {
-			closeAll()
-			return nil, err
-		}
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-		if err != nil {
-			closeAll()
-			return nil, fmt.Errorf("can't serve %s on port %d: %v", contractName(ct), port, err)
-		}
-		l.addr = fmt.Sprintf(":%d", ln.Addr().(*net.TCPAddr).Port)
-		l.srv = &http.Server{Handler: in.handler(l), ReadHeaderTimeout: 10 * time.Second}
 		ls = append(ls, l)
-		ports = append(ports, ln)
 	}
-	if in.g == nil {
-		in.g = &gil{}
-		in.g.mu.Lock() // the code running now holds it from here on
-	}
-	rt.kick = make(chan struct{}, 1)
-	for i, l := range ls {
-		go func() { _ = l.srv.Serve(ports[i]) }()
-		fmt.Fprintf(w, "eye run: serving %s on %s\n", contractName(l.ct), l.addr)
-	}
-	return func() {
-		rt.stopped = true
-		for _, l := range ls {
-			_ = l.srv.Close()
-		}
-		in.g.mu.Unlock()
-	}, nil
+	return ls, nil
 }
 
 // match finds the route for a request. allowed lists the methods its path

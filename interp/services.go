@@ -171,7 +171,13 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 	if op.HTTP == nil {
 		return nil, false
 	}
+	// A service in this process (RunOptions.Services) is called through its
+	// handler; any other at the address the environment gives.
+	local := rt.services[op.Contract.Module.Path]
 	base, ok := serviceURL(op.Contract.Module.Path)
+	if local != nil {
+		base, ok = "http://"+op.Contract.Module.Path+".eye", true
+	}
 	if !ok {
 		return nil, false
 	}
@@ -268,6 +274,9 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 	if key != nil {
 		headers.Set(wire.KeyHeader(op), show(key))
 	}
+	if local != nil {
+		headers.Set(clockHeader, rt.now.Format(time.RFC3339Nano))
+	}
 	if shared.AuthSecret != "" {
 		s := in.secret(shared.AuthSecret, at).value
 		if shared.AuthBearer {
@@ -288,7 +297,11 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 	httpErr := httpErrorType(op.Return)
 	rt.durable() // the service sees the call
 	for try := 0; ; try++ {
-		status, reply, err := in.doRequest(op.HTTP.Method, target, headers, body)
+		client := httpClient
+		if local != nil {
+			client = &http.Client{Transport: handlerTransport{local}}
+		}
+		status, reply, err := in.doRequestWith(client, op.HTTP.Method, target, headers, body)
 		retry := false
 		switch {
 		case err != nil && op.Command && !notSent(err):
@@ -337,7 +350,13 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		default:
 			in.faultf(at, "%s was refused with status %d: %s", name, status, clipText(string(reply), 300))
 		}
-		if !retry || !in.tryAgain(try) {
+		again := false
+		if retry && local != nil {
+			again = rt.skipAhead(try)
+		} else if retry {
+			again = in.tryAgain(try)
+		}
+		if !again {
 			panic(&Fault{Pos: at, Msg: name + " stayed out of reach", Kind: "Unavailable", Arg: name})
 		}
 	}
@@ -353,6 +372,11 @@ func (rt *runtime) retryDelay(try int) time.Duration {
 // doRequest makes an HTTP request. Other tasks run while it waits, and a
 // task cancelled meanwhile stops when it returns.
 func (in *Interp) doRequest(method, target string, headers http.Header, body []byte) (status int, data []byte, err error) {
+	return in.doRequestWith(httpClient, method, target, headers, body)
+}
+
+// doRequestWith makes an HTTP request with client, as doRequest does.
+func (in *Interp) doRequestWith(client *http.Client, method, target string, headers http.Header, body []byte) (status int, data []byte, err error) {
 	in.blocking(func(ctx context.Context) {
 		var r io.Reader
 		if body != nil {
@@ -365,7 +389,7 @@ func (in *Interp) doRequest(method, target string, headers http.Header, body []b
 		}
 		req.Header = headers
 		var resp *http.Response
-		resp, err = httpClient.Do(req)
+		resp, err = client.Do(req)
 		if err != nil {
 			return
 		}

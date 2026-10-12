@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
 	"strconv"
 
@@ -39,6 +40,12 @@ type RunOptions struct {
 	// Files holds the text of the recordings the fakes read, by path, in
 	// place of the disk's, as TestOptions.Files does.
 	Files map[string][]byte
+	// Services answer the calls to contracts in this process, by the path of
+	// the module that declares the contract (Service.Handlers), in place of
+	// the address the environment gives. Secrets are given in place of the
+	// environment's.
+	Services map[string]http.Handler
+	Secrets  map[string]string
 	// Virtual, when set, runs the program on a clock that skips ahead
 	// instead of waiting, as the online playground does: nothing listens on
 	// a port, and once main has run, sleeping runs wake and schedules fire
@@ -69,6 +76,7 @@ type VirtualClock struct {
 func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in := New(prog, opts.Stdout, opts.Stderr)
 	in.files = opts.Files
+	in.rt.services, in.rt.secrets = opts.Services, opts.Secrets
 	if c := opts.Crossings; c != nil {
 		c.enter("the runner")
 		in.rt.crossings = c
