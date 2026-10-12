@@ -238,12 +238,12 @@ title: "Open questions"
     literal where a `Regex` is expected could be too: `let tag: Regex = "<[^>]*>"`. Separately,
     `\` and `{` are escapes in a string, so `\d{4}` is written `"\\d\{4}"`; a raw string would
     let a pattern read as it is written everywhere else. Which of these, if either, is worth it?
-45. **Tests that reach the network.** "Tests replay recorded replies" is a promise ([section 1](/design/goals)),
-    but only a `with fakes(…)` makes it hold. Without one, a test's contract call goes to the
-    service when its address is set in the environment, such as `NOTIFY_URL`, and faults only
-    when it isn't; `http.get` goes to the page, and `ai.generate` to a provider whose key is
-    set. So a test can pass on one machine and fail on another, or send a real message.
-    `eye test --live` already names the modules that may reach their services ([section 20](/reference/language/time-secrets-tests)).
-    Should a call to another service in a test, outside `--live` and without `fakes(…)` for its
-    module, be an error that names the `with fakes(…)` to add? Then a test with no recordings
-    yet would need `--live` to run at all.
+45. **Tests that reach the network.** **Decided** (see the decision log, row "Tests don't reach
+    the network"): a call to another service in a test, outside `--live` and without
+    `fakes(…)` for its module, fails the test with an error that names what to add.
+46. **A permission model for effects.** Tests now deny the network unless `--live` names a
+    module, and `uses` already says what each public function may touch. Should the runner grant
+    effects the same way, so that `eye run` or a deployment lists the services, files and
+    processes a program may reach (`--allow net Notify, fs "/data"`), checked against the
+    effects the program's signatures declare? Should a test be able to ask for one live module
+    itself, and how would that interact with `@allow` and `eye gen policy`?

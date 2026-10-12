@@ -262,6 +262,7 @@ and `mut` marked at the call.
 | Midnight is `00:00` | **A time of day goes from `00:00` to `23:59:59`; `24:00` is not a time**, and a literal that names no real date or time is an error at it (section 4). Decided by the owner on 2026-10-12 | Each time of day has one spelling, so `daily(24:00, …)` can't mean two moments, and a schedule at `25:00` no longer fires at 01:00. The end of a day is the next day's `00:00` |
 | What recordings witness | **The recordings that count are those the tests replay with `fakes(m, from: "…")`; a read is a field access or a pattern that looks inside a field; a variant matched without reading its fields needs no recording** (section 17). Decided by the owner on 2026-10-12 | The tests' recordings are the ones checked against the contract and kept current, so they are the record of what the service sends; a stray JSON file isn't. Exhaustive matches must name every variant, so naming one can't need a witness, but using what it holds does. A contract with no recordings, or one the program serves, has no recordings to hold its reads to |
 | Promises and principles | **Two lists, both in section 1: five promises say what a user gets, and the principles say how we decide.** The README and the docs site are written from the promises; CLAUDE.md points to the principles instead of keeping its own list, and its five pillars became promises (waiting, state, outside calls) or principles (values, not shared objects; visible where it matters). Decided by the owner on 2026-10-13 | The main idea was written six times (the spec's goals, CLAUDE.md's pillars and its rules for deciding, the README, the site's home and why pages), and the copies had drifted: one said tests "can't flake", one that every call is keyed, one that native compilation comes later. A list for readers and a list for deciding serve different people, and one place for each keeps them true |
+| Tests don't reach the network | **In a test, a call to another service (a contract's operation, `http`, `ai`) is answered by `with fakes(…)` or goes out because `eye test --live` names its module; any other call fails the test at the call, with an error that names the `with fakes(…)` or `--live` to add** (section 20). Decided by the owner on 2026-10-13 | A test without fakes went to the service whenever its address or key was set, so it passed on one machine and failed on another, or sent a real message; "tests replay recorded replies" was a promise only `with fakes(…)` kept. Denying is the safe default; a general permission model for effects is open question 46 |
 
 ## 3. A tour
 
@@ -2839,6 +2840,20 @@ test "pull runs git once" {
                   "result": { "kind": "Ok", "value": { "status": 0, "stdout": "Already up to date.\n", "stderr": "" } } }] }
 ```
 
+**Tests don't reach the network.** In a test, every call to another service is answered by a
+`with fakes(…)` for its module, or goes out only because `--live` names that module: a contract's
+operations, `http` and `ai`. A call that neither covers fails the test at the call, and the error
+names what to add:
+
+```text
+fail  an unpaid invoice gets one reminder, three days later
+      main.eye:29:9: a test doesn't reach the network: mail.send has no fake here; add with
+      fakes(mail, from: "recordings/"), or run eye test --live mail
+```
+
+So a test gives the same answer on every machine and never sends a real message, and a test whose
+recordings don't exist yet is run once with `--live … --record` to make them.
+
 **Live tests.** `eye test --live ai,notify` runs the tests against the real services and models of
 the modules named, instead of their recordings. A `with fakes(…)` leaves those modules out, and
 their calls go where `eye run` sends them: to the address and with the secret the environment
@@ -3313,12 +3328,12 @@ operator. All binary operators associate to the left except `??`, which associat
     literal where a `Regex` is expected could be too: `let tag: Regex = "<[^>]*>"`. Separately,
     `\` and `{` are escapes in a string, so `\d{4}` is written `"\\d\{4}"`; a raw string would
     let a pattern read as it is written everywhere else. Which of these, if either, is worth it?
-45. **Tests that reach the network.** "Tests replay recorded replies" is a promise (section 1),
-    but only a `with fakes(…)` makes it hold. Without one, a test's contract call goes to the
-    service when its address is set in the environment, such as `NOTIFY_URL`, and faults only
-    when it isn't; `http.get` goes to the page, and `ai.generate` to a provider whose key is
-    set. So a test can pass on one machine and fail on another, or send a real message.
-    `eye test --live` already names the modules that may reach their services (section 20).
-    Should a call to another service in a test, outside `--live` and without `fakes(…)` for its
-    module, be an error that names the `with fakes(…)` to add? Then a test with no recordings
-    yet would need `--live` to run at all.
+45. **Tests that reach the network.** **Decided** (see the decision log, row "Tests don't reach
+    the network"): a call to another service in a test, outside `--live` and without
+    `fakes(…)` for its module, fails the test with an error that names what to add.
+46. **A permission model for effects.** Tests now deny the network unless `--live` names a
+    module, and `uses` already says what each public function may touch. Should the runner grant
+    effects the same way, so that `eye run` or a deployment lists the services, files and
+    processes a program may reach (`--allow net Notify, fs "/data"`), checked against the
+    effects the program's signatures declare? Should a test be able to ask for one live module
+    itself, and how would that interact with `@allow` and `eye gen policy`?

@@ -122,6 +122,20 @@ test "pull runs git once" {
                   "result": { "kind": "Ok", "value": { "status": 0, "stdout": "Already up to date.\n", "stderr": "" } } }] }
 ```
 
+**Tests don't reach the network.** In a test, every call to another service is answered by a
+`with fakes(…)` for its module, or goes out only because `--live` names that module: a contract's
+operations, `http` and `ai`. A call that neither covers fails the test at the call, and the error
+names what to add:
+
+```text
+fail  an unpaid invoice gets one reminder, three days later
+      main.eye:29:9: a test doesn't reach the network: mail.send has no fake here; add with
+      fakes(mail, from: "recordings/"), or run eye test --live mail
+```
+
+So a test gives the same answer on every machine and never sends a real message, and a test whose
+recordings don't exist yet is run once with `--live … --record` to make them.
+
 **Live tests.** `eye test --live ai,notify` runs the tests against the real services and models of
 the modules named, instead of their recordings. A `with fakes(…)` leaves those modules out, and
 their calls go where `eye run` sends them: to the address and with the secret the environment
