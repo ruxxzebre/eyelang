@@ -49,15 +49,12 @@ yet.
 
 **Ahead, in order**
 
-1. The core gaps (G.1 to G.19, under the phases). Done: G.1 to G.11 and G.16, among them the
-   four correctness bugs the spec review of 2026-10-12 found
-   ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)): entity methods
-   stay inside the program (G.7), jobs read entities only in recorded steps (G.8), re-entrant
-   entity calls share one state (G.9), and effects show at the boundary (G.10). Left: the
-   owner's decisions of 2026-10-12 (results must be used, G.12; a callback may read a `var`,
-   G.13; a lambda's record literal typed from context, G.14; any function callable as a method,
-   G.15), a checker bug (G.17), and two bugs the ergonomics analysis found: `eye doc` deletes an
-   existing `./api` (G.18, fix soon) and a test can't read a run's result (G.19).
+1. The core gaps (G.1 to G.19, under the phases). Done: all but G.13, G.14 and G.15, which are
+   being built (a callback may read a `var`, a lambda's record literal typed from context, any
+   function callable as a method). The spec review of 2026-10-12
+   ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)) is worked
+   through: its correctness bugs (G.7 to G.10), the sweep of the text (G.11), dropped results
+   (G.12) and the examples (C.7) are done.
 2. Runtime at scale (R.1 to R.7, under the phases): R.1 to R.4 are done (the exhaustiveness
    check, waking runs, map updates and entity writes, string `+=`); left are the journal (R.5),
    the call path (R.6) and waiting runs' records leaving RAM (R.7). Before 7.5.
