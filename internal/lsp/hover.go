@@ -123,8 +123,23 @@ func describe(target any, link func(string) (string, bool)) string {
 		if owner := ownerName(t.Of); owner != "" {
 			doc = strings.TrimSpace(doc + "\n\nA field of `" + owner + "`.")
 		}
+	case *ir.Func:
+		// A private function's signature doesn't say what it does; its
+		// effects, as the checker inferred them from its body, do.
+		if !t.Pub && !t.HasUses && t.Body != nil {
+			doc = strings.TrimSpace(doc + "\n\n" + inferredEffects(t.Effects))
+		}
 	}
 	return hoverText(sig, doc, link)
+}
+
+// inferredEffects says what a function without a uses clause does, as the
+// checker found it.
+func inferredEffects(effects []string) string {
+	if len(effects) == 0 {
+		return "Its effects, as inferred: none."
+	}
+	return "Its effects, as inferred: `uses {" + strings.Join(effects, ", ") + "}`."
 }
 
 func ownerName(of any) string {
