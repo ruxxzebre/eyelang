@@ -332,7 +332,7 @@ each names the closed issue it continues.
 | C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) (done) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
 | C.4 `NonZero` divisors checked (from 2.4) (done) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
 | C.5 `eye fmt` writes public functions' `uses` clauses (from 2.6) (done) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
-| C.6 10,000 waiting tasks within a memory budget (from 3.5) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
+| C.6 10,000 waiting tasks within a memory budget (from 3.5) (done) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
 | C.7 Every SPECS.md example passes the checker (phase 2's exit test) | [#80](https://github.com/ruxxzebre/eyelang/issues/80) |
 | C.8 Approvals answered by id, and only by the person asked (done) | [#71](https://github.com/ruxxzebre/eyelang/issues/71) |
 | C.9 `!` on publishing and starting child runs; every effect inferred (done) | [#72](https://github.com/ruxxzebre/eyelang/issues/72) |
@@ -404,6 +404,14 @@ What each task is, until its issue holds it:
 - **C.6 Many tasks (#41, 3.5).** No test runs 10,000 waiting tasks within a stated memory budget.
   **Done when:** a test starts 10,000 tasks that wait, and checks the memory they hold against a
   budget stated in the test.
+  Done on 2026-10-12: `interp/manytasks_test.go` starts 10,000 tasks in a task group, on a test's
+  clock (waiting an hour, or on a channel) and on the system clock (on a channel), and measures
+  the live heap and goroutine stacks while all of them wait. The budget is 12 KiB a task, about
+  117 MiB in all; a task holds about 9 KiB, an 8 KiB stack and 1 KiB of heap. The stack is the
+  interpreter's Go frames down to the wait: `eval`'s frame was 848 bytes, so a task waiting on a
+  channel needed a 16 KiB stack (17 KiB a task). `eval` now keeps its rarer cases in `evalMore`,
+  and its frame is 152 bytes. A 4 KiB stack would need smaller `apply`, `method` and `callFunc`
+  frames too, or the native backend.
 - **C.7 SPECS.md's examples through the checker (phase 2's exit test, #3).** No test runs the
   checker on them. Run one by one, 4 of the 33 example files check; most of the others are
   fragments that use names they don't declare. They need a context to check in (a stub module

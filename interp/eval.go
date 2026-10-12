@@ -331,6 +331,12 @@ func (in *Interp) construct(v *ir.Variant, args []argVal, at ir.Pos) Value {
 
 // ---------------------------------------------------------------- expressions
 
+// eval evaluates an expression. It holds only the cases that nest deeply,
+// such as blocks, ifs, lets and calls, and keeps their work in functions of
+// their own, so that its stack frame stays small: every level of Eyelang code
+// that runs or waits costs one eval frame on the task's goroutine, and a
+// waiting task's memory is mostly its stack (interp/manytasks_test.go). The
+// other cases are in evalMore.
 func (in *Interp) eval(f *frame, e ir.Expr) Value {
 	if f.ck != nil && f.ck.stmt == e {
 		// A statement of a job's body that holds statements keeps its
@@ -343,14 +349,10 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 	switch x := e.(type) {
 	case *ir.Lit:
 		return in.lit(x)
-	case *ir.InZone:
-		return in.inZone(f, x)
-	case *ir.EmptyBraces:
-		return Empty{}
 	case *ir.Local:
 		v := f.slots[x.Slot]
 		if _, lost := v.(unsaved); lost {
-			in.faultf(x.Pos, "%s held a value that can't be saved, which a checkpoint didn't keep, and is read after it: the checker should have refused this", x.Name)
+			in.lostLocal(x)
 		}
 		return v
 	case *ir.Self:
@@ -367,6 +369,69 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 		return in.durable(f, x)
 	case *ir.Field:
 		return in.field(in.eval(f, x.Value), x.Name, x.Pos)
+	case *ir.If:
+		if in.truth(in.eval(f, x.Cond), x.Pos) {
+			return in.eval(f, x.Then)
+		}
+		if x.Else != nil {
+			return in.eval(f, x.Else)
+		}
+		return ir.Unit{}
+	case *ir.Match:
+		return in.evalMatch(f, x)
+	case *ir.Block:
+		var v Value = ir.Unit{}
+		for _, s := range x.Exprs {
+			v = in.eval(f, s)
+		}
+		if !x.Value {
+			return ir.Unit{}
+		}
+		return v
+	case *ir.Let:
+		v := in.eval(f, x.Value)
+		if !in.match(f, x.Pattern, v) {
+			in.letElse(f, x, v)
+		}
+		return ir.Unit{}
+	}
+	return in.evalMore(f, e)
+}
+
+// lostLocal faults on reading a local that a checkpoint couldn't keep.
+func (in *Interp) lostLocal(x *ir.Local) {
+	in.faultf(x.Pos, "%s held a value that can't be saved, which a checkpoint didn't keep, and is read after it: the checker should have refused this", x.Name)
+}
+
+// evalMatch runs the first arm whose pattern matches and whose guard holds.
+func (in *Interp) evalMatch(f *frame, x *ir.Match) Value {
+	v := in.eval(f, x.Value)
+	for _, arm := range x.Arms {
+		if in.match(f, arm.Pattern, v) && (arm.Guard == nil || in.truth(in.eval(f, arm.Guard), x.Pos)) {
+			return in.eval(f, arm.Body)
+		}
+	}
+	in.faultf(x.Pos, "no arm matches %s", show(v))
+	return nil
+}
+
+// letElse runs a let's else block, for a value its pattern didn't match;
+// the block must leave.
+func (in *Interp) letElse(f *frame, x *ir.Let, v Value) {
+	if x.Else == nil {
+		in.faultf(x.Pos, "%s doesn't match the pattern", show(v))
+	}
+	in.eval(f, x.Else)
+	in.faultf(x.Pos, "the else block of a let must leave with return, break or continue")
+}
+
+// evalMore evaluates the expressions eval leaves out.
+func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
+	switch x := e.(type) {
+	case *ir.InZone:
+		return in.inZone(f, x)
+	case *ir.EmptyBraces:
+		return Empty{}
 	case *ir.Index:
 		return in.index(in.eval(f, x.Value), in.eval(f, x.Index), x.Pos)
 	case *ir.Unary:
@@ -385,41 +450,6 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 			return in.truth(in.eval(f, x.R), x.Pos)
 		}
 		return in.binary(x.Op, in.eval(f, x.L), in.eval(f, x.R), x.Pos)
-	case *ir.If:
-		if in.truth(in.eval(f, x.Cond), x.Pos) {
-			return in.eval(f, x.Then)
-		}
-		if x.Else != nil {
-			return in.eval(f, x.Else)
-		}
-		return ir.Unit{}
-	case *ir.Match:
-		v := in.eval(f, x.Value)
-		for _, arm := range x.Arms {
-			if in.match(f, arm.Pattern, v) && (arm.Guard == nil || in.truth(in.eval(f, arm.Guard), x.Pos)) {
-				return in.eval(f, arm.Body)
-			}
-		}
-		in.faultf(x.Pos, "no arm matches %s", show(v))
-	case *ir.Block:
-		var v Value = ir.Unit{}
-		for _, s := range x.Exprs {
-			v = in.eval(f, s)
-		}
-		if !x.Value {
-			return ir.Unit{}
-		}
-		return v
-	case *ir.Let:
-		v := in.eval(f, x.Value)
-		if !in.match(f, x.Pattern, v) {
-			if x.Else == nil {
-				in.faultf(x.Pos, "%s doesn't match the pattern", show(v))
-			}
-			in.eval(f, x.Else)
-			in.faultf(x.Pos, "the else block of a let must leave with return, break or continue")
-		}
-		return ir.Unit{}
 	case *ir.Assign:
 		v := in.eval(f, x.Value)
 		if x.Op != "=" {
