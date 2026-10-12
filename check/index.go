@@ -77,6 +77,29 @@ func (c *checker) loadAll() {
 		c.load(path, dir)
 		return nil
 	})
+	// A module held only in the overlay is part of the program too.
+	var dirs []string
+	for p := range c.overlay {
+		if strings.HasSuffix(p, ".eye") {
+			dirs = append(dirs, filepath.Dir(p))
+		}
+	}
+	slices.Sort(dirs)
+	for _, dir := range slices.Compact(dirs) {
+		rel, err := filepath.Rel(c.root, dir)
+		if err != nil || strings.HasPrefix(rel, "..") || rel != "." && slices.ContainsFunc(strings.Split(filepath.ToSlash(rel), "/"), func(part string) bool {
+			return strings.HasPrefix(part, ".")
+		}) {
+			continue
+		}
+		path := strings.ReplaceAll(filepath.ToSlash(rel), "/", ".")
+		if rel == "." {
+			path = ""
+		}
+		if c.modules[path] == nil {
+			c.load(path, dir)
+		}
+	}
 }
 
 func hasEyeFiles(dir string) bool {
@@ -327,6 +350,27 @@ func (c *checker) readFile(path string) ([]byte, error) {
 		return src, nil
 	}
 	return os.ReadFile(path)
+}
+
+// isDir reports whether dir is a directory on disk, or holds a file of the
+// overlay: a program held only in memory, as in the online playground, has
+// its directories there and nowhere else.
+func (c *checker) isDir(dir string) bool {
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		return true
+	}
+	return c.overlayHasDir(dir)
+}
+
+// overlayHasDir reports whether a file of the overlay is in dir or below it.
+func (c *checker) overlayHasDir(dir string) bool {
+	dir = filepath.Clean(dir)
+	for p := range c.overlay {
+		if rel, err := filepath.Rel(dir, p); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+	return false
 }
 
 // Definition returns where target is declared: the span of its name. It has

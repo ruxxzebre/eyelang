@@ -171,7 +171,7 @@ func parseFile(path string, src []byte) *ir.File {
 // load reads the module at path from dir, and the modules it imports.
 func (c *checker) load(path, dir string) *module {
 	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err != nil && !c.overlayHasDir(dir) {
 		c.errorf(ir.Pos{}, "reading %s: %v", dir, err)
 		return nil
 	}
@@ -323,7 +323,7 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 		var searched []string
 		for _, root := range c.importRoots {
 			d := filepath.Join(append([]string{root}, parts...)...)
-			if info, err := os.Stat(d); err == nil && info.IsDir() {
+			if c.isDir(d) {
 				dir = d
 				break
 			}

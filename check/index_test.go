@@ -215,6 +215,44 @@ func TestOverlay(t *testing.T) {
 	}
 }
 
+// TestOverlayOnly checks a program that is nowhere on disk, as the online
+// playground holds one: its modules, imports and eye.toml are all overlay.
+func TestOverlayOnly(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nowhere")
+	at := func(p string) string { return filepath.Join(dir, filepath.FromSlash(p)) }
+	overlay := map[string][]byte{
+		at("eye.toml"):           []byte("modules = [\"vendor\"]\n"),
+		at("main.eye"):           []byte("import shapes\nimport units\n\npub fn main() uses {stdio} { print(\"{shapes.area(2)} {units.cm(3)}\") }\n"),
+		at("shapes/shapes.eye"):  []byte("pub fn area(side: Int) -> Int = side * side\n"),
+		at("vendor/units/u.eye"): []byte("pub fn cm(n: Int) -> String = \"{n} cm\"\n"),
+	}
+	res := Check(dir, Options{Overlay: overlay})
+	for _, d := range res.Diagnostics {
+		t.Error(d)
+	}
+	if res.Program == nil || res.Program.Root == nil || len(res.Program.Root.Files) != 1 {
+		t.Fatalf("the program's own module wasn't loaded: %+v", res.Program)
+	}
+
+	// Asked for all of them, the checker loads the modules nothing imports,
+	// but not those in a hidden directory.
+	overlay[at("extra/extra.eye")] = []byte("fn f() -> Int = \"x\"\n")
+	overlay[at("lib/.cache/c.eye")] = []byte("fn g() -> Int = \"x\"\n")
+	res = Check(dir, Options{Overlay: overlay, All: true})
+	if len(res.Diagnostics) != 1 || res.Diagnostics[0].Pos.File.Path != at("extra/extra.eye") {
+		t.Errorf("diagnostics = %v; want one in extra/extra.eye", res.Diagnostics)
+	}
+	delete(overlay, at("extra/extra.eye"))
+	delete(overlay, at("lib/.cache/c.eye"))
+
+	// A module the overlay doesn't hold is still missing.
+	overlay[at("main.eye")] = []byte("import nothere\n")
+	res = Check(dir, Options{Overlay: overlay})
+	if len(res.Diagnostics) != 1 || !strings.Contains(res.Diagnostics[0].Message, "no module nothere") {
+		t.Errorf("diagnostics = %v; want one saying there is no module nothere", res.Diagnostics)
+	}
+}
+
 func TestRoot(t *testing.T) {
 	dir := writeProgram(t, map[string]string{
 		"lab/eye.toml":          "",

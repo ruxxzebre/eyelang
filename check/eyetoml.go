@@ -37,7 +37,7 @@ func (c *checker) readConfig() {
 			continue
 		}
 		dir := filepath.Join(c.root, filepath.FromSlash(e.value))
-		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		if !c.isDir(dir) {
 			c.errorf(at, "modules lists %s, but there is no directory %s", e.value, dir)
 			continue
 		}
