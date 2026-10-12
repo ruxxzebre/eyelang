@@ -6,7 +6,8 @@ file once nothing is left.
 
 In flight on 2026-10-12, in worktrees of the coordinating session, to be merged into `dev` by
 it: 7.13 with 7.5 (#117, #78; the low IR's layouts and counting are written, the C back end
-switches over next) and the audit's runtime bugs (#127 to #138). 7.8, 7.14 and G.20 are merged. If they are merged, `git
+switches over next). 7.8, 7.14, G.20 and the audit's fixable bugs (#120 to #130, #133, #137,
+#138) are merged; #131, #134, #135 and #136 wait on the owner. If they are merged, `git
 worktree list` shows nothing under `.claude/worktrees` and ROADMAP marks them done. If one is
 still open with no worktree, it was never merged: start it again from its issue.
 

@@ -971,7 +971,10 @@ whole-program specialisation, and jobs resuming from saved frames.
   from 2026-10-12), each matching the interpreter. Open for `regex`: RE2's semantics in C need a
   library (RE2 itself is C++; a C port, or the runner's Go `regexp` once 7.6 hosts compiled
   programs) or an engine of our own; the interpreter's host functions (`interp/regex.go`) are
-  what it must match.
+  what it must match. Also two the interpreter fixed on 2026-10-12 and native code still has: a
+  type's own `impl Show` used inside lists, Options and records (#127: the C runtime's
+  `ey_show_to` walks descriptors with no Show slot), and recursion too deep as a fault rather
+  than a crash (#128: the interpreter's `maxDepth`).
   **Done when:** the lab's six core-blocked functions compile and `testdata/programs/limits`
   gets past `Instant.date`.
 - **7.10 Crossings.** The interpreter counts the operations that would cross from compiled code
