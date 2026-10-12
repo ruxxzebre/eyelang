@@ -30,6 +30,8 @@ func (e *fn) moreHosts(x *lir.Runtime, f *ir.Func, args map[string]*lir.Value) b
 		e.printf("eyb_random_pick(%s, %s, %s);", v("xs"), out(), rt())
 	case "random.shuffle":
 		e.assign(x.Dst, fmt.Sprintf("eyb_random_shuffle(%s)", v("xs")))
+	case "fs.lines":
+		e.printf("eyb_fs_lines(%s, %s, %s);", v("path"), out(), rt())
 	default:
 		return false
 	}

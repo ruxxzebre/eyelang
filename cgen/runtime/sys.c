@@ -126,8 +126,9 @@ static void ok_unit(void *out, const ey_type *res) {
 }
 
 /* read_file reads a whole file: as a String, which must be UTF-8, when
- * text is set, and as Bytes otherwise. */
-static void read_file(ey_v p, void *out, const ey_type *res, bool text) {
+ * text is set, and as Bytes otherwise; with lines set too, as the String's
+ * lines (fs.lines). */
+static void read_file(ey_v p, void *out, const ey_type *res, bool text, bool lines) {
 	char *full = path(p);
 	FILE *f = fopen(full, "rb");
 	free(full);
@@ -157,12 +158,20 @@ static void read_file(ey_v p, void *out, const ey_type *res, bool text) {
 		fs_err(out, res, p, EILSEQ, "not UTF-8 text");
 		return;
 	}
-	ey_ok_v(res, out, ey_buf_take(&b));
+	ey_v s = ey_buf_take(&b);
+	if (lines) {
+		ey_v l = eyb_str_lines(s, res->variants[0].fields[0]);
+		ey_drop(s);
+		s = l;
+	}
+	ey_ok_v(res, out, s);
 }
 
-void eyb_fs_read_text(ey_v p, void *out, const ey_type *res) { read_file(p, out, res, true); }
+void eyb_fs_read_text(ey_v p, void *out, const ey_type *res) { read_file(p, out, res, true, false); }
 
-void eyb_fs_read_bytes(ey_v p, void *out, const ey_type *res) { read_file(p, out, res, false); }
+void eyb_fs_read_bytes(ey_v p, void *out, const ey_type *res) { read_file(p, out, res, false, false); }
+
+void eyb_fs_lines(ey_v p, void *out, const ey_type *res) { read_file(p, out, res, true, true); }
 
 void eyb_fs_write_text(ey_v p, ey_v text, bool append, void *out, const ey_type *res) {
 	char *full = path(p);

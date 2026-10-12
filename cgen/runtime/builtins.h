@@ -173,6 +173,7 @@ void ey_sandbox(bool on);
 void ey_sandbox_end(void);
 void eyb_fs_read_text(ey_v p, void *out, const ey_type *res);
 void eyb_fs_read_bytes(ey_v p, void *out, const ey_type *res);
+void eyb_fs_lines(ey_v p, void *out, const ey_type *res);
 /* writes a String's or Bytes' bytes */
 void eyb_fs_write_text(ey_v p, ey_v text, bool append, void *out, const ey_type *res);
 bool eyb_fs_exists(ey_v p);
