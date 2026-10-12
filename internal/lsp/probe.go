@@ -12,8 +12,8 @@ import (
 // Probe answers one request the way an editor would get it, and prints the
 // result as plain text: each location as path:line:column, 1-based, with
 // paths below the working directory relative to it, or a hover's Markdown.
-// method is "definition", "references", "implementation", "declaration" or
-// "hover"; at is FILE:LINE:COLUMN, the column counted in characters, and a
+// method is "definition", "type-definition", "references", "implementation",
+// "declaration" or "hover"; at is FILE:LINE:COLUMN, the column counted in characters, and a
 // position outside the file is an error.
 // The working directory is the workspace, where references to the prelude
 // and built-ins are looked for.
@@ -56,6 +56,8 @@ func Probe(method, at string, out io.Writer) error {
 	switch method {
 	case "definition":
 		result, rerr = s.definition(d, p)
+	case "type-definition":
+		result, rerr = s.typeDefinition(d, p)
 	case "references":
 		result, rerr = s.references(d, p, true)
 	case "implementation":
@@ -65,7 +67,7 @@ func Probe(method, at string, out io.Writer) error {
 	case "hover":
 		result, rerr = s.hover(d, p)
 	default:
-		return fmt.Errorf("can't probe %s: only definition, references, implementation, declaration and hover", method)
+		return fmt.Errorf("can't probe %s: only definition, type-definition, references, implementation, declaration and hover", method)
 	}
 	if rerr != nil {
 		return rerr

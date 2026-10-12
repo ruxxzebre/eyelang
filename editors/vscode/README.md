@@ -17,6 +17,11 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
   whose `@host` the interpreter provides, such as `ai.generate`, to the Go host function. Go to
   Implementations on a built-in type lists every line of the checker and the interpreter that
   names it.
+- **go to type definition** on a field, a local, a parameter, a function's name or a record
+  literal: the declaration of its type. A type made of others goes to the innermost declared one,
+  `Article` for `List(Article)` or `Option(Article)`, and offers each when there are several, as
+  for `Map(UserId, Article)`; an entity reference goes to the entity, and `Int` or `String` to
+  `ir/builtin.eye`.
 - **find references** (Shift-F12, or Ctrl/Cmd-click on a declaration): every use in the program,
   across its modules. A name from the prelude, a standard module or the language itself is looked
   for in every program in the workspace (each directory with an `eye.toml`).

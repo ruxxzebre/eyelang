@@ -329,7 +329,7 @@ session can use its modules. :help lists the commands.
 ## eye lsp {#lsp}
 
 ```text
-usage: eye lsp [--definition | --references | --implementation | --declaration | --hover FILE:LINE:COLUMN]
+usage: eye lsp [--definition | --type-definition | --references | --implementation | --declaration | --hover FILE:LINE:COLUMN]
 
 Runs the language server, speaking LSP on standard input and output.
 Editors start it; see editors/vscode. With one of the flags it answers one
@@ -346,6 +346,8 @@ without an editor.
     	print every place eye implements the keyword at FILE:LINE:COLUMN, and exit
   -references FILE:LINE:COLUMN
     	print every use of the name at FILE:LINE:COLUMN, and exit
+  -type-definition FILE:LINE:COLUMN
+    	print where the type of what is at FILE:LINE:COLUMN is declared, and exit
 ```
 
 ## eye version {#version}

@@ -14,6 +14,7 @@ func runLSP(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	probes := []struct{ method, usage string }{
 		{"definition", "print where the name or keyword at `FILE:LINE:COLUMN` is defined, and exit"},
+		{"type-definition", "print where the type of what is at `FILE:LINE:COLUMN` is declared, and exit"},
 		{"references", "print every use of the name at `FILE:LINE:COLUMN`, and exit"},
 		{"implementation", "print every place eye implements the keyword at `FILE:LINE:COLUMN`, and exit"},
 		{"declaration", "print the SPECS.md section of the keyword at `FILE:LINE:COLUMN`, and exit"},
@@ -24,7 +25,7 @@ func runLSP(args []string, stdout, stderr io.Writer) int {
 		at[p.method] = flags.String(p.method, "", p.usage)
 	}
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye lsp [--definition | --references | --implementation | --declaration | --hover FILE:LINE:COLUMN]")
+		fmt.Fprintln(stderr, "usage: eye lsp [--definition | --type-definition | --references | --implementation | --declaration | --hover FILE:LINE:COLUMN]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs the language server, speaking LSP on standard input and output.")
 		fmt.Fprintln(stderr, "Editors start it; see editors/vscode. With one of the flags it answers one")

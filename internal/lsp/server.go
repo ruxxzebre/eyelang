@@ -159,6 +159,15 @@ func (s *server) handle(m *message) (any, *responseError) {
 			return nil, err
 		}
 		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) { return s.definition(d, p.Position) })
+	case "textDocument/typeDefinition":
+		var p struct {
+			textDocumentParams
+			Position Position `json:"position"`
+		}
+		if err := decode(&p); err != nil {
+			return nil, err
+		}
+		return s.withDoc(p.TextDocument.URI, func(d *document) (any, *responseError) { return s.typeDefinition(d, p.Position) })
 	case "textDocument/implementation", "textDocument/declaration":
 		var p struct {
 			textDocumentParams
@@ -247,6 +256,7 @@ func (s *server) initialize() any {
 			"documentSymbolProvider":     true,
 			"foldingRangeProvider":       true,
 			"definitionProvider":         true,
+			"typeDefinitionProvider":     true,
 			"referencesProvider":         true,
 			"implementationProvider":     true,
 			"declarationProvider":        true,

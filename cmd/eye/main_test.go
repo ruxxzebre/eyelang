@@ -364,13 +364,13 @@ func TestLSP(t *testing.T) {
 	}
 }
 
-// TestLSPProbe answers one definition and one references request from the
-// command line, in a program of two modules.
+// TestLSPProbe answers definition, references and type definition requests
+// from the command line, in a program of two modules.
 func TestLSPProbe(t *testing.T) {
 	dir := t.TempDir()
 	for name, src := range map[string]string{
 		"eye.toml":          "",
-		"main.eye":          "import shapes\n\nfn main() {\n  print(shapes.size())\n}\n",
+		"main.eye":          "import shapes\n\nfn main() {\n  print(shapes.size())\n}\n\ntype Box = { side: Int }\n\nfn box(b: Box) -> Int = b.side\n",
 		"shapes/shapes.eye": "pub fn size() -> Int = 2\n",
 	} {
 		p := filepath.Join(dir, filepath.FromSlash(name))
@@ -386,6 +386,7 @@ func TestLSPProbe(t *testing.T) {
 		{"--definition main.eye:4:17", "shapes/shapes.eye:1:8\n"},
 		{"--references shapes/shapes.eye:1:8", "main.eye:4:16\nshapes/shapes.eye:1:8\n"},
 		{"--definition main.eye:2:1", "nothing\n"},
+		{"--type-definition main.eye:9:8", "main.eye:7:6\n"},
 	}
 	for _, c := range cases {
 		var stdout, stderr bytes.Buffer
@@ -400,7 +401,7 @@ func TestLSPProbe(t *testing.T) {
 	}
 	for at, want := range map[string]string{
 		"main.eye:4":    "FILE:LINE:COLUMN",
-		"main.eye:99:1": "has 6 lines",
+		"main.eye:99:1": "has 10 lines",
 		"main.eye:4:40": "line 4 has 22 characters",
 	} {
 		var stdout, stderr bytes.Buffer

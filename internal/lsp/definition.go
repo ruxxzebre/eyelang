@@ -69,6 +69,38 @@ func (s *server) definition(d *document, p Position) (any, *responseError) {
 	return nil, nil
 }
 
+// typeDefinition answers textDocument/typeDefinition: where the type of what
+// is at p is declared. A type made of others, such as List(Article), goes
+// to the innermost declared types in it, all of them when there are several
+// (Map(UserId, Article)), for the editor to offer; a built-in type, to its
+// declaration in builtin.eye; an entity reference, to the entity.
+func (s *server) typeDefinition(d *document, p Position) (any, *responseError) {
+	path, ok := uriPath(d.uri)
+	if !ok {
+		return nil, nil
+	}
+	out := []location{}
+	for _, decl := range s.checked(path).Index.TypeDefinitions(path, d.offset(p)) {
+		var loc location
+		if t, ok := decl.(check.BuiltinType); ok {
+			at, found := check.BuiltinDeclaration(t.Name, true)
+			if !found {
+				continue
+			}
+			if loc, ok = s.posLocation(at); !ok {
+				continue
+			}
+		} else if loc, ok = s.targetLocation(decl); !ok {
+			continue
+		}
+		out = append(out, loc)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
+
 // declaredName returns the name a declaration, parameter or binding declares
 // at offset.
 func declaredName(d *document, offset int) *syntax.Node {
