@@ -340,6 +340,7 @@ Runs column says whether the runtime does what the attribute says.
 | `onGap: Shift \| Skip` and `onOverlap: First \| Second \| Both` | ✓ | ✓ | ✓ | [programs/schedules](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/schedules/schedules.eye#L96) |
 | A missed firing runs once on restart | n/a | n/a | ✓ | [store_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L355), [a cron across restarts](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L391) |
 | `at.date(in:)`, `at.time(in:)`, `time.next(…)`, `day.at(…)`, `day.format(…)`, `at.unix()` | ✓ | ✓ | ✓ | [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L344) |
+| `t.format("%H:%M")`: a time of day written out, with `%H`, `%I`, `%M`, `%S` and `%p` | ✓ | ✓ | ✓ | [times_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/times_test.go), [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L475) |
 | `secret(name)` from the environment or `$EYE_SECRETS` | ✓ | ✓ | partial: the environment is tested; `$EYE_SECRETS` works but has no test | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
 | `env.get(name)` | ✓ | ✓ | ✓ | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L16) |
 | `test` blocks, including those of imported modules | ✓ | ✓ | ✓ | [interp_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/interp_test.go#L44) |

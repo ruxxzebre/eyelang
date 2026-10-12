@@ -2193,7 +2193,7 @@ func (x *fnCheck) timeMethod(r *tcon, e *ir.MethodCall) (typ, bool) {
 		return sig(tInstant, in, fparam{name: "after", t: tInstant})
 	case r.name == "Date" && e.Name == "at":
 		return sig(tInstant, fparam{name: "time", t: tTime}, in)
-	case r.name == "Date" && e.Name == "format":
+	case (r.name == "Date" || r.name == "Time") && e.Name == "format":
 		return sig(tString, fparam{name: "pattern", t: tString})
 	}
 	return nil, false

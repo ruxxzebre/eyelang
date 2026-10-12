@@ -472,7 +472,7 @@ fn gather(since: Instant, until: Instant) -> News {
 }
 
 ## An instant as the window gives it: `12 October 07:40`.
-fn irishTime(at: Instant) -> String = "{at.date(in: dublin).format("%d %B")} {"{at.time(in: dublin)}" |> take(5)}"
+fn irishTime(at: Instant) -> String = "{at.date(in: dublin).format("%d %B")} {at.time(in: dublin).format("%H:%M")}"
 
 fn item(e: miniflux.Entry) -> Item = {
   source: e.feed.title,

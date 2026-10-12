@@ -50,7 +50,13 @@ taken from the host's clock:
 | `08:00.next(in: dublin, after: at)` | the first instant after `at` when that clock shows 08:00 |
 | `day.at(07:40, in: dublin)` | the instant that day at that time |
 | `day.format("%A %-d %B")` | the date written out: `Monday 12 October` |
+| `t.format("%H:%M")` | the time of day written out: `07:40`, or `7:40 AM` with `"%-I:%M %p"` |
 | `at.unix()` | seconds since 1970-01-01 00:00 UTC, which many APIs take |
+
+`format` takes strftime's directives: for a date `%A` (the weekday), `%B` (the month), `%d`,
+`%m` and `%Y`; for a time of day `%H` (00 to 23), `%I` (01 to 12), `%M`, `%S` and `%p` (`AM` or
+`PM`); `%%` is a percent sign, and `-` after `%` drops the leading zero, as in `%-d` and `%-H`. A
+time's text is `07:40:00`, so `t.format("%H:%M")` is how to write it without the seconds.
 
 **Secrets and configuration.** A secret is read by name when the program needs it: from the
 environment variable of that name in upper case, with `-` and `.` as `_`, or from the file of that

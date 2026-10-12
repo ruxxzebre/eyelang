@@ -161,8 +161,6 @@ Language server and editor:
 - CI could cache `editors/vscode/node_modules` by `package-lock.json` (about 4 s).
 
 Library:
-- No hour-and-minute format for a time of day; the digest takes the first five characters of
-  its text.
 - Not built: `fs.lines`, reading a file as bytes, fakes for `process`, regular expressions. The
   digest's `plain()` strips HTML without them.
 

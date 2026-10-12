@@ -962,8 +962,8 @@ whole-program specialisation, and jobs resuming from saved frames.
   linear so that it is moved to the linear list. The stale numbers in 7.4, compilation.md and
   the performance review are fixed. The allocation check (the counting allocator in debug
   builds) landed with 7.14.
-- **7.9 Core gaps in C.** The time methods, `toJson`, the `Schema`/`Save` derivations,
-  `random.*` and `http.get`, each matching the interpreter.
+- **7.9 Core gaps in C.** The time methods (`Time.format` too, from 2026-10-12), `toJson`, the
+  `Schema`/`Save` derivations, `random.*` and `http.get`, each matching the interpreter.
   **Done when:** the lab's six core-blocked functions compile and `testdata/programs/limits`
   gets past `Instant.date`.
 - **7.10 Crossings.** The interpreter counts the operations that would cross from compiled code

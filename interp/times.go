@@ -33,6 +33,7 @@ func loadLocation(name string) (*time.Location, error) {
 //	t.next(in: zone, after: instant)  the first instant after `after` when the clock shows t
 //	day.at(t, in: zone)               the instant that day at time t
 //	day.format("%A %-d %B")           the date written out
+//	t.format("%H:%M")                 the time of day written out
 func (in *Interp) timeMethod(recv Value, name string, args []argVal, at ir.Pos) (Value, bool) {
 	pos, named := split(args)
 	zone := func() *time.Location {
@@ -72,6 +73,13 @@ func (in *Interp) timeMethod(recv Value, name string, args []argVal, at ir.Pos) 
 			}
 			return t, true
 		}
+		if name == "format" {
+			layout, ok := pos[0].(string)
+			if len(pos) != 1 || !ok {
+				in.faultf(at, `format takes a pattern, such as "%%H:%%M"`)
+			}
+			return formatDate(time.Date(0, 1, 1, x.Hour, x.Minute, x.Second, 0, time.UTC), layout), true
+		}
 	case ir.Date:
 		switch name {
 		case "at":
@@ -91,8 +99,10 @@ func (in *Interp) timeMethod(recv Value, name string, args []argVal, at ir.Pos) 
 	return nil, false
 }
 
-// formatDate writes a date with strftime's directives: %A weekday, %B month,
-// %d day, %-d day without padding, %m month number, %Y year, %% a percent sign.
+// formatDate writes a date or a time of day with strftime's directives: %A
+// weekday, %B month, %d day, %m month number, %Y year; %H hour from 00 to 23,
+// %I hour from 01 to 12, %M minute, %S second, %p AM or PM; %% a percent
+// sign. A - after the % drops the leading zero: %-d, %-H, %-I.
 func formatDate(t time.Time, layout string) string {
 	var b strings.Builder
 	for i := 0; i < len(layout); i++ {
@@ -112,10 +122,30 @@ func formatDate(t time.Time, layout string) string {
 			b.WriteString(t.Format("01"))
 		case 'Y':
 			b.WriteString(strconv.Itoa(t.Year()))
+		case 'H':
+			b.WriteString(t.Format("15"))
+		case 'I':
+			b.WriteString(t.Format("03"))
+		case 'M':
+			b.WriteString(t.Format("04"))
+		case 'S':
+			b.WriteString(t.Format("05"))
+		case 'p':
+			b.WriteString(t.Format("PM"))
 		case '-':
-			if i+1 < len(layout) && layout[i+1] == 'd' {
+			if i+1 == len(layout) {
+				break
+			}
+			switch layout[i+1] {
+			case 'd':
 				i++
 				b.WriteString(strconv.Itoa(t.Day()))
+			case 'H':
+				i++
+				b.WriteString(strconv.Itoa(t.Hour()))
+			case 'I':
+				i++
+				b.WriteString(t.Format("3"))
 			}
 		default:
 			b.WriteByte(layout[i])
