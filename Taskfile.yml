@@ -149,7 +149,7 @@ tasks:
     cmds:
       - go run ./cmd/eye fmt --check testdata/fmt/*.golden.eye
       # The programs, except the tour, which is the spec's text.
-      - go run ./cmd/eye fmt --check $(find testdata/programs testdata/lab check/std check/runtime check/prelude.eye -name '*.eye' ! -name tour.eye)
+      - go run ./cmd/eye fmt --check $(find testdata/programs testdata/lab check/std check/runtime check/prelude.eye cgen/testdata -name '*.eye' ! -name tour.eye)
       # The docs site's programs.
       - go run ./cmd/eye fmt --check $(find docs -name '*.eye' -not -path '*/node_modules/*')
 

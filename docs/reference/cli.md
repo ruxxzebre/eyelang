@@ -20,6 +20,7 @@ title: The eye command
 | [`eye approve`](#approve) | approve what a run of eye run waits for at approval! |
 | [`eye decline`](#decline) | decline what a run of eye run waits for at approval! |
 | [`eye test`](#test) | run the test blocks of a program |
+| [`eye build`](#build) | compile a program to a native binary, through C |
 | [`eye repl`](#repl) | start an interactive session: expressions, declarations and jobs |
 | [`eye lsp`](#lsp) | run the language server for editors |
 | [`eye version`](#version) | print the eye version |
@@ -264,6 +265,27 @@ go where eye run sends them, with the address and secret from the environment.
   -run string
     	run only the tests whose names contain this text
   -v	show what passing tests logged too
+```
+
+## eye build {#build}
+
+```text
+usage: eye build [--test] [--target os/arch] [-o file] [-g] [--emit-c dir] [program-directory]
+
+Compiles a program to a native binary: C from the low IR, built with the zig
+that eye pins, fetched into the user's cache the first time. Object files are
+cached by the hash of what made them. The binary runs main, or with --test the
+program's tests. The C back end compiles the core language; entities, jobs,
+views and contracts still run in eye run.
+  -emit-c string
+    	write the C, the runtime's with it, into this directory instead of compiling it
+  -g	compile without optimisation and with debug information (-O0 -g)
+  -o string
+    	the binary to write (default: the program's directory name, with .test for --test)
+  -target string
+    	the platform to build for: darwin/amd64, darwin/arm64, linux/amd64, linux/arm64, windows/amd64 (default: this machine)
+  -test
+    	build a binary that runs the program's test blocks, as eye test does
 ```
 
 ## eye repl {#repl}

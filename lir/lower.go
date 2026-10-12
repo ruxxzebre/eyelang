@@ -678,6 +678,9 @@ func (x *fnb) call(e *ir.Call) *Value {
 			x.flushAfter()
 			return v
 		case ir.Builtin:
+			if d.Name == "expect" && len(e.Args) == 1 && e.Args[0].Name == "" {
+				return x.expect(e.Args[0].Value, t)
+			}
 			args, names := x.args(e.Args)
 			v := x.value("", t)
 			x.builtin(&Builtin{Dst: v, Name: d.Name, Args: args, Names: names, Durable: durable})
@@ -1205,7 +1208,7 @@ func (x *fnb) try(e *ir.Try) *Value {
 			err = x.problem(err, nil)
 		case e.Wrap != nil && want != nil && typeKey(want) != typeKey(errTy):
 			for _, vr := range e.Wrap.Variants {
-				if len(vr.Fields) == 1 && texprFits(vr.Fields[0].Type, errTy) {
+				if len(vr.Fields) == 1 && texprFits(unalias(vr.Fields[0].Type), errTy) {
 					w := x.value("", want)
 					x.emit(&MakeVariant{Dst: w, Variant: vr, Args: []*Value{err}})
 					err = w
@@ -1220,6 +1223,15 @@ func (x *fnb) try(e *ir.Try) *Value {
 	r := x.value("", x.ty(e))
 	x.emit(&Payload{Dst: r, Src: v, Variant: good, Index: 0})
 	return r
+}
+
+// unalias follows a type alias as written, `type Reason = String`, to the
+// type it stands for, as the interpreter's wrapError does.
+func unalias(t *ir.TypeExpr) *ir.TypeExpr {
+	for i := 0; i < 100 && t != nil && t.Decl != nil && t.Decl.Alias != nil && len(t.Decl.Fields) == 0 && t.Decl.Alias.Name != "record"; i++ {
+		t = t.Decl.Alias
+	}
+	return t
 }
 
 // orElse is `x ?? y`: the value inside x, or y.
@@ -1243,6 +1255,31 @@ func (x *fnb) orElse(e *ir.Default) *Value {
 	x.into(r, x.expr(e.Or), join)
 	x.cur = join
 	return r
+}
+
+// expect is `expect(cond)`, which says what failed as the interpreter does:
+// the condition's source text, and for == and != the left side's text and
+// value. It lowers to the built-in expect with the condition's value and
+// its text, and for a comparison the left side's text and value too.
+func (x *fnb) expect(cond ir.Expr, t ir.Ty) *Value {
+	src := x.constant(sourceText(cond), tyStr)
+	v := x.value("", t)
+	if b, ok := cond.(*ir.Binary); ok && (b.Op == "==" || b.Op == "!=") {
+		l, r := x.expr(b.L), x.expr(b.R)
+		c := x.compare(b.Op, l, r)
+		x.emit(&Builtin{Dst: v, Name: "expect", Args: []*Value{c, src, x.constant(sourceText(b.L), tyStr), l}, Names: make([]string, 4)})
+		return v
+	}
+	c := x.expr(cond)
+	x.emit(&Builtin{Dst: v, Name: "expect", Args: []*Value{c, src}, Names: make([]string, 2)})
+	return v
+}
+
+func sourceText(e ir.Expr) string {
+	if t := e.Position().Text(); t != "" {
+		return t
+	}
+	return "it"
 }
 
 // builtin emits a built-in's call. The built-ins that show values are

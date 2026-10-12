@@ -42,6 +42,7 @@ func init() {
 		{name: "approve", summary: "approve what a run of eye run waits for at approval!", run: runApprove, phase: 5, issue: 51},
 		{name: "decline", summary: "decline what a run of eye run waits for at approval!", run: runDecline, phase: 5, issue: 51},
 		{name: "test", summary: "run the test blocks of a program", run: runTest, phase: 3, issue: 31},
+		{name: "build", summary: "compile a program to a native binary, through C", run: runBuild, phase: 7, issue: 77},
 		{name: "repl", summary: "start an interactive session: expressions, declarations and jobs", run: runREPL, phase: 3, issue: 31},
 		{name: "lsp", summary: "run the language server for editors", run: runLSP, phase: 1, issue: 43},
 	}
