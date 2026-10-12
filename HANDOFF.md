@@ -111,7 +111,9 @@ Session eyelang-af did the cluster work in the stacks-homelab repository.
   Contract calls (Miniflux, Notify) retry for about a minute, but `http.get` and `ai.generate`
   fail at once (`Err(NoAnswer)`, `Err(ProviderError)`). A 07:40 run missed while the pod was down
   runs right after start, inside that window. Until the runtime retries those calls too, don't
-  restart the pod near 07:40, or delay startup in the pod spec.
+  restart the pod near 07:40, or delay startup in the pod spec. On dev the runtime now does
+  (2026-10-12): both try a service they can't reach again for about a minute. The risk goes once
+  the deployed pin moves past that commit.
   eyelang-af doesn't push to the stacks repository between 06:30 and 08:30 Irish time, so the
   Deployment doesn't change near the run.
 - After the first 07:40 run (2026-10-12), check three things:
@@ -125,7 +127,8 @@ Session eyelang-af did the cluster work in the stacks-homelab repository.
 - Replacing the TypeScript digest, instead of running beside it, is the user's decision.
 - **Digest fix owed:** a "Sources not read" line wraps its error twice and escapes it, as in
   `NoAnswer(reason: "NoAnswer(reason: \"Get …\")")`. It should read like
-  "<source>: <host> refused the connection".
+  "<source>: <host> refused the connection". Fixed on dev (2026-10-12): `web.FetchError` shows
+  its reason, and `http.get`'s says why in words; the deployed pin still has the old line.
 
 ## Findings without an issue yet
 
@@ -134,9 +137,6 @@ a contract over HTTP (6.13, #81). Open questions 32 to 34 (time-travel debugging
 online playground) are in SPECS.md.
 
 Runtime and tools:
-- `http.get` and `ai.generate` should retry an unreachable service the way contract calls do
-  (see the risk above).
-- `ai.generate` has no `reasoning_effort` parameter; the TypeScript digest sends "medium".
 - A faulted run stays failed, and nothing restarts it (docs/guide/running.md, "Not yet"). It
   needs a command, such as `eye runs --retry ID`, and a decision first: whether the retried run
   replays the steps it recorded before the fault.

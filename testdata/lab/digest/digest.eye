@@ -129,6 +129,7 @@ job write(day: Date) -> Result(Article, DigestError) {
     model: env.get!("DIGEST_MODEL") ?? "gpt-5.6-terra",
     system: prompt,
     prompt: news.input |> toJson,
+    effort: Some(MediumEffort),  # as the TypeScript digest asks
   ).mapErr(WriteFailed)?
   let items = news.input.sections |> map(fn s: s.items |> size) |> sum
   if items > 0 && briefing.highlights == [] && !(briefing.sections |> any(fn s: s.stories != [])) {
@@ -903,7 +904,7 @@ test "the morning reads its sources, has the briefing written, and sends it" {
   expect(article.document |> contains("- Temporary protection is extended to 4 March 2027"))
   expect(article.document |> contains("**Rent cap extended** Rent pressure zones now run to 2027. [RTÉ](https://www.rte.ie/news/rent)"))
   # The Embassy's page needs a browser that didn't get past it.
-  expect(article.document |> contains("- Embassy of Ukraine in Ireland: Unsolved(message: \"Challenge not detected\")"))
+  expect(article.document |> contains("- Embassy of Ukraine in Ireland: the browser couldn't get past the page's checks: Challenge not detected"))
   # Miniflux can't read one of the sections' feeds; a feed in another
   # category isn't the digest's to report, and a feed refused as existing
   # isn't a problem.

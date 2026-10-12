@@ -52,6 +52,9 @@ func hostGenerate(in *Interp, params map[string]Value, at ir.Pos) Value {
 	if p, ok := params["provider"].(*Variant); ok && p.V == in.pre.some {
 		req.provider = p.Vals[0].(*Variant).V.Name
 	}
+	if e, ok := params["effort"].(*Variant); ok && e.V == in.pre.some {
+		req.effort = strings.ToLower(strings.TrimSuffix(e.Vals[0].(*Variant).V.Name, "Effort"))
+	}
 	// A call written with ! in a job records each reply and each tool's
 	// result as a step of its own; durable says so.
 	run := in.toolRun
@@ -130,6 +133,9 @@ type aiRequest struct {
 	// (tools.go).
 	tools []toolDef
 	turns []aiTurn
+	// effort is how much the model reasons: "low", "medium" or "high"; ""
+	// leaves the provider's default.
+	effort string
 	// maxTokens is how long the reply may be; capped says a budget set it.
 	maxTokens int64
 	capped    bool
@@ -257,6 +263,9 @@ func (in *Interp) completeChat(req *aiRequest, base, key, maxField string, at ir
 	if req.capped {
 		body[maxField] = req.maxTokens
 	}
+	if req.effort != "" {
+		body["reasoning_effort"] = req.effort
+	}
 	if req.tools != nil {
 		body["tools"] = chatTools(req.tools)
 	}
@@ -271,7 +280,11 @@ func (in *Interp) completeChat(req *aiRequest, base, key, maxField string, at ir
 	if req.capped {
 		req.options += fmt.Sprintf(", %s %d", maxField, req.maxTokens)
 	}
-	req.options += "; no reasoning_effort or other reasoning settings"
+	if req.effort != "" {
+		req.options += ", reasoning_effort " + req.effort
+	} else {
+		req.options += "; no reasoning_effort or other reasoning settings"
+	}
 	headers := http.Header{}
 	if key != "" {
 		headers.Set("Authorization", "Bearer "+key)
@@ -339,13 +352,15 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 		}
 		in.faultf(at, "ai.generate asks Anthropic for %s, and has no key: set ANTHROPIC_API_KEY, or put it in $EYE_SECRETS/anthropic-api-key", req.model)
 	}
+	output := map[string]any{"format": map[string]any{"type": "json_schema", "schema": req.schema}}
+	if req.effort != "" {
+		output["effort"] = req.effort
+	}
 	body := map[string]any{
-		"model":      req.model,
-		"max_tokens": req.maxTokens,
-		"messages":   req.messages,
-		"output_config": map[string]any{
-			"format": map[string]any{"type": "json_schema", "schema": req.schema},
-		},
+		"model":         req.model,
+		"max_tokens":    req.maxTokens,
+		"messages":      req.messages,
+		"output_config": output,
 	}
 	if req.system != "" {
 		body["system"] = req.system
@@ -356,7 +371,11 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 		body["tools"] = anthropicTools(req.tools)
 		tools = fmt.Sprintf(", %d tools", len(req.tools))
 	}
-	req.options = fmt.Sprintf("Anthropic's Messages API: output_config.format json_schema%s, max_tokens %d; no thinking settings", tools, req.maxTokens)
+	effort := "; no thinking settings"
+	if req.effort != "" {
+		effort = ", output_config.effort " + req.effort
+	}
+	req.options = fmt.Sprintf("Anthropic's Messages API: output_config.format json_schema%s, max_tokens %d%s", tools, req.maxTokens, effort)
 	headers := http.Header{}
 	headers.Set("x-api-key", key)
 	headers.Set("anthropic-version", anthropicVersion)
@@ -419,18 +438,30 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 }
 
 // postJSON posts body as JSON and returns the answer of a 200, or the status
-// and message of anything else.
+// and message of anything else. A request that never reached the provider,
+// and one it answered with 429 or a 5xx, which did nothing, are sent again
+// for about a minute, as a contract's query is; a request that went out and
+// had no answer isn't, since the provider may have done the work and
+// charged for it.
 func (in *Interp) postJSON(target string, headers http.Header, body map[string]any) ([]byte, int, string) {
 	data, _ := json.Marshal(body)
 	headers.Set("Content-Type", "application/json")
-	status, answer, err := in.doRequest("POST", target, headers, data)
-	if err != nil {
-		return nil, 0, err.Error()
+	for try := 0; ; try++ {
+		status, answer, err := in.doRequest("POST", target, headers, data)
+		switch {
+		case err != nil && notSent(err) && in.tryAgain(try):
+		case err != nil:
+			return nil, 0, whyNoAnswer(target, "", err, try+1)
+		case (status == 429 || status >= 500) && in.tryAgain(try):
+		case status != 200:
+			if try > 0 {
+				return nil, status, fmt.Sprintf("%s, %d times over %s", clipText(strings.TrimSpace(string(answer)), 1000), try+1, triedFor(try+1))
+			}
+			return nil, status, clipText(string(answer), 1000)
+		default:
+			return answer, status, ""
+		}
 	}
-	if status != 200 {
-		return nil, status, clipText(string(answer), 1000)
-	}
-	return answer, status, ""
 }
 
 // usage is what a call spent: its tokens, and their price, which the

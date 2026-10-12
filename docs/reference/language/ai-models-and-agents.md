@@ -66,6 +66,16 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   `AI_URL` and `secret("ai-key")`. `provider: Some(ai.Anthropic)` names one; without it, a gateway
   answers every call when `AI_URL` is set, since a deployment that has one routes through it, and
   otherwise the model's name decides: `claude-…` is Anthropic, `gpt-…` and `o1`, `o3`… OpenAI.
+- **Effort.** `effort: Some(ai.MediumEffort)` asks the model to reason more or less: `ai.Effort` is
+  `LowEffort`, `MediumEffort` or `HighEffort`, sent as Anthropic's `output_config.effort` and as
+  chat completions' `reasoning_effort`. Without it the provider's default holds. The variants
+  name the effort so that a program that also imports a `Low` or a `High`, as Notify's
+  priorities, can still write those unqualified.
+- **A provider that can't be reached is tried again,** as a contract's query is: a request that
+  never got there, and one it answered with 429 or a 5xx, which did nothing, for about a minute,
+  while the run waits. Then the call is `Err(ProviderError(status, message))`, the message saying
+  why: "api.anthropic.com refused the connection, 8 times over a minute". A request that went out
+  and had no answer isn't sent again, since the provider may have done the work and charged for it.
 - **In a job, every model call is a `!` step.** Its reply is recorded, so a resumed run neither calls
   the model again nor pays twice, and it sees the same answer.
 - **Tests replay recordings.** `with fakes(ai, from: "recordings/")` makes model-backed tests

@@ -421,7 +421,10 @@ module reads them:
 
 `http.get!` returns `Result(http.Response, http.HttpError)`. Any answer is `Ok`, whatever its
 status, with the status, the headers (names in lower case) and the body as text. `Err` means there
-was no answer: `NoAnswer(reason)` or `TimedOut`. `via:` is the URL of an HTTP proxy to go through.
+was no answer: `NoAnswer(reason)` or `TimedOut`. A request that never reached the server, because
+the connection was refused or the name didn't resolve, is sent again for about a minute, as a
+query's is; then `NoAnswer`'s reason says why, as "status.example refused the connection, 8 times
+over a minute". `via:` is the URL of an HTTP proxy to go through.
 `serviceUp` has `!` steps, so it runs only in a run, and every outside call in it is a step, the
 read of `PAYMENTS_STATUS_URL` included: `env.get!(…)`.
 

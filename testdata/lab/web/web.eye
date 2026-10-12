@@ -12,6 +12,21 @@ pub type FetchError =
   ## The browser couldn't get past the page's checks.
   | Unsolved(message: String)
 
+impl Show for FetchError {
+  fn show(self) -> String = match self {
+    Status(code) => "the page answered {code}"
+    NoAnswer(reason) => reason
+    Unsolved(message) => "the browser couldn't get past the page's checks: {message}"
+  }
+}
+
+## Why a request had no answer, as a FetchError.
+fn noAnswer(e: http.HttpError) -> FetchError = match e {
+  NoAnswer(reason) => NoAnswer(reason:)
+  TimedOut => NoAnswer(reason: "no answer in time")
+  BadStatus(code, _) => Status(code:)
+}
+
 ## A page's HTML. VPN_PROXY_URL is the address of the VPN's HTTP proxy.
 pub fn page(url: String, via: Route = Direct) -> Result(String, FetchError) uses {wait, net, env} {
   let proxy = env.get!("VPN_PROXY_URL")
@@ -24,12 +39,12 @@ pub fn page(url: String, via: Route = Direct) -> Result(String, FetchError) uses
     return match solved {
       Ok({ solution: Some(s), ..}) => Ok(s.response)
       Ok(s) => Err(Unsolved(message: s.message))
-      Err(e) => Err(NoAnswer(reason: "{e}"))
+      Err(e) => Err(noAnswer(e))
     }
   }
   match http.get!(url, headers: { "Accept": "text/html" }, via: if via == Vpn then proxy else None) {
     Ok(r) if r.status == 200 => Ok(r.body)
     Ok(r) => Err(Status(code: r.status))
-    Err(e) => Err(NoAnswer(reason: "{e}"))
+    Err(e) => Err(noAnswer(e))
   }
 }

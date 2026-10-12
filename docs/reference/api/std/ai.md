@@ -32,6 +32,18 @@ Why a model call gave no value.
 - <span id="AiError-Declined"></span>`Declined(reason: String)`: The model declined to answer.
 - <span id="AiError-ProviderError"></span>`ProviderError(status: Int, message: String)`: The provider answered with an error.
 
+### Effort {#Effort}
+
+```eye
+pub type Effort = LowEffort | MediumEffort | HighEffort
+```
+
+How much a model reasons before it answers: more costs more tokens and
+time, and helps with harder questions. Anthropic's models take it as
+`output_config.effort`, OpenAI's and a gateway's as `reasoning_effort`.
+The variants name the effort, so that they don't clash with a `Low` or
+`High` of another module the program imports, as notify's priorities.
+
 ### Provider {#Provider}
 
 ```eye
@@ -73,6 +85,7 @@ pub extern fn generate(
   system: String = "",
   prompt: String,
   provider: Option(Provider) = None,
+  effort: Option(Effort) = None,
   tools: List(Tool) = [],
   approve: fn(String) -> Decision = fn _: Declined,
 ) -> Result(a, AiError) uses {net Ai.generate}
@@ -91,6 +104,15 @@ A `@budget` on the job or function counts each reply's tokens and price. A
 call is sent only if the budget leaves room for its prompt and some reply,
 and the reply is cut off where the budget ends; a call that doesn't fit
 ends the run as `Failed(OverBudget)`.
+
+`effort:` asks the model to reason more or less, as `effort:
+Some(MediumEffort)` ([`Effort`](./ai#Effort)); without it the provider's default holds.
+
+A provider that can't be reached is tried again for about a minute, as a
+contract's query is: a request that never got there (the connection was
+refused, the name didn't resolve), and one it answered with 429 or a 5xx.
+Then the call is `Err(ProviderError(…))`, its message saying why, as
+"api.anthropic.com refused the connection, 8 times over a minute".
 
 `tools:` are functions the model may call, each a [`Tool`](./ai#Tool). The model gets
 their names, `##` comments and input schemas; when a reply calls one, the

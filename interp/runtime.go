@@ -39,8 +39,10 @@ type runtime struct {
 	// live, in a test run with eye test --live, says which modules the
 	// real services answer for, and keeps what --record writes (live.go).
 	live *liveTest
-	// fastRetries makes retries of unreachable services immediate, in tests.
+	// fastRetries makes retries of unreachable services immediate, in tests,
+	// and beforeRetry, when set, is called before each wait.
 	fastRetries bool
+	beforeRetry func(try int)
 	// scheduled holds the jobs started by schedules, once computed.
 	scheduled []*schedule
 	// index is the store's index of waiting runs.

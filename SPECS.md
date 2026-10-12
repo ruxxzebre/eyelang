@@ -189,6 +189,7 @@ Words this document uses in one sense, and names that mean different things in d
 | `?` in a lambda | **A lambda's `?` returns from the lambda, so the lambda's result must be an `Option` for an `Option`'s `None` and a `Result` for an error, which is wrapped into the lambda's error type.** `?` on an `Option` in a function, job or lambda that doesn't return one is an error that names what it returns and points to `??` (section 10, from 2026-10-12) | `return` can't leave a lambda, so `?` returning from the enclosing function would be the one way out, and the interpreter already returned from the lambda. Checking against the enclosing function let `xs \|> map(fn x: x? + 1)` put a `None` where an `Int` belongs, and `fn g(x: Option(Int)) -> Int = x? + 1` returned a `None` from a function that returns `Int` |
 | Dropped results | **A statement can't drop a `Result` or a command's outcome**, with or without the `Uncertain`, `Stale` and `Expired` a command adds: it must be used, matched, passed on with `?`, or discarded with `let _ = …`. A block's last expression is used when the block's value is; `()` and `Option`s may be dropped (sections 10 and 17). Decided by the owner on 2026-10-12 | Dropping a failure without a word is the easy but wrong program: the tour's `notify.send!` lost `Refused` and `Uncertain`, and `fs.writeText("a", "b")` as a statement compiled. `let _ =` costs a few characters where a program means to ignore a failure, and shows that choice in review. An `Option` is a value that may be missing, not a failure, and is often dropped on purpose. From the spec review of 2026-10-12, finding 7 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
 | Reading a run's outcome | **A test or `main` reads a run's outcome with `run.outcome()`, an `Option(Outcome(a))` that is `None` while the run is still going; only a job waits for one, with `run.join!()`.** `run.join()` without `!` is an error that names the call to write, and `outcome()` in a job is an error that names `join!()` (section 15). Decided 2026-10-12 | A test can't wait, since its clock moves only when it calls `advance(…)`, but it must check how a run ended, including a `Failed(DeadlinePassed)` it expects. Before, `run.join()` in a test passed the checker and then failed at run time as the strings' `join`, and tests wrote a job that joined and an entity that kept what it saw. `Option(Outcome(a))` rather than `Option(a)`, so a test sees a fault too. In a job a read that isn't a step could see another outcome on replay, so there it is `join!()`. From the ergonomics analysis of 2026-10-12 |
+| Calls without a contract | **`http.get` and `ai.generate` try a service that can't be reached again for about a minute, as a contract's query does, and then return `Err`** with the reason in words, instead of ending the run as `Unavailable`: their results already say how they fail. `ai.generate` also tries again on 429 and 5xx answers. A request that reached the service and had no answer isn't sent again (sections 17 and 19). Decided 2026-10-12 | Network rules in a new pod take effect seconds after it starts, and the digest's 07:40 run, missed while the pod was down, runs right then: contract calls waited for the network, and these two failed at once. They declare their failures, so a program that reads pages can report one it couldn't read and go on. Sending again only what never arrived keeps a slow page from holding a run for minutes, and a model call from being paid twice. From the lab, 2026-10-12 |
 | Waiting runs leave RAM | **A run's record is in memory only while the run is ready.** A run that waits or has ended keeps a handle in memory (its number, job, when it wakes, what wakes it, where it resumes); the journal and the Postgres store keep its record on disk and read it back when the run wakes or something asks for it, and opening a store reads no waiting run's record (section 15). Decided 2026-10-12 | Waiting that costs no memory is a pillar, and the records were what it cost: 20,000 runs sleeping for a day took 32 MB with their records in memory, and take 7 MB with their handles. A waiting run needs nothing of its record until it wakes; what the runner asks of it before then, when it wakes and what wakes it, fits in the handle |
 
 ## 3. A tour
@@ -2126,7 +2127,10 @@ type Delivery =
   `http.get!(url, headers: { "Accept": "text/html" }, via: proxy)` returns
   `Result(Response, HttpError)`, with the status, the headers and the body as text. Any answer is
   `Ok`, whatever its status; `Err` is `NoAnswer(reason)` or `TimedOut`. `via` is the URL of an HTTP
-  proxy to go through. In tests, `with fakes(http, from: "recordings/")` answers `http.get` from
+  proxy to go through. A request that never reached the server (the connection was refused, or the
+  name didn't resolve) is sent again for about a minute, as a query's is, and then is
+  `NoAnswer(reason)`, the reason in words: "www.rte.ie refused the connection, 8 times over a
+  minute". A request that reached it and had no answer in time is `TimedOut` at once. In tests, `with fakes(http, from: "recordings/")` answers `http.get` from
   `recordings/http.json`: `"contract": "http"`, and an exchange per URL, with `"op": "get"`, the
   URL as its `"key"` and `http.get`'s result (`{ "kind": "Ok", "value": { "status": 200, … } }`).
   An exchange without a key answers every other URL; a URL nothing answers fails the test.
@@ -2345,6 +2349,16 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   `AI_URL` and `secret("ai-key")`. `provider: Some(ai.Anthropic)` names one; without it, a gateway
   answers every call when `AI_URL` is set, since a deployment that has one routes through it, and
   otherwise the model's name decides: `claude-…` is Anthropic, `gpt-…` and `o1`, `o3`… OpenAI.
+- **Effort.** `effort: Some(ai.MediumEffort)` asks the model to reason more or less: `ai.Effort` is
+  `LowEffort`, `MediumEffort` or `HighEffort`, sent as Anthropic's `output_config.effort` and as
+  chat completions' `reasoning_effort`. Without it the provider's default holds. The variants
+  name the effort so that a program that also imports a `Low` or a `High`, as Notify's
+  priorities, can still write those unqualified.
+- **A provider that can't be reached is tried again,** as a contract's query is: a request that
+  never got there, and one it answered with 429 or a 5xx, which did nothing, for about a minute,
+  while the run waits. Then the call is `Err(ProviderError(status, message))`, the message saying
+  why: "api.anthropic.com refused the connection, 8 times over a minute". A request that went out
+  and had no answer isn't sent again, since the provider may have done the work and charged for it.
 - **In a job, every model call is a `!` step.** Its reply is recorded, so a resumed run neither calls
   the model again nor pays twice, and it sees the same answer.
 - **Tests replay recordings.** `with fakes(ai, from: "recordings/")` makes model-backed tests

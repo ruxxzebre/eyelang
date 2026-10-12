@@ -344,7 +344,10 @@ type Delivery =
   `http.get!(url, headers: { "Accept": "text/html" }, via: proxy)` returns
   `Result(Response, HttpError)`, with the status, the headers and the body as text. Any answer is
   `Ok`, whatever its status; `Err` is `NoAnswer(reason)` or `TimedOut`. `via` is the URL of an HTTP
-  proxy to go through. In tests, `with fakes(http, from: "recordings/")` answers `http.get` from
+  proxy to go through. A request that never reached the server (the connection was refused, or the
+  name didn't resolve) is sent again for about a minute, as a query's is, and then is
+  `NoAnswer(reason)`, the reason in words: "www.rte.ie refused the connection, 8 times over a
+  minute". A request that reached it and had no answer in time is `TimedOut` at once. In tests, `with fakes(http, from: "recordings/")` answers `http.get` from
   `recordings/http.json`: `"contract": "http"`, and an exchange per URL, with `"op": "get"`, the
   URL as its `"key"` and `http.get`'s result (`{ "kind": "Ok", "value": { "status": 200, … } }`).
   An exchange without a key answers every other URL; a URL nothing answers fails the test.

@@ -150,7 +150,11 @@ job decides what that means for the program. Here a person sorts the ticket:
 | `ProviderError(status, message)` | The provider answered with an error, couldn't be reached (status 0), or the reply didn't finish |
 | `Declined(reason)` | The model declined to answer |
 
-A failed call is not retried, apart from the one extra request for a malformed reply. Decide in the
+A provider that can't be reached, or answers 429 or a 5xx, is tried again for about a minute while
+the run waits, as a contract's query is; then the call is `ProviderError`, its message saying why,
+as "api.anthropic.com refused the connection, 8 times over a minute". A request that went out and
+had no answer isn't sent again, since the provider may have done the work and charged for it. Other
+failures are not retried, apart from the one extra request for a malformed reply. Decide in the
 code what a failure costs. In the [approvals tutorial](/tutorial/approvals) a failed summary costs
 the summary, not the request; here it sends the ticket to a person.
 
@@ -220,6 +224,11 @@ Which one answers a call:
 ```text
 main.eye:12:3: job sort: ai.generate needs a model gateway for house-model: set AI_URL to its base URL, such as http://gateway:8317/v1, or name the provider with provider:
 ```
+
+`effort:` asks the model to reason more or less before it answers: `Some(ai.LowEffort)`,
+`Some(ai.MediumEffort)` or `Some(ai.HighEffort)`. Anthropic gets it as `output_config.effort`, and
+OpenAI and a gateway as `reasoning_effort`; without it the provider's default holds. More effort
+costs more tokens and time.
 
 ## Budgets
 

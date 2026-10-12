@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"eyelang/internal/wire"
@@ -73,7 +74,9 @@ func (in *Interp) secret(name string, at ir.Pos) *SecretVal {
 var httpClient = &http.Client{Timeout: 60 * time.Second}
 
 // retryDelays are the waits between tries of a query whose service doesn't
-// answer: about a minute in all, after which the run ends as Unavailable.
+// answer: about a minute in all, after which the run ends as Unavailable, or
+// the call returns Err when its result says how it fails (http.get and
+// ai.generate).
 var retryDelays = []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 30 * time.Second}
 
 // notSent reports whether a request failed before it reached the service, so
@@ -85,6 +88,80 @@ func notSent(err error) bool {
 	}
 	var dns *net.DNSError
 	return errors.As(err, &dns)
+}
+
+// tryAgain waits before the next try of a call whose service didn't answer,
+// try being the number of tries so far less one. It reports false, without
+// waiting, when the tries are used up. Other tasks run while it waits.
+func (in *Interp) tryAgain(try int) bool {
+	if try >= len(retryDelays) {
+		return false
+	}
+	rt := in.rt
+	if rt.beforeRetry != nil {
+		rt.beforeRetry(try)
+	}
+	delay := rt.retryDelay(try)
+	in.blocking(func(ctx context.Context) {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+		}
+	})
+	return true
+}
+
+// whyNoAnswer says, in words, why a request to target had no answer: "www.rte.ie
+// refused the connection". via is the proxy it went through, if any, which is
+// then what refused or couldn't be found. tries is how many times it was sent.
+func whyNoAnswer(target, via string, err error, tries int) string {
+	who := target
+	if u, perr := url.Parse(target); perr == nil && u.Hostname() != "" {
+		who = u.Hostname()
+	}
+	if via != "" {
+		who = "the proxy " + via
+		if u, perr := url.Parse(via); perr == nil && u.Hostname() != "" {
+			who = "the proxy " + u.Hostname()
+		}
+	}
+	var dns *net.DNSError
+	var op *net.OpError
+	var why string
+	switch {
+	case errors.As(err, &dns):
+		why = who + " couldn't be found: the name " + dns.Name + " doesn't resolve"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		why = who + " refused the connection"
+	case errors.As(err, &op) && op.Op == "dial" && op.Timeout():
+		why = who + " didn't accept the connection in time"
+	case errors.As(err, &op) && op.Op == "dial":
+		why = who + " couldn't be reached: " + op.Err.Error()
+	case errors.Is(err, syscall.ECONNRESET), errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		why = who + " closed the connection before answering"
+	default:
+		why = who + ": " + err.Error()
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			why = who + ": " + ue.Err.Error() // without the method and URL Go puts first
+		}
+	}
+	if tries > 1 {
+		why += fmt.Sprintf(", %d times over %s", tries, triedFor(tries))
+	}
+	return why
+}
+
+// triedFor is how long tries took, as retryDelays spaces them, in words.
+func triedFor(tries int) string {
+	var d time.Duration
+	for _, w := range retryDelays[:min(tries-1, len(retryDelays))] {
+		d += w
+	}
+	if d >= time.Minute {
+		return "a minute"
+	}
+	return d.Round(time.Second).String()
 }
 
 // callHTTP calls an operation of a contract over HTTP, when the operation
@@ -260,16 +337,9 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		default:
 			in.faultf(at, "%s was refused with status %d: %s", name, status, clipText(string(reply), 300))
 		}
-		if !retry || try >= len(retryDelays) {
+		if !retry || !in.tryAgain(try) {
 			panic(&Fault{Pos: at, Msg: name + " stayed out of reach", Kind: "Unavailable", Arg: name})
 		}
-		delay := rt.retryDelay(try)
-		in.blocking(func(ctx context.Context) {
-			select {
-			case <-time.After(delay):
-			case <-ctx.Done():
-			}
-		})
 	}
 }
 
@@ -381,6 +451,16 @@ func (in *Interp) httpError(t *ir.Type, err error, status int, body string) Valu
 	return &Variant{V: variant("BadStatus"), Vals: []Value{int64(status), clipText(body, 4000)}}
 }
 
+// httpGetError is http.get's HttpError for a request with no answer:
+// TimedOut, or NoAnswer with the reason in words.
+func (in *Interp) httpGetError(t *ir.Type, target, via string, err error, tries int) Value {
+	v := in.httpError(t, err, 0, "")
+	if nv, ok := v.(*Variant); ok && nv.V.Name == "NoAnswer" {
+		nv.Vals = []Value{whyNoAnswer(target, via, err, tries)}
+	}
+	return v
+}
+
 func clipText(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -444,9 +524,10 @@ func (in *Interp) httpGet(target string, params map[string]Value, at ir.Pos) Val
 			headers.Set(show(k), show(m.val(i)))
 		}
 	}
-	client := httpClient
-	if via, ok := params["via"].(*Variant); ok && via.V == in.pre.some {
-		proxy, err := url.Parse(show(via.Vals[0]))
+	client, via := httpClient, ""
+	if v, ok := params["via"].(*Variant); ok && v.V == in.pre.some {
+		via = show(v.Vals[0])
+		proxy, err := url.Parse(via)
 		if err != nil {
 			in.faultf(at, "http.get's via: isn't a URL: %v", err)
 		}
@@ -456,22 +537,29 @@ func (in *Interp) httpGet(target string, params map[string]Value, at ir.Pos) Val
 	var resp *http.Response
 	var data []byte
 	var err error
-	in.blocking(func(ctx context.Context) {
-		var req *http.Request
-		req, err = http.NewRequestWithContext(ctx, "GET", target, nil)
-		if err != nil {
-			return
+	// A request that never reached the server is sent again, as a query's
+	// is; one that went out and had no answer in time isn't.
+	for try := 0; ; try++ {
+		in.blocking(func(ctx context.Context) {
+			var req *http.Request
+			req, err = http.NewRequestWithContext(ctx, "GET", target, nil)
+			if err != nil {
+				return
+			}
+			req.Header = headers
+			resp, err = client.Do(req)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+			data, err = io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+		})
+		if err == nil || !notSent(err) || !in.tryAgain(try) {
+			if err != nil {
+				return in.errV(in.httpGetError(httpMod.Types["HttpError"], target, via, err, try+1))
+			}
+			break
 		}
-		req.Header = headers
-		resp, err = client.Do(req)
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-		data, err = io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-	})
-	if err != nil {
-		return in.errV(in.httpError(httpMod.Types["HttpError"], err, 0, ""))
 	}
 	var keys, vals []Value
 	names := make([]string, 0, len(resp.Header))

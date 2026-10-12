@@ -36,7 +36,7 @@ pub type HttpError =
 Why there is no answer, or, for a contract query that returns
 Result(T, HttpError), an answer whose status isn't a success.
 
-- <span id="HttpError-NoAnswer"></span>`NoAnswer(reason: String)`: The connection failed or broke.
+- <span id="HttpError-NoAnswer"></span>`NoAnswer(reason: String)`: The connection failed or broke; the reason says how, in words.
 - <span id="HttpError-TimedOut"></span>`TimedOut`: No answer in time.
 
 ## Functions
@@ -54,4 +54,9 @@ pub extern fn get(
 
 Gets a URL. Headers are sent as given; `via` is the URL of an HTTP proxy
 to go through. An answer of any status is Ok; Err means there was none.
+A request that never reached the server (the connection was refused, the
+name didn't resolve) is sent again for about a minute, as a contract's
+query is, and then is `NoAnswer`, whose reason says why, as
+"www.rte.ie refused the connection, 8 times over a minute". One that
+reached it and had no answer in time is `TimedOut` at once.
 
