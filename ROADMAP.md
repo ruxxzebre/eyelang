@@ -80,9 +80,10 @@ session), the digest in the homelab, and findings that have no issue yet.
    language rule is in the way, every gap is the C back end's. Now: 7.14 (cheap fixes: one unit,
    an allocator, static variants, number formatting) and 7.8 (checked against the interpreter at
    both levels). Then 7.13 (values laid out by type) with 7.5 (counting in the low IR), then 7.9
-   (core gaps in C), 7.10 (crossings) and 7.6 with B′ hosting (one static binary, Go linked
+   (core gaps in C) and 7.6 with B′ hosting (one static binary, Go linked
    through cgo); 7.11 (faster than Go, the owner's bar) throughout; 7.12 last; S.2 (the runner in
-   Eyelang) after v0.4. Beside them, G.20: the lexer's five language changes (open question
+   Eyelang) after v0.4. 7.10 is done: a digest morning crosses between compiled code and the
+   runner 214 times, about 7.5 µs under B′. Beside them, G.20: the lexer's five language changes (open question
    43). The design is
    [docs/internals/compilation.md](docs/internals/compilation.md).
 

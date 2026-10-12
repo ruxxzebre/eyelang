@@ -39,8 +39,9 @@ marked done.
    it. Needs 7.14 merged (it changes the same files).
 2. **7.9 (#112) core gaps in C:** time methods, `toJson`, the `Schema`/`Save` derivations,
    `random.*`, `http.get`. What the lab needs beyond entities and jobs.
-3. **7.10 (#113) crossings:** the interpreter counts the operations that would cross between
-   compiled code and the Go runner; record a digest morning's counts under 7.6.
+3. **7.10 (#113) crossings: done.** `eye run --crossings` and `eye test --crossings` count them; a
+   digest morning makes 214 (about 7.5 µs under B′), and none is in a hot loop, so nothing needs
+   batching.
 4. **7.6 (#79) the runner hosts compiled programs, with B′ hosting** (decided): the Go runner is
    the program's `main`, `eye build` links the program's C into it through cgo with the pinned
    zig as C compiler and a pinned Go toolchain fetched like zig. One static binary. Done when the
