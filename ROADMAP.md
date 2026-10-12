@@ -805,7 +805,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.4 The C back end and the core runtime (done) | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
 | 7.5 Reference counting in the low IR: drop after last use, in place when unique | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
 | 7.6 The runner hosts compiled programs, and the digest runs natively | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
-| 7.7 Benchmarks against Go: native code faster and leaner, checked | [#110](https://github.com/ruxxzebre/eyelang/issues/110) |
+| 7.7 Benchmarks against Go: native code faster and leaner, checked (done) | [#110](https://github.com/ruxxzebre/eyelang/issues/110) |
 | 7.8 Native code checked against the interpreter at both levels, and stale numbers fixed | [#111](https://github.com/ruxxzebre/eyelang/issues/111) |
 | 7.9 Core gaps in the C back end: time, toJson, saved types, random, http.get | [#112](https://github.com/ruxxzebre/eyelang/issues/112) |
 | 7.10 Count the crossings between compiled code and the runner | [#113](https://github.com/ruxxzebre/eyelang/issues/113) |
@@ -907,11 +907,26 @@ whole-program specialisation, and jobs resuming from saved frames.
   the runner.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
-- **7.7 Benchmarks against Go.** Each benchmark is an Eyelang program and the same algorithm in
-  idiomatic Go; `go run ./tools/bench` builds both, times them, records peak memory, checks the
-  outputs match, and `--check` fails when native code falls behind its recorded ratio to Go.
-  **Done when:** the suite covers calls, floats, allocation, records, strings, lists, maps and a
-  realistic text task, the lexer of S.1 among them, and its results are recorded in the docs.
+- **7.7 Benchmarks against Go.** The owner's bar for native code is **faster than Go, on less
+  memory**, with Go as the baseline. A suite in `testdata/bench`: each benchmark is an Eyelang
+  program and the same algorithm as idiomatic Go, built with `eye build` (`-O2`) and `go build`,
+  run several times, with wall time and peak memory recorded and the outputs compared.
+  **Done when:** the suite covers computation (calls, integers, floats), allocation (trees,
+  records), strings, lists, maps and a realistic text task; a command prints native against Go
+  for time and memory; the results are recorded in the docs with the machine; a check fails when
+  native code gets slower or larger than its recorded ratio by more than the noise; and the plan
+  records which benchmarks already beat Go and what is needed for the rest.
+  Done on 2026-10-12: eight benchmarks (fib, mandelbrot, trees, records, strings, lists, maps,
+  logs); `go run ./tools/bench` prints native, Go and the interpreter, `--write` records
+  [docs/internals/benchmarks.md](docs/internals/benchmarks.md) and `testdata/bench/results.json`,
+  and `--check` fails when a ratio to Go grows by more than 25% (time) or 15% (memory), measuring
+  a suspect benchmark again before failing. `go test ./tools/bench` builds and runs each at a
+  small size to compare outputs; CI doesn't run the timing check. Native code beats Go on
+  memory in six of eight and on time in none: it takes 1.3–5.4× Go's time, 2.6× on the
+  geometric mean ([native plan, "Against Go"](docs/internals/reviews/native-plan-2026-10-12.md#against-go)
+  says where each gap comes from). The task is the harness and the check; the bar itself is
+  what 7.5 and the work after it must clear. S.1's lexer joins the suite when it lands.
+
 - **7.8 Checked against the interpreter.** Every program `eye build` compiles runs its tests at
   `-O0` and `-O2` against `eye test -v`; a counting allocator in debug builds checks that frees
   match allocations; the native plan's slow loops are tests; stale numbers in ROADMAP,

@@ -83,6 +83,7 @@ const internals = {
   text: 'Implementation',
   items: [
     { text: 'Compilation', link: '/internals/compilation' },
+    { text: 'Benchmarks against Go', link: '/internals/benchmarks' },
     { text: 'Proposals', link: '/internals/proposals' },
     { text: 'Spec review, 2026-10-12', link: '/internals/reviews/spec-review-2026-10-12' },
     { text: 'Performance and packages, 2026-10-12', link: '/internals/reviews/performance-and-packages-2026-10-12' },
@@ -129,6 +130,7 @@ export default defineConfig({
         if (/^(reference\/language|design)\//.test(filePath)) return `${repo}/blob/dev/SPECS.md`
         if (filePath.startsWith('reference/api/')) return `${repo}/tree/dev/check`
         if (filePath === 'reference/cli.md') return `${repo}/tree/dev/cmd/eye`
+        if (filePath === 'internals/benchmarks.md') return `${repo}/tree/dev/tools/bench`
         return `${repo}/edit/dev/docs/${filePath}`
       },
       text: 'Edit this page',

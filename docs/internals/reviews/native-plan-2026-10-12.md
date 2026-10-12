@@ -14,6 +14,8 @@ Timings there vary by up to about 1.5× between runs, so ranges are given.
 - **Native code is fast where it works.** 10–80× the interpreter per benchmark after R.6, 8× on
   the whole benchmark file, 0.3 ms to start, 658 KB for core's stripped test binary. fib(30)
   takes 19 ms, against 220 ms interpreted and 5–12 ms in Go.
+- **It doesn't beat Go yet, which is the owner's bar.** On 7.7's eight benchmarks native code
+  takes 1.3–5.4× Go's time and uses less memory in six ([Against Go](#against-go)).
 - **It works on very little.** Two of the fifteen programs in `testdata/programs` compile (core
   and traits). Everything with an entity, job, view or contract stops at one check, and that is
   all of the lab.
@@ -121,6 +123,78 @@ other shape copies:
 
 The interpreter doesn't depend on the shape, because its lists share backing arrays and its maps
 are persistent vectors (R.3). Native code needs 7.5 to match it.
+
+### Against Go
+
+The owner's bar for native code is **faster than Go, on less memory**, with Go as the baseline.
+7.7 ([#110](https://github.com/ruxxzebre/eyelang/issues/110)) measures it: eight benchmarks in
+`testdata/bench`, each an Eyelang program and the same algorithm as idiomatic Go, run by
+`go run ./tools/bench`. The full table, the machine and how to run it are on
+[Benchmarks against Go](../benchmarks.md); `--check` fails when a ratio gets worse than recorded.
+On the survey's machine, in ms and MB (time is the fastest of 5 runs, memory the peak RSS):
+
+| Benchmark | Native | Go | Time × Go | Native MB | Go MB | Memory × Go | Interpreter |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| fib(37) | 473 | 122 | 3.89× | 0.16 | 2.03 | 0.08× | 6,795 |
+| mandelbrot, 1600² | 282 | 145 | 1.94× | 0.16 | 2.03 | 0.08× | 25,923 |
+| trees, depth 16 | 1,142 | 397 | 2.88× | 80.2 | 12.2 | 6.56× | 7,347 |
+| records, 30M `with` | 1,252 | 233 | 5.38× | 0.22 | 2.03 | 0.11× | 9,487 |
+| strings, 1M parts | 365 | 207 | 1.76× | 83.0 | 49.8 | 1.67× | 5,959 |
+| lists, 1M | 192 | 148 | 1.29× | 42.3 | 42.9 | 0.99× | 3,577 |
+| maps, 5M lookups | 501 | 98 | 5.14× | 1.18 | 2.53 | 0.47× | 18,944 |
+| logs, 300k lines | 389 | 272 | 1.43× | 54.8 | 60.6 | 0.90× | 1,753 |
+
+**No benchmark beats Go on time**: native code takes 1.3–5.4× as long, 2.6× on the geometric mean.
+**Six of eight use less memory**, but four of those only because a static musl binary starts at
+0.16 MB and a Go program at 2 MB; lists and logs hold real data and come in just under Go, whose
+heap grows to about twice what is live. Trees and strings use more. Between a quiet and a busy
+stretch of this shared machine a time ratio moved by up to 40% (fib, 3.5× to 4.9×), so the check
+allows 25% and measures a benchmark that looks worse twice more before it fails.
+
+Where each gap comes from, read from the emitted C (`eye build --emit-c`) and from callgrind on
+the `-O2` binaries:
+
+- **Every value moves through a `dup` and a `drop`.** The C copies each value into a fresh
+  temporary (`t_ = v; ey_dup(t_); ey_drop(old); old = t_`), each a test of the value's tag even
+  for a small integer, and every return drops every local of the function. fib spends about 100
+  instructions a call, 60% of them in these inlined helpers. 7.5a's counting in the low IR
+  removes most of them.
+- **`Int` is a tagged word with overflow checks, and `<` is a call.** `Int` never overflows, so
+  `+` and `-` test both tags and the overflow flag. Comparison is `ey_int_cmp`, a call into
+  `int.c` (each runtime file is compiled on its own, so nothing in it inlines), though `eye.h`
+  has an inline `ey_int_lt`; `/` and `%` call `divmod`, where Go multiplies by a reciprocal.
+  mandelbrot's floats are unboxed, and its whole gap is the `Int` loop counter; in lists and maps
+  `divmod` is 9% of the instructions.
+- **Records and variants live on the heap, and `with` copies.** A record is an object with a
+  24-byte header (count, type, tag, size) and a word per field; Go keeps the `particle` in
+  registers. In records, `p = { p with … }` dups `p` before `ey_agg_own`, so the count is 2 and
+  every step allocates a new record and frees the old one. 7.5a's "in place when unique and dead"
+  removes the copy; keeping small records out of the heap would close the rest.
+- **A variant without fields allocates.** `Leaf` is a fresh `ey_agg_new(…, 0, 0)` each time, so
+  a tree has as many leaf objects as nodes, beside 40-byte nodes against Go's 16. Values also live
+  until their variable is reassigned or the function returns: the stretch tree stays to the end of
+  `main`, and the last loop tree stays while the next is built. trees peaks at 80 MB against Go's
+  12. A static, immortal value per field-less variant needs no 7.5; drop after last use is 7.5a,
+  and reusing a matched cell is 7.5b. `malloc` and the recursive, type-driven `ey_free` take 35%
+  of trees' instructions; Go's collector does little in a run this short.
+- **Lookups box an `Option`.** `xs[i]` and `m[k]` allocate a `Some` each time, which `??` then
+  takes apart, so maps allocates and frees twice per word just to look it up, and hashes and
+  compares keys through the generic `ey_hash` and `ey_eq`. Go's `counts[w]++` is one specialised
+  map access.
+- **Strings format through `printf` and split by copying.** An `Int` in `"{…}"` is written by
+  musl's `snprintf` (20% of strings' instructions); Go uses `strconv`. `split` copies each part
+  into a new string with its own header, where Go's parts share the original's bytes, which is
+  strings' extra memory.
+- **`sort` is generic.** A merge sort comparing through `ey_cmp` on type descriptors: 42% of
+  lists' instructions. Go's `slices.Sort` is a pdqsort compiled for `int`.
+
+What it takes to clear the bar, roughly by payoff: 7.5a (drop after last use, in place when unique)
+for records, trees and every `dup`/`drop`; inlining the runtime's fast paths, by compiling the
+program and runtime as one translation unit or with LTO; static field-less variants; lookups that
+don't box an `Option` when `??` or a `match` takes it apart at once; integer formatting without
+`printf`, substrings that share bytes, and sorts specialised by element type; then unboxed small
+records. For scale, the interpreter takes 4.5–92× native code's time (mandelbrot's floats are
+its worst case), and its strings run holds 847 MB.
 
 ## 3. What the R tasks changed
 
@@ -231,6 +305,12 @@ The steps have issues: 7.8 is #111, 7.9 #112, 7.10 #113, 7.11 #114, 7.12 #115 an
 Steps 0, 1 and 3 need no decision and can run in parallel. Step 2 needs the owner to agree to the
 split. Step 5 needs the hosting decision.
 
+**The bar for every step is "faster than Go, on less memory"**, as the owner set it (7.7). Each
+step that changes native code runs `go run ./tools/bench --check`, which fails when a ratio to Go
+gets worse than recorded, and records its gains with `--write`. Section 2's
+[Against Go](#against-go) lists what the gaps come from; 7.5a closes the largest, and the rest are
+smaller runtime and back-end tasks that come after it.
+
 ### Alternatives considered
 
 - **Pause native work after 7.5a.** Close Phase 6's exit test (6.6 with Notify, 6.8 with agents),
@@ -270,3 +350,9 @@ since their numbers may change parsing or more fundamental choices.
    *Recommended: run steps 0 to 3 now, then pick between 7.6 and Phase 6's exit test.*
 6. **A `wasm32-wasi` target for `eye build`** (playground output, plugins), as a later task?
    *Recommended: later, after 7.5a, since it shares the fault path that 7.5b changes.*
+7. **The bar against Go.** The owner set it: native code faster than Go and on less memory (7.7).
+   Open: does it hold per benchmark or on the geometric mean, and do the runtime fixes in
+   [Against Go](#against-go) that need no 7.5 (inline `<`, static field-less variants, lookups
+   without a boxed `Option`, formatting without `printf`, typed sorts) become tasks now?
+   *Recommended: per benchmark for time and memory, as `--check` records them; the small fixes as
+   one task after 7.5a, measured by the suite.*

@@ -1,0 +1,171 @@
+{
+  "date": "2026-10-12",
+  "commit": "5f3b6f6",
+  "machine": "Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores, linux/amd64",
+  "go": "go1.27.2",
+  "zig": "0.17.0",
+  "runs": 5,
+  "interp_runs": 1,
+  "benchmarks": [
+    {
+      "name": "fib",
+      "native": {
+        "min_ms": 472.710726,
+        "median_ms": 506.014613,
+        "rss_kb": 168
+      },
+      "go": {
+        "min_ms": 121.578853,
+        "median_ms": 126.507357,
+        "rss_kb": 2080
+      },
+      "interp": {
+        "min_ms": 6794.840269,
+        "median_ms": 6794.840269,
+        "rss_kb": 19296
+      },
+      "time_ratio": 3.888,
+      "rss_ratio": 0.081
+    },
+    {
+      "name": "mandelbrot",
+      "native": {
+        "min_ms": 282.241163,
+        "median_ms": 290.692035,
+        "rss_kb": 168
+      },
+      "go": {
+        "min_ms": 145.237374,
+        "median_ms": 148.222894,
+        "rss_kb": 2080
+      },
+      "interp": {
+        "min_ms": 25923.114977,
+        "median_ms": 25923.114977,
+        "rss_kb": 22188
+      },
+      "time_ratio": 1.943,
+      "rss_ratio": 0.081
+    },
+    {
+      "name": "trees",
+      "native": {
+        "min_ms": 1142.479503,
+        "median_ms": 1171.0237,
+        "rss_kb": 82100
+      },
+      "go": {
+        "min_ms": 397.359164,
+        "median_ms": 439.321981,
+        "rss_kb": 12512
+      },
+      "interp": {
+        "min_ms": 7346.749507,
+        "median_ms": 7346.749507,
+        "rss_kb": 50404
+      },
+      "time_ratio": 2.875,
+      "rss_ratio": 6.562
+    },
+    {
+      "name": "records",
+      "native": {
+        "min_ms": 1252.394492,
+        "median_ms": 1332.703065,
+        "rss_kb": 228
+      },
+      "go": {
+        "min_ms": 232.574354,
+        "median_ms": 273.008456,
+        "rss_kb": 2080
+      },
+      "interp": {
+        "min_ms": 9486.876252,
+        "median_ms": 9486.876252,
+        "rss_kb": 21596
+      },
+      "time_ratio": 5.385,
+      "rss_ratio": 0.11
+    },
+    {
+      "name": "strings",
+      "native": {
+        "min_ms": 365.320971,
+        "median_ms": 396.937865,
+        "rss_kb": 85032
+      },
+      "go": {
+        "min_ms": 207.238986,
+        "median_ms": 241.759372,
+        "rss_kb": 51036
+      },
+      "interp": {
+        "min_ms": 5958.970608,
+        "median_ms": 5958.970608,
+        "rss_kb": 867496
+      },
+      "time_ratio": 1.763,
+      "rss_ratio": 1.666
+    },
+    {
+      "name": "lists",
+      "native": {
+        "min_ms": 192.110468,
+        "median_ms": 234.476826,
+        "rss_kb": 43288
+      },
+      "go": {
+        "min_ms": 148.464944,
+        "median_ms": 163.438059,
+        "rss_kb": 43896
+      },
+      "interp": {
+        "min_ms": 3576.761778,
+        "median_ms": 3576.761778,
+        "rss_kb": 149924
+      },
+      "time_ratio": 1.294,
+      "rss_ratio": 0.986
+    },
+    {
+      "name": "maps",
+      "native": {
+        "min_ms": 501.087406,
+        "median_ms": 522.332119,
+        "rss_kb": 1208
+      },
+      "go": {
+        "min_ms": 97.563024,
+        "median_ms": 105.904028,
+        "rss_kb": 2592
+      },
+      "interp": {
+        "min_ms": 18944.123264,
+        "median_ms": 18944.123264,
+        "rss_kb": 41956
+      },
+      "time_ratio": 5.136,
+      "rss_ratio": 0.466
+    },
+    {
+      "name": "logs",
+      "native": {
+        "min_ms": 389.285633,
+        "median_ms": 393.403402,
+        "rss_kb": 56100
+      },
+      "go": {
+        "min_ms": 271.744937,
+        "median_ms": 280.818612,
+        "rss_kb": 62036
+      },
+      "interp": {
+        "min_ms": 1752.974362,
+        "median_ms": 1752.974362,
+        "rss_kb": 97396
+      },
+      "time_ratio": 1.433,
+      "rss_ratio": 0.904
+    }
+  ]
+}
