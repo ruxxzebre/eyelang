@@ -38,11 +38,24 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
 
-      # @vscode/test-electron needs Node 22 or later.
+      # @vscode/test-electron needs Node 22 or later. The npm cache keeps the packages npm ci
+      # downloads for the docs and the extension.
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            docs/package-lock.json
+            editors/vscode/package-lock.json
+
+      # The extension's installed packages, by its lock file: task vscode:npm finds
+      # node_modules/.eyelang-lock equal to package-lock.json and skips npm ci (about 4 s).
+      - name: Cache the extension's node_modules
+        uses: actions/cache@v6
+        with:
+          path: editors/vscode/node_modules
+          key: vscode-node-modules-${{ runner.os }}-node24-${{ hashFiles('editors/vscode/package-lock.json') }}
 
       # `task grammar` generates the parser from tree-sitter-eyelang/grammar.js and runs its corpus.
       - name: Set up tree-sitter
