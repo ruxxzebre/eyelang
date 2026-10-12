@@ -133,7 +133,7 @@ func (in *Interp) resumeBody(fr *frame, ck *checkpoint) (v Value) {
 		}
 	}()
 	fr.ck.code = ck.Code
-	return in.resumeAt(fr, fr.fn.Body, ck.Path)
+	return returned(fr, in.resumeAt(fr, fr.fn.Body, ck.Path))
 }
 
 // resumeAt goes down path from e to the statement a checkpoint saved, runs
@@ -170,7 +170,7 @@ func (in *Interp) resumeAt(f *frame, e ir.Expr, path []pathElem) Value {
 		}
 	case *ir.While:
 		if p.Kind == 'w' {
-			if !in.loopEnter(f, p, x.Body, rest, true) {
+			if !in.loopEnter(f, p, x.Body, rest, true, in.ctlOf(f).catch[x]) {
 				in.whileStmt(f, x)
 			}
 			return ir.Unit{}
@@ -293,6 +293,9 @@ func (in *Interp) stmt(f *frame, e ir.Expr) (v Value, ok bool) {
 		return ir.Unit{}, true
 	case *ir.Match:
 		v := in.eval(f, x.Value)
+		if f.ctl != ctlNone {
+			return nil, true
+		}
 		for i, arm := range x.Arms {
 			if in.match(f, arm.Pattern, v) && (arm.Guard == nil || in.truth(in.eval(f, arm.Guard), x.Pos)) {
 				return in.enter(f, pathElem{Kind: 'm', I: int64(i)}, arm.Body, nil, false), true
@@ -325,6 +328,10 @@ func (in *Interp) stmts(f *frame, x *ir.Block, from int, rest []pathElem, resume
 			f.ck.stmt = s
 			v = in.eval(f, s)
 		}
+		if f.ctl != ctlNone {
+			f.ck.path = f.ck.path[:n]
+			return nil
+		}
 	}
 	f.ck.path = f.ck.path[:n]
 	if !x.Value {
@@ -349,17 +356,26 @@ func (in *Interp) enter(f *frame, p pathElem, body ir.Expr, rest []pathElem, res
 }
 
 // loopEnter runs one turn of a loop's body as enter does, and reports
-// whether the loop should stop.
-func (in *Interp) loopEnter(f *frame, p pathElem, body ir.Expr, rest []pathElem, resume bool) bool {
-	n := len(f.ck.path)
-	stop := in.loopTurn(func() { in.enter(f, p, body, rest, resume) })
-	f.ck.path = f.ck.path[:n] // break and continue leave from further down
-	return stop
+// whether the loop should stop. catch runs it under a recover, as loopBody
+// does.
+func (in *Interp) loopEnter(f *frame, p pathElem, body ir.Expr, rest []pathElem, resume, catch bool) bool {
+	if catch {
+		n := len(f.ck.path)
+		stop := caught(func() { in.enter(f, p, body, rest, resume) })
+		f.ck.path = f.ck.path[:n] // a break or continue by a panic leaves from further down
+		if stop {
+			return true
+		}
+	} else {
+		in.enter(f, p, body, rest, resume)
+	}
+	return loopFlag(f)
 }
 
 func (in *Interp) whileStmt(f *frame, x *ir.While) {
+	catch := in.ctlOf(f).catch[x]
 	for in.truth(in.eval(f, x.Cond), x.Pos) {
-		if in.loopEnter(f, pathElem{Kind: 'w'}, x.Body, nil, false) {
+		if in.loopEnter(f, pathElem{Kind: 'w'}, x.Body, nil, false, catch) {
 			return
 		}
 	}
@@ -409,26 +425,28 @@ func (in *Interp) forResume(f *frame, x *ir.For, p pathElem, rest []pathElem) {
 }
 
 func (in *Interp) forElems(f *frame, x *ir.For, elems []Value, data []byte, from int, rest []pathElem, resume bool) {
+	catch := in.ctlOf(f).catch[x]
 	for i := from; i < len(elems); i++ {
 		p := pathElem{Kind: 'f', I: int64(i), Elems: data}
 		resuming := resume && i == from
 		if !resuming && !in.match(f, x.Pattern, elems[i]) {
 			in.faultf(x.Pos, "%s doesn't match the loop's pattern", show(elems[i]))
 		}
-		if in.loopEnter(f, p, x.Body, rest, resuming) {
+		if in.loopEnter(f, p, x.Body, rest, resuming, catch) {
 			return
 		}
 	}
 }
 
 func (in *Interp) forRange(f *frame, x *ir.For, lo, hi, from int64, rest []pathElem, resume bool) {
+	catch := in.ctlOf(f).catch[x]
 	for i := from; i < hi; i++ {
 		p := pathElem{Kind: 'r', I: i, Lo: lo, Hi: hi}
 		resuming := resume && i == from
 		if !resuming && !in.match(f, x.Pattern, i) {
 			in.faultf(x.Pos, "%d doesn't match the loop's pattern", i)
 		}
-		if in.loopEnter(f, p, x.Body, rest, resuming) {
+		if in.loopEnter(f, p, x.Body, rest, resuming, catch) {
 			return
 		}
 	}

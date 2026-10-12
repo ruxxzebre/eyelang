@@ -94,7 +94,7 @@ func (in *Interp) generateSteps(run *jobRun, fn *Closure, args []argVal, want *i
 	prevWant, prevRun := in.want, in.toolRun
 	in.want, in.toolRun = want, run
 	defer func() { in.want, in.toolRun = prevWant, prevRun }()
-	v, _ := in.apply(fn, args, at)
+	v := in.apply(fn, args, at)
 	return v
 }
 
@@ -212,7 +212,7 @@ func (in *Interp) runTool(run *jobRun, byName map[string]*Closure, approve Value
 	if tool.Fn.Destructive {
 		// A person approves this one call; their Approval is the argument
 		// @destructive adds.
-		d, _ := in.apply(approve, []argVal{{v: toolCallText(tool.Fn, args)}}, at)
+		d := in.apply(approve, []argVal{{v: toolCallText(tool.Fn, args)}}, at)
 		decision, _ := d.(*Variant)
 		switch {
 		case decision != nil && decision.V.Name == "Approved" && len(decision.Vals) == 1:
@@ -249,7 +249,7 @@ func (in *Interp) callTool(tool *Closure, args []argVal, at ir.Pos) Value {
 	prev := in.run
 	in.run = nil
 	defer func() { in.run = prev }()
-	v, _ := in.apply(tool, args, at)
+	v := in.apply(tool, args, at)
 	return v
 }
 

@@ -278,7 +278,7 @@ func (rt *runtime) schedules() []*schedule {
 				if t.Kind != "schedule" {
 					continue
 				}
-				v, _, _ := rt.in.callFunc(t.Schedule, nil, nil, nil, j.Pos)
+				v, _ := rt.in.callFunc(t.Schedule, nil, nil, nil, j.Pos)
 				val, ok := v.(*ScheduleVal)
 				if !ok {
 					rt.in.faultf(j.Pos, "@on takes a Schedule, such as daily(07:40, in: zone)")

@@ -328,7 +328,7 @@ func (in *Interp) answer(op *ir.Op, req request) (status int, reply []byte, cont
 		}
 	}
 	tx := rt.begin()
-	v, _, _ := c.callFunc(op.Impl, nil, nil, args, op.Pos)
+	v, _ := c.callFunc(op.Impl, nil, nil, args, op.Pos)
 	rt.tx = nil
 	rt.commit(tx)
 	return c.replyFor(op, v)

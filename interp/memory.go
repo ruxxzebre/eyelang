@@ -43,7 +43,7 @@ func (s *eyeStore) call(name string, self Value, args ...Value) Value {
 	for _, a := range args {
 		argv = append(argv, argVal{v: a})
 	}
-	r, _, _ := in.callFunc(fn, self, nil, argv, fn.Pos)
+	r, _ := in.callFunc(fn, self, nil, argv, fn.Pos)
 	return r
 }
 

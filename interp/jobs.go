@@ -62,14 +62,14 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 				in.call = call
 				prev, prevSpend := in.want, in.stepSpend
 				in.want, in.stepSpend = wanted(c), &spend{}
-				v, _ := in.apply(fn, args, c.Pos)
+				v := in.apply(fn, args, c.Pos)
 				spent := *in.stepSpend
 				in.want, in.stepSpend = prev, prevSpend
 				return in.recordSpend(run, v, spent, c.Pos)
 			}
 			// A call to a function that itself waits isn't a step; the
 			// steps are the waiting calls inside it.
-			r, _ := in.apply(fn, args, c.Pos)
+			r := in.apply(fn, args, c.Pos)
 			return r
 		case *BuiltinFn:
 			switch fn.Name {
@@ -108,7 +108,7 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 			}
 			return in.sleep(run, at)
 		}
-		v, _ := in.apply(callee, args, c.Pos)
+		v := in.apply(callee, args, c.Pos)
 		return in.record(run, v, c.Pos)
 	case *ir.MethodCall:
 		if c.Name == "read" && entitySet(c.Recv) {
@@ -308,7 +308,7 @@ func (in *Interp) poll(run *jobRun, args []argVal, at ir.Pos) Value {
 		in.faultf(at, "poll!(every: …, within: …, fn { … }) takes two Durations and a function")
 	}
 	for i := int64(0); ; i++ {
-		if r, _ := in.apply(pos[0], nil, at); r == true {
+		if r := in.apply(pos[0], nil, at); r == true {
 			return true
 		}
 		if i >= int64(within/every) {
@@ -352,7 +352,7 @@ func (in *Interp) next(run *jobRun, args []argVal, at ir.Pos) Value {
 func (in *Interp) matchEvent(where Value, at ir.Pos) func(Value) (Value, bool) {
 	return func(v Value) (Value, bool) {
 		if where != nil {
-			if ok, _ := in.apply(where, []argVal{{v: v}}, at); ok != true {
+			if ok := in.apply(where, []argVal{{v: v}}, at); ok != true {
 				return nil, false
 			}
 		}

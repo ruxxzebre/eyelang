@@ -61,7 +61,7 @@ func (s *Session) Load(prog *ir.Program) error {
 // it started.
 func (s *Session) Call(fn *ir.Func) (v Value, err error) {
 	err = s.capture(func() {
-		v, _, _ = s.in.callFunc(fn, nil, nil, nil, fn.Pos)
+		v, _ = s.in.callFunc(fn, nil, nil, nil, fn.Pos)
 		s.in.rt.drain()
 	})
 	return v, err

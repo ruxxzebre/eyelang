@@ -148,7 +148,7 @@ func (in *Interp) reserve(run *jobRun, args []argVal, at ir.Pos) Value {
 		}
 		in.changeReserved(run, int64(size), call, at)
 	}
-	v, _ := in.apply(pos[1], nil, at)
+	v := in.apply(pos[1], nil, at)
 	if run.cursor < len(run.Log) {
 		run.cursor++ // released before
 		return v

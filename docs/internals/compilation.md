@@ -78,8 +78,12 @@ without its tests. The parts that matter for compilation:
 - **Values** are Go `any`: `int64`, or `*big.Int` once an `Int` outgrows it; `string`; `*List`,
   `*Set` and `*Map` over Go slices, with sets and maps keeping insertion order; `*Record` with
   its field names; `*Variant`; `*Closure` with copied captures.
-- **No reference counts.** Most updates make a new value: `Record.with` copies, and so does
-  `+` on strings, except as below. Appending to a list and adding a new key to a map or set share a backing
+- **No reference counts.** Most updates make a new value: changing a record's field copies its
+  values (the copy shares the field names), and `+` on strings copies, except as below. A
+  record that only one local variable holds changes in place: a record the interpreter has just
+  made and stored in the variable (`ownRec` in `interp/own.go`) takes `p.x += 1` and
+  `p = { p with x: 1 }` without a copy, until the variable is read as a whole. Appending to a
+  list and adding a new key to a map or set share a backing
   array and are amortised O(1), and so is `s += t` (or `s = s + t`) on a local `String`
   variable: the variable's slot holds a byte buffer with room to spare (`textBuf` in
   `interp/text.go`), and reading the variable gives a Go string over its bytes, without a copy.
@@ -90,7 +94,12 @@ without its tests. The parts that matter for compilation:
 - **A record knows its type** since 7.1 (2026-10-11): the checker writes it into the typed IR,
   and the interpreter no longer guesses it from field names.
 - **`mut` is copy in, copy out.** The callee returns the changed value and the caller writes it
-  back to the place (`evalCall` in `interp/eval.go`).
+  back to the place (`callDirect` in `interp/eval.go`).
+- **Calls and leaving early.** A call of a function with a body evaluates its arguments
+  straight into the callee's frame, which the interpreter reuses once the call returns. A
+  `return`, `break`, `continue` or `?` in a statement position sets a flag in the frame that
+  each enclosing statement passes up; one inside an expression panics, and the function or loop
+  catches it (`interp/control.go`).
 - **Jobs resume by replaying.** A run is its arguments and a log of steps
   (`jobRun` in `interp/runtime.go`). Resuming runs the job from the start, and each `!` step
   already taken returns its recorded result (`replay` in `interp/jobs.go`). A run parks by

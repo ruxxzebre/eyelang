@@ -64,7 +64,7 @@ func (in *Interp) evalMigration(mg *ir.Migration, old *Record) Value {
 	prevRun, prevScope := in.run, in.scope
 	in.run, in.scope = nil, nil
 	defer func() { in.run, in.scope = prevRun, prevScope }()
-	v, _, _ := in.callFunc(mg.Func, nil, nil, []argVal{{v: old}}, mg.Pos)
+	v, _ := in.callFunc(mg.Func, nil, nil, []argVal{{v: old}}, mg.Pos)
 	return v
 }
 

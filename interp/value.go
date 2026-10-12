@@ -77,6 +77,9 @@ type (
 		vals  vec
 		shelf *shelf // shared with the maps Keys shares an array with
 	}
+	// Record is a record value. Records copied to change a value share
+	// Names: never write into Names, and never append to the Names of a
+	// record that is already made.
 	Record struct {
 		Names []string
 		Vals  []Value
@@ -299,18 +302,57 @@ func (r *Record) get(name string) (Value, bool) {
 	return nil, false
 }
 
-// with returns a copy of r with the field set.
-func (r *Record) with(name string, v Value) *Record {
-	out := &Record{Names: append([]string(nil), r.Names...), Vals: append([]Value(nil), r.Vals...), Type: r.Type}
-	for i, n := range out.Names {
+// Records of a few fields, with room for their values, so that copying a
+// record to change a field makes one allocation, not two, of the same size.
+type (
+	record2 struct {
+		r   Record
+		buf [2]Value
+	}
+	record4 struct {
+		r   Record
+		buf [4]Value
+	}
+	record8 struct {
+		r   Record
+		buf [8]Value
+	}
+)
+
+// copied returns a copy of r to change values of: it has its own Vals, and
+// shares Names, which no record changes in place.
+func (r *Record) copied() *Record {
+	var out *Record
+	n := len(r.Vals)
+	switch {
+	case n <= 2:
+		b := &record2{}
+		b.r.Vals = b.buf[:n:n]
+		out = &b.r
+	case n <= 4:
+		b := &record4{}
+		b.r.Vals = b.buf[:n:n]
+		out = &b.r
+	case n <= 8:
+		b := &record8{}
+		b.r.Vals = b.buf[:n:n]
+		out = &b.r
+	default:
+		out = &Record{Vals: make([]Value, n)}
+	}
+	copy(out.Vals, r.Vals)
+	out.Names, out.Type = r.Names, r.Type
+	return out
+}
+
+// field returns the index of r's field called name, or -1.
+func (r *Record) field(name string) int {
+	for i, n := range r.Names {
 		if n == name {
-			out.Vals[i] = v
-			return out
+			return i
 		}
 	}
-	out.Names = append(out.Names, name)
-	out.Vals = append(out.Vals, v)
-	return out
+	return -1
 }
 
 func (v *Variant) field(name string) (Value, bool) {
@@ -568,6 +610,9 @@ func variantName(v *ir.Variant) string {
 	return v.Type.Module.Path + "." + v.Type.Name + "." + v.Name
 }
 
+// equal reports whether a == b: whether their keys are equal. It compares
+// the common kinds directly, part by part, and builds keys only for the
+// rest.
 func equal(a, b Value) bool {
 	switch x := a.(type) {
 	case int64:
@@ -582,8 +627,74 @@ func equal(a, b Value) bool {
 		if y, ok := b.(bool); ok {
 			return x == y
 		}
+	case float64:
+		if y, ok := b.(float64); ok {
+			// As their keys: NaN equals NaN, and 0.0 doesn't equal -0.0.
+			if x == y {
+				return math.Signbit(x) == math.Signbit(y)
+			}
+			return x != x && y != y
+		}
+	case rune:
+		if y, ok := b.(rune); ok {
+			return x == y
+		}
+	case *Variant:
+		if y, ok := b.(*Variant); ok {
+			if x.V != y.V && (x.V.Name != y.V.Name || variantName(x.V) != variantName(y.V)) {
+				return false
+			}
+			return equalAll(x.Vals, y.Vals)
+		}
+	case *Record:
+		if y, ok := b.(*Record); ok {
+			return equalRecords(x, y)
+		}
+	case *Tuple:
+		if y, ok := b.(*Tuple); ok {
+			return equalAll(x.Elems, y.Elems)
+		}
+	case *List:
+		if y, ok := b.(*List); ok {
+			return equalAll(x.Elems, y.Elems)
+		}
 	}
 	return keyOf(a) == keyOf(b)
+}
+
+// equalAll reports whether two lists of values are equal one by one.
+func equalAll(xs, ys []Value) bool {
+	if len(xs) != len(ys) {
+		return false
+	}
+	for i := range xs {
+		if !equal(xs[i], ys[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// equalRecords reports whether two records have the same fields with equal
+// values, in any order and whatever their types, as their keys do.
+func equalRecords(x, y *Record) bool {
+	if len(x.Names) != len(y.Names) {
+		return false
+	}
+	for i, n := range x.Names {
+		var yv Value
+		if i < len(y.Names) && y.Names[i] == n {
+			yv = y.Vals[i]
+		} else if v, ok := y.get(n); ok {
+			yv = v
+		} else {
+			return false
+		}
+		if !equal(x.Vals[i], yv) {
+			return false
+		}
+	}
+	return true
 }
 
 // compare orders two values of the same ordered kind.

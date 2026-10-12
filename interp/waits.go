@@ -105,7 +105,7 @@ func (in *Interp) lock(run *jobRun, args []argVal, at ir.Pos) Value {
 			Meta: []MetaWrite{{Key: lockKey(name), Data: data}},
 		})
 	}
-	v, _ := in.apply(f, nil, at)
+	v := in.apply(f, nil, at)
 	unlock := "unlock " + strconv.Quote(name)
 	if run.cursor < len(run.Log) {
 		in.replay(run, unlock, at) // given back before

@@ -125,7 +125,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 			}
 			argv = []argVal{{v: list}}
 		}
-		result, _, _ := in.callFunc(main, nil, nil, argv, main.Pos)
+		result, _ := in.callFunc(main, nil, nil, argv, main.Pos)
 		if e, ok := isVariant(result, "Err"); ok {
 			fmt.Fprintln(stderr, in.display(e.Vals[0])) // with its Show, as a Problem has
 			code = 1

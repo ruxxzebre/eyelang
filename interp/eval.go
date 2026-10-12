@@ -3,6 +3,7 @@ package interp
 import (
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"strings"
 	"time"
@@ -43,6 +44,14 @@ type Interp struct {
 	// runs (externs.go).
 	hosts   *Hosts
 	externs map[*ir.Func]hostFunc
+	// funcs is what the interpreter works out once per function, as what
+	// it does with return, break and continue (control.go); units are the
+	// values of the variants without fields, made once.
+	funcs *funcCache
+	units map[*ir.Variant]*Variant
+	// free holds frames whose calls returned, for calls to come; each
+	// interpreter, a task's included, keeps its own.
+	free []*frame
 }
 
 // New prepares to run prog, printing to out and logging to log.
@@ -51,6 +60,7 @@ func New(prog *ir.Program, out, log io.Writer) *Interp {
 		prog: prog, out: out, log: log,
 		globals: map[*ir.Global]Value{}, initing: map[*ir.Global]bool{},
 		variants: map[string]*ir.Variant{}, types: map[string]*ir.Type{}, entities: map[string]*ir.Entity{}, jobs: map[string]*ir.Job{},
+		funcs: &funcCache{}, units: map[*ir.Variant]*Variant{},
 	}
 	in.builtins = builtinTable()
 	for _, m := range prog.Modules {
@@ -58,6 +68,9 @@ func New(prog *ir.Program, out, log io.Writer) *Interp {
 			in.types[typeName(t)] = t
 			for _, v := range t.Variants {
 				in.variants[variantName(v)] = v
+				if len(v.Fields) == 0 {
+					in.units[v] = &Variant{V: v}
+				}
 			}
 		}
 		for _, e := range m.Entities {
@@ -83,6 +96,47 @@ type frame struct {
 	// reads and changes (SPECS.md §14).
 	row *txRow
 	ck  *checkpointing // a job run's own frame keeps its checkpoints
+	// ctl says a return, break or continue is leaving, and ret is what the
+	// return returns (control.go). info is the function's ctlInfo, once a
+	// return or a loop needed it.
+	ctl  ctl
+	ret  Value
+	info *ctlInfo
+	// inline holds the slots of a function with few locals, so that a call
+	// makes one allocation, not two.
+	inline [4]Value
+}
+
+// newFrame makes a frame for a call of fn, reusing one whose call returned
+// when it can: a call that returns gives its frame back with freeFrame,
+// since nothing keeps a frame once its call has returned.
+func (in *Interp) newFrame(fn *ir.Func) *frame {
+	var fr *frame
+	if n := len(in.free); n > 0 {
+		fr = in.free[n-1]
+		in.free = in.free[:n-1]
+	} else {
+		fr = &frame{}
+	}
+	fr.fn = fn
+	if fn.Slots <= len(fr.inline) {
+		fr.slots = fr.inline[:fn.Slots]
+	} else {
+		fr.slots = make([]Value, fn.Slots)
+	}
+	return fr
+}
+
+// maxFree is how many frames an interpreter keeps for reuse.
+const maxFree = 256
+
+// freeFrame gives back the frame of a call that returned. A call that
+// leaves by a panic doesn't give its frame back.
+func (in *Interp) freeFrame(fr *frame) {
+	*fr = frame{}
+	if len(in.free) < maxFree {
+		in.free = append(in.free, fr)
+	}
 }
 
 // getSelf returns the receiver: an entity method's in-progress state, or a
@@ -158,50 +212,99 @@ func split(args []argVal) ([]Value, map[string]Value) {
 	return pos, named
 }
 
-// callFunc runs fn with self and args. It returns the result, the receiver
-// as the function left it, and the final value of the parameter each
-// argument was bound to, for `mut` arguments.
-func (in *Interp) callFunc(fn *ir.Func, self Value, captured []Value, args []argVal, at ir.Pos) (Value, Value, []Value) {
-	return in.callFrame(&frame{fn: fn, slots: make([]Value, fn.Slots), self: self}, captured, args, at)
+// callFunc runs fn with self and args. It returns the result and the
+// receiver as the function left it.
+func (in *Interp) callFunc(fn *ir.Func, self Value, captured []Value, args []argVal, at ir.Pos) (Value, Value) {
+	fr := in.newFrame(fn)
+	fr.self = self
+	r := in.callFrame(fr, captured, args, at)
+	self = fr.getSelf()
+	in.freeFrame(fr)
+	return r, self
 }
 
 // callOnRow calls an entity method on the entity's row in the transaction,
 // which holds its state for the method and for every call that comes back
 // to the entity while it runs.
 func (in *Interp) callOnRow(fn *ir.Func, row *txRow, args []argVal, at ir.Pos) Value {
-	r, _, _ := in.callFrame(&frame{fn: fn, slots: make([]Value, fn.Slots), row: row}, nil, args, at)
+	fr := in.newFrame(fn)
+	fr.row = row
+	r := in.callFrame(fr, nil, args, at)
+	in.freeFrame(fr)
 	return r
 }
 
-func (in *Interp) callFrame(fr *frame, captured []Value, args []argVal, at ir.Pos) (Value, Value, []Value) {
+func (in *Interp) callFrame(fr *frame, captured []Value, args []argVal, at ir.Pos) Value {
 	fn := fr.fn
 	if fn.Body == nil {
-		return in.callHost(fn, args, at), nil, make([]Value, len(args))
+		return in.callHost(fn, args, at)
 	}
 	for i, c := range fn.Captures {
 		fr.slots[c.Slot] = captured[i]
 	}
-	paramOf := in.bind(fn, fr, args, at)
-	var result Value
-	if fn.Budget != nil {
-		result = in.underBudget(fn, func() Value { return in.runBody(fr) })
-	} else {
-		result = in.runBody(fr)
+	in.bind(fn, fr, args, at)
+	return in.runFrame(fr)
+}
+
+// runFrame runs the body of a frame whose parameters are bound.
+func (in *Interp) runFrame(fr *frame) Value {
+	if fr.fn.Budget != nil {
+		return in.underBudget(fr.fn, func() Value { return in.runBody(fr) })
 	}
-	final := make([]Value, len(args))
-	for i, p := range paramOf {
-		if p >= 0 {
-			final[i] = plain(fr.slots[fn.Params[p].Slot])
+	return in.runBody(fr)
+}
+
+// callDirect runs c, a call of fn, a function with a body, without making
+// a list of its arguments when it can: each positional argument goes
+// straight into its parameter's slot. A `mut` argument is written back
+// from the slot when the call returns.
+func (in *Interp) callDirect(f *frame, c *ir.Call, fn *ir.Func, captured []Value) Value {
+	if len(c.Args) > len(fn.Params) {
+		return in.callArgs(f, c, &Closure{Fn: fn, Captured: captured})
+	}
+	for _, a := range c.Args {
+		if a.Name != "" {
+			return in.callArgs(f, c, &Closure{Fn: fn, Captured: captured})
 		}
 	}
-	return result, fr.getSelf(), final
+	fr := in.newFrame(fn)
+	for i, a := range c.Args {
+		fr.slots[fn.Params[i].Slot] = in.eval(f, a.Value)
+	}
+	for i, cp := range fn.Captures {
+		fr.slots[cp.Slot] = captured[i]
+	}
+	prev := in.want
+	in.want = wanted(c)
+	for _, param := range fn.Params[len(c.Args):] {
+		if param.Default == nil {
+			in.faultf(c.Pos, "%s needs an argument for %s", fn.Name, param.Name)
+		}
+		fr.slots[param.Slot] = in.eval(fr, param.Default)
+	}
+	result := in.runFrame(fr)
+	in.want = prev
+	for i, a := range c.Args {
+		if a.Mut {
+			if v := plain(fr.slots[fn.Params[i].Slot]); v != nil {
+				in.writePlace(f, a.Place, v)
+			}
+		}
+	}
+	in.freeFrame(fr)
+	return result
 }
 
 // bind puts arguments into the callee's parameter slots and fills in
-// defaults. It returns, for each argument, the index of its parameter.
-func (in *Interp) bind(fn *ir.Func, fr *frame, args []argVal, at ir.Pos) []int {
+// defaults.
+func (in *Interp) bind(fn *ir.Func, fr *frame, args []argVal, at ir.Pos) {
+	in.bindTo(fn, fr, args, at, nil)
+}
+
+// bindTo binds as bind does. When paramOf isn't nil, it sets paramOf[i] to
+// the index of the parameter argument i was bound to.
+func (in *Interp) bindTo(fn *ir.Func, fr *frame, args []argVal, at ir.Pos, paramOf []int) {
 	bound := make([]bool, len(fn.Params))
-	paramOf := make([]int, len(args))
 	next := 0
 	for i, a := range args {
 		p := -1
@@ -228,7 +331,9 @@ func (in *Interp) bind(fn *ir.Func, fr *frame, args []argVal, at ir.Pos) []int {
 		}
 		bound[p] = true
 		fr.slots[fn.Params[p].Slot] = a.v
-		paramOf[i] = p
+		if paramOf != nil {
+			paramOf[i] = p
+		}
 	}
 	for j, param := range fn.Params {
 		if bound[j] {
@@ -239,9 +344,11 @@ func (in *Interp) bind(fn *ir.Func, fr *frame, args []argVal, at ir.Pos) []int {
 		}
 		fr.slots[param.Slot] = in.eval(fr, param.Default)
 	}
-	return paramOf
 }
 
+// runBody runs a frame's function's body and returns what it returns. A
+// return leaves by the frame's flag or, outside a statement position, by
+// a panic (control.go).
 func (in *Interp) runBody(fr *frame) (v Value) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -252,40 +359,40 @@ func (in *Interp) runBody(fr *frame) (v Value) {
 			panic(r)
 		}
 	}()
-	return in.eval(fr, fr.fn.Body)
+	return returned(fr, in.eval(fr, fr.fn.Body))
 }
 
 // apply calls a function value.
-func (in *Interp) apply(callee Value, args []argVal, at ir.Pos) (Value, []Value) {
+func (in *Interp) apply(callee Value, args []argVal, at ir.Pos) Value {
 	switch c := callee.(type) {
 	case *Closure:
-		r, _, final := in.callFunc(c.Fn, nil, c.Captured, args, at)
-		return r, final
+		r, _ := in.callFunc(c.Fn, nil, c.Captured, args, at)
+		return r
 	case *BuiltinFn:
 		pos, named := split(args)
-		return c.Fn(in, pos, named, at), nil
+		return c.Fn(in, pos, named, at)
 	case *constructor:
-		return in.construct(c.V, args, at), nil
+		return in.construct(c.V, args, at)
 	case *entityVal:
 		pos, _ := split(args)
 		if len(pos) != 1 {
 			in.faultf(at, "%s(…) takes the entity's identity", c.E.Name)
 		}
-		return &EntityRef{Entity: c.E, ID: pos[0]}, nil
+		return &EntityRef{Entity: c.E, ID: pos[0]}
 	case *OpVal:
 		// A program that serves the contract calls itself, unless the
 		// service's URL is configured: then the service is elsewhere.
 		_, elsewhere := serviceURL(c.Op.Contract.Module.Path)
 		if c.Op.Impl != nil && in.rt.fakes[c.Op.Contract] == nil && !elsewhere {
-			return in.rt.serve(c.Op, args, at), nil
+			return in.rt.serve(c.Op, args, at)
 		}
 		pos, named := split(args)
-		return in.rt.callOp(c.Op, pos, named, at), nil
+		return in.rt.callOp(c.Op, pos, named, at)
 	case *JobVal:
 		in.faultf(at, "a job isn't called; start it with %s.start(…)", c.Job.Name)
 	}
 	in.faultf(at, "%s isn't a function", kindName(callee))
-	return nil, nil
+	return nil
 }
 
 // constructor is a variant with fields, used as a function.
@@ -355,6 +462,10 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 			in.lostLocal(x)
 		case *textBuf:
 			return v.string()
+		case *ownRec:
+			// The record may be held elsewhere from now on (own.go).
+			f.slots[x.Slot] = (*Record)(v)
+			return (*Record)(v)
 		default:
 			return v
 		}
@@ -371,7 +482,7 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 	case *ir.Waiting:
 		return in.durable(f, x)
 	case *ir.Field:
-		return in.field(in.eval(f, x.Value), x.Name, x.Pos)
+		return in.localField(f, x)
 	case *ir.If:
 		if in.truth(in.eval(f, x.Cond), x.Pos) {
 			return in.eval(f, x.Then)
@@ -386,6 +497,9 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 		var v Value = ir.Unit{}
 		for _, s := range x.Exprs {
 			v = in.eval(f, s)
+			if f.ctl != ctlNone {
+				return nil
+			}
 		}
 		if !x.Value {
 			return ir.Unit{}
@@ -393,8 +507,13 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 		return v
 	case *ir.Let:
 		v := in.eval(f, x.Value)
+		if f.ctl != ctlNone {
+			return nil
+		}
 		if !in.match(f, x.Pattern, v) {
 			in.letElse(f, x, v)
+		} else if b, ok := x.Pattern.(ir.PBind); ok && fresh(x.Value) {
+			own(f, b.Slot, v)
 		}
 		return ir.Unit{}
 	}
@@ -409,6 +528,9 @@ func (in *Interp) lostLocal(x *ir.Local) {
 // evalMatch runs the first arm whose pattern matches and whose guard holds.
 func (in *Interp) evalMatch(f *frame, x *ir.Match) Value {
 	v := in.eval(f, x.Value)
+	if f.ctl != ctlNone {
+		return nil
+	}
 	for _, arm := range x.Arms {
 		if in.match(f, arm.Pattern, v) && (arm.Guard == nil || in.truth(in.eval(f, arm.Guard), x.Pos)) {
 			return in.eval(f, arm.Body)
@@ -425,6 +547,9 @@ func (in *Interp) letElse(f *frame, x *ir.Let, v Value) {
 		in.faultf(x.Pos, "%s doesn't match the pattern", show(v))
 	}
 	in.eval(f, x.Else)
+	if f.ctl != ctlNone {
+		return
+	}
 	in.faultf(x.Pos, "the else block of a let must leave with return, break or continue")
 }
 
@@ -440,21 +565,31 @@ func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
 	case *ir.Unary:
 		return in.unary(x.Op, in.eval(f, x.X), x.Pos)
 	case *ir.Binary:
-		switch x.Op {
-		case "&&":
-			if !in.truth(in.eval(f, x.L), x.Pos) {
-				return false
+		if len(x.Op) == 2 && x.Op[0] == x.Op[1] {
+			switch x.Op[0] {
+			case '&':
+				if !in.truth(in.eval(f, x.L), x.Pos) {
+					return false
+				}
+				return in.truth(in.eval(f, x.R), x.Pos)
+			case '|':
+				if in.truth(in.eval(f, x.L), x.Pos) {
+					return true
+				}
+				return in.truth(in.eval(f, x.R), x.Pos)
 			}
-			return in.truth(in.eval(f, x.R), x.Pos)
-		case "||":
-			if in.truth(in.eval(f, x.L), x.Pos) {
-				return true
-			}
-			return in.truth(in.eval(f, x.R), x.Pos)
 		}
 		return in.binary(x.Op, in.eval(f, x.L), in.eval(f, x.R), x.Pos)
 	case *ir.Assign:
 		if in.appendInPlace(f, x) {
+			return ir.Unit{}
+		}
+		if x.Op == "=" && !x.Target.Self && len(x.Target.Path) == 0 && fresh(x.Value) {
+			if u, ok := x.Value.(*ir.RecordUpdate); ok {
+				in.assignWith(f, x.Target.Slot, u)
+			} else {
+				own(f, x.Target.Slot, in.eval(f, x.Value))
+			}
 			return ir.Unit{}
 		}
 		v := in.eval(f, x.Value)
@@ -467,22 +602,26 @@ func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
 		in.forLoop(f, x)
 		return ir.Unit{}
 	case *ir.While:
+		catch := in.ctlOf(f).catch[x]
 		for in.truth(in.eval(f, x.Cond), x.Pos) {
-			if in.loopBody(f, x.Body) {
+			if in.loopBody(f, x.Body, catch) {
 				break
 			}
 		}
 		return ir.Unit{}
 	case *ir.Break:
-		panic(breakSignal{})
+		return in.leave(f, x, ctlBreak, nil)
 	case *ir.Continue:
-		panic(continueSignal{})
+		return in.leave(f, x, ctlContinue, nil)
 	case *ir.Return:
 		var v Value = ir.Unit{}
 		if x.Value != nil {
 			v = in.eval(f, x.Value)
+			if f.ctl != ctlNone {
+				return nil
+			}
 		}
-		panic(returnSignal{v})
+		return in.leave(f, x, ctlReturn, v)
 	case *ir.Lambda:
 		c := &Closure{Fn: x.Func}
 		for _, cap := range x.Func.Captures {
@@ -516,13 +655,17 @@ func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
 		if !ok {
 			in.faultf(x.Pos, "`with` updates a record, and this is %s", kindName(base))
 		}
+		// One copy of the values for all the fields set; the names are
+		// shared.
+		out := r.copied()
 		for i, n := range x.Names {
-			if _, has := r.get(n); !has {
+			j := r.field(n)
+			if j < 0 {
 				in.faultf(x.Pos, "the record has no field %s", n)
 			}
-			r = r.with(n, in.eval(f, x.Values[i]))
+			out.Vals[j] = in.eval(f, x.Values[i])
 		}
-		return r
+		return out
 	case *ir.List:
 		l := &List{}
 		for _, e := range x.Elems {
@@ -549,7 +692,7 @@ func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
 		}
 		return b.String()
 	case *ir.Try:
-		return in.try(in.eval(f, x.X), x)
+		return in.try(f, in.eval(f, x.X), x)
 	case *ir.Default:
 		v := in.eval(f, x.X)
 		if s, ok := isVariant(v, "Some"); ok {
@@ -628,11 +771,14 @@ func (in *Interp) instant(v ir.Instant, at ir.Pos) time.Time {
 func (in *Interp) ref(x *ir.Ref) Value {
 	switch d := x.Decl.(type) {
 	case *ir.Func:
-		return &Closure{Fn: d}
+		return in.closure(d)
 	case *ir.Global:
 		return in.global(d, x.Pos)
 	case *ir.Variant:
 		if len(d.Fields) == 0 {
+			if u, ok := in.units[d]; ok {
+				return u
+			}
 			return &Variant{V: d}
 		}
 		return &constructor{V: d}
@@ -668,7 +814,7 @@ func (in *Interp) evalGlobalFunc(fn *ir.Func) Value {
 	prev := in.run
 	in.run = nil
 	defer func() { in.run = prev }()
-	v, _, _ := in.callFunc(fn, nil, nil, nil, fn.Pos)
+	v, _ := in.callFunc(fn, nil, nil, nil, fn.Pos)
 	return v
 }
 
@@ -681,7 +827,7 @@ func (in *Interp) global(g *ir.Global, at ir.Pos) Value {
 		in.faultf(at, "%s is defined in terms of itself", g.Name)
 	}
 	in.initing[g] = true
-	v, _, _ := in.callFunc(g.Init, nil, nil, nil, at)
+	v, _ := in.callFunc(g.Init, nil, nil, nil, at)
 	in.globals[g] = v
 	return v
 }
@@ -699,27 +845,63 @@ func wanted(c *ir.Call) *ir.TypeExpr {
 }
 
 func (in *Interp) evalCall(f *frame, c *ir.Call) Value {
-	if r, ok := c.Func.(*ir.Ref); ok && len(c.Args) > 0 {
-		if b, ok := r.Decl.(ir.Builtin); ok && fixedMethods[b.Name] {
-			// `wrappingAdd(a, b)` and `a |> wrappingAdd(b)`: the first
-			// argument's type gives the width.
-			return in.fixedCall(b.Name, c.Args[0].Value.Ty(), in.evalArgs(f, c.Args), c.Pos)
+	if r, ok := c.Func.(*ir.Ref); ok {
+		switch d := r.Decl.(type) {
+		case *ir.Func:
+			if d.Body != nil {
+				// A call of a named function: no closure to make.
+				return in.callDirect(f, c, d, nil)
+			}
+		case ir.Builtin:
+			if len(c.Args) > 0 && fixedMethods[d.Name] {
+				// `wrappingAdd(a, b)` and `a |> wrappingAdd(b)`: the first
+				// argument's type gives the width.
+				return in.fixedCall(d.Name, c.Args[0].Value.Ty(), in.evalArgs(f, c.Args), c.Pos)
+			}
 		}
 	}
 	callee := in.eval(f, c.Func)
-	if b, ok := callee.(*BuiltinFn); ok && b.Name == "expect" && len(c.Args) == 1 {
-		return in.expect(f, c)
+	switch cl := callee.(type) {
+	case *Closure:
+		if cl.Fn.Body != nil {
+			return in.callDirect(f, c, cl.Fn, cl.Captured)
+		}
+	case *BuiltinFn:
+		if cl.Name == "expect" && len(c.Args) == 1 {
+			return in.expect(f, c)
+		}
 	}
+	return in.callArgs(f, c, callee)
+}
+
+// callArgs runs c, a call of callee, with its arguments in a list.
+func (in *Interp) callArgs(f *frame, c *ir.Call, callee Value) Value {
 	args := in.evalArgs(f, c.Args)
 	prev := in.want
 	in.want = wanted(c)
-	result, final := in.apply(callee, args, c.Pos)
+	cl, ok := callee.(*Closure)
+	if !ok || cl.Fn.Body == nil {
+		result := in.apply(callee, args, c.Pos)
+		in.want = prev
+		return result
+	}
+	fn := cl.Fn
+	fr := in.newFrame(fn)
+	for i, cp := range fn.Captures {
+		fr.slots[cp.Slot] = cl.Captured[i]
+	}
+	paramOf := make([]int, len(args))
+	in.bindTo(fn, fr, args, c.Pos, paramOf)
+	result := in.runFrame(fr)
 	in.want = prev
 	for i, a := range c.Args {
-		if a.Mut && final != nil && final[i] != nil {
-			in.writePlace(f, a.Place, final[i])
+		if a.Mut {
+			if v := plain(fr.slots[fn.Params[paramOf[i]].Slot]); v != nil {
+				in.writePlace(f, a.Place, v)
+			}
 		}
 	}
+	in.freeFrame(fr)
 	return result
 }
 
@@ -777,7 +959,7 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 			if f.row != nil {
 				return in.callOnRow(meth, f.row, args, m.Pos)
 			}
-			r, self, _ := in.callFunc(meth, f.self, nil, args, m.Pos)
+			r, self := in.callFunc(meth, f.self, nil, args, m.Pos)
 			f.self = self
 			return r
 		}
@@ -906,7 +1088,7 @@ func (in *Interp) callMethodFunc(fn *ir.Func, recv Value, args []argVal, at ir.P
 	if !fn.HasSelf {
 		in.faultf(at, "%s is called on the type: %s.%s(…)", fn.Name, fn.Receiver.Name, fn.Name)
 	}
-	r, self, _ := in.callFunc(fn, recv, nil, args, at)
+	r, self := in.callFunc(fn, recv, nil, args, at)
 	if fn.MutSelf {
 		return r, self
 	}
@@ -1066,23 +1248,131 @@ func (in *Interp) unary(op string, v Value, at ir.Pos) Value {
 	return nil
 }
 
-func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
+// binOp is a binary operator the interpreter has a fast path for.
+type binOp uint8
+
+const (
+	opOther binOp = iota
+	opAdd
+	opSub
+	opMul
+	opDiv
+	opRem
+	opEq
+	opNe
+	opLt
+	opLe
+	opGt
+	opGe
+)
+
+// opOf finds the binOp an operator's text names by its bytes, without
+// comparing strings.
+func opOf(s string) binOp {
+	switch len(s) {
+	case 1:
+		switch s[0] {
+		case '+':
+			return opAdd
+		case '-':
+			return opSub
+		case '*':
+			return opMul
+		case '/':
+			return opDiv
+		case '%':
+			return opRem
+		case '<':
+			return opLt
+		case '>':
+			return opGt
+		}
+	case 2:
+		if s[1] != '=' {
+			return opOther
+		}
+		switch s[0] {
+		case '=':
+			return opEq
+		case '!':
+			return opNe
+		case '<':
+			return opLe
+		case '>':
+			return opGe
+		}
+	}
+	return opOther
+}
+
+// intOp computes x op y for two Ints that fit in int64, or reports that it
+// can't: on overflow, a division by zero, or an operator it doesn't know.
+func intOp(op binOp, x, y int64) (Value, bool) {
 	switch op {
-	case "==":
+	case opAdd:
+		if r := x + y; (r > x) == (y > 0) {
+			return r, true
+		}
+	case opSub:
+		if r := x - y; (r < x) == (y > 0) {
+			return r, true
+		}
+	case opMul:
+		if x == 0 || y == 0 {
+			return int64(0), true
+		}
+		if r := x * y; r/y == x && (x != -1 || y != math.MinInt64) && (y != -1 || x != math.MinInt64) {
+			return r, true
+		}
+	case opDiv, opRem:
+		if y != 0 && (x != math.MinInt64 || y != -1) {
+			q := floorDiv(x, y)
+			if op == opDiv {
+				return q, true
+			}
+			return x - q*y, true
+		}
+	case opEq:
+		return x == y, true
+	case opNe:
+		return x != y, true
+	case opLt:
+		return x < y, true
+	case opLe:
+		return x <= y, true
+	case opGt:
+		return x > y, true
+	case opGe:
+		return x >= y, true
+	}
+	return nil, false
+}
+
+func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
+	code := opOf(op)
+	if x, ok := a.(int64); ok {
+		if y, ok := b.(int64); ok {
+			if r, ok := intOp(code, x, y); ok {
+				return r
+			}
+		}
+	}
+	switch code {
+	case opEq:
 		return equal(a, b)
-	case "!=":
+	case opNe:
 		return !equal(a, b)
-	case "<", "<=", ">", ">=":
+	case opLt, opLe, opGt, opGe:
 		c, ok := compare(a, b)
 		if !ok {
 			in.faultf(at, "%s and %s can't be compared", kindName(a), kindName(b))
 		}
-		switch op {
-		case "<":
+		switch code {
+		case opLt:
 			return c < 0
-		case "<=":
+		case opLe:
 			return c <= 0
-		case ">":
+		case opGt:
 			return c > 0
 		}
 		return c >= 0
@@ -1220,7 +1510,7 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 
 // try is postfix `?`: it unwraps Ok and Some, and returns Err and None from
 // the function, wrapping an error into the function's error type.
-func (in *Interp) try(v Value, x *ir.Try) Value {
+func (in *Interp) try(f *frame, v Value, x *ir.Try) Value {
 	if o, ok := isVariant(v, "Ok"); ok {
 		return o.Vals[0]
 	}
@@ -1228,13 +1518,13 @@ func (in *Interp) try(v Value, x *ir.Try) Value {
 		return s.Vals[0]
 	}
 	if _, ok := isVariant(v, "None"); ok {
-		panic(returnSignal{v})
+		return in.leave(f, x, ctlReturn, v)
 	}
 	e, ok := isVariant(v, "Err")
 	if !ok {
 		in.faultf(x.Pos, "? works on a Result or an Option, and this is %s", kindName(v))
 	}
-	panic(returnSignal{in.errV(in.wrapError(e.Vals[0], x.Wrap))})
+	return in.leave(f, x, ctlReturn, in.errV(in.wrapError(e.Vals[0], x.Wrap)))
 }
 
 // wrapError puts an error into the variant of target whose one field holds
@@ -1271,6 +1561,9 @@ func (in *Interp) readPlace(f *frame, p ir.Place) Value {
 		v = f.getSelf()
 	} else {
 		v = plain(f.slots[p.Slot])
+		if _, ok := f.slots[p.Slot].(*ownRec); ok && len(p.Path) == 0 {
+			f.slots[p.Slot] = v // the record may be held elsewhere from now on
+		}
 	}
 	for _, name := range p.Path {
 		v = in.field(v, name, p.Pos)
@@ -1283,7 +1576,22 @@ func (in *Interp) writePlace(f *frame, p ir.Place, v Value) {
 		f.setSelf(in.setPath(f.getSelf(), p.Path, v, p.Pos))
 		return
 	}
-	f.slots[p.Slot] = in.setPath(f.slots[p.Slot], p.Path, v, p.Pos)
+	if len(p.Path) == 0 {
+		f.slots[p.Slot] = v
+		return
+	}
+	if o, ok := f.slots[p.Slot].(*ownRec); ok {
+		// Only this variable holds the record: change it in place.
+		r := (*Record)(o)
+		i := r.field(p.Path[0])
+		if i < 0 {
+			in.faultf(p.Pos, "the record has no field %s", p.Path[0])
+		}
+		r.Vals[i] = in.setPath(r.Vals[i], p.Path[1:], v, p.Pos)
+		return
+	}
+	// setPath makes a new record, which only this variable holds.
+	own(f, p.Slot, in.setPath(f.slots[p.Slot], p.Path, v, p.Pos))
 }
 
 // setPath returns base with the field at path replaced by v.
@@ -1295,11 +1603,13 @@ func (in *Interp) setPath(base Value, path []string, v Value, at ir.Pos) Value {
 	if !ok {
 		in.faultf(at, "only a record's fields can be assigned, and this is %s", kindName(base))
 	}
-	old, has := r.get(path[0])
-	if !has {
+	i := r.field(path[0])
+	if i < 0 {
 		in.faultf(at, "the record has no field %s", path[0])
 	}
-	return r.with(path[0], in.setPath(old, path[1:], v, at))
+	out := r.copied()
+	out.Vals[i] = in.setPath(r.Vals[i], path[1:], v, at)
+	return out
 }
 
 // ---------------------------------------------------------------- loops
@@ -1310,11 +1620,12 @@ func (in *Interp) forLoop(f *frame, x *ir.For) {
 
 // forOver runs a for loop over iter, already evaluated.
 func (in *Interp) forOver(f *frame, x *ir.For, iter Value) {
+	catch := in.ctlOf(f).catch[x]
 	each := func(v Value) bool {
 		if !in.match(f, x.Pattern, v) {
 			in.faultf(x.Pos, "%s doesn't match the loop's pattern", show(v))
 		}
-		return in.loopBody(f, x.Body)
+		return in.loopBody(f, x.Body, catch)
 	}
 	switch it := iter.(type) {
 	case *List:
@@ -1369,29 +1680,6 @@ func (in *Interp) forOver(f *frame, x *ir.For, iter Value) {
 	default:
 		in.faultf(x.Pos, "a for loop can't walk %s", kindName(iter))
 	}
-}
-
-// loopBody runs one iteration and reports whether the loop should stop.
-func (in *Interp) loopBody(f *frame, body ir.Expr) bool {
-	return in.loopTurn(func() { in.eval(f, body) })
-}
-
-// loopTurn runs one turn of a loop, and reports whether break stopped it.
-func (in *Interp) loopTurn(turn func()) (stop bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			switch r.(type) {
-			case breakSignal:
-				stop = true
-			case continueSignal:
-				stop = false
-			default:
-				panic(r)
-			}
-		}
-	}()
-	turn()
-	return false
 }
 
 // ---------------------------------------------------------------- patterns

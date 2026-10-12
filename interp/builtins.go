@@ -539,7 +539,7 @@ func builtinTable() map[string]*BuiltinFn {
 			in.faultf(at, "poll(every: …, within: …, fn { … }) takes two Durations and a function")
 		}
 		for waited := ir.Duration(0); ; waited += every {
-			if r, _ := in.apply(args[0], nil, at); r == true {
+			if r := in.apply(args[0], nil, at); r == true {
 				return true
 			}
 			if waited+every > within {
@@ -640,7 +640,7 @@ func builtinTable() map[string]*BuiltinFn {
 		if r.V == in.pre.ok {
 			return r
 		}
-		e, _ := in.apply(args[1], []argVal{{v: r.Vals[0]}}, at)
+		e := in.apply(args[1], []argVal{{v: r.Vals[0]}}, at)
 		return in.errV(e)
 	})
 	isVariant("isOk", func(in *Interp) *ir.Variant { return in.pre.ok })
@@ -846,6 +846,6 @@ func (in *Interp) callValue(fn Value, at ir.Pos, args ...Value) Value {
 	for i, a := range args {
 		avs[i] = argVal{v: a}
 	}
-	r, _ := in.apply(fn, avs, at)
+	r := in.apply(fn, avs, at)
 	return r
 }

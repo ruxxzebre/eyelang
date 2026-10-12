@@ -203,7 +203,7 @@ func (rt *runtime) defaults(ref *EntityRef, at ir.Pos) *Record {
 		if s.Default == nil {
 			rt.in.faultf(at, "%s.%s has no default, so a new %s can't start", e.Name, s.Name, e.Name)
 		}
-		v, _, _ := rt.in.callFunc(s.Default, nil, nil, nil, at)
+		v, _ := rt.in.callFunc(s.Default, nil, nil, nil, at)
 		r.Names = append(r.Names, s.Name)
 		r.Vals = append(r.Vals, coerce(v, s.Type))
 	}
@@ -316,7 +316,7 @@ func (rt *runtime) serve(op *ir.Op, args []argVal, at ir.Pos) Value {
 	rt.in.run = nil // serving an operation never waits
 	defer func() { rt.in.run = prevRun }()
 	if rt.tx != nil {
-		r, _, _ := rt.in.callFunc(op.Impl, nil, nil, args, at)
+		r, _ := rt.in.callFunc(op.Impl, nil, nil, args, at)
 		return r
 	}
 	tx := rt.begin()
@@ -325,7 +325,7 @@ func (rt *runtime) serve(op *ir.Op, args []argVal, at ir.Pos) Value {
 			rt.tx = nil // a fault rolls the transaction back
 		}
 	}()
-	r, _, _ := rt.in.callFunc(op.Impl, nil, nil, args, at)
+	r, _ := rt.in.callFunc(op.Impl, nil, nil, args, at)
 	rt.tx = nil
 	rt.commit(tx)
 	return r
@@ -536,7 +536,7 @@ type viewScope struct {
 // now, a List(Entity) as the checker types it. Inside another view's check,
 // Entity.all still means the one entity being checked.
 func (rt *runtime) viewMembers(v *ir.View, at ir.Pos) *List {
-	result, _, _ := rt.in.callFunc(v.Func, nil, nil, nil, at)
+	result, _ := rt.in.callFunc(v.Func, nil, nil, nil, at)
 	switch r := result.(type) {
 	case *List:
 		return r
@@ -607,7 +607,7 @@ func (rt *runtime) inView(v *ir.View, snapshot *Record) bool {
 	prev := rt.in.scope
 	rt.in.scope = &viewScope{entity: v.Entity, snapshot: snapshot}
 	defer func() { rt.in.scope = prev }()
-	result, _, _ := rt.in.callFunc(v.Func, nil, nil, nil, v.Pos)
+	result, _ := rt.in.callFunc(v.Func, nil, nil, nil, v.Pos)
 	switch r := result.(type) {
 	case *List:
 		return len(r.Elems) > 0

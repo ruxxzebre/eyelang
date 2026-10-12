@@ -51,11 +51,15 @@ func appendText(old Value, s string) *textBuf {
 	return &textBuf{b: b, grow: g}
 }
 
-// plain returns v as the rest of the interpreter reads it: a textBuf as a
-// string, anything else as it is.
+// plain returns v, as a frame slot holds it, as the rest of the
+// interpreter reads it: a textBuf as a string, an ownRec (own.go) as a
+// *Record, anything else as it is.
 func plain(v Value) Value {
-	if t, ok := v.(*textBuf); ok {
+	switch t := v.(type) {
+	case *textBuf:
 		return t.string()
+	case *ownRec:
+		return (*Record)(t)
 	}
 	return v
 }
