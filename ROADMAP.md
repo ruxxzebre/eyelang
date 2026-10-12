@@ -55,10 +55,10 @@ yet.
    ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)) is worked
    through: its correctness bugs (G.7 to G.10), the sweep of the text (G.11), dropped results
    (G.12) and the examples (C.7) are done.
-2. Runtime at scale (R.1 to R.7, under the phases): R.1 to R.5 are done (the exhaustiveness
+2. Runtime at scale (R.1 to R.7, under the phases): R.1 to R.6 are done (the exhaustiveness
    check, waking runs, map updates and entity writes, string `+=`, the journal's format and
-   group commit); left are the call path (R.6) and waiting runs' records leaving RAM (R.7).
-   Before 7.5.
+   group commit, the interpreter's calls and records); left is waiting runs' records leaving
+   RAM (R.7). Before 7.5.
 3. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
