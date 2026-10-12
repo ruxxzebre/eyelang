@@ -23,6 +23,9 @@ import (
 
 // typeState is what type checking keeps across functions.
 type typeState struct {
+	// badCalls are the calls whose arguments had errors, which say what
+	// was expected, so their results aren't checked against what is wanted.
+	badCalls map[ir.Expr]bool
 	params   map[*ir.Func][]typ // inferred types of parameters a function leaves untyped
 	results  map[*ir.Func]typ   // inferred results of functions that leave them out
 	globals  map[*ir.Global]typ
@@ -211,6 +214,13 @@ var discard typ = tdiscard{}
 
 func (c *checker) typeErrorf(at ir.Pos, format string, args ...any) {
 	c.errorf(at, format, args...)
+}
+
+func (ts *typeState) badCall(e ir.Expr) {
+	if ts.badCalls == nil {
+		ts.badCalls = map[ir.Expr]bool{}
+	}
+	ts.badCalls[e] = true
 }
 
 // checkTypes checks every body of the program.
@@ -702,6 +712,9 @@ func (x *fnCheck) check(e ir.Expr, want typ) typ {
 		return got
 	}
 	if _, isDiscard := got.(tdiscard); isDiscard {
+		return want
+	}
+	if x.c.ts.badCalls[e] {
 		return want
 	}
 	x.expect(e.Position(), want, got)
@@ -1385,7 +1398,13 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 	x.calling = e.Func // called here, so the call applies its bounds
 	callee := x.check(e.Func, nil)
 	x.calling = prevCalling
+	before := len(c.diags)
 	t := x.apply(callee, e.Args, want, calleeName(e.Func), e.Pos)
+	if len(c.diags) > before {
+		// What its arguments' errors say was expected; its result
+		// meeting what is wanted of it would only say it again.
+		c.ts.badCall(e)
+	}
 	x.top.calls = append(x.top.calls, pendingCall{e, t})
 	if r, ok := e.Func.(*ir.Ref); ok {
 		if fn, ok := r.Decl.(*ir.Func); ok && fn.Host == "ai.generate" {

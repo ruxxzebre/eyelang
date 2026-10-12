@@ -146,8 +146,8 @@ Runtime and tools:
   It should become issues or tests.
 
 Checker:
-- Generic private functions: `double(2.5)` gives two errors where one would do. Calling itself
-  at a bigger type is reported by `eye check --lir` (7.2), not by `eye check`.
+- A generic private function calling itself at a bigger type is reported by `eye check --lir`
+  (7.2), not by `eye check`.
 - `check/resolve_test.go`'s unresolvable list keeps `nick` and `nickname` on purpose: a
   migration reads the old row by name, which nothing declares.
 

@@ -532,7 +532,6 @@ fn f() -> Float = double(2.5)`, []string{
 			"12:18: in twice, Byte has no +, since the result may not fit: write a.wrappingAdd(b) to wrap around, or a.checkedAdd(b) for None when it doesn't fit",
 			"13:10: in half, dividing by 0 has no answer",
 			"14:10: showing a value in a string, in label, in outer, needs Show, and Secret(String) has no Show",
-			"15:19: expected Float, found Int",
 			"15:26: expected Int, found Float",
 		}},
 		{"a type variable or an untyped parameter has only what its uses need", `fn show(x) -> String = "{x}"
