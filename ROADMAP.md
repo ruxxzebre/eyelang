@@ -51,9 +51,9 @@ yet.
 **Ahead, in order**
 
 1. The core gaps that self-hosting and phase 7 need (G.1 to G.6, under the phases): fixed-width
-   integers (#84), character literals as `Byte`s (#85), lazy `iter` (#86), `Type.f()` through
-   another module (#87), and two checker bugs, a type alias naming itself (#88) and an `impl`
-   for an entity that is ignored (#89).
+   integers (#84), character literals as `Byte`s (#85) and lazy `iter` (#86). G.4 to G.6 are
+   done: `Type.f()` through another module, and two checker bugs, a type alias naming itself
+   and an `impl` for an entity that did nothing.
 2. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
@@ -445,9 +445,9 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.1 Fixed-width integers: `wrappingAdd`, `checkedAdd`, bit operations, `Int32.from` | [#84](https://github.com/ruxxzebre/eyelang/issues/84) |
 | G.2 A character literal is a `Byte` where one is expected, so list patterns over `Bytes` work | [#85](https://github.com/ruxxzebre/eyelang/issues/85) |
 | G.3 Lazy `xs.iter()` and `Iter(a)` | [#86](https://github.com/ruxxzebre/eyelang/issues/86) |
-| G.4 `Type.f()` called through another module (`lex.Lexer.new`) | [#87](https://github.com/ruxxzebre/eyelang/issues/87) |
-| G.5 A type alias that names itself is an error, with a hint for a one-variant type | [#88](https://github.com/ruxxzebre/eyelang/issues/88) |
-| G.6 `impl Trait` for an entity or `Ref(Entity)` is refused, not ignored | [#89](https://github.com/ruxxzebre/eyelang/issues/89) |
+| G.4 `Type.f()` called through another module (`lex.Lexer.new`) (done) | [#87](https://github.com/ruxxzebre/eyelang/issues/87) |
+| G.5 A type alias that names itself is an error, with a hint for a one-variant type (done) | [#88](https://github.com/ruxxzebre/eyelang/issues/88) |
+| G.6 `impl Trait` for an entity or `Ref(Entity)` is refused, not ignored (done) | [#89](https://github.com/ruxxzebre/eyelang/issues/89) |
 
 Each issue says what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
 self-hosted lexer; G.1 before 7.4 too.

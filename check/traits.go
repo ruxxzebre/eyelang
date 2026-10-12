@@ -77,6 +77,22 @@ func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
 	if typeNode.Kind == syntax.GenericType {
 		name = text(f, typeNode.ChildByField(syntax.FieldName))
 	}
+	if traitNode != nil {
+		entity := name
+		if name == "Ref" {
+			entity = "Ref(…)"
+			if args := typeNode.ChildByField(syntax.FieldArguments); args != nil && len(args.NamedChildren()) == 1 {
+				entity = text(f, args.NamedChildren()[0])
+			}
+		}
+		if _, ok := c.lookupType(m, entity).(*ir.Entity); ok || name == "Ref" {
+			// An entity's methods are transactions; what a trait method on
+			// one would be isn't decided (ROADMAP G.6).
+			c.errorf(pos(f, typeNode), "an entity can't implement a trait yet, so impl %s for %s does nothing: implement it for a record that holds the entity's Ref, such as type %sLabel = { ref: Ref(%s) }",
+				text(f, traitNode), text(f, typeNode), entity, entity)
+			return
+		}
+	}
 	t := m.mod.Types[name]
 	if t == nil {
 		if v, ok := m.types[name].(*ir.Variant); ok && v.Type.Module == m.mod {

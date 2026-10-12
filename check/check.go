@@ -552,6 +552,20 @@ func (c *checker) typeBody(m *module, f *ir.File, t *ir.Type, value *syntax.Node
 		t.Alias = c.typeExpr(m, f, value, t.Params)
 	default:
 		t.Alias = c.typeExpr(m, f, value, t.Params)
+		if via := aliasCycle(t.Alias, t, map[*ir.Type]bool{}); via != nil {
+			if t.Alias.Decl == t && len(t.Alias.Args) > 0 {
+				c.errorf(pos(f, value), "type %s = %s is an alias of itself: a type with one variant starts with |, as type %s = | %s",
+					t.Name, text(f, value), t.Name, text(f, value))
+			} else {
+				names := make([]string, len(via))
+				for i, d := range via {
+					names[i] = d.Name
+				}
+				c.errorf(pos(f, value), "type %s is an alias of itself (%s): an alias names another type; a type that holds itself needs variants, as type %s = | …",
+					t.Name, strings.Join(append(append([]string{t.Name}, names...), t.Name), " → "), t.Name)
+			}
+			t.Alias = &ir.TypeExpr{Name: "?"}
+		}
 	}
 	why := func(v string) string {
 		params := strings.Join(append(append([]string{}, t.Params...), v), ", ")
@@ -563,6 +577,30 @@ func (c *checker) typeBody(m *module, f *ir.File, t *ir.Type, value *syntax.Node
 			c.strayVars(field.Type, t.Params, why)
 		}
 	}
+}
+
+// aliasCycle reports whether te names t, directly or through other aliases,
+// such as `type A = List(B)` with `type B = A`. It returns the aliases the
+// cycle goes through, empty when te names t itself, and nil when it doesn't.
+func aliasCycle(te *ir.TypeExpr, t *ir.Type, seen map[*ir.Type]bool) []*ir.Type {
+	if te == nil {
+		return nil
+	}
+	if te.Decl == t {
+		return []*ir.Type{}
+	}
+	if d := te.Decl; d != nil && d.Alias != nil && !seen[d] {
+		seen[d] = true
+		if via := aliasCycle(d.Alias, t, seen); via != nil {
+			return append([]*ir.Type{d}, via...)
+		}
+	}
+	for _, a := range append(append([]*ir.TypeExpr{}, te.Args...), te.Result) {
+		if via := aliasCycle(a, t, seen); via != nil {
+			return via
+		}
+	}
+	return nil
 }
 
 // strayVars reports each type variable in te that isn't among allowed,

@@ -25,6 +25,8 @@ entity Private(id: Int) {}
 impl Box {
   fn peek(self) -> Int = self.inner
   pub fn get(self) -> Int = self.inner
+  pub fn empty() -> Box = { inner: 0 }
+  fn secret() -> Box = { inner: 1 }
 }
 `
 
@@ -77,6 +79,15 @@ fn ok() -> Int = lib.make().get()`, []string{
 			"4:33: Box is opaque outside module lib, so its fields can't be used here",
 			"5:10: bump is private to module lib",
 			"6:27: Box is opaque outside module lib, so its fields can't be used here",
+		}},
+		{"functions on another module's type", `import lib
+fn a() -> lib.Box = lib.Box.empty()
+fn b() -> lib.Box = lib.Box.secret()
+fn c() = lib.Hidden.make()
+fn d() = lib.Nope.make()`, []string{
+			"3:29: secret is private to module lib: declare it pub there to use it here",
+			"4:14: Hidden is private to module lib",
+			"5:10: module lib has no Nope",
 		}},
 	}
 	for _, c := range cases {

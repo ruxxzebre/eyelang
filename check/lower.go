@@ -960,21 +960,51 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 			}
 		}
 	case syntax.TypeIdent:
-		switch d := l.c.lookupType(l.m, l.text(recv)).(type) {
-		case *ir.Type:
-			if fn, ok := d.Methods[name]; ok {
-				l.c.use(l.pos(recv), d)
-				return fn
-			}
-			if name == "variants" || name == "parse" {
-				l.c.use(l.pos(recv), d)
-				return l.enumFn(recv, d, name)
-			}
-		case *ir.Variant:
-			if fn, ok := d.Type.Methods[name]; ok {
-				l.c.use(l.pos(recv), d)
-				return fn
-			}
+		return l.typeMember(recv, l.c.lookupType(l.m, l.text(recv)), name)
+	case syntax.FieldExpression:
+		// `lex.Lexer.new`: a function on a type of another module.
+		modNode, typeNode := recv.ChildByField(syntax.FieldValue), recv.ChildByField(syntax.FieldField)
+		if modNode.Kind != syntax.Ident || typeNode.Kind != syntax.TypeIdent {
+			return nil
+		}
+		modName := l.text(modNode)
+		if _, ok := l.lookupLocal(modName, modNode); ok || l.selfField(modName) {
+			return nil
+		}
+		d, ok := l.c.lookupValue(l.m, modName).(*ir.Module)
+		if !ok {
+			return nil
+		}
+		l.c.use(l.pos(modNode), d)
+		typeName := l.text(typeNode)
+		decl, ok := l.c.modules[d.Path].types[typeName]
+		if !ok {
+			l.errorf(modNode, "module %s has no %s", modName, typeName)
+			return ir.Builtin{Name: "?"}
+		}
+		l.visible(typeNode, decl, typeName)
+		return l.typeMember(typeNode, decl, name)
+	}
+	return nil
+}
+
+// typeMember resolves `Type.name`, where recv names the type and decl is
+// what it names: a function in the type's impl, or `variants` and `parse`.
+func (l *lowerer) typeMember(recv *syntax.Node, decl any, name string) any {
+	switch d := decl.(type) {
+	case *ir.Type:
+		if fn, ok := d.Methods[name]; ok {
+			l.c.use(l.pos(recv), d)
+			return fn
+		}
+		if name == "variants" || name == "parse" {
+			l.c.use(l.pos(recv), d)
+			return l.enumFn(recv, d, name)
+		}
+	case *ir.Variant:
+		if fn, ok := d.Type.Methods[name]; ok {
+			l.c.use(l.pos(recv), d)
+			return fn
 		}
 	}
 	return nil

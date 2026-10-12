@@ -520,6 +520,29 @@ fn same(a: Db, b: Db) -> Bool = a == b`, []string{
 			"10:24: print needs Show, and Db has no Show: Db is an extern type, whose values foreign code owns, so it has none of Eq, Ord, Show, Hash, Save and Schema",
 			"11:33: comparing with == needs Eq, and Db has no Eq",
 		}},
+		{"a type alias that names itself", `type WorldId = WorldId(String)
+type A = List(B)
+type B = A
+type Tree = | Node(List(Tree)) | Leaf
+type Forest = List(Tree)`, []string{
+			"1:16: type WorldId = WorldId(String) is an alias of itself: a type with one variant starts with |, as type WorldId = | WorldId(String)",
+			"2:10: type A is an alias of itself (A → B → A): an alias names another type; a type that holds itself needs variants, as type A = | …",
+		}},
+		{"an entity can't implement a trait yet", `trait Named {
+  fn name(self) -> String
+}
+entity Room(id: String) {
+  state title: String = ""
+}
+impl Named for Room {
+  fn name(self) = "room"
+}
+impl Named for Ref(Room) {
+  fn name(self) = "room"
+}`, []string{
+			"7:16: an entity can't implement a trait yet, so impl Named for Room does nothing: implement it for a record that holds the entity's Ref, such as type RoomLabel = { ref: Ref(Room) }",
+			"10:16: an entity can't implement a trait yet, so impl Named for Ref(Room) does nothing",
+		}},
 		{"a channel isn't held across a !", `job j() {
   let (send, receive) = channel(capacity: 1)
   sleep!(1 min)
