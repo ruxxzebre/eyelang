@@ -56,4 +56,8 @@ for i in 0..n { log.info("{i}") }
   exports it, and other modules import it by name like any other declaration.
 - **A branch that is one assignment** needs no braces, as one that is one expression doesn't:
   `Ok(text) => found += [text]`, `if late then count += 1`.
+- **`return` leaves the function it is written in, and not a lambda.** Inside a lambda it is an
+  error, since it would leave only the lambda: the lambda's value is its last expression, so give
+  that instead, with an `if` or a `match` for an early way out, or `?`, which returns from the
+  lambda ([section 10](/reference/language/errors-result-only)).
 - No partial application by argument count. Use `_` or a lambda.

@@ -566,6 +566,10 @@ for i in 0..n { log.info("{i}") }
   exports it, and other modules import it by name like any other declaration.
 - **A branch that is one assignment** needs no braces, as one that is one expression doesn't:
   `Ok(text) => found += [text]`, `if late then count += 1`.
+- **`return` leaves the function it is written in, and not a lambda.** Inside a lambda it is an
+  error, since it would leave only the lambda: the lambda's value is its last expression, so give
+  that instead, with an `if` or a `match` for an early way out, or `?`, which returns from the
+  lambda (section 10).
 - No partial application by argument count. Use `_` or a lambda.
 
 ## 7. Mutation
@@ -735,7 +739,11 @@ it a compile error, which is how a new outcome from another service reaches ever
   what the function returns. For a `None` there, give a default with `??`, match the `Option`, or
   make the function return an `Option`. The same holds in a job and in a lambda, and a lambda's
   `?` returns from the lambda, not from the function it is written in, so the lambda's own result
-  decides, and an error is wrapped into the lambda's error type.
+  decides, and an error is wrapped into the lambda's error type. `?` needs to know whether its
+  value is an `Option` or a `Result`; the rest of the function may say, as a call
+  `f(Some(1))` gives `let f = fn x: Some(x? + 1)` its parameter's type. When nothing says, write
+  the type where the value is bound: `fn (x: Option(Int)): …`, or `fn g(x: Option(Int)) = …`
+  for a private function's parameter.
 
   ```eye
   fn next(x: Option(Int)) -> Int = x? + 1          # error: next returns Int, not an Option

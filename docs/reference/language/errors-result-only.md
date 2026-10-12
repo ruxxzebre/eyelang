@@ -14,7 +14,11 @@ title: "Errors: Result only"
   what the function returns. For a `None` there, give a default with `??`, match the `Option`, or
   make the function return an `Option`. The same holds in a job and in a lambda, and a lambda's
   `?` returns from the lambda, not from the function it is written in, so the lambda's own result
-  decides, and an error is wrapped into the lambda's error type.
+  decides, and an error is wrapped into the lambda's error type. `?` needs to know whether its
+  value is an `Option` or a `Result`; the rest of the function may say, as a call
+  `f(Some(1))` gives `let f = fn x: Some(x? + 1)` its parameter's type. When nothing says, write
+  the type where the value is bound: `fn (x: Option(Int)): …`, or `fn g(x: Option(Int)) = …`
+  for a private function's parameter.
 
   ```eye
   fn next(x: Option(Int)) -> Int = x? + 1          # error: next returns Int, not an Option

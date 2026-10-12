@@ -48,7 +48,7 @@ fn h(x: Option(Int)) = Some(x? + 1)`, []string{
   let ms = xs |> map(fn s: Ok(parseInt(s)? + 1))
   Ok(ns)
 }`, []string{
-			"2:28: ? on a Result needs a function that returns a Result, and this one returns Int",
+			"2:28: ? on a Result needs a function that returns a Result, and this lambda returns Int",
 		}},
 		{"what is fine", `fn second(xs: List(Int)) -> Option(Int) = Some(xs[1]? * 2)
 fn total(x: Option(Int)) -> Int = (x ?? 0) + 1

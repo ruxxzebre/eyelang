@@ -209,6 +209,52 @@ pub fn main() {
 		{"return leaves a function, not a lambda", `fn f() {
   let g = fn: return 1
 }`, []string{"2:15: return inside a lambda would leave only the lambda"}},
+		{"return in a lambda doesn't return from the function around it", `fn f(xs: List(Int)) -> Int {
+  let ys = xs.map(fn x {
+    if x < 0 then return 0
+    x
+  })
+  ys.size()
+}`,
+			[]string{"3:19: return inside a lambda would leave only the lambda; give the lambda's value instead"}},
+		{"? in a lambda returns from the lambda, with its own error type", `type E = Bad(String) | Other
+fn h(xs: List(String)) -> Result(List(Int), E) = Ok(xs.map(fn s: parseInt(s)?))
+fn k(xs: List(String)) -> Result(List(Int), E) {
+  let f = fn s: Ok(parseInt(s)? * 2)
+  let ns = xs.map(f)
+  Ok([])
+}`, []string{
+			"2:66: ? on a Result needs a function that returns a Result, and this lambda returns Int",
+		}},
+		{"? on a value whose type a later call gives", `fn g() -> Int {
+  let f = fn x: x? + 1
+  f(Some(1))
+}
+fn r(s: String) -> Option(Int) {
+  let f = fn x: Some(x? * 2)
+  f(parseInt(s))
+}
+fn i() -> Option(Int) {
+  let f = fn x: Some(x?)
+  f(3)
+}
+fn priv(x) = Some(x? + 1)
+fn gen(x: a) -> Option(a) = x?`, []string{
+			"2:17: ? on an Option returns its None from this lambda, but this lambda returns Int",
+			"6:22: ? on a Result needs a function that returns a Result, and this lambda returns Option(Int)",
+			"10:22: ? passes on the error of a Result or the None of an Option; this is Int",
+			"13:19: is this an Option or a Result? Nothing here says, so ? can't tell what it passes on; write its type where the value is bound",
+			"14:29: ? passes on the error of a Result or the None of an Option; this is a",
+		}},
+		{"? on a value whose type a later call gives, where it fits", `fn g() -> Option(Int) {
+  let f = fn x: Some(x? + 1)
+  f(Some(1))
+}
+fn r(s: String) -> Result(Int, String) {
+  let f = fn x: Ok(x? * 2)
+  f(parseInt(s))
+}
+fn priv(x: Option(Int)) = Some(x? + 1)`, nil},
 		{"_ goes in a piped call", `fn f() = _`, []string{"1:10: _ stands for the piped value"}},
 		{"in: and for: alone need a value", `fn f() = daily(07:40, in:)`, []string{"1:23: in is a keyword, not a variable, so in: needs a value"}},
 		{"average takes numbers, and div and rem take Ints", `fn f(xs: List(String), m: Map(String, Int), d: List(Duration)) {
