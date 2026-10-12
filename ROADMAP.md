@@ -72,10 +72,12 @@ yet.
    with the user, in the homelab repository) and 6.8 (agents, after 6.7).
 5. Self-hosting's early start (#82): S.1 (#83), an Eyelang lexer as a test program, checked by
    the conformance suite. Not begun; it needs G.1, G.2 and G.4.
-6. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2) and checkpoints in
-   the interpreter (7.3) are done. Next is the C back end (7.4), then reference counting (7.5);
-   the runner hosting compiled programs (7.6) waits on the user's choice of how it loads them
-   without cgo. The design is [docs/internals/compilation.md](docs/internals/compilation.md).
+6. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2), checkpoints in the
+   interpreter (7.3) and the C back end with `eye build` (7.4) are done: `testdata/programs/core`
+   builds for the five release targets and its tests pass natively. Next is reference counting
+   and reuse (7.5), after R.5 to R.7; the runner hosting compiled programs (7.6) waits on the
+   user's choice of how it loads them without cgo. The design is
+   [docs/internals/compilation.md](docs/internals/compilation.md).
 
 The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all
 accepted on 2026-10-11, with the C back end and a shipped `zig cc` for phase 7; SPECS.md's
