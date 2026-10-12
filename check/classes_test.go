@@ -110,6 +110,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§12", "an outside call in a job without !, or ! on a pure call", "outside calls in jobs are durable steps"},
 	{"§13", "a durable step in a task in a job", "a task in a job only computes"},
 	{"§15", "allDone! or firstDone! given what isn't a list of runs, all of runs, or all! or first!", "allDone! and firstDone! wait for a list of runs"},
+	{"§15", "join on a run without !, or a run's outcome() read in a job", "a job joins a run, and a test or main reads its outcome"},
 	{"§20", "with outside a test", "with only in tests"},
 	{"§13", "a job started from main without a key", "main starts a job once, by key"},
 	{"§14", "a change to an entity's identity", "state can change in entity methods, the identity can't"},

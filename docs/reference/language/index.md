@@ -32,7 +32,7 @@ Words this document uses in one sense, and names that mean different things in d
 | `end` | In an entity's own method, `end(ok)` ends the entity ([section 14](/reference/language/entities)). Elsewhere `s.end()` is a string's end position, and `r.end` a range's end. |
 | `start` | `j.start(…)` starts a run of job `j`, and `claude.start!(…)` an agent's session. `s.start()` is a string's first position, and `r.start` a range's start. |
 | `first` | `first(xs)` is a collection's first element, an `Option`. Waiting for whichever of several runs finishes first is `firstDone!`, and for all of them `allDone!`, named apart from `first` and `all` ([section 15](/reference/language/jobs-and-waiting)). |
-| `join` | `xs \|> join(", ")` joins strings; `run.join!()` waits for a run's outcome. |
+| `join` | `xs \|> join(", ")` joins strings; `run.join!()` waits for a run's outcome, in a job. A test or `main` reads the outcome without waiting, with `run.outcome()`, and `run.join()` on a run is an error that says so. |
 
 Each page is one section of the language's specification, [SPECS.md](https://github.com/ruxxzebre/eyelang/blob/dev/SPECS.md), which is where the rules are written and changed.
 

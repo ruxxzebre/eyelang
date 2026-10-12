@@ -80,6 +80,30 @@ job parent() {
 			"10:11: all! isn't a wait: to wait for every run in a list, write allDone!(…); all is the collection function, written without !",
 			"11:11: first! isn't a wait: to wait until the first of several runs finishes, write firstDone!(…); first is the collection function, written without !",
 		}},
+		{"a job joins a run, and a test or main reads its outcome", `job child() -> Int { 1 }
+job parent() -> Int {
+  let a = child.start!()
+  let done: Outcome(Int) = a.join!()
+  let b = a.join()
+  let c = a.outcome()
+  1
+}
+test "t" {
+  let r = child.start()
+  let o: Option(Outcome(Int)) = r.outcome()
+  let x = r.join()
+  let y = child.start().join()
+}
+pub fn main() uses {start child} {
+  let r = child.start(key: "k")
+  let x = r.join()
+}`, []string{
+			"5:11: in a job, joining a run is a durable step that waits for it: write a.join!()",
+			"6:11: in a job, a run's outcome is read with a.join!(), a step that waits for it: outcome() isn't recorded, so a resumed run could see another",
+			"12:11: a test can't wait for a run: read where it got to with r.outcome(), which is None while the run is still going (only a job waits, with join!())",
+			"13:11: a test can't wait for a run: read where it got to with outcome() on the run, which is None while the run is still going (only a job waits, with join!())",
+			"17:11: main can't wait for a run: read where it got to with r.outcome(), which is None while the run is still going (only a job waits, with join!())",
+		}},
 		{"ending an entity needs an Approval", `entity Player(id: String) {
   state name: String = ""
   pub fn retire(ok: Approval) { end(ok) }

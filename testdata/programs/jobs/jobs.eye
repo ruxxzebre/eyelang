@@ -150,3 +150,28 @@ test "a child run starts once, however often its parent is replayed" {
   advance(20 min)
   expect(Children("all").started == 1)
 }
+
+# A test can't wait, so it reads a run's outcome with outcome(): None while
+# the run is still going, then how it ended.
+job double(n: Int) -> Int {
+  sleep!(10 min)
+  n * 2
+}
+
+@deadline(5 min)
+job late() -> Int {
+  sleep!(1 h)
+  0
+}
+
+test "a test reads a run's outcome once the clock has moved past its end" {
+  let run = double.start(21)
+  expect(run.outcome() == None)
+  advance(9 min)
+  expect(run.outcome() == None)
+  advance(1 min)
+  expect(run.outcome() == Some(Completed(42)))
+  let stopped = late.start()
+  advance(5 min)
+  expect(stopped.outcome() == Some(Failed(DeadlinePassed)))
+}

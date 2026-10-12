@@ -1600,7 +1600,20 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		case r.name == "Run" && r.decl == nil && e.Name == "join":
 			c.useName(e, method("join"))
 			x.inferArgs(e.Args)
+			x.runJoin(e)
 			return &tcon{name: "Outcome", decl: c.ts.outcome, args: []typ{r.args[0]}}
+		case r.name == "Run" && r.decl == nil && e.Name == "outcome":
+			c.useName(e, method("outcome"))
+			x.args(&tfun{ret: tUnit}, e.Args, "outcome", e.Pos)
+			if x.top.durable != "" {
+				join := placeText(e.Recv) + ".join!()"
+				if join == "it.join!()" {
+					join = "join!()"
+				}
+				c.typeErrorf(e.Pos, "%s, a run's outcome is read with %s, a step that waits for it: outcome() isn't recorded, so a resumed run could see another",
+					x.top.durable, join)
+			}
+			return &tcon{name: "Option", decl: c.ts.option, args: []typ{&tcon{name: "Outcome", decl: c.ts.outcome, args: []typ{r.args[0]}}}}
 		case r.name == "Event" && r.decl == nil && e.Name == "publish":
 			c.useName(e, method("publish"))
 			if ev := eventOf(e.Recv); ev != nil {
@@ -1828,6 +1841,41 @@ func (x *fnCheck) stepCall(e *ir.MethodCall, what string) {
 	if x.top.durable != "" && x.kind != kindLambda && x.waiting != ir.Expr(e) {
 		x.c.typeErrorf(e.Pos, "%s, %s is a durable step: write %s!(…)", x.top.durable, what, e.Name)
 	}
+}
+
+// runJoin reports `run.join()` written without `!`. join on a run is always
+// the wait, never the strings' join, so the message names the call to write:
+// join!() where the code can wait, outcome() where it can't (SPECS.md §15).
+func (x *fnCheck) runJoin(e *ir.MethodCall) {
+	if x.waiting == ir.Expr(e) {
+		return // join!(), which lowering checks may wait here
+	}
+	run := placeText(e.Recv)
+	if x.top.durable != "" {
+		join := run + ".join!()"
+		if run == "it" {
+			join = "join!()"
+		}
+		x.c.typeErrorf(e.Pos, "%s, joining a run is a durable step that waits for it: write %s", x.top.durable, join)
+		return
+	}
+	outcome := run + ".outcome()"
+	if run == "it" {
+		outcome = "outcome() on the run"
+	}
+	who := "this code"
+	switch {
+	case x.top.kind == kindTest:
+		who = "a test"
+	case x.top.kind == kindEntity:
+		who = "an entity method"
+	case x.top.kind == kindOperation:
+		who = "a served operation"
+	case x.top.fn != nil && x.top.fn.Module != nil && x.top.fn.Module.Main == x.top.fn:
+		who = "main"
+	}
+	x.c.typeErrorf(e.Pos, "%s can't wait for a run: read where it got to with %s, which is None while the run is still going (only a job waits, with join!())",
+		who, outcome)
 }
 
 // applyFunc checks a call of a declared function or method; env holds the

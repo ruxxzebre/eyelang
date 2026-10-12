@@ -210,7 +210,9 @@ doesn't fit. The failure says where the run stopped, as the messages above do.
 
 A run that ends as an outcome the program declared doesn't fail the test. A run past its
 `@deadline` ends as `Failed(DeadlinePassed)`, which is part of how the program behaves. To check
-it, have a job join the run and keep the outcome:
+it, read the run's outcome. A test can't wait, so it doesn't join the run: `run.outcome()` gives
+`None` while the run is still going, and `Some` of how it ended once the clock has moved past its
+end:
 
 <<< ./code/testing/main.eye#deadline
 
@@ -253,8 +255,7 @@ The same test gives the same result on every run, on any machine.
 | Tests that pass alone and fail together | Each test has its own store |
 
 ::: info Not yet
-`with memory(...)` is designed but not built. A test can't join a
-run itself, so a job joins it, as `refresh` does. See [What runs today](/reference/status#time-secrets-tests).
+`with memory(...)` is designed but not built. See [What runs today](/reference/status#time-secrets-tests).
 :::
 
 ## See also

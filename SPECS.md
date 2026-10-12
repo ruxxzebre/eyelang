@@ -64,7 +64,7 @@ Words this document uses in one sense, and names that mean different things in d
 | `end` | In an entity's own method, `end(ok)` ends the entity (section 14). Elsewhere `s.end()` is a string's end position, and `r.end` a range's end. |
 | `start` | `j.start(…)` starts a run of job `j`, and `claude.start!(…)` an agent's session. `s.start()` is a string's first position, and `r.start` a range's start. |
 | `first` | `first(xs)` is a collection's first element, an `Option`. Waiting for whichever of several runs finishes first is `firstDone!`, and for all of them `allDone!`, named apart from `first` and `all` (section 15). |
-| `join` | `xs \|> join(", ")` joins strings; `run.join!()` waits for a run's outcome. |
+| `join` | `xs \|> join(", ")` joins strings; `run.join!()` waits for a run's outcome, in a job. A test or `main` reads the outcome without waiting, with `run.outcome()`, and `run.join()` on a run is an error that says so. |
 
 ## 1. Goals
 
@@ -180,6 +180,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Destructive tools | **`@destructive` adds `approval: Approval` to a function as to a command, and a model's call of one is approved through `ai.generate`'s `approve:`**, a function, usually `fn call: approval!(call, from: someone, within: …)`, called once for each call; without it the call is declined (section 19) | One meaning for the attribute: what it marks runs only with a person's consent, which the type shows. "Until someone approves" named no one; asking through `approval!` answers whom with its `from:`, and keeps its rules (answers by `id`, only from the person asked) with no second way to ask. A function rather than `approver:` and `within:` arguments, which would copy `approval!`'s. From the spec review of 2026-10-12 |
 | `?` in a lambda | **A lambda's `?` returns from the lambda, so the lambda's result must be an `Option` for an `Option`'s `None` and a `Result` for an error, which is wrapped into the lambda's error type.** `?` on an `Option` in a function, job or lambda that doesn't return one is an error that names what it returns and points to `??` (section 10, from 2026-10-12) | `return` can't leave a lambda, so `?` returning from the enclosing function would be the one way out, and the interpreter already returned from the lambda. Checking against the enclosing function let `xs \|> map(fn x: x? + 1)` put a `None` where an `Int` belongs, and `fn g(x: Option(Int)) -> Int = x? + 1` returned a `None` from a function that returns `Int` |
 | Dropped results | **A statement can't drop a `Result` or a command's outcome**, with or without the `Uncertain`, `Stale` and `Expired` a command adds: it must be used, matched, passed on with `?`, or discarded with `let _ = …`. A block's last expression is used when the block's value is; `()` and `Option`s may be dropped (sections 10 and 17). Decided by the owner on 2026-10-12 | Dropping a failure without a word is the easy but wrong program: the tour's `notify.send!` lost `Refused` and `Uncertain`, and `fs.writeText("a", "b")` as a statement compiled. `let _ =` costs a few characters where a program means to ignore a failure, and shows that choice in review. An `Option` is a value that may be missing, not a failure, and is often dropped on purpose. From the spec review of 2026-10-12, finding 7 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
+| Reading a run's outcome | **A test or `main` reads a run's outcome with `run.outcome()`, an `Option(Outcome(a))` that is `None` while the run is still going; only a job waits for one, with `run.join!()`.** `run.join()` without `!` is an error that names the call to write, and `outcome()` in a job is an error that names `join!()` (section 15). Decided 2026-10-12 | A test can't wait, since its clock moves only when it calls `advance(…)`, but it must check how a run ended, including a `Failed(DeadlinePassed)` it expects. Before, `run.join()` in a test passed the checker and then failed at run time as the strings' `join`, and tests wrote a job that joined and an entity that kept what it saw. `Option(Outcome(a))` rather than `Option(a)`, so a test sees a fault too. In a job a read that isn't a step could see another outcome on replay, so there it is `join!()`. From the ergonomics analysis of 2026-10-12 |
 
 ## 3. A tour
 
@@ -1553,6 +1554,34 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.
+- **Reading a run's outcome without waiting.** Only a job waits for a run, with `run.join!()`. A
+  test, `main` and the functions they call read where it got to with `run.outcome()`, an
+  `Option(Outcome(a))`: `None` while the run is still going (queued, sleeping or waiting), and
+  `Some(Completed(value))` or `Some(Failed(fault))` once it has ended. A test's runs move only
+  when it calls `advance(…)` or publishes an event (section 20), so `outcome()` read after one of
+  them sees what that did:
+
+  ```eye
+  job brew(cups: Int) -> Int {
+    sleep!(4 min)
+    cups
+  }
+
+  test "a brew is ready after four minutes" {
+    let run = brew.start(2)
+    expect(run.outcome() == None)
+    advance(5 min)
+    expect(run.outcome() == Some(Completed(2)))
+  }
+  ```
+
+  `join` on a run is always a wait, never the strings' `join`, so `run.join()` without `!` is an
+  error that names the call to write: in a job, `in a job, joining a run is a durable step that
+  waits for it: write run.join!()`; elsewhere, `a test can't wait for a run: read where it got to
+  with run.outcome(), which is None while the run is still going (only a job waits, with
+  join!())`. In a job, `outcome()` is an error too, since what it reads isn't recorded: `in a job,
+  a run's outcome is read with run.join!(), a step that waits for it: outcome() isn't recorded,
+  so a resumed run could see another`.
 - **Attributes:**
 
   | Attribute | Meaning |
@@ -2356,7 +2385,7 @@ text contains it, and fails the test when none or several do.
 `expected w.phase == Asleep, but w.phase is Running`. A run that stops on a bug (`unreachable`, a
 fake with no recorded answer) fails the test too; one that ends as an outcome the program
 declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
-by joining the run.
+with the run's `outcome()`: `expect(run.outcome() == Some(Failed(DeadlinePassed)))` (section 15).
 
 **Live tests.** `eye test --live ai,notify` runs the tests against the real services and models of
 the modules named, instead of their recordings. A `with fakes(…)` leaves those modules out, and

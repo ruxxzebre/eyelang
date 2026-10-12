@@ -81,26 +81,14 @@ job fetch(feed: String) -> Int {
   sleep!(2 h)
   0
 }
-
-## Fetches a feed as a child run, and keeps how the run ended.
-job refresh(feed: String) {
-  let outcome = fetch.start!(feed).join!()
-  Feed(feed).ended!(outcome)
-}
-
-entity Feed(name: String) {
-  state last: Option(Outcome(Int)) = None
-
-  pub fn ended(o: Outcome(Int)) { last = Some(o) }
-}
 # endregion deadline
 
 # region test-deadline
 test "a run that passes its deadline ends as an outcome" {
-  refresh.start("ireland")
+  let run = fetch.start("ireland")
   advance(59 min)
-  expect(Feed("ireland").last == None)
+  expect(run.outcome() == None)
   advance(1 min)
-  expect(Feed("ireland").last == Some(Failed(DeadlinePassed)))
+  expect(run.outcome() == Some(Failed(DeadlinePassed)))
 }
 # endregion test-deadline

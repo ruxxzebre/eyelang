@@ -204,6 +204,34 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
   `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.
+- **Reading a run's outcome without waiting.** Only a job waits for a run, with `run.join!()`. A
+  test, `main` and the functions they call read where it got to with `run.outcome()`, an
+  `Option(Outcome(a))`: `None` while the run is still going (queued, sleeping or waiting), and
+  `Some(Completed(value))` or `Some(Failed(fault))` once it has ended. A test's runs move only
+  when it calls `advance(…)` or publishes an event ([section 20](/reference/language/time-secrets-tests)), so `outcome()` read after one of
+  them sees what that did:
+
+  ```eye
+  job brew(cups: Int) -> Int {
+    sleep!(4 min)
+    cups
+  }
+
+  test "a brew is ready after four minutes" {
+    let run = brew.start(2)
+    expect(run.outcome() == None)
+    advance(5 min)
+    expect(run.outcome() == Some(Completed(2)))
+  }
+  ```
+
+  `join` on a run is always a wait, never the strings' `join`, so `run.join()` without `!` is an
+  error that names the call to write: in a job, `in a job, joining a run is a durable step that
+  waits for it: write run.join!()`; elsewhere, `a test can't wait for a run: read where it got to
+  with run.outcome(), which is None while the run is still going (only a job waits, with
+  join!())`. In a job, `outcome()` is an error too, since what it reads isn't recorded: `in a job,
+  a run's outcome is read with run.join!(), a step that waits for it: outcome() isn't recorded,
+  so a resumed run could see another`.
 - **Attributes:**
 
   | Attribute | Meaning |

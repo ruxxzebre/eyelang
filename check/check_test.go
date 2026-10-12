@@ -65,10 +65,13 @@ type U = | A`, []string{"2:4: f is declared twice in this module", "4:6: A is de
   pub fn m() { sleep!(1 min) }
 }
 test "t" { sleep!(1 min) }
-pub fn main() { sleep!(1 min) }`, []string{
+pub fn main() { sleep!(1 min) }
+job j() -> Int { 1 }
+test "u" { j.start().join!() }`, []string{
 			"3:16: an entity method is a transaction and can't wait",
 			"5:12: a test can't make waiting calls",
 			"6:17: `!` marks a durable step",
+			"8:12: a test can't make waiting calls; start a job, then advance(…) the clock; to read a run's outcome without waiting, call outcome() on the run, which is None while the run is still going",
 		}},
 		{"durable steps in jobs need !", `job j() {
   sleep(1 min)

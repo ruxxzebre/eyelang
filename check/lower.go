@@ -275,6 +275,23 @@ func (l *lowerer) canWait() (bool, string) {
 	return false, "`!` marks a durable step, and only jobs have them"
 }
 
+// joinHint says how to read a run's outcome without waiting, for `x.join!()`
+// where waiting isn't allowed; it is "" for any other call.
+func (l *lowerer) joinHint(fn *syntax.Node) string {
+	if fn == nil || fn.Kind != syntax.FieldExpression {
+		return ""
+	}
+	field := fn.ChildByField(syntax.FieldField)
+	if field == nil || l.text(field) != "join" {
+		return ""
+	}
+	call := "outcome() on the run"
+	if recv := fn.ChildByField(syntax.FieldValue); recv != nil && recv.Kind == syntax.Ident {
+		call = l.text(recv) + ".outcome()"
+	}
+	return "; to read a run's outcome without waiting, call " + call + ", which is None while the run is still going"
+}
+
 // ---------------------------------------------------------------- statements
 
 func (l *lowerer) block(n *syntax.Node) ir.Expr {
@@ -554,7 +571,7 @@ func (l *lowerer) expr(n *syntax.Node) ir.Expr {
 		return l.call(n, n.ChildByField(syntax.FieldFunction), l.args(n.ChildByField(syntax.FieldArguments)), false)
 	case syntax.WaitingCallExpression:
 		if ok, why := l.canWait(); !ok {
-			l.errorf(n, "%s", why)
+			l.errorf(n, "%s%s", why, l.joinHint(n.ChildByField(syntax.FieldFunction)))
 		}
 		call := l.call(n, n.ChildByField(syntax.FieldFunction), l.args(n.ChildByField(syntax.FieldArguments)), true)
 		return &ir.Waiting{At: at, Call: call}

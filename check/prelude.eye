@@ -49,7 +49,9 @@ impl Show for Offset {
 }
 
 ## How a run of a job ended: `Completed` with what the job returned, or
-## `Failed` when it stopped first. `run.join!()` waits for it.
+## `Failed` when it stopped first. In a job, `run.join!()` waits for it; a
+## test or `main` reads it with `run.outcome()`, which is `None` while the
+## run is still going.
 pub type Outcome(a) = Completed(a) | Failed(Fault)
 
 ## Why a run stopped before returning. A fault isn't an error: code can't

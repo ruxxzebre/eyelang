@@ -195,6 +195,19 @@ func (in *Interp) join(run *jobRun, target *RunVal, at ir.Pos) Value {
 
 func runEvent(id int64) string { return fmt.Sprintf("run/%d", id) }
 
+// runOutcome is `run.outcome()` outside a job: Some(outcome) once the run
+// has ended, None while it is still going.
+func (in *Interp) runOutcome(target *RunVal, at ir.Pos) Value {
+	data, ok := in.rt.store.Run(target.ID)
+	if !ok {
+		in.faultf(at, "run #%d isn't kept in the store", target.ID)
+	}
+	if r := decodeRun(data); r.Status == "done" || r.Status == "failed" {
+		return in.some(in.outcome(r, at))
+	}
+	return in.none()
+}
+
 // outcome is how a finished run ended, as the prelude's Outcome.
 func (in *Interp) outcome(r *jobRun, at ir.Pos) Value {
 	pre := in.prog.Prelude.Variants

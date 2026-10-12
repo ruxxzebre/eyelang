@@ -96,7 +96,8 @@ pub extern type Range(a)
 ## a `Ref(World)` can't be confused with a `Ref(Player)`.
 pub extern type Ref(e)
 
-## A started run of a job: `run.join!()` waits for its `Outcome`.
+## A started run of a job. In a job, `run.join!()` waits for its `Outcome`; a test or `main` reads
+## it with `run.outcome()`, an `Option(Outcome(a))` that is `None` while the run is still going.
 pub extern type Run(a)
 
 ## An idempotency key: a command sent again with the same key happens once.

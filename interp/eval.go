@@ -862,6 +862,13 @@ func (in *Interp) method(recv Value, name string, args []argVal, at ir.Pos, dura
 			}
 			return in.rt.start(r.Job, pos, named, at), nil
 		}
+	case *RunVal:
+		if name == "outcome" {
+			if in.run != nil {
+				in.faultf(at, "in a job, a run's outcome is read with join!(), a step that waits for it: outcome() isn't recorded, so a resumed run could see another")
+			}
+			return in.runOutcome(r, at), nil
+		}
 	case *entityVal:
 		in.faultf(at, "%s has no function %s", r.E.Name, name)
 	case *Variant:

@@ -243,6 +243,10 @@ and the whole night takes as long as the slowest one:
 
 `@deadline` also takes a time of day: `@deadline(13:40, in: "Europe/Dublin")`.
 
+Only a job waits for a run. A test or `main` reads where a run got to with `run.outcome()`:
+`None` while it is still going, and `Some(Completed(value))` or `Some(Failed(fault))` once it has
+ended. See [Testing](/guide/testing#outcomes-approvals-and-events).
+
 Errors that the job can handle belong in its return type, as a `Result`. Faults are for what it
 can't: a deadline, a bug, a service that stayed down.
 

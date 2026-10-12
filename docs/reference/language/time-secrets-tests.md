@@ -82,7 +82,7 @@ text contains it, and fails the test when none or several do.
 `expected w.phase == Asleep, but w.phase is Running`. A run that stops on a bug (`unreachable`, a
 fake with no recorded answer) fails the test too; one that ends as an outcome the program
 declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
-by joining the run.
+with the run's `outcome()`: `expect(run.outcome() == Some(Failed(DeadlinePassed)))` ([section 15](/reference/language/jobs-and-waiting)).
 
 **Live tests.** `eye test --live ai,notify` runs the tests against the real services and models of
 the modules named, instead of their recordings. A `with fakes(…)` leaves those modules out, and

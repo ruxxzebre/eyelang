@@ -241,6 +241,7 @@ entities, jobs, views and contracts (v0.4): `eye build` compiles the core langua
 | `reserve!` | ✓ | ✓ | ✓ | [programs/memory](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/memory/memory.eye#L42) |
 | `lock!` | ✓ | ✓ | ✓ (the store keeps the holder and expiry; a holder still waiting inside when the lock runs out ends as `Failed(LockExpired(name))`; a held or awaited lock survives a restart) | [programs/waiting](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/waiting/waiting.eye#L111), [waits_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/waits_test.go#L201) |
 | `run.join!()` and `Outcome` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
+| `run.outcome()` in tests and `main`: `None` while the run is still going | ✓ | ✓ (`run.join()` without `!` is an error that names `join!()` in a job and `outcome()` elsewhere; `outcome()` in a job is an error that names `join!()`) | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L167), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L83) |
 | `start()`, with `after:`, `at:` and `key:` | ✓ | ✓ | partial: `after:` and `key:` are tested; `at:` has no test yet | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L12), [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L118) |
 
 ## Attributes
