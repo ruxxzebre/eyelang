@@ -10,7 +10,7 @@ import { withBase } from 'vitepress'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { createState, toOffset, type Hooks } from './editor'
 import { Engine, type Diagnostic, type Files, type Location, type Status } from './engine'
-import { blank, example, examples } from './examples'
+import { blank, defaultExample, example, examples } from './examples'
 import { encode, fromHash, load, save } from './share'
 
 type Line = { kind: 'stdout' | 'stderr' | 'service' | 'info' | 'pass' | 'fail' | 'error'; text: string }
@@ -102,6 +102,7 @@ function chooseExample(id: string) {
   const e = example(id)
   if (!e) return
   exampleId.value = id
+  args.value = e.args ?? ''
   useFiles(e.files)
   output.value = [{ kind: 'info', text: `${e.title}: Run (${mod}+Enter) runs main; Test (${mod}+Shift+Enter) runs the tests.\n` }]
   const services = Object.keys(e.files).filter((p) => p.endsWith('/eye.toml')).map((p) => p.slice(0, -'/eye.toml'.length))
@@ -287,14 +288,17 @@ onMounted(async () => {
   } else if (fromLink?.example && example(fromLink.example)) {
     exampleId.value = fromLink.example
     Object.assign(files, example(fromLink.example)!.files)
+    args.value = example(fromLink.example)!.args ?? ''
   } else if (saved?.files && Object.keys(saved.files).length) {
     Object.assign(files, saved.files)
     first = saved.active
     args.value = saved.args ?? ''
     exampleId.value = saved.example ?? ''
   } else {
-    exampleId.value = 'tutorial/hello'
-    Object.assign(files, example('tutorial/hello')?.files ?? blank.files)
+    const start = example(defaultExample) ?? blank
+    exampleId.value = start.id
+    Object.assign(files, start.files)
+    args.value = start.args ?? ''
   }
   e.setFiles(files)
   active.value = first && first in files ? first : 'main.eye' in files ? 'main.eye' : paths.value[0]

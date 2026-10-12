@@ -1,0 +1,7 @@
+{
+  "contract": "Mail",
+  "exchanges": [
+    { "op": "send", "key": "trial-ann", "result": { "kind": "Sent", "id": "m-1" } },
+    { "op": "send", "key": "trial-bo", "result": { "kind": "Bounced", "reason": "no such mailbox" } }
+  ]
+}

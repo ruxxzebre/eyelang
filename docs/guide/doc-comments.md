@@ -17,18 +17,18 @@ published.
 A `##` block documents the declaration, member, field or variant right below it:
 
 ```eye
-## Train reminders: when to leave for the next train home.
+## Courier pickups: which pickup a parcel packed now can still make.
 ```
 
-<<< ./code/doc-comments/trains.eye#types
+<<< ./code/doc-comments/shipping.eye#types
 
-<<< ./code/doc-comments/trains.eye#next
+<<< ./code/doc-comments/shipping.eye#next
 
 - **Declarations:** types, functions, entities, jobs, views and contracts.
 - **Members:** a field of a record, a variant (the comment goes above its `|`), an entity's `state`
   and its methods.
 - **The module:** a `##` block at the top of a file, with a blank line between it and the first
-  declaration. Here that's "Train reminders: when to leave for the next train home."
+  declaration. Here that's "Courier pickups: which pickup a parcel packed now can still make."
 
 A blank line or a plain `#` comment between a doc comment and the code detaches it, so what a doc
 comment documents is always the code it touches.
@@ -46,8 +46,8 @@ the thing is or does:
 
 | Instead of | Write |
 |---|---|
-| `## This function is used to compute the next train.` | `## The first departure that leaves after now, if there is one.` |
-| `## Helper.` | `## Rounds a delay up to whole minutes.` |
+| `## This function is used to compute the next pickup.` | `## The first pickup a parcel packed now can still make, if there is one.` |
+| `## Helper.` | `## Rounds a cutoff up to whole minutes.` |
 | `## See below.` | Put the important part first. |
 
 After the first sentence, say what a caller needs to know: what happens at the edges, what an error
@@ -60,8 +60,8 @@ an example.
 
 | You write | It links to |
 |---|---|
-| `[Departure]` | a declaration in the same module, the prelude or the built-in functions |
-| `[Departure.delay]` | a field, variant, state or method of a declaration |
+| `[Pickup]` | a declaration in the same module, the prelude or the built-in functions |
+| `[Pickup.cutoff]` | a field, variant, state or method of a declaration |
 | `[Some]` | a variant, by its own name |
 | `[ai.generate]` | a declaration in another module the program uses |
 
@@ -69,7 +69,7 @@ an example.
 exits with status 1, so CI catches docs that point at code that's gone:
 
 ```text
-main.md: the doc comment of next links to [Departure.late], which names nothing documented
+main.md: the doc comment of next links to [Pickup.late], which names nothing documented
 ```
 
 ## See your docs

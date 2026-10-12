@@ -148,7 +148,7 @@ nothing yet.)
 
 | Variable | What it sets | Read by |
 |---|---|---|
-| `<MODULE>_URL` | The base URL of the service behind a contract module: `NOTIFY_URL` for `notify`, `LAB_NOTIFY_URL` for `lab.notify` | Every call to that contract |
+| `<MODULE>_URL` | The base URL of the service behind a contract module: `NOTIFY_URL` for `notify`, `SHOP_PAYMENTS_URL` for `shop.payments` | Every call to that contract |
 | `<MODULE>_PORT` | The port a contract the program serves listens on instead of its `@port`: `NOTIFY_PORT=8081`; `0` takes any free port | `eye run`, when it starts |
 | `AI_URL` | The model gateway's base URL, such as `http://gateway:8317/v1`; when set, it answers every model | `ai.generate` |
 | `ANTHROPIC_URL`, `OPENAI_URL` | Where Anthropic's and OpenAI's APIs are, if not at their usual addresses | `ai.generate` |

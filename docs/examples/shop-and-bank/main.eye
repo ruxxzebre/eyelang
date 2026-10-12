@@ -11,6 +11,7 @@ entity Order(id: String) {
   pub fn settle(s: String) { status = s }
 }
 
+# region checkout
 ## Charges a customer for an order, once however often it runs: the key
 ## names the order.
 job checkout(customer: CustomerId, order: String, cents: Int) uses {entity Order, net Payments.charge, stdio, wait} {
@@ -22,6 +23,7 @@ job checkout(customer: CustomerId, order: String, cents: Int) uses {entity Order
   Order(order).settle!(status)
   print("order {order}: {status}")
 }
+# endregion checkout
 
 ## Says what a customer has left.
 job report(customer: CustomerId) uses {net Payments.balance, stdio, wait} {

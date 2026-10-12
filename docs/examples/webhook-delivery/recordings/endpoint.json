@@ -1,0 +1,13 @@
+{
+  "contract": "Endpoint",
+  "exchanges": [
+    { "op": "deliver", "key": "evt-1", "result": { "kind": "Ok", "value": { "id": "wh-1" } } },
+    { "op": "deliver", "key": "evt-2", "result": { "kind": "Uncertain", "key": "evt-2" } },
+    { "op": "receipt", "key": "evt-2", "result": { "kind": "Ok", "value": { "id": "wh-2" } } },
+    {
+      "op": "deliver",
+      "key": "evt-3",
+      "result": { "kind": "Err", "value": { "kind": "BadStatus", "code": 410, "body": "unsubscribed" } }
+    }
+  ]
+}

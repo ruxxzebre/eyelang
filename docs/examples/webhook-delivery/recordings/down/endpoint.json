@@ -1,0 +1,10 @@
+{
+  "contract": "Endpoint",
+  "exchanges": [
+    {
+      "op": "deliver",
+      "key": "evt-1",
+      "result": { "kind": "Err", "value": { "kind": "BadStatus", "code": 503, "body": "down for maintenance" } }
+    }
+  ]
+}

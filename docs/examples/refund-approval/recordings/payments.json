@@ -1,0 +1,12 @@
+{
+  "contract": "Payments",
+  "exchanges": [
+    { "op": "refund", "key": "refund-r-1", "result": { "kind": "Refunded", "id": "re-1" } },
+    { "op": "refund", "key": "refund-r-3", "result": { "kind": "Refunded", "id": "re-3" } },
+    {
+      "op": "refund",
+      "key": "refund-r-5",
+      "result": { "kind": "NotRefundable", "reason": "the charge is more than 180 days old" }
+    }
+  ]
+}

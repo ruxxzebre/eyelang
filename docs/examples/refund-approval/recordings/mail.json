@@ -1,0 +1,9 @@
+{
+  "contract": "Mail",
+  "exchanges": [
+    { "op": "send", "key": "refund-r-1", "result": { "kind": "Sent", "id": "m-1" } },
+    { "op": "send", "key": "refund-r-2", "result": { "kind": "Sent", "id": "m-2" } },
+    { "op": "send", "key": "refund-r-3", "result": { "kind": "Sent", "id": "m-3" } },
+    { "op": "send", "key": "refund-r-5", "result": { "kind": "Bounced", "reason": "no such mailbox" } }
+  ]
+}

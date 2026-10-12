@@ -137,11 +137,11 @@ func readDir(t *testing.T, dir string) map[string]string {
 	return files
 }
 
-// TestDocsPrograms loads each program of the tutorial and the guide into a
-// playground, as its examples menu does, and checks that it checks and
-// that its tests pass, recordings and all.
+// TestDocsPrograms loads each program of the quickstart, the tutorial, the
+// guide and the examples into a playground, as its examples menu does, and
+// checks that it checks and that its tests pass, recordings and all.
 func TestDocsPrograms(t *testing.T) {
-	for _, root := range []string{"../../docs/tutorial/code", "../../docs/guide/code", "../../docs/examples"} {
+	for _, root := range []string{"../../docs/quickstart/code", "../../docs/tutorial/code", "../../docs/guide/code", "../../docs/examples"} {
 		entries, err := os.ReadDir(root)
 		if err != nil {
 			t.Fatal(err)

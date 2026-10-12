@@ -1,0 +1,7 @@
+{
+  "contract": "Chat",
+  "exchanges": [
+    { "op": "post", "key": "report-2026-10-30", "result": { "kind": "Posted", "id": "msg-1" } },
+    { "op": "post", "key": "report-2026-11-02", "result": { "kind": "Posted", "id": "msg-2" } }
+  ]
+}

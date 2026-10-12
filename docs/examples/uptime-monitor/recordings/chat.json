@@ -1,0 +1,9 @@
+{
+  "contract": "Chat",
+  "exchanges": [
+    { "op": "post", "key": "down-shop-1", "result": { "kind": "Posted", "id": "msg-1" } },
+    { "op": "post", "key": "up-shop-1", "result": { "kind": "Posted", "id": "msg-2" } },
+    { "op": "post", "key": "down-shop-2", "result": { "kind": "Posted", "id": "msg-3" } },
+    { "op": "post", "key": "up-shop-2", "result": { "kind": "Posted", "id": "msg-4" } }
+  ]
+}

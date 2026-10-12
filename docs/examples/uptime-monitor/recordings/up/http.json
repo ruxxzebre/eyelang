@@ -1,0 +1,6 @@
+{
+  "contract": "http",
+  "exchanges": [
+    { "op": "get", "result": { "kind": "Ok", "value": { "status": 200, "headers": {}, "body": "ok" } } }
+  ]
+}

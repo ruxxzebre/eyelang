@@ -1,0 +1,9 @@
+{
+  "contract": "http",
+  "exchanges": [
+    {
+      "op": "get",
+      "result": { "kind": "Ok", "value": { "status": 503, "headers": {}, "body": "Service Unavailable" } }
+    }
+  ]
+}

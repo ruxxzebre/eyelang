@@ -249,7 +249,8 @@ job summarise(text: String) -> Result(Summary, ai.AiError) {
 - A call is sent only if the budget leaves room for its prompt and at least 64 tokens of reply,
   and the reply is limited to what is left. Otherwise the call isn't sent, and the run ends as
   `Failed(OverBudget)`; a reply cut off at the limit ends it the same way. A caller that must
-  report it starts the work as a child run and joins it, as the lab's digest does.
+  report it starts the work as a child run and joins it, as in
+  [Outcomes and faults](/guide/jobs-and-waiting#outcomes-and-faults).
 - What each reply spent is recorded with its step, so a run that resumes after a restart counts it
   again: a restart doesn't refill the budget.
 - Dollars need prices. Anthropic's models are known; for others, the deployment gives the price in
