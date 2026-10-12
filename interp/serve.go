@@ -209,17 +209,17 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, in
 			fmt.Fprintf(stderr, "eye run: %v; trying again in %v\n", err, retryAfter)
 			wait = retryAfter
 		} else {
-			run := rt.nextSleeper()
+			wakeAt, sleeping := rt.nextWake()
 			s, firing := rt.nextFiring()
 			switch {
-			case run == nil && s == nil && listening:
+			case !sleeping && s == nil && listening:
 				wait = time.Hour // until a request starts a run
-			case run == nil && s == nil:
+			case !sleeping && s == nil:
 				return nil
-			case run == nil:
+			case !sleeping:
 				wait = time.Until(firing)
-			case s == nil || run.WakeAt < firing.UnixNano():
-				wait = time.Until(time.Unix(0, run.WakeAt))
+			case s == nil || wakeAt < firing.UnixNano():
+				wait = time.Until(time.Unix(0, wakeAt))
 			default:
 				wait = time.Until(firing)
 			}
@@ -274,20 +274,20 @@ func (rt *runtime) restore() {
 			rt.uncertain[strings.TrimPrefix(k, "uncertain/")] = cmd
 		}
 	}
-	for _, id := range rt.store.Runs() {
+	// From the runs' handles: no record is read but those of the runs that
+	// are ready, when they run.
+	rt.index.each(func(id int64, h *runHandle) {
 		if id >= rt.nextRun {
 			rt.nextRun = id + 1
 		}
-		data, _ := rt.store.Run(id)
-		run := decodeRun(data)
-		if run.Status == "ready" {
+		if h.status == readyRun {
 			rt.queue = append(rt.queue, id)
 		}
-		if job := rt.in.jobs[run.Job]; job != nil && job.Limit != nil && run.Begun > 0 {
-			key := run.Job + "/" + run.RateGroup
-			rt.rate[key] = append(rt.rate[key], run.Begun)
-		}
+	})
+	for key, starts := range rt.index.begun {
+		rt.rate[key] = append(rt.rate[key], starts...)
 	}
+	rt.index.begun = nil
 	for _, starts := range rt.rate {
 		sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
 	}

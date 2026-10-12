@@ -91,19 +91,18 @@ func memoryText(n int64) string {
 // new run, since the runs its keys name are finished, and nothing waits or
 // is scheduled. A journal can be started over with eye run --fresh.
 func (rt *runtime) nothingToDo(w io.Writer, store Store) {
-	if len(rt.queue) > 0 || rt.nextSleeper() != nil {
+	if _, sleeping := rt.nextWake(); len(rt.queue) > 0 || sleeping {
 		return
 	}
 	if s, _ := rt.nextFiring(); s != nil {
 		return
 	}
 	finished := 0
-	for _, id := range rt.store.Runs() {
-		data, _ := rt.store.Run(id)
-		if st := decodeRun(data).Status; st == "done" || st == "failed" {
+	rt.index.each(func(_ int64, h *runHandle) {
+		if h.status.finished() {
 			finished++
 		}
-	}
+	})
 	if finished == 0 {
 		return
 	}

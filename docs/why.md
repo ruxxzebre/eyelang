@@ -21,7 +21,8 @@ it.
 ## What the language does for you
 
 **Waiting is a line of code.** `sleep!(3 days)` in a job pauses it for three days. While it waits,
-the run is a saved record, not a thread or a process, so a million waiting runs cost no memory. If
+the run is a record saved on disk, not a thread or a process, and memory keeps only a handle of
+about 140 bytes for it. If
 the process restarts, the run carries on from its last step. You don't need a queue, a cron table
 or a "next run at" column. See [Jobs and waiting](/reference/language/jobs-and-waiting).
 

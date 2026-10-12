@@ -20,11 +20,15 @@ type eyeStore struct {
 	value Value // the current MemoryStore; nil until first used
 }
 
-// memory is an in-memory store a journal can keep its state in.
+// memory is an in-memory store a journal or the Postgres store keeps its
+// state in: entities, events, meta, and the records of the runs that are
+// ready. They keep the records of the others themselves (handles.go).
 type memory interface {
 	Store
 	// snapshot is everything the store holds, as one commit.
 	snapshot() *Commit
+	// forget drops the records of runs ids.
+	forget(ids []int64)
 }
 
 func newEyeStore(in *Interp) *eyeStore {
@@ -115,6 +119,14 @@ func (s *eyeStore) Runs() []int64 {
 		out = append(out, toInt64(e))
 	}
 	return out
+}
+
+func (s *eyeStore) forget(ids []int64) {
+	list := &List{}
+	for _, id := range ids {
+		list.Elems = append(list.Elems, id)
+	}
+	s.value = s.call("forget", s.current(), list)
 }
 
 func (s *eyeStore) Events() []EventRecord {

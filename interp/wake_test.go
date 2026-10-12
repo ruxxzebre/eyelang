@@ -53,14 +53,14 @@ func TestWakingManyRuns(t *testing.T) {
 	}
 	const n = 10_000
 	in := startSleepers(t, n)
-	if got := len(in.rt.index.waiting); got != n {
+	if got := in.rt.index.waiting(); got != n {
 		t.Fatalf("%d runs wait, want %d", got, n)
 	}
 	start := time.Now()
 	in.rt.advance(ir.Duration(2 * time.Hour))
 	took := time.Since(start)
 	t.Logf("woke %d runs in %v, %v per run", n, took, took/n)
-	if got := len(in.rt.index.waiting); got != 0 {
+	if got := in.rt.index.waiting(); got != 0 {
 		t.Errorf("%d runs still wait", got)
 	}
 	for _, id := range []int64{0, n / 2, n - 1} {
@@ -78,7 +78,7 @@ func TestWakingManyRuns(t *testing.T) {
 // in the order they started, as runs change what they wait for or stop
 // waiting; and which runs an event wakes.
 func TestWaitingIndex(t *testing.T) {
-	ix := indexStore(newMemStore())
+	ix := indexStore(newMemStore(), nil, nil)
 	save := func(id int64, status string, wakeAt int64, event string) {
 		data, err := json.Marshal(jobRun{ID: id, Job: "m.j", Status: status, WakeAt: wakeAt, WaitEvent: event})
 		if err != nil {
@@ -88,15 +88,15 @@ func TestWaitingIndex(t *testing.T) {
 	}
 	// order lists the waiting runs in the order they wake, emptying a copy.
 	order := func() []int64 {
-		cp := indexStore(ix.Store)
+		cp := indexStore(ix.Store, nil, nil)
 		var ids []int64
 		for {
-			id, ok := cp.firstToWake()
+			id, _, ok := cp.firstToWake()
 			if !ok {
 				return ids
 			}
 			ids = append(ids, id)
-			cp.unwait(id)
+			cp.unwait(id, cp.handle(id))
 		}
 	}
 	save(5, "sleeping", 300, "")
@@ -107,7 +107,7 @@ func TestWaitingIndex(t *testing.T) {
 	if got, want := order(), []int64{3, 4, 1, 5}; !slices.Equal(got, want) {
 		t.Errorf("wake order %v, want %v", got, want)
 	}
-	if id, _ := ix.firstToWake(); id != 3 {
+	if id, _, _ := ix.firstToWake(); id != 3 {
 		t.Errorf("first to wake is %d, want 3", id)
 	}
 	save(5, "sleeping", 50, "m.ev") // it waits again, for less time
@@ -128,8 +128,8 @@ func TestWaitingIndex(t *testing.T) {
 	for _, id := range []int64{1, 2, 4, 5} {
 		save(id, "failed", 0, "")
 	}
-	if len(ix.timers.ids) != 0 || len(ix.timers.at) != 0 || len(ix.byEvent) != 0 || len(ix.waiting) != 0 {
-		t.Errorf("no run waits, and the index holds %v, %v, %v, %v", ix.timers.ids, ix.timers.at, ix.byEvent, ix.waiting)
+	if len(ix.timers.ids) != 0 || len(ix.byEvent) != 0 {
+		t.Errorf("no run waits, and the index holds %v, %v", ix.timers.ids, ix.byEvent)
 	}
 }
 

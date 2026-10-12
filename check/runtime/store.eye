@@ -43,8 +43,9 @@ pub type Commit = {
   dropEvents: Int,
 }
 
-## Everything the store holds. Entity keys and runs keep the order they were
-## first saved in, which listings follow.
+## Everything the store holds. Entity keys keep the order they were first
+## saved in, which listings follow; runs are listed by number, which is the
+## order they started in.
 ##
 ## Runs are kept in buckets of 64 by their number, and rows by entity type, so
 ## that a commit, which rewrites a run at every step, replaces one small map
@@ -55,7 +56,6 @@ pub opaque type MemoryStore = {
   kinds: Map(String, List(String)),
   entities: List(String),
   runs: Map(Int, Map(Int, String)),
-  order: List(Int),
   events: List(EventRecord),
   meta: Map(String, String),
 }
@@ -98,9 +98,27 @@ impl MemoryStore {
     kinds: {},
     entities: [],
     runs: {},
-    order: [],
     events: [],
     meta: {},
+  }
+
+  ## The store without the records of the runs ids. A journal or a database
+  ## that wraps this store keeps a run's record itself while the run waits or
+  ## after it ends, and only a ready run's record here (SPECS.md §15).
+  pub fn forget(self, ids: List(Int)) -> MemoryStore {
+    var s = self
+    for id in ids {
+      let runs = s.runs[bucket(id)] ?? {}
+      if runs |> contains(id) {
+        let left = runs |> remove(id)
+        s.runs = if left |> size == 0 {
+          s.runs |> remove(bucket(id))
+        } else {
+          s.runs |> insert(bucket(id), left)
+        }
+      }
+    }
+    s
   }
 }
 
@@ -126,7 +144,8 @@ impl Store(MemoryStore) for MemoryStore {
     }
 
   ## The saved runs, oldest first.
-  fn runs(self) -> List(Int) = self.order
+  fn runs(self) -> List(Int) =
+    self.runs |> keys |> sort |> flatMap(fn b: (self.runs[b] ?? {}) |> keys |> sort)
 
   ## The published events, oldest first.
   fn events(self) -> List(EventRecord) = self.events
@@ -153,7 +172,6 @@ impl Store(MemoryStore) for MemoryStore {
     }
     for r in c.runs {
       let runs = s.runs[bucket(r.id)] ?? {}
-      if !(runs |> contains(r.id)) { s.order += [r.id] }
       s.runs = s.runs |> insert(bucket(r.id), runs |> insert(r.id, r.data))
     }
     # Most commits neither drop nor add events, and leave the list alone: a
@@ -186,7 +204,7 @@ test "a commit applies every write, and listings keep their order" {
   }
   let s = MemoryStore.empty().commit(c)
   expect(s.keys("World") == ["World/a", "World/b"])
-  expect(s.runs() == [2, 1])
+  expect(s.runs() == [1, 2])
   expect(s.load("World", "World/b") |> map(fn r: r.state) == Some("2"))
   expect(s.run(2) == Some("r2") && s.run(99) == None)
   expect(s.metaKeys("fired/") == ["fired/j"])
@@ -228,4 +246,17 @@ test "an ended entity keeps its row, marked ended" {
   expect(t.load("World", "World/a") |> map(fn r: r.ended) == Some(true))
   expect(t.load("World", "World/b") |> map(fn r: r.ended) == Some(false))
   expect(t.keys("World") == ["World/a", "World/b"])
+}
+
+test "a forgotten run's record leaves the store, and the other runs stay" {
+  let c: Commit = {
+    writes: [],
+    runs: [{ id: 1, data: "r1" }, { id: 2, data: "r2" }, { id: 70, data: "r70" }],
+    events: [],
+    meta: [],
+    dropEvents: 0,
+  }
+  let s = MemoryStore.empty().commit(c).forget([2, 70, 99])
+  expect(s.runs() == [1])
+  expect(s.run(2) == None && s.run(70) == None && s.run(1) == Some("r1"))
 }

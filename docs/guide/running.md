@@ -113,7 +113,9 @@ $ eye runs --json .
 
 Start the program again with the same command. This is what happens:
 
-- The journal is read back: entities, events, and every run as of its last step.
+- The journal is read back: entities, events, and every run as of its last step. Only the
+  records of runs that are ready to run come into memory; a waiting run's record stays in the
+  file until the run wakes.
 - `main` runs again. Here `submit` sees a request it already has and does nothing, which is why
   `main` should be safe to run twice. A job that `main` starts directly needs a `key:`, so that
   starting it again starts nothing; the checker refuses the call without one.
@@ -243,8 +245,12 @@ The journal is one file that only `eye run` writes:
 - **Each line is small.** A run's record is written as JSON, and a run whose last 20 steps (what
   `eye runs` shows) moved on is written with only the steps they gained. A journal written by an
   `eye` before 2026-10-12 opens as before and is written in this form from then on.
+- **A waiting run costs about 140 bytes of memory.** The record of a run that waits or has
+  finished stays in the file, written whole when the run starts to wait, and `eye run` keeps only
+  what finds it: when it wakes and what wakes it. The record is read back when the run wakes, or
+  when something asks for it. 20,000 runs sleeping for a day add about 7 MB to `eye run`.
 - **It grows with the state, not the history.** When `eye run` opens the journal, and whenever it
-  grows past four times the live data (and past 1 MiB), it is rewritten as one snapshot, through
+  grows past four times the live data (and past 1 MiB), it is rewritten as a snapshot, through
   a new file renamed over the old one. Above, 7.2 KiB on disk with 1.8 KiB live became 1.8 KiB
   after the restart.
 - **Old detail is dropped.** Once an hour, `eye run` drops what no run can use any more: events

@@ -91,8 +91,8 @@ Words this document uses in one sense, and names that mean different things in d
 - **Small and predictable for agents.** Coding agents write most of the changes, so there is one
   obvious way to do each thing, strict checks, and tests that can't flake.
 - **Low memory.** Compiled to native code with reference counting (no tracing GC). A waiting job
-  holds no thread or stack, only its saved record: about 1.5 KB of RAM today, since the stores
-  keep every record in memory, and nothing once records wait outside RAM (ROADMAP R.7).
+  holds no thread, stack or record in memory: the journal and the Postgres store keep its record
+  on disk and only its handle, about 140 bytes, in RAM (section 15).
 
 ## 2. Decision log
 
@@ -187,6 +187,7 @@ Words this document uses in one sense, and names that mean different things in d
 | `?` in a lambda | **A lambda's `?` returns from the lambda, so the lambda's result must be an `Option` for an `Option`'s `None` and a `Result` for an error, which is wrapped into the lambda's error type.** `?` on an `Option` in a function, job or lambda that doesn't return one is an error that names what it returns and points to `??` (section 10, from 2026-10-12) | `return` can't leave a lambda, so `?` returning from the enclosing function would be the one way out, and the interpreter already returned from the lambda. Checking against the enclosing function let `xs \|> map(fn x: x? + 1)` put a `None` where an `Int` belongs, and `fn g(x: Option(Int)) -> Int = x? + 1` returned a `None` from a function that returns `Int` |
 | Dropped results | **A statement can't drop a `Result` or a command's outcome**, with or without the `Uncertain`, `Stale` and `Expired` a command adds: it must be used, matched, passed on with `?`, or discarded with `let _ = …`. A block's last expression is used when the block's value is; `()` and `Option`s may be dropped (sections 10 and 17). Decided by the owner on 2026-10-12 | Dropping a failure without a word is the easy but wrong program: the tour's `notify.send!` lost `Refused` and `Uncertain`, and `fs.writeText("a", "b")` as a statement compiled. `let _ =` costs a few characters where a program means to ignore a failure, and shows that choice in review. An `Option` is a value that may be missing, not a failure, and is often dropped on purpose. From the spec review of 2026-10-12, finding 7 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
 | Reading a run's outcome | **A test or `main` reads a run's outcome with `run.outcome()`, an `Option(Outcome(a))` that is `None` while the run is still going; only a job waits for one, with `run.join!()`.** `run.join()` without `!` is an error that names the call to write, and `outcome()` in a job is an error that names `join!()` (section 15). Decided 2026-10-12 | A test can't wait, since its clock moves only when it calls `advance(…)`, but it must check how a run ended, including a `Failed(DeadlinePassed)` it expects. Before, `run.join()` in a test passed the checker and then failed at run time as the strings' `join`, and tests wrote a job that joined and an entity that kept what it saw. `Option(Outcome(a))` rather than `Option(a)`, so a test sees a fault too. In a job a read that isn't a step could see another outcome on replay, so there it is `join!()`. From the ergonomics analysis of 2026-10-12 |
+| Waiting runs leave RAM | **A run's record is in memory only while the run is ready.** A run that waits or has ended keeps a handle in memory (its number, job, when it wakes, what wakes it, where it resumes); the journal and the Postgres store keep its record on disk and read it back when the run wakes or something asks for it, and opening a store reads no waiting run's record (section 15). Decided 2026-10-12 | Waiting that costs no memory is a pillar, and the records were what it cost: 20,000 runs sleeping for a day took 32 MB with their records in memory, and take 7 MB with their handles. A waiting run needs nothing of its record until it wakes; what the runner asks of it before then, when it wakes and what wakes it, fits in the handle |
 
 ## 3. A tour
 
@@ -1535,6 +1536,21 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   One runner writes a store at a time, held by an advisory lock; one database holds several
   programs' stores, one per schema. Both wrap the in-memory store, and programs don't change when
   the store does.
+- **A waiting run costs its handle, not its record.** A run's record (its variables, the steps
+  since its checkpoint, its arguments and its trail) is in memory only while the run is ready to
+  run. Once it waits (a sleep, an event, an approval, another run, a place under `@concurrency`)
+  or has ended, the journal and the Postgres store keep the record on disk, and memory keeps the
+  run's handle: its number and job, when it wakes, the event that wakes it, where it resumes, and
+  what pruning counts, about 140 bytes. The record is read back when the run wakes, and when
+  something asks for it: `run.outcome()`, `join!`, an approval found by its text, pruning a
+  finished run's steps. Opening a store reads no record but those of the ready runs: the journal
+  is read a line at a time and keeps each run's handle and where the file has its record, and the
+  Postgres store reads each run's summary column. 20,000 runs that sleep for a day add about
+  7 MB to an idle runner, where they added 32 MB while every record was in memory, and the runner
+  starts again with them in 0.3 s instead of 0.7 s. A record that leaves memory is written to the
+  journal whole, not as the steps its trail gained, since that is where it is read back from.
+  The in-memory store has nowhere else to put records, so it keeps them, behind the same handles;
+  `eye runs` reads the store on its own and holds the records it shows.
 - **Calls to other services** carry a key. If the outcome is `Uncertain`, `.reconcile!()` asks the
   owner with the same key until it knows. Nothing is resent automatically.
 - **Waiting constructs** (all library functions, all marked with `!`):

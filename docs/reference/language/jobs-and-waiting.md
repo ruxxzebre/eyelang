@@ -89,6 +89,21 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   One runner writes a store at a time, held by an advisory lock; one database holds several
   programs' stores, one per schema. Both wrap the in-memory store, and programs don't change when
   the store does.
+- **A waiting run costs its handle, not its record.** A run's record (its variables, the steps
+  since its checkpoint, its arguments and its trail) is in memory only while the run is ready to
+  run. Once it waits (a sleep, an event, an approval, another run, a place under `@concurrency`)
+  or has ended, the journal and the Postgres store keep the record on disk, and memory keeps the
+  run's handle: its number and job, when it wakes, the event that wakes it, where it resumes, and
+  what pruning counts, about 140 bytes. The record is read back when the run wakes, and when
+  something asks for it: `run.outcome()`, `join!`, an approval found by its text, pruning a
+  finished run's steps. Opening a store reads no record but those of the ready runs: the journal
+  is read a line at a time and keeps each run's handle and where the file has its record, and the
+  Postgres store reads each run's summary column. 20,000 runs that sleep for a day add about
+  7 MB to an idle runner, where they added 32 MB while every record was in memory, and the runner
+  starts again with them in 0.3 s instead of 0.7 s. A record that leaves memory is written to the
+  journal whole, not as the steps its trail gained, since that is where it is read back from.
+  The in-memory store has nowhere else to put records, so it keeps them, behind the same handles;
+  `eye runs` reads the store on its own and holds the records it shows.
 - **Calls to other services** carry a key. If the outcome is `Uncertain`, `.reconcile!()` asks the
   owner with the same key until it knows. Nothing is resent automatically.
 - **Waiting constructs** (all library functions, all marked with `!`):

@@ -91,14 +91,14 @@ pub opaque type MemoryStore = {
   kinds: Map(String, List(String)),
   entities: List(String),
   runs: Map(Int, Map(Int, String)),
-  order: List(Int),
   events: List(EventRecord),
   meta: Map(String, String),
 }
 ```
 
-Everything the store holds. Entity keys and runs keep the order they were
-first saved in, which listings follow.
+Everything the store holds. Entity keys keep the order they were first
+saved in, which listings follow; runs are listed by number, which is the
+order they started in.
 
 Runs are kept in buckets of 64 by their number, and rows by entity type, so
 that a commit, which rewrites a run at every step, replaces one small map

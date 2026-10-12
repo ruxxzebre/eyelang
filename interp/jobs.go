@@ -2,7 +2,6 @@ package interp
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -494,11 +493,14 @@ func askedBy(run *jobRun) (asked, bool) {
 // waitingApprovals returns the approval requests the program's runs wait
 // for, oldest run first.
 func (rt *runtime) waitingApprovals() []asked {
-	ids := make([]int64, 0, len(rt.index.open))
-	for id := range rt.index.open {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
+	// Only a ready run's record, or that of one that sleeps until an
+	// answer, can hold a request: no other is read.
+	var ids []int64
+	rt.index.each(func(id int64, h *runHandle) {
+		if h.status == readyRun || h.status == sleepingRun && h.event == approvalEvent {
+			ids = append(ids, id)
+		}
+	})
 	var out []asked
 	for _, id := range ids {
 		data, ok := rt.store.Run(id)

@@ -2,6 +2,7 @@ package interp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,9 +20,14 @@ import (
 // the in-memory store, with every commit written to Postgres in one SQL
 // transaction before it counts, as the journal writes it to a file.
 //
-//   - Opening the store reads everything into memory. The tables are made on
-//     first use, in the first schema of the connection's search_path, so one
-//     database can hold several programs.
+//   - The record of a run that isn't ready, because it waits or has ended,
+//     stays in the database and leaves memory; it is read back, by its id,
+//     when the runtime asks for it (handles.go). Beside each record, the
+//     table keeps the run's summary and whether the run is ready.
+//   - Opening the store reads entities, events and meta into memory, and of
+//     the runs only their summaries and the records of the ready ones. The
+//     tables are made on first use, in the first schema of the connection's
+//     search_path, so one database can hold several programs.
 //   - One runner at a time: the store holds an advisory lock on the
 //     connection it writes with, and a second eye run on the same tables
 //     refuses to start.
@@ -40,6 +46,14 @@ type Postgres struct {
 	url  string
 	name string // where, for messages: host, database and schema, never the password
 
+	// hot holds the runs whose records are in memory: the ready ones.
+	hot map[int64]bool
+	// sums holds the runs' summaries read when the store opened, until the
+	// index takes them.
+	sums map[int64]runSummary
+	// loads counts the records read back from the database.
+	loads int64
+
 	mu      sync.Mutex
 	conn    *pgx.Conn // nil after a failure, until the next commit connects again
 	commits int64     // eye_store.commits as this runner last wrote it
@@ -53,7 +67,7 @@ var pgTimeout = 15 * time.Second
 
 // pgSchema is the version of the tables this runtime writes. A later runtime
 // that changes them adds a step to pgMigrations.
-const pgSchema = 2
+const pgSchema = 3
 
 // pgMigrations are the SQL that brings the tables from each version to the
 // next; pgMigrations[0] makes them.
@@ -71,6 +85,45 @@ var pgMigrations = []string{
 	CREATE TABLE IF NOT EXISTS eye_meta (key text PRIMARY KEY, data bytea NOT NULL);`,
 	// Version 2: what is kept of an entity that end(ok) ended.
 	`ALTER TABLE eye_rows ADD COLUMN ended boolean NOT NULL DEFAULT false;`,
+	// Version 3: each run's summary, and whether it is ready, so that
+	// opening the store reads only the ready runs' records; pgFillSummaries
+	// then works them out for the runs already there.
+	`ALTER TABLE eye_runs ADD COLUMN summary bytea;
+	ALTER TABLE eye_runs ADD COLUMN ready boolean NOT NULL DEFAULT true;`,
+}
+
+// pgFillSummaries works out the summary of each run the tables held before
+// they had summaries, reading one record at a time.
+func pgFillSummaries(ctx context.Context, tx pgx.Tx) error {
+	type filled struct {
+		id      int64
+		summary []byte
+		ready   bool
+	}
+	var all []filled
+	rows, _ := tx.Query(ctx, `SELECT id, data FROM eye_runs WHERE summary IS NULL`)
+	var id int64
+	var data []byte
+	if _, err := pgx.ForEachRow(rows, []any{&id, &data}, func() error {
+		if sum, ok := summaryOf(data); ok {
+			js, err := json.Marshal(sum)
+			if err != nil {
+				return err
+			}
+			all = append(all, filled{id, js, sum.inMemory()})
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	b := &pgx.Batch{}
+	for _, f := range all {
+		b.Queue(`UPDATE eye_runs SET summary = $2, ready = $3 WHERE id = $1`, f.id, f.summary, f.ready)
+	}
+	if b.Len() == 0 {
+		return nil
+	}
+	return tx.SendBatch(ctx, b).Close()
 }
 
 // IsPostgres reports whether a --store value names a Postgres database.
@@ -101,12 +154,15 @@ func openPostgresCtx(parent context.Context, url string) (*Postgres, error) {
 		conn.Close(context.Background())
 		return nil, err
 	}
-	mem, commits, err := pgRead(ctx, conn)
+	read, err := pgRead(ctx, conn, false)
 	if err != nil {
 		conn.Close(context.Background())
 		return nil, fmt.Errorf("%s: %w", p.name, err)
 	}
-	p.memory, p.conn, p.commits = mem, conn, commits
+	p.memory, p.conn, p.commits, p.sums, p.hot = read.mem, conn, read.commits, read.sums, map[int64]bool{}
+	for _, id := range read.mem.Runs() {
+		p.hot[id] = true
+	}
 	return p, nil
 }
 
@@ -183,11 +239,11 @@ func ReadPostgres(url string) (Store, error) {
 	if !exists {
 		return nil, fmt.Errorf("%s has no eye store yet; eye run --store makes one", p.name)
 	}
-	mem, _, err := pgRead(ctx, conn)
+	read, err := pgRead(ctx, conn, true)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %v", p.name, err)
 	}
-	return mem, nil
+	return read.mem, nil
 }
 
 // connect opens a connection, and names the store for messages from what it
@@ -271,6 +327,9 @@ func pgMigrate(ctx context.Context, conn *pgx.Conn, name string) error {
 		if err == nil {
 			_, err = tx.Exec(ctx, pgMigrations[version])
 		}
+		if err == nil && version+1 == 3 {
+			err = pgFillSummaries(ctx, tx)
+		}
 		if err == nil {
 			_, err = tx.Exec(ctx, `UPDATE eye_store SET schema = $1`, version+1)
 		}
@@ -287,17 +346,26 @@ func pgMigrate(ctx context.Context, conn *pgx.Conn, name string) error {
 	return nil
 }
 
-// pgRead reads the whole store into memory, in one snapshot of the database,
-// with the count of commits it has taken.
-func pgRead(ctx context.Context, conn *pgx.Conn) (*memStore, int64, error) {
+// pgRead is what reading the store gives: the state to keep in memory, the
+// runs' summaries, and the count of commits the store has taken.
+type pgReading struct {
+	mem     *memStore
+	sums    map[int64]runSummary
+	commits int64
+}
+
+// pgRead reads the store, in one snapshot of the database: entities, events
+// and meta, each run's summary, and the records of the runs that are ready,
+// or, with all, of every run.
+func pgRead(ctx context.Context, conn *pgx.Conn, all bool) (*pgReading, error) {
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return nil, 0, pgReason(err)
+		return nil, pgReason(err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }() // read only: nothing to keep
-	var commits int64
-	if err := tx.QueryRow(ctx, `SELECT commits FROM eye_store`).Scan(&commits); err != nil {
-		return nil, 0, pgReason(err)
+	read := &pgReading{sums: map[int64]runSummary{}}
+	if err := tx.QueryRow(ctx, `SELECT commits FROM eye_store`).Scan(&read.commits); err != nil {
+		return nil, pgReason(err)
 	}
 	c := &Commit{}
 	rows, _ := tx.Query(ctx, `SELECT key, entity, state, version, schema, ended FROM eye_rows ORDER BY seq`)
@@ -306,15 +374,34 @@ func pgRead(ctx context.Context, conn *pgx.Conn) (*memStore, int64, error) {
 		c.Writes = append(c.Writes, w)
 		return nil
 	}); err != nil {
-		return nil, 0, pgReason(err)
+		return nil, pgReason(err)
 	}
-	rows, _ = tx.Query(ctx, `SELECT id, data FROM eye_runs ORDER BY id`)
-	var r RunWrite
-	if _, err := pgx.ForEachRow(rows, []any{&r.ID, &r.Data}, func() error {
-		c.Runs = append(c.Runs, r)
+	names := map[string]string{} // job names and the like, kept once
+	intern := func(s string) string {
+		if n, ok := names[s]; ok {
+			return n
+		}
+		names[s] = s
+		return s
+	}
+	rows, _ = tx.Query(ctx, `SELECT id, summary, CASE WHEN ready OR $1 THEN data END FROM eye_runs ORDER BY id`, all)
+	var id int64
+	var summary, data []byte
+	if _, err := pgx.ForEachRow(rows, []any{&id, &summary, &data}, func() error {
+		if data != nil {
+			c.Runs = append(c.Runs, RunWrite{ID: id, Data: data})
+		}
+		var sum runSummary
+		if summary != nil && json.Unmarshal(summary, &sum) == nil {
+			sum.Job, sum.Status, sum.Resume = intern(sum.Job), intern(sum.Status), intern(sum.Resume)
+			if !strings.HasPrefix(sum.WaitEvent, "run") {
+				sum.WaitEvent = intern(sum.WaitEvent)
+			}
+			read.sums[id] = sum
+		}
 		return nil
 	}); err != nil {
-		return nil, 0, pgReason(err)
+		return nil, pgReason(err)
 	}
 	rows, _ = tx.Query(ctx, `SELECT name, data FROM eye_events ORDER BY seq`)
 	var e EventRecord
@@ -322,7 +409,7 @@ func pgRead(ctx context.Context, conn *pgx.Conn) (*memStore, int64, error) {
 		c.Events = append(c.Events, e)
 		return nil
 	}); err != nil {
-		return nil, 0, pgReason(err)
+		return nil, pgReason(err)
 	}
 	rows, _ = tx.Query(ctx, `SELECT key, data FROM eye_meta ORDER BY key`)
 	var m MetaWrite
@@ -330,11 +417,82 @@ func pgRead(ctx context.Context, conn *pgx.Conn) (*memStore, int64, error) {
 		c.Meta = append(c.Meta, m)
 		return nil
 	}); err != nil {
-		return nil, 0, pgReason(err)
+		return nil, pgReason(err)
 	}
-	mem := newMemStore()
-	mem.Commit(c)
-	return mem, commits, nil
+	read.mem = newMemStore()
+	read.mem.Commit(c)
+	return read, nil
+}
+
+// takeSummaries gives the runs' summaries read when the store opened, once.
+func (p *Postgres) takeSummaries() map[int64]runSummary {
+	sums := p.sums
+	p.sums = nil
+	return sums
+}
+
+// Run returns a run's record: from memory if the run is ready, else from
+// the database. A record the database can't give panics with a
+// *CommitError, which the runtime turns into a retry later.
+func (p *Postgres) Run(id int64) ([]byte, bool) {
+	if p.hot[id] {
+		return p.memory.Run(id)
+	}
+	var data []byte
+	err := p.query(func(ctx context.Context, conn *pgx.Conn) error {
+		return conn.QueryRow(ctx, `SELECT data FROM eye_runs WHERE id = $1`, id).Scan(&data)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false
+	}
+	if err != nil {
+		panic(&CommitError{Path: p.name, Err: err, Fatal: p.broken != nil, Read: true})
+	}
+	p.loads++
+	return data, true
+}
+
+// Runs lists the runs the store holds, in memory or not, by number.
+func (p *Postgres) Runs() []int64 {
+	var ids []int64
+	err := p.query(func(ctx context.Context, conn *pgx.Conn) error {
+		rows, _ := conn.Query(ctx, `SELECT id FROM eye_runs ORDER BY id`)
+		var id int64
+		_, err := pgx.ForEachRow(rows, []any{&id}, func() error {
+			ids = append(ids, id)
+			return nil
+		})
+		return err
+	})
+	if err != nil {
+		panic(&CommitError{Path: p.name, Err: err, Fatal: p.broken != nil, Read: true})
+	}
+	return ids
+}
+
+// query runs a read on the store's connection, connecting first if the last
+// commit failed.
+func (p *Postgres) query(read func(ctx context.Context, conn *pgx.Conn) error) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.broken != nil {
+		return p.broken
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), pgTimeout)
+	defer cancel()
+	if p.conn == nil {
+		if err := p.reconnect(ctx); err != nil {
+			return err
+		}
+	}
+	err := read(ctx, p.conn)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		if p.conn.IsClosed() {
+			p.drop()
+		}
+		return pgReason(err)
+	}
+	return err
 }
 
 // Commit writes the commit to the database in one transaction, and only then
@@ -346,10 +504,35 @@ func (p *Postgres) Commit(c *Commit) {
 		if err := p.write(c); err != nil {
 			panic(&CommitError{Path: p.name, Err: err, Fatal: p.broken != nil})
 		}
-		p.memory.Commit(c)
+		p.apply(c)
 		return
 	}
 	panic(&CommitError{Path: p.name, Err: p.broken, Fatal: true})
+}
+
+// apply applies a commit the database took to memory, where only the ready
+// runs' records go.
+func (p *Postgres) apply(c *Commit) {
+	mem := *c
+	mem.Runs = nil
+	var gone []int64
+	for _, r := range c.Runs {
+		if sum, ok := summaryOfWrite(r); ok && !sum.inMemory() {
+			if p.hot[r.ID] {
+				gone = append(gone, r.ID)
+				delete(p.hot, r.ID)
+			}
+			continue
+		}
+		p.hot[r.ID] = true
+		mem.Runs = append(mem.Runs, r)
+	}
+	if len(mem.Writes)+len(mem.Runs)+len(mem.Events)+len(mem.Meta) > 0 || mem.DropEvents > 0 {
+		p.memory.Commit(&mem)
+	}
+	if len(gone) > 0 {
+		p.forget(gone)
+	}
 }
 
 // write sends one commit, connecting first if the last commit failed.
@@ -407,7 +590,17 @@ func pgApply(ctx context.Context, tx pgx.Tx, c *Commit, base int64) error {
 			w.Key, w.Entity, w.State, w.Version, w.Schema, w.Ended)
 	}
 	for _, r := range c.Runs {
-		b.Queue(`INSERT INTO eye_runs (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data = excluded.data`, r.ID, r.Data)
+		var summary []byte
+		ready := true
+		if sum, ok := summaryOfWrite(r); ok {
+			if summary, err = json.Marshal(sum); err != nil {
+				return err
+			}
+			ready = sum.inMemory()
+		}
+		b.Queue(`INSERT INTO eye_runs (id, data, summary, ready) VALUES ($1, $2, $3, $4)
+			ON CONFLICT (id) DO UPDATE SET data = excluded.data, summary = excluded.summary, ready = excluded.ready`,
+			r.ID, r.Data, summary, ready)
 	}
 	if c.DropEvents > 0 {
 		b.Queue(`DELETE FROM eye_events WHERE seq IN (SELECT seq FROM eye_events ORDER BY seq LIMIT $1)`, c.DropEvents)

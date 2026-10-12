@@ -90,20 +90,22 @@ var longRun = 1000
 func (rt *runtime) prune() {
 	c := &Commit{}
 	oldest := rt.seq()
-	for _, id := range rt.store.Runs() {
-		data, _ := rt.store.Run(id)
-		run := decodeRun(data)
-		switch run.Status {
-		case "ready", "sleeping":
-			if s := run.sees(); s < oldest {
-				oldest = s
-			}
-		case "done", "failed":
-			if !run.Summarized && run.Ended != 0 && rt.now.Sub(time.Unix(0, run.Ended)) > keepFinished {
-				run.summarize()
-				c.Runs = append(c.Runs, RunWrite{ID: run.ID, Data: run.encode()})
+	var old []int64
+	rt.index.each(func(id int64, h *runHandle) {
+		switch h.status {
+		case readyRun, sleepingRun:
+			oldest = min(oldest, h.sees)
+		case doneRun, failedRun:
+			if !h.summarized && h.at != 0 && rt.now.Sub(time.Unix(0, h.at)) > keepFinished {
+				old = append(old, id)
 			}
 		}
+	})
+	for _, id := range old {
+		data, _ := rt.store.Run(id)
+		run := decodeRun(data)
+		run.summarize()
+		c.Runs = append(c.Runs, RunWrite{ID: run.ID, Data: run.encode()})
 	}
 	if drop := oldest - rt.eventBase; drop > 0 {
 		c.DropEvents = int(drop)

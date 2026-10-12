@@ -111,8 +111,9 @@ without its tests. The parts that matter for compilation:
 - **`@memory` counts a run's saved state**: its arguments and every step's result
   (open question 26).
 - **The store is Eyelang.** `MemoryStore` in `check/runtime/store.eye` is interpreted like any
-  other code. The journal and the Postgres store wrap it, and both read everything into memory
-  when they open.
+  other code. The journal and the Postgres store wrap it, and keep in it only the records of the
+  runs that are ready: a run that waits or has ended is a handle in the Go runner's index
+  (`interp/handles.go`) and a record on disk, read back when it wakes (SPECS.md §15).
 
 ### What compilation needs that isn't there
 

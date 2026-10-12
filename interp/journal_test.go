@@ -152,7 +152,10 @@ func (s *sizes) Commit(c *Commit) {
 
 // A looping job's commits are several times smaller than when each held
 // the run's record as base64 with its whole trail: about 1.9 KB each
-// before, about 0.45 KB now.
+// before, about 0.45 KB once a trail that moved on was written as the
+// steps it gained, and about 0.64 KB now that the commit that puts a run
+// to sleep writes its record whole, to be read back from there once the
+// record has left memory.
 func TestALoopingJobsCommitsAreSmall(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "journal")
 	j, err := OpenJournal(path)
@@ -176,8 +179,8 @@ func TestALoopingJobsCommitsAreSmall(t *testing.T) {
 	if n < 300 {
 		t.Fatalf("%d commits in two hours, want at least 300", n)
 	}
-	if now*4 > was {
-		t.Errorf("a commit takes %.0f bytes, and took %.0f: want it at least four times smaller", now, was)
+	if now*2.5 > was {
+		t.Errorf("a commit takes %.0f bytes, and took %.0f: want it at least two and a half times smaller", now, was)
 	}
 }
 

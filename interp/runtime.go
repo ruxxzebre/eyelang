@@ -119,7 +119,10 @@ func (rt *runtime) useStore(s Store) {
 			*mem = fresh
 		}
 	}
-	rt.index = indexStore(s)
+	jobs := rt.in.jobs
+	concurrent := func(job string) bool { j := jobs[job]; return j == nil || j.Concurrency != nil }
+	limited := func(job string) bool { j := jobs[job]; return j != nil && j.Limit != nil }
+	rt.index = indexStore(s, concurrent, limited)
 	rt.store = rt.index
 }
 
@@ -991,14 +994,15 @@ func (rt *runtime) release(job *ir.Job, finished *jobRun) {
 // place on.
 func (rt *runtime) fillPlaces() {
 	for id, r := range rt.index.open {
-		job := rt.in.jobs[r.job]
+		name := rt.index.names[r.job]
+		job := rt.in.jobs[name]
 		if !r.queued || job == nil || job.Concurrency == nil {
 			continue
 		}
-		if rt.index.running(r.job, r.group) >= job.Concurrency.N {
+		if rt.index.running(name, r.group) >= job.Concurrency.N {
 			continue
 		}
-		if first, ok := rt.index.firstQueued(r.job, r.group); !ok || first != id {
+		if first, ok := rt.index.firstQueued(name, r.group); !ok || first != id {
 			continue
 		}
 		data, _ := rt.store.Run(id)
@@ -1032,15 +1036,18 @@ func (rt *runtime) advance(d ir.Duration) {
 // has come, or a schedule's firing. The clock moves to that time. It reports
 // whether there was one.
 func (rt *runtime) wakeNext(target time.Time) bool {
-	run := rt.nextSleeper()
+	id, wakeAt, sleeping := rt.index.firstToWake()
 	s, firing := rt.nextFiring()
-	runDue := run != nil && run.WakeAt <= target.UnixNano()
+	runDue := sleeping && wakeAt <= target.UnixNano()
 	fireDue := s != nil && !firing.After(target)
-	if runDue && fireDue && firing.UnixNano() < run.WakeAt {
+	if runDue && fireDue && firing.UnixNano() < wakeAt {
 		runDue = false
 	}
 	switch {
 	case runDue:
+		// Only now is the run's record read.
+		data, _ := rt.store.Run(id)
+		run := decodeRun(data)
 		if wake := time.Unix(0, run.WakeAt).In(rt.now.Location()); wake.After(rt.now) {
 			rt.now = wake
 		}
@@ -1059,12 +1066,9 @@ func (rt *runtime) wakeNext(target time.Time) bool {
 	return true
 }
 
-// nextSleeper returns the sleeping run that wakes first, if any.
-func (rt *runtime) nextSleeper() *jobRun {
-	first, ok := rt.index.firstToWake()
-	if !ok {
-		return nil
-	}
-	data, _ := rt.store.Run(first)
-	return decodeRun(data)
+// nextWake returns when the sleeping run that wakes first wakes, if any,
+// from its handle: its record stays where it is.
+func (rt *runtime) nextWake() (int64, bool) {
+	_, wakeAt, ok := rt.index.firstToWake()
+	return wakeAt, ok
 }

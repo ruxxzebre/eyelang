@@ -191,21 +191,30 @@ func (in *Interp) resumeAt(f *frame, e ir.Expr, path []pathElem) Value {
 func (rt *runtime) checkResumePoints() error {
 	count := map[string]int{}
 	var jobs []string
-	for _, id := range rt.store.Runs() {
-		data, _ := rt.store.Run(id)
-		run := decodeRun(data)
-		if run.Checkpoint == nil || run.Status == "done" || run.Status == "failed" {
-			continue
+	// From the runs' handles, which say where each resumes; the runs paused
+	// at one statement share the answer.
+	ok := map[[2]uint32]bool{}
+	rt.index.each(func(_ int64, h *runHandle) {
+		if h.resume == 0 || h.status.finished() {
+			return
 		}
-		job := rt.in.jobs[run.Job]
-		if job != nil && resumable(job, run.Checkpoint) {
-			continue
+		name := rt.index.jobOf(h)
+		at := [2]uint32{h.job, h.resume}
+		fine, seen := ok[at]
+		if !seen {
+			job := rt.in.jobs[name]
+			ck, read := resumePointCheckpoint(rt.index.names[h.resume])
+			fine = job != nil && read && resumable(job, ck)
+			ok[at] = fine
 		}
-		if count[run.Job] == 0 {
-			jobs = append(jobs, run.Job)
+		if fine {
+			return
 		}
-		count[run.Job]++
-	}
+		if count[name] == 0 {
+			jobs = append(jobs, name)
+		}
+		count[name]++
+	})
 	if len(jobs) == 0 {
 		return nil
 	}

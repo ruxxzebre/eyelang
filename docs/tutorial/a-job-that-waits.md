@@ -6,7 +6,8 @@ title: A job that waits
 
 Much of what a stateful program does is wait: for a timeout, for a reply, for a person, for
 tomorrow morning. In Eyelang that waiting is done by **jobs**. A job is a function that can pause
-for as long as it needs, holds no memory while it waits, and carries on after a restart.
+for as long as it needs, keeps only a small handle in memory while it waits, and carries on after
+a restart.
 
 This page gives the shelf from the [previous page](/tutorial/an-entity) a rule: a hold on stock
 lasts fifteen minutes. If the order isn't paid for by then, the stock goes back on the shelf.

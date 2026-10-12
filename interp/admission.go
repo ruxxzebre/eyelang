@@ -54,8 +54,8 @@ func (rt *runtime) outranked(p ir.Priority, self int64) bool {
 		if id == self {
 			continue
 		}
-		if o, ok := rt.index.open[id]; ok {
-			if j := rt.in.jobs[o.job]; j != nil && j.Priority > p {
+		if h := rt.index.handle(id); h != nil {
+			if j := rt.in.jobs[rt.index.jobOf(h)]; j != nil && j.Priority > p {
 				return true
 			}
 		}
@@ -69,8 +69,10 @@ func (rt *runtime) outranked(p ir.Priority, self int64) bool {
 func (rt *runtime) wakeMemory() {
 	ids := rt.index.waitingFor(memoryEvent)
 	prio := func(id int64) ir.Priority {
-		if j := rt.in.jobs[rt.index.open[id].job]; j != nil {
-			return j.Priority
+		if h := rt.index.handle(id); h != nil {
+			if j := rt.in.jobs[rt.index.jobOf(h)]; j != nil {
+				return j.Priority
+			}
 		}
 		return ir.Normal
 	}
