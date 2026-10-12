@@ -25,8 +25,8 @@ compile-time errors it links to the checker's test cases. Every error class the 
 listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go),
 along with the test that reports it.
 
-**The biggest gaps today.** Coding agents, `@unwitnessed` recordings, and native compilation
-(v0.4).
+**The biggest gaps today.** Coding agents, `@unwitnessed` recordings, and native compilation of
+entities, jobs, views and contracts (v0.4): `eye build` compiles the core language only.
 
 ## [A tour](/reference/language/a-tour)
 
@@ -109,7 +109,7 @@ along with the test that reports it.
 | `mut self` methods, only on a `var` or `mut` parameter | ✓ | ✓ | ✓ | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L90), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L275) |
 | No aliasing: no variable passed as `mut` twice, or as `mut` and read | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L264) |
 | Closures can't capture a `var` or `mut` parameter | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L45), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L283) |
-| Updates in place when a value is unique | n/a | n/a | partial: appending to a list (`xs \|> add(x)`, `xs += [x]`, `xs + ys`), a set's `add` and a map's `insert` of a new key are in place in the interpreter, and replacing a map's value copies only O(log n) of it (a persistent vector); `s += t` and `s = s + t` on a local `String` variable append in place; `with` on records and other `String +` still copy, since the interpreter has no reference counts (in place everywhere comes with v0.4) | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L89), [append_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/append_test.go#L63), [shelf_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/shelf_test.go#L168), [vec_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/vec_test.go), [text_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/text_test.go) |
+| Updates in place when a value is unique | n/a | n/a | partial: appending to a list (`xs \|> add(x)`, `xs += [x]`, `xs + ys`), a set's `add` and a map's `insert` of a new key are in place in the interpreter, and replacing a map's value copies only O(log n) of it (a persistent vector); `s += t` and `s = s + t` on a local `String` variable append in place; `with` on records and other `String +` still copy, since the interpreter has no reference counts. Compiled by `eye build`, a variable updated by itself (`s += t`, `xs += ys`, `xs = xs.add(x)`, `m = m.insert(k, v)`, a set's `add`, field assignment) changes in place when it holds the only reference; `with` and values passed on by their last use still copy until precise counting (7.5) | [core: mutation](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/core/values.eye#L89), [append_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/append_test.go#L63), [shelf_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/shelf_test.go#L168), [vec_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/vec_test.go), [text_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/text_test.go), [cgen: in place](https://github.com/ruxxzebre/eyelang/blob/dev/cgen/testdata/inplace/inplace.eye) |
 
 ## [Methods and generics](/reference/language/methods-and-generics)
 
@@ -120,7 +120,7 @@ along with the test that reports it.
 | An `impl Type` only in the module that declares the type | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L117) |
 | Generic functions and types with type variables | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L33) |
 | `where` requirements, and a trait as a parameter's type | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L27), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L225) |
-| Generic code specialised at compile time | n/a | ✓ (`eye check --lir`: one instance per set of types; polymorphic recursion is an error) | — (the C back end, 7.4) | [lir_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/lir/lir_test.go) |
+| Generic code specialised at compile time | n/a | ✓ (`eye check --lir`: one instance per set of types; polymorphic recursion is an error) | ✓ compiled to C by `eye build`, for the core language | [lir_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/lir/lir_test.go), [cgen_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cgen/cgen_test.go) |
 | `dyn Trait` (v0.2) | ✓ | ✓ | ✓ | [programs/traits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/traits/traits.eye#L109), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L188) |
 
 ## [Pattern matching](/reference/language/pattern-matching)
@@ -363,4 +363,5 @@ Runs column says whether the runtime does what the attribute says.
 | `eye lsp`: completion, and the inferred effects of private functions | Not started | |
 | `eye repl` | ✓ Expressions with their types, bindings, declarations, jobs on a clock that `:advance` moves | [repl_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/repl/repl_test.go#L113) |
 | VS Code extension | ✓ TextMate highlighting and the `eye lsp` client | [editors/vscode/test](https://github.com/ruxxzebre/eyelang/tree/dev/editors/vscode/test) |
-| Native compilation with reference counting (v0.4) | Not started | |
+| `eye build` | ✓ for the core language: C11 from the low IR with `#line` directives, compiled by the pinned zig (`-O2`, or `-O0 -g` with `-g`) for this machine or, with `--target`, any of the five release targets; `--test` makes a binary that runs the test blocks as `eye test` does; object files cached by content hash; `--emit-c` writes the C. A program with entities, jobs, views or contracts gets an error that says they aren't compiled yet | [cgen_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cgen/cgen_test.go) |
+| Native compilation with reference counting (v0.4) | partial: the core language compiles, and every test of `testdata/programs/core` passes natively on linux/amd64; counts are simple (precise counting and reuse are 7.5), and the runner doesn't host compiled code yet (7.6) | [cgen_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cgen/cgen_test.go) |

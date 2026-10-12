@@ -34,7 +34,9 @@ data does no more than its type says. A record value knows its declared type (`R
 so a record saved before records kept their type comes back without one. 7.2 is done too: the
 low IR (package `lir`, `eye check --lir`) is monomorphic, in blocks of named values, with the
 domain constructs lowered to kinds of function and runtime calls; reference counts come with
-7.5. What follows describes `dev` at 1cc429d.
+7.5. 7.4 is done (2026-10-12): `eye build` compiles the core language to native code through C
+(package `cgen`), described in section 1, "The C back end as built". What follows describes
+`dev` at 1cc429d.
 
 The pipeline has three stages, all in Go:
 
@@ -167,6 +169,88 @@ fast debug builds, if C compile times hurt.
 emits with `zig cc`, rather than using the system's `cc`. Shipping it makes cross-compiling and
 reproducible builds work everywhere, with the same compiler on every machine; using `cc` would
 have kept `eye` small.
+
+### The C back end as built
+
+Task 7.4 (2026-10-12) built the back end for the core language: package `cgen` and
+`eye build`. It is what this section describes, as it stands before reference counting (7.5).
+
+**What `eye build` does.** It checks the program, lowers it to low IR (`lir.Lower`), and writes
+C11: one file per module (`m_main.c`, `m_tally.c`, …), `program.h` with every prototype and
+type descriptor, and `program.c` with the descriptors, the `dyn` tables, the time zones the
+program names, and the entry point. Every position the low IR marks (`lir.At`) becomes a
+`#line` directive, so a debugger or a crash report names the `.eye` line. The runtime's C, about
+4,100 lines in `cgen/runtime`, is embedded in `eye` and compiled with every program. `eye` runs
+the pinned zig (`internal/zig`) as a separate process; `eye` itself has no cgo.
+
+- `-O2` by default, `-O0 -g` with `-g`; always `-std=c11 -fwrapv -fno-strict-aliasing`.
+- `--target os/arch` cross-compiles to each release target: `linux/amd64` and `linux/arm64`
+  (static, against musl), `darwin/amd64`, `darwin/arm64`, `windows/amd64`.
+- `--test` makes a binary that runs the program's test blocks and reports as `eye test` does,
+  with `--run` and `-v`; without it the binary runs `main`, and an `Err` from `main` goes to
+  stderr with exit status 1.
+- Object files are cached in the user's cache directory (`EYE_BUILD_CACHE` overrides it), named
+  by a SHA-256 of zig's version, the flags and target, the file and every header. A build marks
+  the objects it used, and removes those no build used for 30 days.
+- `--emit-c dir` writes the C instead of compiling it.
+- zig is fetched once into the user's cache from ziglang.org and checked against the checksum
+  `internal/zig` pins, rather than shipped inside the release archives.
+
+**Values.** Every value is one 64-bit word, `ey_v` (`cgen/runtime/eye.h`):
+
+- scalars are their bits: `Bool`, `Char`, `Byte` and the fixed-width integers (signed ones
+  sign-extended), `Float`, `Duration` (ns), `Size`, `Date` (days since 1970), `Time` (seconds
+  since midnight) and `()`;
+- an `Int` is a small integer `n` as `(n << 1) | 1`, or a pointer to a big integer;
+- everything else is a pointer to a heap object, which starts with a reference count and its
+  type's descriptor.
+
+A descriptor (`ey_type`) is what showing, comparing, hashing and freeing a value needs: its kind,
+and its fields', elements' or variants' descriptors. The back end writes one per type the program
+uses, so derived `Eq`, `Ord`, `Hash` and `Show` are runtime functions driven by descriptors, not
+generated code per type. A newtype (one variant with one field, such as `Offset`) is its field.
+Records, variants and tuples are one object with their fields in declared order; a variant
+also holds its tag. A `dyn Trait` is an object with the value and a table of the impl's
+methods. A closure is its code and its captures.
+
+**The runtime** (`cgen/runtime`, written for this back end):
+
+| File | What it holds |
+|---|---|
+| `rt.c` | allocation, freeing by descriptor, faults, `print` and `log`, running `main` or the tests |
+| `int.c` | `Int`: the small fast path inline in `eye.h` with `__builtin_*_overflow`, and a big integer of 32-bit limbs (schoolbook multiplication; division a limb at a time by one limb, and by shifting and subtracting by more), written for this runtime, not vendored |
+| `str.c` | UTF-8 strings and `Bytes`, `Offset` positions as byte offsets, searching, slicing, parsing numbers |
+| `coll.c` | lists; sets and maps in insertion order with an open-addressing hash index; the collection functions |
+| `iter.c` | lazy `Iter` values (a source and its steps), cursors that pull one element at a time through them, and the walks `for` loops use |
+| `value.c` | equality, order, hashing and `Show`, exactly as the interpreter prints values |
+| `fixed.c` | the fixed-width integers' methods: wrapping, checked, bits and shifts |
+| `time.c` | instants, dates and zones; the zone tables come from Go's zone database, written into `program.c` for the zones the program names |
+| `sys.c` | the `fs`, `process` and `stdio` primitives; in a test binary, relative paths are inside a directory of the test's own |
+
+**Counting.** Counts are simple and not atomic, since a program runs on one thread. Each C
+variable of the low IR owns one reference, dropped when the variable is set again and when the
+function returns; arguments are borrowed and results owned. A parameter the function sets takes
+a reference of its own first. Faults in a test `longjmp` out and leak what was live, as the plan
+for faults (section 2) allows until runs get regions.
+
+**Updates in place.** Simple counts already make the common loops linear. A variable updated by
+itself (`s += t`, `s = "{s}…"`, `xs += ys`, `xs = xs.add(x)`, `seen = seen.add(x)`,
+`m = m.insert(k, v)`) becomes one call that takes the variable's value and changes it in place
+when its count is one, growing strings and lists by doubling, and copies it first otherwise. A
+record's field assignment does the same through `ey_agg_own`. Measured on 2026-10-12 against the
+interpreter's quadratic cases (performance review, section 1.1): 100k string appends take 18 ms
+(18 s interpreted), 20k map updates over 10k keys 2 ms (10.8 s), 1M field updates 10 ms.
+Precise counting (7.5) extends this to values whose last use is a call, not an assignment.
+
+**Not compiled yet.** Entities, jobs, views and contracts (the runner hosts them, 7.6),
+durable `!` steps, `with` in tests, foreign code (`@library`), and the clock and fakes of tests.
+A program that declares one gets an error that names what it declares and says `eye run` and
+`eye test` run it. `parallelMap` runs its function on one thread, in order.
+
+**Tests.** `cgen/cgen_test.go` builds `testdata/programs/core` and `traits`, a program of failing
+tests and one of in-place updates, runs them, and checks the output is `eye test`'s line for line
+(durations aside); builds core for all five targets; runs a `main`. Valgrind finds no invalid
+access and no leak in the core program's tests.
 
 ### Where the runtime lives
 

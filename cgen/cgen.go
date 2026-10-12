@@ -3,11 +3,13 @@
 // debuggers and crash reports point at .eye lines, and builds it with the
 // zig the repository pins (build.go). The core runtime the C calls is
 // written in C too (runtime/), and so is every value's layout: see
-// runtime/eye.h and docs/internals/compilation.md, "The C back end".
+// runtime/eye.h and docs/internals/compilation.md, "The C back end as
+// built".
 //
 // It compiles the core language: functions, records, variants, match,
-// loops, mutation, closures, strings, collections, Bytes and the
-// fixed-width integers, traits and dyn, Result and Option, and test blocks.
+// loops, mutation, closures, strings, collections, lazy Iters, Bytes and
+// the fixed-width integers, traits and dyn, Result and Option, and test
+// blocks.
 // Entities, jobs, views and contracts are hosted by the Go runner (7.6);
 // a program that uses them gets an error that says so.
 package cgen

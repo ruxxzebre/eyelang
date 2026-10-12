@@ -798,7 +798,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.1 Typed IR and lowering (from phase 3) (done) | [#28](https://github.com/ruxxzebre/eyelang/issues/28) |
 | 7.2 Low IR and specialisation (done) | [#75](https://github.com/ruxxzebre/eyelang/issues/75) |
 | 7.3 Jobs as state machines, resuming from saved frames (done in the interpreter) | [#76](https://github.com/ruxxzebre/eyelang/issues/76) |
-| 7.4 The C back end and the core runtime | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
+| 7.4 The C back end and the core runtime (done) | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
 | 7.5 Reference counting and reuse | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
 | 7.6 The runner hosts compiled programs, and the digest runs natively | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
 
@@ -863,6 +863,21 @@ whole-program specialisation, and jobs resuming from saved frames.
   formatting, `fs`, `process`, `stdio`) is written in C. `eye` releases ship `zig`.
   **Done when:** `eye build` makes a native binary of `testdata/programs/core` on the five
   release targets, and its tests pass.
+  Done on 2026-10-12 (package `cgen`, compilation.md section 1, "The C back end as built"):
+  `eye build` writes C11 per module with `#line` directives and compiles it with the pinned zig
+  (`-O2`, `-O0 -g` with `-g`), for this machine or with `--target` for linux and macOS on
+  x86_64 and arm64 and windows on x86_64; `--test` makes a binary that runs the test blocks as
+  `eye test` does; object files are cached by content hash. The runtime in `cgen/runtime` is
+  written for it: simple non-atomic counts, `Int` as a tagged small integer or a big integer of
+  32-bit limbs, UTF-8 strings, lists, sets and maps in insertion order, lazy `Iter`s, `Show`
+  as the interpreter prints, and `fs`, `process` and `stdio`. A variable updated by itself
+  (`s += t`, `xs = xs.add(x)`, `m = m.insert(k, v)`) changes in place when it holds the only
+  reference, so the interpreter's quadratic cases are linear. `cgen/cgen_test.go` builds
+  `testdata/programs/core` for all five targets and runs its 48 tests on linux/x86_64 with
+  `eye test`'s output, line for line; `traits`, failing tests and a `main` too. zig is fetched
+  and checked on first use rather than packed in the release archives. Entities, jobs, views,
+  contracts, durable steps, `with` in tests and foreign code aren't compiled; such a program
+  gets an error that says so.
 - **7.5 Reference counting and reuse.** Perceus: precise `dup` and `drop`, borrowed parameters,
   reuse in `match`, and in-place updates when a value is unique; `mut` parameters become
   pointers.

@@ -174,6 +174,8 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `editors/vscode/` | The VS Code extension: TextMate grammar and the `eye lsp` client |
 | `check/` | Loads a program's modules, resolves names, checks types, matches and effects, reports errors; `prelude.eye` and `std/` are the standard library written in Eyelang, and `runtime/store.eye` the in-memory store the runtime keeps every program's state in |
 | `ir/` | The resolved form programs are lowered to |
+| `lir/` | The low IR C is printed from: monomorphic instances in blocks of named values (`eye check --lir`) |
+| `cgen/` | The C back end behind `eye build`: C11 from the low IR, compiled with the pinned zig; `runtime/` is the core runtime in C, and `testdata/` programs whose native tests must match `eye test` |
 | `interp/` | Reference interpreter and runtime: entities, views, jobs, events, schedules, clock, fakes; the journal store and the runner behind `eye run` and `eye runs` |
 | `host/` | The embedding API: a Go program loads an Eyelang program, registers its `@host` functions and runs it or its tests; `host/clib` gives the interpreter the C loader for `@library` (on Linux it makes a binary dynamic, so `eye` has it only with `-tags clib`) |
 | `internal/ffi/` | Loads C functions from shared libraries at run time without cgo, on purego: `@library` in the interpreter, and later compiled programs in the Go runner |
@@ -186,4 +188,5 @@ example), `task quick` (build, test check, interp and syntax, then check and tes
 `testdata/lab`), `task conformance`, `task grammar`, `task vscode` (or one step of it:
 `task vscode:unit|e2e|package`),
 `go run ./cmd/eye parse|check|fmt FILE`, `go run ./cmd/eye test|run|runs DIR` (`eye run` keeps
-its state in `DIR/.eye/journal`; `--memory` keeps nothing).
+its state in `DIR/.eye/journal`; `--memory` keeps nothing), `go run ./cmd/eye build [--test]
+[--target os/arch] DIR` (a native binary; `--emit-c dir` writes the C instead).
