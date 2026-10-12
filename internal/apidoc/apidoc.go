@@ -237,6 +237,30 @@ func module(m *ir.Module) Page {
 			}
 		}
 	}
+	// The public methods of `impl Type { … }` blocks go under their type, as
+	// an entity's go under the entity.
+	for _, f := range m.Files {
+		if f.Tree == nil || len(f.Tree.Diagnostics) > 0 {
+			continue
+		}
+		for _, d := range f.Tree.Root.Children {
+			typ := d.ChildByField(syntax.FieldType)
+			if d.Kind != syntax.ImplDeclaration || d.ChildByField(syntax.FieldTrait) != nil || typ == nil {
+				continue
+			}
+			for i := range decls {
+				if decls[i].kind != "Types" || decls[i].name != typ.Text(f.Src) {
+					continue
+				}
+				for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
+					if member.Kind == syntax.FunctionDeclaration && isPub(f, member) {
+						mn := member.ChildByField(syntax.FieldName).Text(f.Src)
+						decls[i].members = append(decls[i].members, decl{name: mn, signature: header(f, member), doc: syntax.DocComment(member, f.Src)})
+					}
+				}
+			}
+		}
+	}
 	order := map[string]int{"Types": 0, "Entities": 1, "Contracts": 2, "Functions": 3, "Jobs": 4, "Views": 5}
 	sort.SliceStable(decls, func(i, j int) bool { return order[decls[i].kind] < order[decls[j].kind] })
 

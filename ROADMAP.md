@@ -964,8 +964,11 @@ whole-program specialisation, and jobs resuming from saved frames.
   the performance review are fixed. The allocation check (the counting allocator in debug
   builds) landed with 7.14.
 - **7.9 Core gaps in C.** The time methods (`Time.format` too, from 2026-10-12), `toJson`, the
-  `Schema`/`Save` derivations, `random.*`, `http.get` and `fs.lines` (from 2026-10-12), each
-  matching the interpreter.
+  `Schema`/`Save` derivations, `random.*`, `http.get`, `fs.lines` and the `regex` module (both
+  from 2026-10-12), each matching the interpreter. Open for `regex`: RE2's semantics in C need a
+  library (RE2 itself is C++; a C port, or the runner's Go `regexp` once 7.6 hosts compiled
+  programs) or an engine of our own; the interpreter's host functions (`interp/regex.go`) are
+  what it must match.
   **Done when:** the lab's six core-blocked functions compile and `testdata/programs/limits`
   gets past `Instant.date`.
 - **7.10 Crossings.** The interpreter counts the operations that would cross from compiled code

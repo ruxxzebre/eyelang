@@ -199,6 +199,7 @@ Words this document uses in one sense, and names that mean different things in d
 | String patterns over bytes | **Where `Bytes` or a `List(Byte)` are matched, a string literal is its bytes in UTF-8**: alone it matches exactly them, and as an element of a list pattern it stands for them in a row, so `["..=", ..]` is a prefix (section 9). Accepted by the owner on 2026-10-12 | A typing rule on syntax that exists, as a character literal is already a `Byte` where one is expected: `"continue"` instead of eight character literals, and no new prefix syntax. Exhaustiveness sees the list patterns they are |
 | Bytes that aren't text | **`fs.readBytes` and `fs.writeBytes` read and write a file's bytes, and `toBytes(xs)` makes `Bytes` of a `List(Byte)`** (sections 5 and 12). Accepted by the owner on 2026-10-12 | `Bytes` came only from a string, so a lexer couldn't be given, or tested on, a file that isn't UTF-8. `toBytes` is named as `toSet`, `toList` and `toText` are; with element assignment on a `List(Byte)` it is how bytes are built one at a time, while `Bytes` themselves stay unchanged values whose slices share storage |
 | A variant's number | **`v.index()`, derived on a type whose variants have no fields, is the variant's place in `T.variants()`, counting from 0** (section 11). Accepted by the owner on 2026-10-12 | Go's `int(kind)`: a table, a checksum or a foreign format numbers a choice, and building a `Map(Kind, Int)` at the start to find out was ceremony. A derived method, like `variants` and `parse`, not syntax; `index` is the word the library already uses for a place (`indexOf`, `xs[i]`), and a type's own `index` method is called instead |
+| Regular expressions | **A library module, not syntax: `regex.parse(pattern)` gives a `Result(Regex, RegexError)`, and patterns are RE2's, with no backreferences or lookaround. `re.matches(text)` asks about the whole text, `re.replace` replaces every match and `replaceFirst` the first, and a replacement names groups `$1` and `$<name>`** (section 5). From 2026-10-12 | The digest read links out of HTML with a loop of offsets for what a pattern says in a line. RE2 matches in time linear in the text, so a match's cost is bounded whatever the pattern, as section 1 asks; backreferences would make it exponential. A function rather than a literal, since a library covers it and only checking at compile time is lost (open question 44). `matches` on the whole text is what checking an id or a date means; `replace` replaces every match as a string's `replace` replaces every occurrence, so changing a string to a pattern doesn't change how many are replaced. `$<name>` because `${name}` is interpolation in an Eyelang string. A `Regex` holds its pattern, so it has `Eq`, `Show` and `Save` as a record does, and a job can keep one |
 
 ## 3. A tour
 
@@ -527,6 +528,45 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   An `Offset` counts bytes underneath, so scanning by position costs nothing per step, but there
   is no number to read from it, since it means something only in its own string; it shows as
   `byte 5`.
+- **Regular expressions** come from the standard module `regex`, imported with `import regex`.
+  `regex.parse(pattern)` gives `Ok` of a `Regex`, or `Err(BadPattern(pattern, reason))`. A
+  pattern is RE2's syntax, the one Go's `regexp` reads: classes, repetition, `(?i)` and the other
+  flags, and groups, named with `(?P<name>…)` or `(?<name>…)`. It has no backreferences and no
+  lookaround, so matching takes time linear in the size of the text whatever the pattern, and a
+  pattern from a user can't stall a program. A `Regex` is a value that holds its pattern: it
+  compares and hashes by the pattern as written, so `a+` and `aa*` are different, it shows as its
+  pattern, and it can be saved, so a job keeps one across a `!`. Its methods only compute:
+
+  | Method | What it gives |
+  |---|---|
+  | `re.matches(text)` | whether the pattern matches the whole of `text`; `re.find(text) != None` asks whether it matches anywhere in it |
+  | `re.find(text)` | `Some` of the first match, a `Match`, or `None` |
+  | `re.findAll(text)` | every match, left to right, none overlapping |
+  | `re.replace(text, with)` | `text` with every match replaced, as a string's `replace` replaces every occurrence; `re.replaceFirst(text, with)` replaces the first |
+  | `re.split(text)` | the parts of `text` between matches, as a string's `split` gives the parts between separators |
+
+  A `Match` has the `text` it matched; its `range` in the text searched, a `Range(Offset)`;
+  `groups`, a `List(Option(String))` of what each group took, `None` for a group that took no
+  part; and `named`, a `Map(String, String)` of the named groups that took part. `m.group(n)` is
+  group `n`, and `m.group(0)` the whole match. In a replacement, `$1` is what group 1 took,
+  `$<name>` what a named group took, and `$$` is a `$`; `$1x` is group 1 followed by `x`, and
+  `$<1>0` group 1 followed by `0`. The brackets are JavaScript's, because Go's `${name}` would be
+  interpolation in an Eyelang string. `regex.escape(text)` quotes text to match it as it is.
+
+  ```eye
+  import regex
+
+  ## Dates written 2026-10-12, as 12/10/2026.
+  fn irishDates(text: String) -> Result(String, regex.RegexError) {
+    let date = regex.parse("(\\d\{4})-(\\d\{2})-(\\d\{2})")?
+    Ok(date.replace(text, "$3/$2/$1"))
+  }
+  ```
+
+  In a string, a pattern's `\` is written `\\` and its `{` is written `\{`, as above. A pattern
+  written in the program is parsed when the program runs, like any other; where the program
+  knows it is right, a `match` on `regex.parse(p)` whose `Err(e)` arm is `unreachable("{e}")`
+  says so (open question 44 asks for patterns checked when the program is compiled).
 - **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
   characters (`s.chars()`) and any `Iter(a)`.
 - **Lazy iteration:** `xs.iter()` gives an `Iter(a)`, a sequence computed as it is walked.
@@ -1282,8 +1322,8 @@ pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
   for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,
   `None` for an empty range), `random.float()`, `random.pick(xs)` and `random.shuffle(xs)` draw
   numbers. A relative path is relative to the directory the program was started in.
-- **Which standard modules need `import`.** `ai`, `approvals`, `fs`, `http`, `process` and
-  `random` are imported as a program's own modules are (`import fs`); without the import,
+- **Which standard modules need `import`.** `ai`, `approvals`, `fs`, `http`, `process`,
+  `random` and `regex` are imported as a program's own modules are (`import fs`); without the import,
   `fs.readText` is `undefined name fs`. `log` and `env` are built in, as `print` is, so
   `log.info(…)` and `env.get(…)` need no import.
 - **`eye run` keeps a program's jobs going.** It runs `main`, if the program has one, every time
@@ -3159,3 +3199,10 @@ operator. All binary operators associate to the left except `??`, which associat
     and each is now a rule: `xs[i] = v` on a `var` or `mut` list and `m[key] = v` on a map
     (section 7), `0xC2` and `0b1010` (section 4), a string literal as a pattern over `Bytes`
     (section 9), `fs.readBytes` and `toBytes` (section 5), and `v.index()` (section 11).
+44. **Patterns checked when the program is compiled.** `regex.parse` gives a `Result` even for a
+    pattern written in the program, so a pattern the program knows is right takes a `match` with
+    `unreachable`, and a mistake in it shows only when the code runs (section 5). A zone's name
+    is already checked when the program is compiled, where a `Zone` is expected; a string
+    literal where a `Regex` is expected could be too: `let tag: Regex = "<[^>]*>"`. Separately,
+    `\` and `{` are escapes in a string, so `\d{4}` is written `"\\d\{4}"`; a raw string would
+    let a pattern read as it is written everywhere else. Which of these, if either, is worth it?

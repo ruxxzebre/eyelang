@@ -105,3 +105,21 @@ that a commit, which rewrites a run at every step, replaces one small map
 and not a map of every run. A store whose only reference the runtime holds
 would be updated in place anyway once compiled; the interpreter copies.
 
+#### MemoryStore.empty {#MemoryStore-empty}
+
+```eye
+pub fn empty() -> MemoryStore
+```
+
+A store that holds nothing.
+
+#### MemoryStore.forget {#MemoryStore-forget}
+
+```eye
+pub fn forget(self, ids: List(Int)) -> MemoryStore
+```
+
+The store without the records of the runs ids. A journal or a database
+that wraps this store keeps a run's record itself while the run waits or
+after it ends, and only a ready run's record here (SPECS.md §15).
+

@@ -28,6 +28,13 @@ pub type Point = {
   y: Int,
 }
 
+impl Point {
+  ## The point at x and y.
+  pub fn at(x: Int, y: Int) -> Point = { x, y }
+
+  fn helperMethod(self) -> Int = self.x
+}
+
 # An ordinary comment, not documentation.
 
 ## The area of a [Shape], as a [Float] would hold it. [Square] is exact;
@@ -75,6 +82,8 @@ pub entity Board(id: String) {
 		"Broken: [Nowhere].",
 		"- <span id=\"Board-shapes\"></span>`state shapes: List(Shape) = []`: Everything added so far.",
 		"#### Board.add {#Board-add}\n\n```eye\npub fn add(s: Shape)\n```\n\nAdds a shape to the board.",
+		"#### Point.at {#Point-at}\n\n```eye\npub fn at(x: Int, y: Int) -> Point\n```\n\nThe point at x and y.",
+		"A point, made with [`Point.at`](./main#Point-at) or [Origin].",
 	} {
 		if !strings.Contains(main, want) {
 			t.Errorf("main.md lacks %q:\n%s", want, main)
@@ -93,7 +102,7 @@ pub entity Board(id: String) {
 	for _, p := range problems {
 		got = append(got, p.Decl+": "+p.Link)
 	}
-	if want := "Point: Point.at|Point: Origin|area: Nowhere"; strings.Join(got, "|") != want {
+	if want := "Point: Origin|area: Nowhere"; strings.Join(got, "|") != want {
 		t.Errorf("problems = %q, want %q", strings.Join(got, "|"), want)
 	}
 	if !strings.Contains(byPath["index.md"], "[main](./main) | Shapes and what they cover.") {

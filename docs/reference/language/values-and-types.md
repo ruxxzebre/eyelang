@@ -138,6 +138,45 @@ title: "Values and types"
   An `Offset` counts bytes underneath, so scanning by position costs nothing per step, but there
   is no number to read from it, since it means something only in its own string; it shows as
   `byte 5`.
+- **Regular expressions** come from the standard module `regex`, imported with `import regex`.
+  `regex.parse(pattern)` gives `Ok` of a `Regex`, or `Err(BadPattern(pattern, reason))`. A
+  pattern is RE2's syntax, the one Go's `regexp` reads: classes, repetition, `(?i)` and the other
+  flags, and groups, named with `(?P<name>…)` or `(?<name>…)`. It has no backreferences and no
+  lookaround, so matching takes time linear in the size of the text whatever the pattern, and a
+  pattern from a user can't stall a program. A `Regex` is a value that holds its pattern: it
+  compares and hashes by the pattern as written, so `a+` and `aa*` are different, it shows as its
+  pattern, and it can be saved, so a job keeps one across a `!`. Its methods only compute:
+
+  | Method | What it gives |
+  |---|---|
+  | `re.matches(text)` | whether the pattern matches the whole of `text`; `re.find(text) != None` asks whether it matches anywhere in it |
+  | `re.find(text)` | `Some` of the first match, a `Match`, or `None` |
+  | `re.findAll(text)` | every match, left to right, none overlapping |
+  | `re.replace(text, with)` | `text` with every match replaced, as a string's `replace` replaces every occurrence; `re.replaceFirst(text, with)` replaces the first |
+  | `re.split(text)` | the parts of `text` between matches, as a string's `split` gives the parts between separators |
+
+  A `Match` has the `text` it matched; its `range` in the text searched, a `Range(Offset)`;
+  `groups`, a `List(Option(String))` of what each group took, `None` for a group that took no
+  part; and `named`, a `Map(String, String)` of the named groups that took part. `m.group(n)` is
+  group `n`, and `m.group(0)` the whole match. In a replacement, `$1` is what group 1 took,
+  `$<name>` what a named group took, and `$$` is a `$`; `$1x` is group 1 followed by `x`, and
+  `$<1>0` group 1 followed by `0`. The brackets are JavaScript's, because Go's `${name}` would be
+  interpolation in an Eyelang string. `regex.escape(text)` quotes text to match it as it is.
+
+  ```eye
+  import regex
+
+  ## Dates written 2026-10-12, as 12/10/2026.
+  fn irishDates(text: String) -> Result(String, regex.RegexError) {
+    let date = regex.parse("(\\d\{4})-(\\d\{2})-(\\d\{2})")?
+    Ok(date.replace(text, "$3/$2/$1"))
+  }
+  ```
+
+  In a string, a pattern's `\` is written `\\` and its `{` is written `\{`, as above. A pattern
+  written in the program is parsed when the program runs, like any other; where the program
+  knows it is right, a `match` on `regex.parse(p)` whose `Err(e)` arm is `unreachable("{e}")`
+  says so (open question 44 asks for patterns checked when the program is compiled).
 - **Iteration:** `for` walks lists, sets, ranges, `Bytes`, a map's `(key, value)` pairs, a string's
   characters (`s.chars()`) and any `Iter(a)`.
 - **Lazy iteration:** `xs.iter()` gives an `Iter(a)`, a sequence computed as it is walked.

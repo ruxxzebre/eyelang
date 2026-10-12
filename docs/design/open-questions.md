@@ -223,3 +223,10 @@ title: "Open questions"
     and each is now a rule: `xs[i] = v` on a `var` or `mut` list and `m[key] = v` on a map
     ([section 7](/reference/language/mutation)), `0xC2` and `0b1010` ([section 4](/reference/language/lexical-structure)), a string literal as a pattern over `Bytes`
     ([section 9](/reference/language/pattern-matching)), `fs.readBytes` and `toBytes` ([section 5](/reference/language/values-and-types)), and `v.index()` ([section 11](/reference/language/traits)).
+44. **Patterns checked when the program is compiled.** `regex.parse` gives a `Result` even for a
+    pattern written in the program, so a pattern the program knows is right takes a `match` with
+    `unreachable`, and a mistake in it shows only when the code runs ([section 5](/reference/language/values-and-types)). A zone's name
+    is already checked when the program is compiled, where a `Zone` is expected; a string
+    literal where a `Regex` is expected could be too: `let tag: Regex = "<[^>]*>"`. Separately,
+    `\` and `{` are escapes in a string, so `\d{4}` is written `"\\d\{4}"`; a raw string would
+    let a pattern read as it is written everywhere else. Which of these, if either, is worth it?

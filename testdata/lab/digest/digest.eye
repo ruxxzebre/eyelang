@@ -9,6 +9,7 @@ import home.{UserId, dublin}
 import http
 import miniflux
 import notify
+import regex
 import telegram
 import web
 
@@ -633,33 +634,19 @@ fn closeOf(html: String, name: String, from: Offset) -> Option(Offset) {
   }
 }
 
+## An href attribute, in any case and not the end of a longer name such as
+## `xhref`, and its value: in double quotes, in single quotes (either up to
+## the closing quote or the end), or bare, up to a space.
+let href = match regex.parse("(?i)(?:^|\\W)href\\s*=\\s*(?:\"([^\"]*)|'([^']*)|(\\S*))") {
+  Ok(re) => re
+  Err(e) => unreachable("{e}")
+}
+
 ## The value of a tag's href attribute, decoded and trimmed, or "".
 fn hrefOf(attributes: String) -> String {
-  var at = attributes.start()
-  var previous = '\0'
-  while at < attributes.end() {
-    let here = at
-    let c = char(attributes, at)
-    at = past(attributes, at)
-    let starts = !isWordChar(previous) && (rest(attributes, here) |> take(4) |> lower) == "href"
-    previous = c
-    if !starts { continue }
-    var i = skipSpace(attributes, past(attributes, here, by: 4))
-    if char(attributes, i) != '=' { continue }
-    i = skipSpace(attributes, past(attributes, i))
-    let quote = char(attributes, i)
-    let value = if quote == '"' || quote == '\'' {
-      let open = past(attributes, i)
-      let close = attributes |> indexOf("{quote}", from: open) ?? attributes.end()
-      attributes.slice(open..close) ?? ""
-    } else {
-      var end = i
-      while end < attributes.end() && !isSpace(char(attributes, end)) { end = past(attributes, end) }
-      attributes.slice(i..end) ?? ""
-    }
-    return value |> decode |> trim
-  }
-  ""
+  let Some(m) = href.find(attributes) else { return "" }
+  # Exactly one of the three groups took part.
+  m.groups |> map(fn g: g ?? "") |> join("") |> decode |> trim
 }
 
 ## Text with its character references replaced: `&amp;`, `&#8364;`, `&#x2014;`.
@@ -758,13 +745,6 @@ fn isHexDigit(c: Char) -> Bool = isDigit(c) || (c >= 'a' && c <= 'f') || (c >= '
 fn isWordChar(c: Char) -> Bool = isLetter(c) || isDigit(c) || c == '_'
 fn isNameChar(c: Char) -> Bool = isWordChar(c) || c == '-'
 fn isSchemeChar(c: Char) -> Bool = isWordChar(c) || c == '+' || c == '-' || c == '.'
-fn isSpace(c: Char) -> Bool = c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\u{C}'
-
-fn skipSpace(s: String, from: Offset) -> Offset {
-  var i = from
-  while isSpace(char(s, i)) { i = past(s, i) }
-  i
-}
 
 # ---------------------------------------------------------------- the briefing
 
@@ -995,6 +975,17 @@ test "links keep their target only with a base, and never for in-page or script 
   expect(plain(html) == "First link Top J")
   expect(plain("<a href=more>More</a>", base: Some("https://site.example/news/today?page=2")) == "[More](https://site.example/news/more)")
   expect(plain("<a xhref=x href=../up>Up</a>", base: Some("https://site.example/a/b/")) == "[Up](https://site.example/a/up)")
+}
+
+test "an href's value is read in double quotes, single quotes, unclosed, or bare" {
+  expect(hrefOf(" class=x HREF = \" /a b \"") == "/a b")
+  expect(hrefOf(" href='/q\"x' id=y") == "/q\"x")
+  expect(hrefOf(" href=\"/open") == "/open")
+  expect(hrefOf(" href=/bare id=y") == "/bare")
+  expect(hrefOf(" href id=y") == "")
+  expect(hrefOf(" hreflang=en href=/b") == "/b")
+  expect(hrefOf(" data-href=/d") == "/d")  # as the TypeScript digest reads it
+  expect(hrefOf(" title=x") == "")
 }
 
 test "a form still yields its text, since ASP.NET pages live in one" {

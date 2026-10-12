@@ -21,3 +21,4 @@ Every public declaration of the standard library, with its signature and documen
 | [http](./std/http) | Requests to any URL, for services that have no contract, such as web pages. |
 | [process](./std/process) | Running other programs. |
 | [random](./std/random) | Random numbers and choices. |
+| [regex](./std/regex) | Regular expressions: patterns that find, replace and split text. |
