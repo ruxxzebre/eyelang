@@ -9,7 +9,7 @@ worktree is left, and nobody holds a claim.
 
 ## Pick up first
 
-1. **Read the digest's first morning run in the homelab** (2026-10-12 07:40 Europe/Dublin) and
+1. **After the digest's first morning run in the homelab** (due 2026-10-12 07:40 Europe/Dublin), read it and
    fix what it shows, as "The digest in the homelab" below says. One good run closes phase 5's
    exit criterion.
 2. **After every push to `dev`, check CI** (`gh run list --branch dev --workflow ci.yml --limit

@@ -31,7 +31,7 @@ yet.
 
 - Phase 5's exit criterion, "the morning digest runs in the lab." The digest runs in the homelab
   on Postgres, in shadow mode beside the TypeScript digest (session eyelang-af; HANDOFF.md says
-  what is deployed and how to read its runs). Its first scheduled morning was 2026-10-12 07:40
+  what is deployed and how to read its runs). Its first scheduled morning is 2026-10-12 07:40
   Europe/Dublin. The criterion closes after one good morning run; replacing the TypeScript
   digest is the user's decision.
 - Closed tasks whose exit tests weren't met: carry-over tasks C.1 to C.3, C.6 and C.7 under the
