@@ -106,6 +106,8 @@ Every waiting call is a library function, called with `!`:
 | `next!(event, where:, within:)` | an event; see [Views, events and schedules](/guide/views-events-schedules#waiting-for-an-event) |
 | `poll!(every:, within:, check)` | a service that can't say when it is ready |
 | `run.join!()` | a run started earlier; see [Outcomes and faults](#outcomes-and-faults) |
+| `allDone!(runs)`, `firstDone!(runs)` | every one, or the first, of several runs; see [Concurrency inside a job](#concurrency-inside-a-job) |
+| `lock!(name, for:, f)` | a named lock no other run holds; see [Concurrency inside a job](#concurrency-inside-a-job) |
 
 A wait that can last long takes a `within:`, and says what happens when time runs out. Here a
 clean-up asks a person before it deletes anything:
@@ -258,6 +260,32 @@ The checker doesn't catch this yet; the run fails when it gets there, and so doe
 jobs, in `main` and in plain functions, tasks can wait, and their waits overlap. See
 [Programs and concurrency](/reference/language/programs-and-concurrency).
 
+`allDone!(runs)` waits for every run in a list and gives their outcomes in the list's order.
+`firstDone!(runs)` waits for the first to finish, gives its outcome, and stops the others, which
+end as `Failed(Killed)`. (`all` and `first` are the collection functions; `!` never turns them into
+waits.) A timeout is a run that sleeps, so a question with a deadline of its own is a race between
+two runs:
+
+<<< ./code/jobs-and-waiting/main.eye#first
+
+<<< ./code/jobs-and-waiting/main.eye#test-first
+
+When nobody answers about `web` within the hour, the timer wins and the question is stopped: an
+answer that comes later finds nothing waiting for it.
+
+`lock!(name, for: d, f)` keeps work that must not overlap to one run at a time, across every job of
+the program. A run waits until no other holds the lock, holds it while `f` runs, and gives it back
+when `f` returns:
+
+<<< ./code/jobs-and-waiting/main.eye#lock
+
+<<< ./code/jobs-and-waiting/main.eye#test-lock
+
+The store keeps who holds each lock and until when, so a restart neither frees one nor grants it
+twice. `for:` is how long the holder may keep it. If the time runs out while the holder still
+waits inside `f`, the holder ends as `Failed(LockExpired("db"))` and the next run takes the lock,
+so the work never runs twice at once.
+
 ## When to write a job
 
 Write a job when the work **waits, or must finish even if the program restarts**: a timeout, a
@@ -280,9 +308,8 @@ public function that waits says `uses {wait}` in its signature, and is called wi
 | Duplicate runs after a restart | A job started from `main` needs a key |
 | Overlapping runs, a flooded API | `@concurrency` and `@limit`, enforced by the runtime |
 
-::: info Not yet
-`lock!`, and `all!` and `first!` for joining several runs, are designed but not built; join child
-runs one after another, as `nightly` does. `@memory`, `@priority`, `reserve!` and `@budget` (see
+::: info What runs today
+Every waiting call above runs, and `@memory`, `@priority`, `reserve!` and `@budget` (see
 [AI calls](/guide/ai-calls#budgets)) are enforced. See
 [What runs today](/reference/status#jobs-and-waiting).
 :::

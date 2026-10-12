@@ -932,8 +932,9 @@ func (l *lowerer) checkDurable(n *syntax.Node, decl any, waiting bool) {
 	}
 	switch d := decl.(type) {
 	case ir.Builtin:
-		if d.Name == "sleep" {
-			l.errorf(n, "in a job, sleep is a durable step: write sleep!(…)")
+		if effect, _ := l.c.builtinStep(d.Name); effect == "wait" {
+			// sleep, lock, approval and the other waiting built-ins.
+			l.errorf(n, "in a job, %s is a durable step: write %s!(…)", d.Name, d.Name)
 		}
 	case *ir.Op:
 		l.errorf(n, "in a job, a call to another service is a durable step: write %s!(…)", d.Name)

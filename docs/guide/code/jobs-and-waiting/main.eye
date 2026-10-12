@@ -159,6 +159,54 @@ test "@concurrency queues runs, per chat" {
 }
 # endregion test-post
 
+# region first
+job ask(what: String) -> Decision { approval!(what, from: "operator", within: 3 days) }
+
+job timer(d: Duration) -> Decision {
+  sleep!(d)
+  Expired
+}
+
+## Restarts a server if someone approves within the hour.
+job restart(server: String) {
+  match firstDone!([ask.start!("Restart {server}?"), timer.start!(1 h)]) {
+    Completed(Approved(_)) => Log("restarts").add!("{server} restarted")
+    Completed(_) | Failed(_) => Log("restarts").add!("{server} left alone")
+  }
+}
+# endregion first
+
+# region test-first
+test "firstDone! takes whichever run finishes first" {
+  restart.start("db")
+  restart.start("web")
+  approve("Restart db?")
+  advance(1 h)
+  expect(Log("restarts").lines == ["db restarted", "web left alone"])
+}
+# endregion test-first
+
+# region lock
+## Migrates the database. Two migrations must never run at once, so each
+## holds the lock "db" while it works.
+job migrate(name: String) {
+  lock!("db", for: 1 h, fn {
+    Log("db").add!("{name} starts")
+    sleep!(10 min)
+    Log("db").add!("{name} ends")
+  })
+}
+# endregion lock
+
+# region test-lock
+test "a lock lets one migration run at a time" {
+  migrate.start("a")
+  migrate.start("b")
+  advance(30 min)
+  expect(Log("db").lines == ["a starts", "a ends", "b starts", "b ends"])
+}
+# endregion test-lock
+
 # region main
 ## Sets one reminder the first time the program starts.
 pub fn main() uses {entity Reminder, clock} {

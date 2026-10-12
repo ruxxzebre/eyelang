@@ -84,6 +84,7 @@ pub type Fault =
   | OutOfMemory
   | Unavailable(String)
   | Killed
+  | LockExpired(String)
 ```
 
 Why a run stopped before returning. A fault isn't an error: code can't
@@ -94,7 +95,9 @@ return or catch one, only see it in a run's outcome.
 - <span id="Fault-OverBudget"></span>`OverBudget`: A call would have gone over the run's `@budget`.
 - <span id="Fault-OutOfMemory"></span>`OutOfMemory`: The run needed more than its `@memory`.
 - <span id="Fault-Unavailable"></span>`Unavailable(String)`: A service stayed out of reach for longer than its query is retried.
-- <span id="Fault-Killed"></span>`Killed`: Someone stopped the run.
+- <span id="Fault-Killed"></span>`Killed`: Someone stopped the run, or `firstDone!` did once another run finished first.
+- <span id="Fault-LockExpired"></span>`LockExpired(String)`: The run was still waiting inside `lock!` when the lock, named here, ran
+  out.
 
 ### Decision {#Decision}
 

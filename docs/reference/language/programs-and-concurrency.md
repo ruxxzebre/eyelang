@@ -127,7 +127,7 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
     a bug the test shows, not a hang.
   - `TaskGroup`, `Sender` and `Receiver` can't be saved, so channels can't be live across a `!`;
     jobs talk through entities and events.
-- **In jobs**, concurrent durable steps are child runs (`digest.start!(day)`) joined with `all!` or
-  `first!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
+- **In jobs**, concurrent durable steps are child runs (`digest.start!(day)`) joined with
+  `allDone!` or `firstDone!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
   since its steps couldn't be recorded in order: a `!` step in it, or a call that would need one,
   is an error.

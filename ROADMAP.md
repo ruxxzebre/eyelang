@@ -323,7 +323,7 @@ each names the closed issue it continues.
 | Task | Issue |
 |---|---|
 | C.1 Entities: `end(ok)`, and tests of rollback and the single writer (from 4.1) (done) | [#65](https://github.com/ruxxzebre/eyelang/issues/65) |
-| C.2 Waiting: `lock!`, `all!` and `first!` (from 4.4) | [#66](https://github.com/ruxxzebre/eyelang/issues/66) |
+| C.2 Waiting: `lock!`, `allDone!` and `firstDone!` (from 4.4) (done) | [#66](https://github.com/ruxxzebre/eyelang/issues/66) |
 | C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) (done) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
 | C.4 `NonZero` divisors checked (from 2.4) (done) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
 | C.5 `eye fmt` writes public functions' `uses` clauses (from 2.6) (done) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
@@ -355,10 +355,20 @@ What each task is, until its issue holds it:
 - **C.2 Waiting (#35, 4.4).** `lock!` is undefined. `all!` and `first!` resolve to the collection
   functions `all` and `first`, and `eye check` refuses them with `!` ("all neither waits nor
   reaches outside the program"). So there is no test of `first!` between an approval and a
-  timeout, or of a lock that expires while its holder waits.
-  **Done when:** `lock!`, `all!` and `first!` work as SPECS §15's table says, with a test of
-  `first!` between an approval and a timeout and one of a lock that expires while its holder
-  waits.
+  timeout, or of a lock that expires while its holder waits. The owner decided on 2026-10-12
+  that the joins are named `allDone!` and `firstDone!`, so `!` never changes which function a
+  name means (the spec review's design risk 11).
+  **Done when:** `lock!`, `allDone!` and `firstDone!` work as SPECS §15's table says, with a
+  test of `firstDone!` between an approval and a timeout and one of a lock that expires while
+  its holder waits, and runs paused in them resume after a restart.
+  Done on 2026-10-12: `allDone!` and `firstDone!` take a list of runs (`List(Run(a))`) and
+  `firstDone!` stops the runs that lost (`Failed(Killed)`); `lock!` keeps its holder and expiry
+  in the store, and a holder still waiting inside when the lock runs out ends as
+  `Failed(LockExpired(name))`, a new prelude fault (SPECS §15). `all` and `first` are only the
+  collection functions: `all!(runs)` and `first!(runs)` are errors that name the wait to write.
+  `interp/waits.go`; tests in `testdata/programs/waiting`, `interp/waits_test.go` (each wait
+  resumed from the journal after a restart, one from a checkpoint) and `check/types_test.go`
+  ("allDone! and firstDone! wait for a list of runs").
 - **C.3 Schedules (#36, 4.5).** `@on(cron("…", in: zone))` is refused ("@on takes a schedule,
   such as daily(…)"). The daylight-saving behaviour is built and tested for `daily` at 01:30 in
   Dublin (`testdata/programs/schedules`), but it can't be chosen: `onGap:` and `onOverlap:` don't

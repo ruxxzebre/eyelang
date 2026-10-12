@@ -65,8 +65,11 @@ pub type Fault =
   | OutOfMemory
   ## A service stayed out of reach for longer than its query is retried.
   | Unavailable(String)
-  ## Someone stopped the run.
+  ## Someone stopped the run, or `firstDone!` did once another run finished first.
   | Killed
+  ## The run was still waiting inside `lock!` when the lock, named here, ran
+  ## out.
+  | LockExpired(String)
 
 ## A person's answer to `approval!(…)`. Only `Approved` holds an `Approval`,
 ## which is what ending an entity or a `@destructive` command needs.

@@ -147,4 +147,4 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
 - `tools:` lists what the agent may use. Eyelang functions are served to the agent over MCP, and
   their effects become the job's, as with model calls. Permission requests from the agent arrive
   as events; code can answer them, or hand them to a person with `approval!`.
-- Several agents run side by side as child runs, joined with `all!` or `first!`.
+- Several agents run side by side as child runs, joined with `allDone!` or `firstDone!`.

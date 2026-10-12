@@ -60,6 +60,26 @@ func TestTypeDiagnostics(t *testing.T) {
 	}{
 		{"a value of the wrong type", `fn f() -> Int = "seven"`,
 			[]string{"1:17: expected Int, found String"}},
+		{"allDone! and firstDone! wait for a list of runs", `job child() -> Int { 1 }
+job parent() {
+  let a = child.start!()
+  let outcomes: List(Outcome(Int)) = allDone!([a, child.start!()])
+  let winner: Outcome(Int) = firstDone!([a])
+  let held: Int = lock!("ci", for: 1 min, fn { 2 })
+  let x = all([a])
+  let y = firstDone!([1, 2])
+  let z: String = lock!("ci", for: 1 min, fn { 2 })
+  let v = all!([a])
+  let w = first!([a])
+  let u: Option(Run(Int)) = first([a])
+}`, []string{
+			"7:11: to wait for every run in a list, write allDone!(…); all is the collection function, which takes a test",
+			"8:23: expected Run(a), found Int",
+			"8:26: expected Run(a), found Int",
+			"9:19: expected String, found Int",
+			"10:11: all! isn't a wait: to wait for every run in a list, write allDone!(…); all is the collection function, written without !",
+			"11:11: first! isn't a wait: to wait until the first of several runs finishes, write firstDone!(…); first is the collection function, written without !",
+		}},
 		{"ending an entity needs an Approval", `entity Player(id: String) {
   state name: String = ""
   pub fn retire(ok: Approval) { end(ok) }

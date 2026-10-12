@@ -487,10 +487,13 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 			return false
 		}
 		var name, effect string
-		step := false
+		step, misnamedWait := false, false
 		switch d := r.Decl.(type) {
 		case ir.Builtin:
 			name = d.Name
+			// all! and first! are reported as they are type-checked, with
+			// the wait to write instead.
+			_, misnamedWait = collectionWaits[d.Name]
 			// A built-in's uses clause in ir/builtin.eye says whether it
 			// waits or reaches outside. The lowerer reports sleep without
 			// `!` already, with its own message.
@@ -525,7 +528,7 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 			c.typeErrorf(call.Pos, "a task in a job can only compute, and %s uses %s: start a child run for this step instead", name, effect)
 		case !waiting && step && effect != "wait":
 			c.typeErrorf(call.Pos, "in a job, %s uses %s, so calling it is a durable step: write %s!(…)", name, effect, name)
-		case waiting && !step:
+		case waiting && !step && !misnamedWait:
 			c.typeErrorf(call.Pos, "%s neither waits nor reaches outside the program, so it isn't a durable step: write %s(…) without !", name, name)
 		}
 		return args()

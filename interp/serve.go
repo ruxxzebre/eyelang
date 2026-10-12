@@ -533,6 +533,12 @@ func (in *Interp) runInfo(r *jobRun) (info RunInfo) {
 			}
 		case r.WaitEvent == memoryEvent:
 			info.Waits = "memory"
+		case strings.HasPrefix(r.WaitEvent, "lock/"):
+			info.Waits = "the lock " + strconv.Quote(strings.TrimPrefix(r.WaitEvent, "lock/"))
+		case strings.HasPrefix(r.WaitEvent, "run/"):
+			info.Waits = "run #" + strings.TrimPrefix(r.WaitEvent, "run/")
+		case strings.HasPrefix(r.WaitEvent, "runs/"):
+			info.Waits = "the first of runs #" + strings.ReplaceAll(strings.TrimPrefix(r.WaitEvent, "runs/"), ",", ", #")
 		case r.WaitEvent != "":
 			info.Waits = "the event " + r.WaitEvent
 		}

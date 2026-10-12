@@ -81,7 +81,44 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `reserve!(1 GiB, fn { … })` | memory from the host, released when the function returns |
   | `lock!("ci", for: 30 min, fn { … })` | a named lock that records its owner and expiry |
   | `run.join!()` | a job started earlier: `Completed(value)`, or `Failed(fault)` if it stopped first |
-  | `all!([a, b])`, `first!([a, b])` | every one, or whichever finishes first, of several waits |
+  | `allDone!([a, b])`, `firstDone!([a, b])` | every one, or whichever finishes first, of several runs |
+
+- **Joining several runs.** `allDone!` and `firstDone!` take a list of runs, `List(Run(a))`, which
+  a job started with `start!`. `allDone!(runs)` waits until every one has finished and gives their
+  outcomes, a `List(Outcome(a))` in the list's order. `firstDone!(runs)` waits until one has
+  finished and gives its `Outcome(a)`; if several had finished before it was called, the one that
+  finished first. It stops the others, which end as `Failed(Killed)` with the steps they took, so
+  a wait that lost doesn't go on: an approval that timed out no longer waits for its answer.
+  `all` and `first` are only the collection functions: `all!(runs)` and `first!(runs)` are
+  errors that name the wait to write, since `!` marks a call as a step and never changes which
+  function a name means. A timeout is a run that sleeps:
+
+  ```eye
+  job ask(what: String) -> Decision { approval!(what, from: operator, within: 3 days) }
+
+  job timer(d: Duration) -> Decision {
+    sleep!(d)
+    Expired
+  }
+
+  job ship(build: String) {
+    match firstDone!([ask.start!("ship {build}?"), timer.start!(1 h)]) {
+      Completed(Approved(ok)) => deploy!(build, ok)
+      Completed(_) | Failed(_) => log.info("{build} wasn't approved within the hour")
+    }
+  }
+  ```
+- **Locks.** `lock!(name, for: d, fn { … })` waits until no other run holds the lock of that name,
+  takes it for `d`, runs the function, whose `!` steps are the run's own, and gives the lock back
+  when the function returns, with its result. The store keeps who holds each lock and until when,
+  in the commit that records the step, so a restart neither frees a lock nor grants it twice. A
+  run that faults, or that `firstDone!` stops, gives its locks back.
+  - **A lock runs out.** When its time is up while the holder is still waiting inside the
+    function, the holder ends as `Failed(LockExpired(name))` and the next run that asks takes the
+    lock, so the work it guards never runs beside another holder. A holder that is computing when
+    the time comes ends when it next waits inside the function. To report it, run the locked work
+    as a child run and join it.
+  - A run that asks for a lock it already holds faults: locks don't nest.
 
 - **`next!` misses nothing.** It counts every matching event published since the run's previous
   step, so an answer that comes while the run is still sending its question, or sleeping, is found.
@@ -124,7 +161,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   }
   ```
 - **A run's outcome** is `Outcome(a) = Completed(a) | Failed(Fault)`, from the prelude. A fault
-  (`DeadlinePassed`, `OverBudget`, `OutOfMemory`, `Unavailable`, `Unreachable`, `Killed`) can't be
+  (`DeadlinePassed`, `OverBudget`, `OutOfMemory`, `Unavailable`, `Unreachable`, `Killed`,
+  `LockExpired`) can't be
   caught where it happens, so code that must report one starts the work as a child run and joins
   it:
 

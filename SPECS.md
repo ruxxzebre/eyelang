@@ -139,6 +139,9 @@ construct that also works outside that domain.
 | Native code | **Compiled programs are C, built by the `zig cc` that `eye` ships**, with Perceus reference counting, whole-program specialisation and jobs resuming from saved frames ([docs/internals/compilation.md](docs/internals/compilation.md)). `eye` itself stays free of cgo: the interpreter loads C libraries at run time without it | The workload needs memory and resume time more than the best code, and C at `-O2` gives both; the bootstrap seed is C anyway; Koka and Lean 4 compile reference-counted functional code to C. Shipping `zig cc` cross-compiles to all five release targets from any host, with the same compiler everywhere |
 | Generic private functions | **A private function that leaves its types out is generic**: its body is checked on its own, and each call decides afresh what the body leaves open, so `fn twice(n) = n + n` works on `Int`s and `Float`s alike. A call that gives types without the operators or traits the body uses is an error at the call. Functions that call each other share one type while they are checked (section 6) | One type for the whole program made a helper's first caller decide it for every other, and the error appeared at the second caller, far from the cause. Let-polymorphism is what ML and Haskell do for the same reason, and compiled code specialises each use (section 22) |
 | Schedules | **`cron("…", in: zone)` takes the five standard fields** (values, names, ranges, lists and steps; either day field matches when both are given), and no extensions. **Daylight-saving changes are policies, `onGap: Shift \| Skip` and `onOverlap: First \| Second \| Both`**, prelude variants, defaulting to `Shift` and `First` (section 20) | A crontab line copied from elsewhere means what it meant there, and its errors show at the string; the extensions (`L`, `W`, `#`, seconds) are rare and differ between crons. The defaults are what `daily` did before the policies could be chosen, and they need no hour check; `Both` is for jobs that should run every hour of real time. Variants, not strings, so a misspelt policy fails to compile |
+| Joining runs | **`allDone!` and `firstDone!` take a list of runs; `firstDone!` stops the runs that lost**, which end as `Failed(Killed)` (section 15) | A durable wait is a child run, so joining several needs nothing new beside `join!`, and each run's steps stay in one order. A loser that went on, such as an approval still waiting for an answer after its timeout, would act on a decision already made |
+| Lock expiry | **A run still waiting inside `lock!` when the lock runs out ends as `Failed(LockExpired(name))`** (section 15) | The expiry lets the next run take a lock a stuck holder keeps. Letting the old holder go on would run the guarded work twice at once, which is what the lock is for |
+| Naming the joins | **The waits for several runs are `allDone!` and `firstDone!`, not `all!` and `first!`**; `all` and `first` are only the collection functions, and `all!(runs)` or `first!(runs)` is an error that names the wait to write (section 15). Decided by the owner on 2026-10-12 | `!` only ever marks the same call as a step; it never changes which function a name means. With `all!` and `first!`, adding or dropping a `!` switched between a wait and a collection function, and a reader had to know both. From the spec review of 2026-10-12, design risk 11 ([docs/internals/reviews/spec-review-2026-10-12.md](docs/internals/reviews/spec-review-2026-10-12.md)) |
 | Ending entities | **`end(ok)` in an entity's own method ends it for good**: `ok` must be an `Approval`, the state is removed, and the store keeps only when it ended and whose approval let it. Calling or reading an ended entity faults; its identity never starts again. In an entity's method `end` is the entity's; elsewhere it is a string's end (section 14) | Ending deletes data, so it takes a person's consent that the compiler checks. If a later call started the identity again from its defaults, a job holding an old reference would bring back what a person approved ending, silently. Resolving `end` by context keeps `s.end()` and the spec's `end(ok)` both |
 
 ## 3. A tour
@@ -1018,8 +1021,8 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
     a bug the test shows, not a hang.
   - `TaskGroup`, `Sender` and `Receiver` can't be saved, so channels can't be live across a `!`;
     jobs talk through entities and events.
-- **In jobs**, concurrent durable steps are child runs (`digest.start!(day)`) joined with `all!` or
-  `first!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
+- **In jobs**, concurrent durable steps are child runs (`digest.start!(day)`) joined with
+  `allDone!` or `firstDone!`. A task a job starts with `parallelMap`, `both`, `race` or `timeout` only computes,
   since its steps couldn't be recorded in order: a `!` step in it, or a call that would need one,
   is an error.
 
@@ -1184,7 +1187,44 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   | `reserve!(1 GiB, fn { … })` | memory from the host, released when the function returns |
   | `lock!("ci", for: 30 min, fn { … })` | a named lock that records its owner and expiry |
   | `run.join!()` | a job started earlier: `Completed(value)`, or `Failed(fault)` if it stopped first |
-  | `all!([a, b])`, `first!([a, b])` | every one, or whichever finishes first, of several waits |
+  | `allDone!([a, b])`, `firstDone!([a, b])` | every one, or whichever finishes first, of several runs |
+
+- **Joining several runs.** `allDone!` and `firstDone!` take a list of runs, `List(Run(a))`, which
+  a job started with `start!`. `allDone!(runs)` waits until every one has finished and gives their
+  outcomes, a `List(Outcome(a))` in the list's order. `firstDone!(runs)` waits until one has
+  finished and gives its `Outcome(a)`; if several had finished before it was called, the one that
+  finished first. It stops the others, which end as `Failed(Killed)` with the steps they took, so
+  a wait that lost doesn't go on: an approval that timed out no longer waits for its answer.
+  `all` and `first` are only the collection functions: `all!(runs)` and `first!(runs)` are
+  errors that name the wait to write, since `!` marks a call as a step and never changes which
+  function a name means. A timeout is a run that sleeps:
+
+  ```eye
+  job ask(what: String) -> Decision { approval!(what, from: operator, within: 3 days) }
+
+  job timer(d: Duration) -> Decision {
+    sleep!(d)
+    Expired
+  }
+
+  job ship(build: String) {
+    match firstDone!([ask.start!("ship {build}?"), timer.start!(1 h)]) {
+      Completed(Approved(ok)) => deploy!(build, ok)
+      Completed(_) | Failed(_) => log.info("{build} wasn't approved within the hour")
+    }
+  }
+  ```
+- **Locks.** `lock!(name, for: d, fn { … })` waits until no other run holds the lock of that name,
+  takes it for `d`, runs the function, whose `!` steps are the run's own, and gives the lock back
+  when the function returns, with its result. The store keeps who holds each lock and until when,
+  in the commit that records the step, so a restart neither frees a lock nor grants it twice. A
+  run that faults, or that `firstDone!` stops, gives its locks back.
+  - **A lock runs out.** When its time is up while the holder is still waiting inside the
+    function, the holder ends as `Failed(LockExpired(name))` and the next run that asks takes the
+    lock, so the work it guards never runs beside another holder. A holder that is computing when
+    the time comes ends when it next waits inside the function. To report it, run the locked work
+    as a child run and join it.
+  - A run that asks for a lock it already holds faults: locks don't nest.
 
 - **`next!` misses nothing.** It counts every matching event published since the run's previous
   step, so an answer that comes while the run is still sending its question, or sleeping, is found.
@@ -1227,7 +1267,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   }
   ```
 - **A run's outcome** is `Outcome(a) = Completed(a) | Failed(Fault)`, from the prelude. A fault
-  (`DeadlinePassed`, `OverBudget`, `OutOfMemory`, `Unavailable`, `Unreachable`, `Killed`) can't be
+  (`DeadlinePassed`, `OverBudget`, `OutOfMemory`, `Unavailable`, `Unreachable`, `Killed`,
+  `LockExpired`) can't be
   caught where it happens, so code that must report one starts the work as a child run and joins
   it:
 
@@ -1800,7 +1841,7 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
 - `tools:` lists what the agent may use. Eyelang functions are served to the agent over MCP, and
   their effects become the job's, as with model calls. Permission requests from the agent arrive
   as events; code can answer them, or hand them to a person with `approval!`.
-- Several agents run side by side as child runs, joined with `all!` or `first!`.
+- Several agents run side by side as child runs, joined with `allDone!` or `firstDone!`.
 
 ## 20. Time, secrets, tests
 

@@ -408,12 +408,12 @@ func (rt *runtime) record(c *Commit, name string, data []byte) {
 // wake makes ready the runs waiting for an event named name.
 func (rt *runtime) wake(name string) {
 	for _, id := range rt.index.sleeping() {
-		if rt.index.waiting[id].event != name {
+		if !waitsFor(rt.index.waiting[id].event, name) {
 			continue
 		}
 		data, _ := rt.store.Run(id)
 		run := decodeRun(data)
-		if run.Status == "sleeping" && run.WaitEvent == name {
+		if run.Status == "sleeping" && waitsFor(run.WaitEvent, name) {
 			run.Status = "ready"
 			rt.save(run)
 			rt.queue = append(rt.queue, run.ID)
@@ -627,6 +627,9 @@ type jobRun struct {
 	// DeadlineAt is when the run ends as Failed(DeadlinePassed), from the
 	// job's @deadline.
 	DeadlineAt int64 `json:",omitempty"`
+	// Locks are the locks the run holds inside lock!, which end it as
+	// Failed(LockExpired) if it is still waiting there when they run out.
+	Locks []heldLock `json:",omitempty"`
 	cursor     int
 }
 
@@ -841,6 +844,11 @@ func (rt *runtime) step(id int64) {
 					if run.DeadlineAt > 0 && (run.WakeAt == 0 || run.WakeAt > run.DeadlineAt) {
 						run.WakeAt = run.DeadlineAt // to end it then
 					}
+					for _, h := range run.Locks {
+						if run.WakeAt == 0 || run.WakeAt > h.Until {
+							run.WakeAt = h.Until // to end it then, if it still holds the lock
+						}
+					}
 				case *Fault:
 					run.Status = "failed"
 					run.Fault = x.Error()
@@ -861,6 +869,7 @@ func (rt *runtime) step(id int64) {
 		if run.DeadlineAt > 0 && rt.now.UnixNano() >= run.DeadlineAt {
 			runFault(job.Pos, "DeadlinePassed", "%s passed its @deadline", job.Name)
 		}
+		rt.lockExpired(run, job)
 		rt.in.admitMemory(run, job)
 		result := rt.in.runJob(run, job, args)
 		run.Status = "done"
@@ -871,24 +880,14 @@ func (rt *runtime) step(id int64) {
 		// A finished run's outcome is an event, saved with it: runs that
 		// join this one wake to it, even after a restart.
 		c := &Commit{Runs: []RunWrite{{ID: run.ID, Data: run.encode()}}}
-		var name string
-		var outcome []byte
-		freed := false
-		if run.Status == "done" || run.Status == "failed" {
-			name, outcome = runEvent(run.ID), rt.in.encode(rt.in.outcome(run, job.Pos), job.Pos)
-			c.Events = []EventRecord{{Name: name, Data: outcome}}
-			freed = rt.dropReserved(run, c) // a run that ended inside reserve!
+		var after func()
+		if ended(run) {
+			after = rt.ending(run, c)
 		}
 		if err := guard(func() { rt.store.Commit(c) }); err != nil {
 			failed = err.(*CommitError)
-		} else if name != "" {
-			rt.events = append(rt.events, event{name: name, data: outcome})
-			rt.wake(name)
-			rt.release(job, run)
-			if freed {
-				delete(rt.reserved, run.ID)
-				rt.wakeMemory()
-			}
+		} else if after != nil {
+			after()
 		}
 		rt.warnLong(run)
 	}

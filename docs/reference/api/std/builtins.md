@@ -319,6 +319,35 @@ fn approval(what: String, from: who, within: Duration) -> Decision uses {wait}
 In a job, asks a person to approve, and waits for the answer: `Approved(approval)`, `Declined`
 or `Expired`. Only this can make an `Approval`.
 
+### lock {#lock}
+
+```eye
+fn lock(name: String, for: Duration, f: fn() -> a) -> a uses {wait}
+```
+
+In a job, `lock!("ci", for: 30 min, fn { deploy!() })` waits until no other run holds the lock
+of that name, takes it for that long, runs f and gives the lock back when f returns, with f's
+result. The store keeps who holds a lock and until when. A run still waiting inside f when the
+time runs out ends as `Failed(LockExpired(name))`, and the next run takes the lock.
+
+### allDone {#allDone}
+
+```eye
+fn allDone(runs: List(Run(a))) -> List(Outcome(a)) uses {wait}
+```
+
+In a job, `allDone!([a, b])` waits until every run in the list has finished, and gives their
+outcomes in the list's order.
+
+### firstDone {#firstDone}
+
+```eye
+fn firstDone(runs: List(Run(a))) -> Outcome(a) uses {wait}
+```
+
+In a job, `firstDone!([a, b])` waits until one of the runs has finished, and gives its outcome.
+It stops the others, which end as `Failed(Killed)`.
+
 ## Collections
 
 ### size {#size}

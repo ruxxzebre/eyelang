@@ -70,7 +70,15 @@ pub fn main() { sleep!(1 min) }`, []string{
 			"5:12: a test can't make waiting calls",
 			"6:17: `!` marks a durable step",
 		}},
-		{"durable steps in jobs need !", `job j() { sleep(1 min) }`, []string{"1:11: in a job, sleep is a durable step: write sleep!(…)"}},
+		{"durable steps in jobs need !", `job j() {
+  sleep(1 min)
+  lock("ci", for: 1 min, fn { 1 })
+  firstDone([j.start!()])
+}`, []string{
+			"2:3: in a job, sleep is a durable step: write sleep!(…)",
+			"3:3: in a job, lock is a durable step: write lock!(…)",
+			"4:3: in a job, firstDone is a durable step: write firstDone!(…)",
+		}},
 		{"attributes are declared", `@concurency(4)
 job a() {}
 @memory(64 MiB)

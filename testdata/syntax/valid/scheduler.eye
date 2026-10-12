@@ -2,8 +2,8 @@
 job poll() {
   let run = report.start(today(), after: 20 min)
   let other = report.start(today(), at: 07:40 in "Europe/Dublin")
-  all!([run, other])
-  let winner = first!([sleeper(), approval!("ship it?", from: operator, within: 3 days)])
+  allDone!([run, other])
+  let winner = firstDone!([sleeper(), approval!("ship it?", from: operator, within: 3 days)])
   lock!("ci", for: 30 min, fn {
     build!()
   })

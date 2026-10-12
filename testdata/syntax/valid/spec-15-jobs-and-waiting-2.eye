@@ -1,14 +1,14 @@
 # SPECS.md section 15, example 2.
-import approvals
+job ask(what: String) -> Decision { approval!(what, from: operator, within: 3 days) }
 
-@on(event(approvals.requested))
-job ask(r: approvals.Request) {
-  let left = r.until - now!()
-  let asked = notify.ask!(to: operator, text: r.what, choices: [yes, no], within: left,
-    key: "approval-{r.id}").reconcile!()
-  let Asking(question) = asked else { return }
-  let Some(press) = next!(notify.answered, where: fn a: a.question == question, within: left) else {
-    return
+job timer(d: Duration) -> Decision {
+  sleep!(d)
+  Expired
+}
+
+job ship(build: String) {
+  match firstDone!([ask.start!("ship {build}?"), timer.start!(1 h)]) {
+    Completed(Approved(ok)) => deploy!(build, ok)
+    Completed(_) | Failed(_) => log.info("{build} wasn't approved within the hour")
   }
-  approvals.answered.publish!({ id: r.id, approved: press.choice == yes.id, by: "{press.by}" })
 }

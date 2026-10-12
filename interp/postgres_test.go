@@ -276,10 +276,10 @@ func TestPostgresStopsWhenMemoryMayNotMatch(t *testing.T) {
 	})
 }
 
-// The program tests of testdata/programs/jobs and entities pass on every
-// kind of store, unchanged.
+// The program tests of testdata/programs/jobs, entities and waiting pass on
+// every kind of store, unchanged.
 func TestJobsOnEveryStore(t *testing.T) {
-	for _, program := range []string{"jobs", "entities"} {
+	for _, program := range []string{"jobs", "entities", "waiting"} {
 		prog, diags := check.Program("../testdata/programs/" + program)
 		for _, d := range diags {
 			t.Fatal(d)

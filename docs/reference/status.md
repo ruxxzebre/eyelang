@@ -22,8 +22,8 @@ compile-time errors it links to the checker's test cases. Every error class the 
 listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go),
 along with the test that reports it.
 
-**The biggest gaps today.** Some waits (`lock!`, `allDone!`, `firstDone!`), coding agents and
-model tools, `@unwitnessed` recordings, and native compilation (v0.4).
+**The biggest gaps today.** Coding agents and model tools, `@unwitnessed` recordings, and native
+compilation (v0.4).
 
 ## [A tour](/reference/language/a-tour)
 
@@ -191,7 +191,7 @@ model tools, `@unwitnessed` recordings, and native compilation (v0.4).
 | A group whose tasks all wait for channels nobody can change fails | ✓ | n/a | partial: on the system clock, a group inside another task isn't checked, and waits | [channels_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/channels_test.go#L61) |
 | A channel can't be live across a `!` | ✓ | ✓ | n/a | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L224) |
 | A task group in a job only computes, in its spawned tasks too | ✓ | ✓ | ✓ (the run fails) | [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L200) |
-| Child runs joined with `all!` and `first!` | ✓ | — (resolved as the collection functions `all` and `first`) | — | |
+| Child runs joined with `allDone!` and `firstDone!` | ✓ | ✓ (they take a `List(Run(a))`; `all` and `first` are only the collection functions, and `all!` or `first!` is an error that names the wait to write) | ✓ (`firstDone!` stops the runs that lost, which end as `Failed(Killed)`; a run paused in either resumes after a restart) | [programs/waiting](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/waiting/waiting.eye#L35), [waits_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/waits_test.go#L139), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L63) |
 
 ## [Entities](/reference/language/entities)
 
@@ -223,12 +223,13 @@ model tools, `@unwitnessed` recordings, and native compilation (v0.4).
 | Runs survive a restart of the runner, and the database stopping or not answering, also before the runner first connects | n/a | n/a | ✓ | [durable_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/durable_test.go), [postgres_wait_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/postgres_wait_test.go), [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go) |
 | Jobs resume from saved frames, not by replaying their steps | n/a | n/a | ✓ in the interpreter: a checkpoint at each statement of the job's body; only the steps since replay, and a function the statement calls replays its steps | [checkpoint_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/checkpoint_test.go), [store_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go) |
 | A job changed under a paused run is caught, not replayed into wrong values | n/a | n/a | ✓ (`eye run` refuses to start; a resumed run, or a replayed step for another call, faults) | [checkpoint_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/checkpoint_test.go), [runner_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/runner_test.go) |
-| A waiting run holds no goroutine, only its saved bytes | n/a | n/a | ✓ | [durable_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/durable_test.go) || `sleep!`, `sleepUntil!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L41), [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L236) |
+| A waiting run holds no goroutine, only its saved bytes | n/a | n/a | ✓ | [durable_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/durable_test.go) |
+| `sleep!`, `sleepUntil!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L41), [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L236) |
 | `poll!` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L93) |
 | `approval!`, with requests published as `approvals.requested` and answered by `approvals.answered`, `eye approve` or `eye decline` | ✓ | ✓ | ✓: an answer names its request's `id` and counts only when its `by` is the request's `from`; another is refused and logged, and the run keeps waiting. `eye approve TEXT` and test `approve(…)` refuse text that no waiting approval or several contain; `eye approve --id ID` answers one. A wait survives a restart of `eye run` with its id. Any module may still publish an answer (open question 35) | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/approvals.eye), [approvals_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/approvals_test.go), [lab approving](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/approving/approving.eye#L24), [approve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/approve_test.go#L16) |
 | `next!`, which misses no event | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L45) |
 | `reserve!` | ✓ | ✓ | ✓ | [programs/memory](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/memory/memory.eye#L42) |
-| `lock!` | ✓ | — (undefined) | — | |
+| `lock!` | ✓ | ✓ | ✓ (the store keeps the holder and expiry; a holder still waiting inside when the lock runs out ends as `Failed(LockExpired(name))`; a held or awaited lock survives a restart) | [programs/waiting](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/waiting/waiting.eye#L111), [waits_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/waits_test.go#L201) |
 | `run.join!()` and `Outcome` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L101) |
 | `start()`, with `after:`, `at:` and `key:` | ✓ | ✓ | partial: `after:` and `key:` are tested; `at:` has no test yet | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L12), [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L118) |
 

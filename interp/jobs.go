@@ -73,6 +73,12 @@ func (in *Interp) durable(f *frame, w *ir.Waiting) Value {
 				return in.approval(run, args, c.Pos)
 			case "reserve":
 				return in.reserve(run, args, c.Pos)
+			case "lock":
+				return in.lock(run, args, c.Pos)
+			case "allDone":
+				return in.allDone(run, args, c.Pos)
+			case "firstDone":
+				return in.firstDone(run, args, c.Pos)
 			}
 		}
 		if v, ok := in.replay(run, callName(callee), w.Pos); ok {

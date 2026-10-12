@@ -1119,7 +1119,15 @@ func (x *fnCheck) call(e *ir.Call, want typ) typ {
 		c.useArgs(e, r.Decl)
 		switch d := r.Decl.(type) {
 		case ir.Builtin:
-			t := x.builtin(d.Name, e.Args, want, e.Pos)
+			name := d.Name
+			if w, ok := collectionWaits[name]; ok && x.waiting == ir.Expr(e) {
+				// all!(runs) and first!(runs): ! never changes which
+				// function a name means (SPECS.md §15), so these are
+				// errors, checked as the waits they meant.
+				c.typeErrorf(e.Pos, "%s! isn't a wait: %s, write %s!(…); %s is the collection function, written without !", name, w.what, w.wait, name)
+				name = w.wait
+			}
+			t := x.builtin(name, e.Args, want, e.Pos)
 			if v, ok := prune(t).(*tvar); ok && d.Name == "unreachable" {
 				v.never = true // it stops the program, so it gives no value
 			}

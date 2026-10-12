@@ -91,6 +91,14 @@ func (b *builtinArgs) rest() {
 	}
 }
 
+// collectionWaits are the collection functions whose names a wait for runs
+// sounds like, with that wait: all!(runs) and first!(runs) are errors that
+// say to write allDone! or firstDone!.
+var collectionWaits = map[string]struct{ wait, what string }{
+	"all":   {"allDone", "to wait for every run in a list"},
+	"first": {"firstDone", "to wait until the first of several runs finishes"},
+}
+
 func (x *fnCheck) builtin(name string, args []ir.Arg, want typ, at ir.Pos) typ {
 	return x.builtinWith(name, args, nil, want, at)
 }
@@ -150,6 +158,14 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 	}
 
 	// Collection functions: the first argument says which kind.
+	if name == "all" && len(b.pos) == 1 && len(b.named) == 0 {
+		if l, ok := prune(b.arg(0, nil)).(*tcon); ok && l.name == "List" && len(l.args) == 1 {
+			if r, ok := prune(l.args[0]).(*tcon); ok && r.name == "Run" && r.decl == nil {
+				c.typeErrorf(at, "to wait for every run in a list, write allDone!(…); all is the collection function, which takes a test")
+				return list(&tcon{name: "Outcome", decl: c.ts.outcome, args: r.args})
+			}
+		}
+	}
 	x.ruleShape(name, b, at)
 	coll := b.arg(0, nil)
 	if coll == nil {

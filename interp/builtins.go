@@ -490,6 +490,19 @@ func builtinTable() map[string]*BuiltinFn {
 		in.faultf(at, "approval waits for a person, so only a job can call it, as approval!(…)")
 		return nil
 	})
+	// lock!, allDone! and firstDone! in a job are handled by durable (waits.go).
+	add("lock", func(in *Interp, _ []Value, _ map[string]Value, at ir.Pos) Value {
+		in.faultf(at, "lock waits for other runs to give the lock back, so only a job can call it, as lock!(…)")
+		return nil
+	})
+	add("allDone", func(in *Interp, _ []Value, _ map[string]Value, at ir.Pos) Value {
+		in.faultf(at, "allDone waits for runs, so only a job can call it, as allDone!(…)")
+		return nil
+	})
+	add("firstDone", func(in *Interp, _ []Value, _ map[string]Value, at ir.Pos) Value {
+		in.faultf(at, "firstDone waits for runs, so only a job can call it, as firstDone!(…)")
+		return nil
+	})
 	answer := func(name string, approved bool) {
 		add(name, func(in *Interp, args []Value, named map[string]Value, at ir.Pos) Value {
 			what, ok := "", false
