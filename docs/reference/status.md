@@ -5,7 +5,7 @@ title: What runs today
 # What runs today
 
 The [language reference](/reference/language/) describes Eyelang as it is designed. This page says
-how much of each part is built. It describes the code at commit `737f783` on 2026-10-11, and it is
+how much of each part is built. It describes the code at commit `856485a` on 2026-10-13, and it is
 updated with each merge.
 
 Each feature has three columns:

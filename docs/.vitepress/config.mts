@@ -45,8 +45,10 @@ const learn: DefaultTheme.SidebarItem[] = [
   {
     text: 'Start',
     items: [
-      { text: 'Why Eyelang', link: '/why' },
       { text: 'Quickstart', link: '/quickstart' },
+      { text: 'A tour of the language', link: '/reference/language/a-tour' },
+      { text: 'Writing Eyelang', link: '/writing-eyelang' },
+      { text: 'Glossary', link: '/reference/language/#glossary' },
     ],
   },
   {
@@ -78,37 +80,51 @@ const learn: DefaultTheme.SidebarItem[] = [
   },
 ]
 
-// Design documents for how Eyelang is built, written by hand (not from SPECS.md).
-const internals = {
-  text: 'Implementation',
-  items: [
-    { text: 'Compilation', link: '/internals/compilation' },
-    { text: 'Benchmarks against Go', link: '/internals/benchmarks' },
-    { text: 'Proposals', link: '/internals/proposals' },
-    { text: 'Spec review, 2026-10-12', link: '/internals/reviews/spec-review-2026-10-12' },
-    { text: 'Performance and packages, 2026-10-12', link: '/internals/reviews/performance-and-packages-2026-10-12' },
-    { text: 'How it is to type, 2026-10-12', link: '/internals/reviews/ergonomics-2026-10-12' },
-    { text: 'Review conclusions, 2026-10-12', link: '/internals/reviews/conclusions-2026-10-12' },
-    { text: 'Native compilation plan, 2026-10-12', link: '/internals/reviews/native-plan-2026-10-12' },
-    { text: 'What the benchmarks say, 2026-10-12', link: '/internals/reviews/benchmarks-review-2026-10-12' },
-  ],
-}
+// How Eyelang is built, written by hand (not from SPECS.md). The map comes
+// first; the reviews are dated, newest first.
+const internals: DefaultTheme.SidebarItem[] = [
+  {
+    text: 'Internals',
+    link: '/internals/',
+    items: [
+      { text: 'How Eyelang works', link: '/internals/architecture' },
+      { text: 'Compilation', link: '/internals/compilation' },
+      { text: 'Benchmarks against Go', link: '/internals/benchmarks' },
+      { text: 'Proposals', link: '/internals/proposals' },
+    ],
+  },
+  {
+    text: 'Reviews',
+    collapsed: true,
+    items: [
+      { text: 'What the benchmarks say, 2026-10-12', link: '/internals/reviews/benchmarks-review-2026-10-12' },
+      { text: 'Native compilation plan, 2026-10-12', link: '/internals/reviews/native-plan-2026-10-12' },
+      { text: 'How it is to type, 2026-10-12', link: '/internals/reviews/ergonomics-2026-10-12' },
+      { text: 'Performance and packages, 2026-10-12', link: '/internals/reviews/performance-and-packages-2026-10-12' },
+      { text: 'Review conclusions, 2026-10-12', link: '/internals/reviews/conclusions-2026-10-12' },
+      { text: 'Spec review, 2026-10-12', link: '/internals/reviews/spec-review-2026-10-12' },
+    ],
+  },
+]
 
 export default defineConfig({
   title: 'Eyelang',
   description: 'A language for software that keeps state and waits.',
   cleanUrls: true,
   lastUpdated: true,
-  srcExclude: ['**/README.md', 'node_modules/**'],
+  srcExclude: ['**/README.md', 'node_modules/**', 'superpowers/**'],
   markdown: {
     languages: [{ ...eyelang, name: 'eye', aliases: ['eyelang'] }, { ...ebnf, name: 'ebnf' }],
   },
   themeConfig: {
     nav: [
-      { text: 'Learn', link: '/quickstart', activeMatch: '^/(why|quickstart|tutorial|guide)' },
-      { text: 'Reference', link: '/reference/', activeMatch: '^/reference/' },
-      { text: 'Design', link: '/design/', activeMatch: '^/(design|internals)/' },
+      { text: 'Why', link: '/why', activeMatch: '^/why' },
+      { text: 'Learn', link: '/quickstart', activeMatch: '^/(quickstart|writing-eyelang|tutorial|guide)' },
       { text: 'Playground', link: '/playground', activeMatch: '^/playground' },
+      { text: 'Examples', link: '/examples/', activeMatch: '^/examples/' },
+      { text: 'Reference', link: '/reference/', activeMatch: '^/reference/' },
+      { text: 'Design', link: '/design/', activeMatch: '^/design/' },
+      { text: 'Internals', link: '/internals/', activeMatch: '^/internals/' },
     ],
     sidebar: {
       '/reference/': [
@@ -116,8 +132,8 @@ export default defineConfig({
         { ...spec[0], collapsed: false },
         { text: 'API reference', link: '/reference/api/', items: apiPages() },
       ],
-      '/design/': [spec[1], internals],
-      '/internals/': [spec[1], internals],
+      '/design/': [spec[1]],
+      '/internals/': internals,
       '/': learn,
     },
     outline: [2, 3],

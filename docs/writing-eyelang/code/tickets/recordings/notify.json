@@ -1,0 +1,9 @@
+{
+  "contract": "Notify",
+  "exchanges": [
+    { "op": "send", "key": "escalate-t-1", "result": { "kind": "Accepted", "id": "m-1" } },
+    { "op": "send", "key": "escalate-t-2", "result": { "kind": "Uncertain", "key": "escalate-t-2" } },
+    { "op": "sent", "key": "escalate-t-2", "result": { "kind": "Accepted", "id": "m-2" } },
+    { "op": "send", "key": "morning-2026-10-13", "result": { "kind": "Accepted", "id": "m-3" } }
+  ]
+}

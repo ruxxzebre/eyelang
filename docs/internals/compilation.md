@@ -4,6 +4,11 @@ title: Compiling Eyelang
 
 # Compiling Eyelang
 
+For a map of the whole repository first, read [How Eyelang works](/internals/architecture). This
+page goes deep on one part of it: native code. Parts of it describe the code as it was on
+2026-10-11; where they differ from today, the map and [What runs today](/reference/status) are
+current. For example, jobs no longer replay from their start: they resume from a checkpoint (7.3).
+
 This is the design for phase 7 (v0.4): native code, reference counting with in-place updates,
 generic code specialised per type, and jobs that resume from saved state. SPECS.md §22 refers to
 it as "the compilation analysis".
