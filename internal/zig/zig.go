@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // Version is the zig release the repository builds C with.
@@ -35,6 +36,10 @@ var archives = map[string]struct{ file, sha256 string }{
 	"x86_64-windows":  {"zig-x86_64-windows-0.17.0.zip", "b5663f69581dcf391293fbf16c06cb80d81d806545ce618b4d0bab7f0eb8c428"},
 	"aarch64-windows": {"zig-aarch64-windows-0.17.0.zip", "0a59d91fa1cb40cf068e9b0954434ce973500c7a2ea749f1e01af62cdab52d26"},
 }
+
+// Builds in one process share the first download. Other processes may also
+// install, so each extracts privately and publishes its complete directory.
+var installMu sync.Mutex
 
 // platform names this machine as zig's downloads do.
 func platform() string {
@@ -61,29 +66,49 @@ func Path(progress io.Writer) (string, error) {
 		root = filepath.Join(cache, "eyelang", "zig")
 	}
 	dir := filepath.Join(root, Version)
-	exe := filepath.Join(dir, strings.TrimSuffix(strings.TrimSuffix(a.file, ".tar.xz"), ".zip"), "zig")
+	base := strings.TrimSuffix(strings.TrimSuffix(a.file, ".tar.xz"), ".zip")
+	installed := filepath.Join(dir, base)
+	exe := filepath.Join(installed, "zig")
 	if runtime.GOOS == "windows" {
 		exe += ".exe"
 	}
 	if _, err := os.Stat(exe); err == nil {
 		return exe, nil
 	}
+	installMu.Lock()
+	defer installMu.Unlock()
+	if _, err := os.Stat(exe); err == nil {
+		return exe, nil
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
+	stage, err := os.MkdirTemp(dir, ".install-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(stage)
 	if progress != nil {
 		fmt.Fprintf(progress, "zig: fetching zig %s for %s into %s\n", Version, plat, dir)
 	}
-	archive := filepath.Join(dir, a.file+".part")
-	defer os.Remove(archive)
+	archive := filepath.Join(stage, a.file)
 	if err := download("https://ziglang.org/download/"+Version+"/"+a.file, archive, a.sha256); err != nil {
 		return "", err
 	}
-	if err := unpack(archive, a.file, dir); err != nil {
+	if err := unpack(archive, a.file, stage); err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(exe); err != nil {
+	if _, err := os.Stat(filepath.Join(stage, base, filepath.Base(exe))); err != nil {
 		return "", fmt.Errorf("unpacked %s, but %s isn't there", a.file, exe)
+	}
+	if err := os.Rename(filepath.Join(stage, base), installed); err != nil {
+		// A concurrent process may have published its complete installation
+		// first. Never unpack over it: Linux rejects executing a file that
+		// another installer has open for writing, and its libraries may
+		// still be incomplete even when the executable is already there.
+		if _, statErr := os.Stat(exe); statErr != nil {
+			return "", fmt.Errorf("installing zig %s: %w", Version, err)
+		}
 	}
 	return exe, nil
 }

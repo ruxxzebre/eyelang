@@ -274,10 +274,10 @@ func (c *checker) parse(path, dir string, files []*ir.File) *module {
 }
 
 // skipBroken reports whether a top-level declaration has a syntax error in
-// it, which its file's diagnostics say, and then records the name it
+// it, from its tree or its file's diagnostics, and then records the name it
 // declares, when that can be read.
 func (c *checker) skipBroken(m *module, f *ir.File, d *syntax.Node) bool {
-	broken := d.Kind == syntax.ErrorNode
+	broken := d.Kind == syntax.ErrorNode || len(f.Tree.Diagnostics) > 0 && d.HasError()
 	for _, diag := range f.Tree.Diagnostics {
 		if d.Span.Start <= diag.Span.Start && diag.Span.Start <= d.Span.End {
 			broken = true

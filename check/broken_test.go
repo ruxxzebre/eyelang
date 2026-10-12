@@ -1,12 +1,32 @@
 package check
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"eyelang/ir"
 )
+
+func TestInvalidSyntaxReportsDiagnostics(t *testing.T) {
+	files, err := filepath.Glob("../testdata/syntax/invalid/*.eye")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("invalid syntax fixtures: %v", err)
+	}
+	for _, path := range files {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			src, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := writeProgram(t, map[string]string{"main.eye": string(src)})
+			if _, diags := Program(dir); len(diags) == 0 {
+				t.Fatal("invalid syntax produced no diagnostics")
+			}
+		})
+	}
+}
 
 // halfTyped is a module with one declaration half typed, beside others that
 // check: one has a type error, and one calls the broken one.
