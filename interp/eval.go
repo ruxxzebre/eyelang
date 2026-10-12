@@ -191,7 +191,7 @@ func (in *Interp) callFrame(fr *frame, captured []Value, args []argVal, at ir.Po
 	final := make([]Value, len(args))
 	for i, p := range paramOf {
 		if p >= 0 {
-			final[i] = fr.slots[fn.Params[p].Slot]
+			final[i] = plain(fr.slots[fn.Params[p].Slot])
 		}
 	}
 	return result, fr.getSelf(), final
@@ -350,11 +350,14 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 	case *ir.Lit:
 		return in.lit(x)
 	case *ir.Local:
-		v := f.slots[x.Slot]
-		if _, lost := v.(unsaved); lost {
+		switch v := f.slots[x.Slot].(type) {
+		case unsaved:
 			in.lostLocal(x)
+		case *textBuf:
+			return v.string()
+		default:
+			return v
 		}
-		return v
 	case *ir.Self:
 		return f.getSelf()
 	case *ir.SelfField:
@@ -451,6 +454,9 @@ func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
 		}
 		return in.binary(x.Op, in.eval(f, x.L), in.eval(f, x.R), x.Pos)
 	case *ir.Assign:
+		if in.appendInPlace(f, x) {
+			return ir.Unit{}
+		}
 		v := in.eval(f, x.Value)
 		if x.Op != "=" {
 			v = in.binary(strings.TrimSuffix(x.Op, "="), in.readPlace(f, x.Target), v, x.Pos)
@@ -1234,7 +1240,7 @@ func (in *Interp) readPlace(f *frame, p ir.Place) Value {
 	if p.Self {
 		v = f.getSelf()
 	} else {
-		v = f.slots[p.Slot]
+		v = plain(f.slots[p.Slot])
 	}
 	for _, name := range p.Path {
 		v = in.field(v, name, p.Pos)

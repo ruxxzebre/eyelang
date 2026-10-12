@@ -59,6 +59,21 @@ test "map counter" {
 `))
 }
 
+// BenchmarkStringAppend builds a string of 100,000 pieces with +=. Go's
+// x + y copies both strings, which made this take 18 s; now it takes tens
+// of milliseconds.
+func BenchmarkStringAppend(b *testing.B) {
+	runSource(b, checkSource(b, `
+test "string append" {
+  var out = ""
+  for i in 0..100000 {
+    out += "x{i},"
+  }
+  expect(out |> startsWith("x0,x1,") && out |> endsWith(",x99999,"))
+}
+`))
+}
+
 // BenchmarkEntityWrite writes one entity again and again when its type has
 // 1,000 and 10,000 entities: the time per write should be about the same.
 // The store keeps an entity type's rows in one map, and a write replaces a

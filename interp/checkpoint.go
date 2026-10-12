@@ -468,7 +468,7 @@ func (in *Interp) checkpoint(f *frame, s ir.Expr) {
 		if v == nil {
 			continue
 		}
-		b, ok := in.tryEncode(v)
+		b, ok := in.tryEncode(plain(v))
 		if !ok {
 			// A function or a Secret: no value that can't be saved is live
 			// across a `!` (SPECS.md §15), and the run took a step since its

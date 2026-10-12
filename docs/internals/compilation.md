@@ -77,8 +77,10 @@ without its tests. The parts that matter for compilation:
   `*Set` and `*Map` over Go slices, with sets and maps keeping insertion order; `*Record` with
   its field names; `*Variant`; `*Closure` with copied captures.
 - **No reference counts.** Most updates make a new value: `Record.with` copies, and so does
-  `+` on strings, so a loop that builds a string with `+=` is quadratic (ROADMAP R.4). Appending
-  to a list and adding a new key to a map or set share a backing array and are amortised O(1).
+  `+` on strings, except as below. Appending to a list and adding a new key to a map or set share a backing
+  array and are amortised O(1), and so is `s += t` (or `s = s + t`) on a local `String`
+  variable: the variable's slot holds a byte buffer with room to spare (`textBuf` in
+  `interp/text.go`), and reading the variable gives a Go string over its bytes, without a copy.
   A map keeps its values in a persistent vector (`interp/vec.go`), so replacing a key's value
   copies one path of 32-way nodes, O(log n), and so does an entity write, which replaces a row
   in the store's map of its type. The store keeps runs in buckets of 64

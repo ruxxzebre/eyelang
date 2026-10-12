@@ -280,6 +280,20 @@ test "replacing a map's value leaves every other copy as it was" {
   expect(old == fresh && m != old && "{old}" == "{fresh}")
 }
 
+test "a string built with += leaves every copy as it was" {
+  var s = ""
+  for i in 0..100 {
+    s += "{i % 10}"
+  }
+  let old = s
+  s += "a"
+  var t = old
+  t += "b"
+  s = s + "c"
+  expect(old |> size == 100 && old |> endsWith("789"))
+  expect(s == old + "ac" && t == old + "b")
+}
+
 test "a whole number scales a duration or a size from either side" {
   let k = 4
   expect(3 * 5 min == 15 min && 5 min * 3 == 15 min)
