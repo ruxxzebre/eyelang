@@ -336,7 +336,9 @@ smaller runtime and back-end tasks that come after it.
 ## 7. Decisions for the owner
 
 The [benchmark review](./benchmarks-review-2026-10-12.md) reads 7.7's and S.1's numbers and
-updates the recommendations below; where the two differ, the review is newer. Its main change:
+updates the recommendations below; where the two differ, the review is newer. **The owner
+accepted the review's recommendations on 2026-10-12**, B′ hosting among them; ROADMAP's phase 7
+has the tasks and their order. Its main change:
 a new task, values laid out by type (7.13), before or with 7.5a.
 
 The owner's bar, set on 2026-10-12: native code faster than Go, and using less memory. The owner

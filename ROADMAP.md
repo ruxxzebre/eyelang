@@ -75,15 +75,15 @@ yet.
    interpreter (7.3) and the C back end with `eye build` (7.4) are done: `testdata/programs/core`
    builds for the five release targets and its tests pass natively. 7.7 (benchmarks against Go,
    nine of them with S.1's lexer) is done: native code takes 1.1–5.7× Go's time and uses less
-   memory in six of nine. The [benchmark review](docs/internals/reviews/benchmarks-review-2026-10-12.md)
-   finds no language rule in the way: every gap is the C back end's (one word per value, heap
-   objects for records, enums and `Option`, counting decided while printing C, musl's `malloc`,
-   no inlining across runtime files). It recommends, for the owner to decide: a small task of
-   cheap fixes and 7.8 now; a new 7.13, values laid out by type, with 7.5a; then 7.9, 7.10 and
-   7.6 with B′ hosting; 7.11 (faster than Go, the owner's bar) throughout; 7.12 last; S.2 (the
-   runner in Eyelang) after v0.4. Open question 43's five small language changes from the lexer
-   (element assignment, hex literals, string patterns over `Bytes`, `fs.readBytes`, a variant's
-   number) are a separate task. Nothing starts until the owner decides. The design is
+   memory in six of nine. The owner accepted the
+   [benchmark review](docs/internals/reviews/benchmarks-review-2026-10-12.md) on 2026-10-12: no
+   language rule is in the way, every gap is the C back end's. Now: 7.14 (cheap fixes: one unit,
+   an allocator, static variants, number formatting) and 7.8 (checked against the interpreter at
+   both levels). Then 7.13 (values laid out by type) with 7.5 (counting in the low IR), then 7.9
+   (core gaps in C), 7.10 (crossings) and 7.6 with B′ hosting (one static binary, Go linked
+   through cgo); 7.11 (faster than Go, the owner's bar) throughout; 7.12 last; S.2 (the runner in
+   Eyelang) after v0.4. Beside them, G.20: the lexer's five language changes (open question
+   43). The design is
    [docs/internals/compilation.md](docs/internals/compilation.md).
 
 The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all
@@ -530,6 +530,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.17 `?` on an `Option` outside a function that returns an `Option` is an error (done) | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |
 | G.18 `eye doc` never deletes a folder it didn't write (done) | [#108](https://github.com/ruxxzebre/eyelang/issues/108) |
 | G.19 A test can read a run's result; `run.join()` doesn't fail at run time after checking (done) | [#109](https://github.com/ruxxzebre/eyelang/issues/109) |
+| G.20 Byte-level code: element assignment, hex literals, string patterns over `Bytes`, `fs.readBytes`, a variant's number | [#119](https://github.com/ruxxzebre/eyelang/issues/119) |
 
 G.7 to G.16 come from the spec review of 2026-10-12, and G.18 and G.19 from the ergonomics
 analysis of the same day (docs/internals/reviews). Each issue says
@@ -816,6 +817,8 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.10 Count the crossings between compiled code and the runner | [#113](https://github.com/ruxxzebre/eyelang/issues/113) |
 | 7.11 Native code faster than Go, and leaner without entities or jobs | [#114](https://github.com/ruxxzebre/eyelang/issues/114) |
 | 7.12 Reuse of matched cells, and a fault frees its region | [#115](https://github.com/ruxxzebre/eyelang/issues/115) |
+| 7.13 Values laid out by type | [#117](https://github.com/ruxxzebre/eyelang/issues/117) |
+| 7.14 Cheap native fixes: one unit, an allocator, static variants, number formatting | [#118](https://github.com/ruxxzebre/eyelang/issues/118) |
 
 - **7.1 Typed IR.** The checker keeps what it computes: a resolved type on every expression,
   every call resolved to its target, the impls each generic call's `where` bounds use, and each
@@ -897,15 +900,16 @@ whole-program specialisation, and jobs resuming from saved frames.
   instructions instead of being decided while C is printed: a value is dropped after its last
   use, borrowed parameters are inferred (Lean's scheme), and an update whose operand is unique at
   run time and dead after it is done in place, whatever the shape around it. `mut` parameters
-  are already pointers. Reuse in `match` and fault regions would be 7.12 (the plan splits the task,
-  2026-10-12, proposed).
+  are already pointers. Reuse in `match` and fault regions are 7.12 (the owner split the task on
+  2026-10-12). It comes before or with 7.13, since which values are counted depends on the
+  layout.
   **Done when:** the native plan's slow loops (an append through a helper, a map insert through
   a `let`) run in linear time; 7.8's counting allocator finds as many frees as allocations in
   every program `eye build` compiles; `eye check --lir` prints the new instructions, with golden
   tests.
 - **7.6 The runner hosts compiled programs.** The Go runner calls a compiled program's interface
   (run `main`, run a test, call an entity method, step a job, encode and decode saved types).
-  The plan proposes B′ for hosting, to be decided after 7.7's numbers: the runner is the program's `main`, and `eye build` links
+  Hosting is B′ (decided 2026-10-12): the runner is the program's `main`, and `eye build` links
   the program's C into it through cgo, with the pinned zig as the C compiler and a pinned Go
   toolchain it fetches as it fetches zig. One static binary per program; `eye` itself stays free
   of cgo; programs with no entities or jobs build with zig alone. The store and tasks stay in
@@ -949,14 +953,25 @@ whole-program specialisation, and jobs resuming from saved frames.
   **Done when:** native code beats Go on time on every benchmark of the suite, and on peak memory
   for every program without entities or jobs. (With entities or jobs a program carries the Go
   runner, so beating Go on memory there is S.2's.)
+- **7.13 Values laid out by type.** The low IR is monomorphic, so it chooses each type's
+  representation instead of one word per value with everything else on the heap: field-less
+  enums as small integers, small records as C structs by value, `Option(T)` without a box,
+  lists of fixed-size values as arrays of them, string and byte slices sharing storage. Values
+  without aliasing are what permit it ([benchmark review](docs/internals/reviews/benchmarks-review-2026-10-12.md)).
+  **Done when:** records, maps and the lexer are within Go's time, the lexer's memory is below
+  Go's, and every cross-check passes.
+- **7.14 Cheap native fixes.** The runtime compiled with the program (one unit or LTO), a
+  size-class allocator instead of musl's `malloc`, a static value per field-less variant,
+  number formatting without `snprintf`, and constant division inline.
+  **Done when:** each is measured and recorded with `go run ./tools/bench --write`, no ratio
+  gets worse, and a warm rebuild stays under a second.
 - **7.12 Reuse and fault regions.** A `match` arm that builds a value of the same size reuses the
   matched cell; a fault frees what its run allocated as a whole.
   **Done when:** allocation counts drop on the tree and pattern benchmarks, and a failing native
   test leaks nothing.
 
-Proposed order (the native plan; the owner decides after 7.7's and S.1's numbers): 7.7 and S.1
-first; then 7.8 and 7.9 in parallel; 7.5 after 7.8; 7.10,
-then 7.6; 7.11 runs alongside from 7.7's results; 7.12 last. v0.4's exit test stays the digest
+Order (the benchmark review, accepted by the owner on 2026-10-12): 7.14 and 7.8 first; then
+7.13 with 7.5; then 7.9, 7.10 and 7.6; 7.11 tracks the bar throughout; 7.12 last. v0.4's exit test stays the digest
 running as a native job.
 
 ### After v0.4: Self-hosting — [#82](https://github.com/ruxxzebre/eyelang/issues/82)
@@ -971,7 +986,7 @@ formatter, `eye doc` and the checker.
 | S.1 An Eyelang lexer as a test program, checked by the conformance suite (done) | [#83](https://github.com/ruxxzebre/eyelang/issues/83) |
 | S.2 The runner in Eyelang: job programs without Go | [#116](https://github.com/ruxxzebre/eyelang/issues/116) |
 
-S.2 is proposed as the goal after v0.4 (the native plan, 2026-10-12): the durable runner moves from
+S.2 is the goal after v0.4 (the native plan, accepted 2026-10-12): the durable runner moves from
 Go into Eyelang, part by part, so that a native job program has no Go in it and can beat Go on
 memory. **Done when:** the digest runs as a native job with no Go in its binary, on the journal
 and on Postgres, using less memory than under the Go runner.

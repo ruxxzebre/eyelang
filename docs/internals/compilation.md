@@ -293,8 +293,15 @@ library through cgo inside `eye`. Two ways remain:
   built, though not in `eye`), and `eye build` links it with the program into one binary with
   `zig cc`. A deployment is one file; the release carries one more library per target.
 
-**Question:** which of the two? The first reuses 6.1's loader and keeps cgo out of every build,
-but not a static runner; the second gives a single binary. Both keep the points below.
+**Decided (2026-10-12): neither as written, but a third way, B′.** The second way crashes at
+start-up as a static musl binary (musl doesn't pass `argc` and `argv` to constructors, which a Go
+`c-archive` reads), and the first costs about 300 ns a call and a dynamic runner. In B′ the Go
+runner is the program's `main`, and `eye build` links the program's C into it through cgo, with
+the pinned zig as the C compiler and a pinned Go toolchain it fetches as it fetches zig: one
+static binary, about 35 ns a call, `eye` itself still free of cgo, and programs with no entities
+or jobs built with zig alone. The measurements are in the
+[native compilation plan](reviews/native-plan-2026-10-12.md), section 5. All three keep the
+points below.
 
 - The runner's code is reused, not rewritten, and its tests keep covering it.
 - Go's garbage collector stays in the process, but it manages only the runner's own buffers.
@@ -303,9 +310,10 @@ but not a static runner; the second gives a single binary. Both keep the points 
   interface.
 - Parts of the runner move into Eyelang later, as the self-hosting plan moves the compiler.
 
-**Question:** is a Go host in every compiled program acceptable for v0.4? The alternative, a
-runner in C or Eyelang from the start, means writing a Postgres client, an HTTP client with TLS,
-and time-zone handling before the first compiled job runs.
+**Decided (2026-10-12): yes, for v0.4.** A runner in C or Eyelang from the start would mean
+writing a Postgres client, an HTTP client with TLS, and time-zone handling before the first
+compiled job runs. The runner moves into Eyelang after v0.4 (S.2), which is when a job program
+can have no Go in it and beat Go on memory.
 
 ## 2. Values and memory
 

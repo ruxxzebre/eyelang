@@ -7,8 +7,9 @@ numbers and the experience of writing the lexer, and asks one question of each g
 cost of how we generate code today, or a cost of the language's rules?** Only the second kind
 argues for changing syntax, grammar, the standard library or the design philosophy.
 
-Nothing here is decided. Section 6 gives a recommendation on each of the native plan's open
-decisions; the owner decides.
+Section 6 gives a recommendation on each of the native plan's open decisions. **The owner
+accepted them on 2026-10-12**, with the cheap fixes (7.14), values laid out by type (7.13), B′
+hosting and the lexer's five language changes (G.20); ROADMAP has the tasks.
 
 ## The short version
 
