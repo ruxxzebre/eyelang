@@ -156,7 +156,10 @@ impl Store(MemoryStore) for MemoryStore {
       if !(runs |> contains(r.id)) { s.order += [r.id] }
       s.runs = s.runs |> insert(bucket(r.id), runs |> insert(r.id, r.data))
     }
-    s.events = (s.events |> drop(c.dropEvents)) + c.events
+    # Most commits neither drop nor add events, and leave the list alone: a
+    # list from drop has no spare room, so + would copy every event kept.
+    if c.dropEvents > 0 { s.events = s.events |> drop(c.dropEvents) }
+    if c.events |> size > 0 { s.events += c.events }
     for m in c.meta {
       s.meta = match m.data {
         Some(data) => s.meta |> insert(m.key, data)

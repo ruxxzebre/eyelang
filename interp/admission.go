@@ -50,8 +50,8 @@ func (rt *runtime) held() int64 {
 // outranked reports whether a run of a higher priority than p, other than
 // self, waits for memory.
 func (rt *runtime) outranked(p ir.Priority, self int64) bool {
-	for id, w := range rt.index.waiting {
-		if w.event != memoryEvent || id == self {
+	for id := range rt.index.byEvent[memoryEvent] {
+		if id == self {
 			continue
 		}
 		if o, ok := rt.index.open[id]; ok {
@@ -67,12 +67,7 @@ func (rt *runtime) outranked(p ir.Priority, self int64) bool {
 // then in the order they started, so that the first to ask again is the one
 // that should get it.
 func (rt *runtime) wakeMemory() {
-	var ids []int64
-	for id, w := range rt.index.waiting {
-		if w.event == memoryEvent {
-			ids = append(ids, id)
-		}
-	}
+	ids := rt.index.waitingFor(memoryEvent)
 	prio := func(id int64) ir.Priority {
 		if j := rt.in.jobs[rt.index.open[id].job]; j != nil {
 			return j.Priority

@@ -1,7 +1,9 @@
 package interp
 
 import (
+	"container/heap"
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -86,10 +88,17 @@ type MetaWrite struct {
 // ---------------------------------------------------------------- the index of waiting runs
 
 // indexed is a store with an index of the runs that wait, so that finding
-// the next one to wake doesn't read every run the store has kept.
+// the next one to wake doesn't read every run the store has kept. Finding
+// the run that wakes first, or the runs an event wakes, costs the same with
+// ten waiting runs as with ten thousand.
 type indexed struct {
 	Store
 	waiting map[int64]waitingRun
+	// timers holds the waiting runs' ids as a min-heap on when they wake,
+	// the earlier started first among runs that wake at the same time.
+	timers timerHeap
+	// byEvent holds the waiting runs by the event that wakes them (waitKeys).
+	byEvent map[string]map[int64]struct{}
 	// open holds the unfinished runs, for @concurrency: those that have
 	// begun (ready or sleeping), and those queued for a free place.
 	open map[int64]openRun
@@ -110,7 +119,9 @@ type waitingRun struct {
 }
 
 func indexStore(s Store) *indexed {
-	ix := &indexed{Store: s, waiting: map[int64]waitingRun{}, open: map[int64]openRun{}, keys: map[string]int64{}}
+	ix := &indexed{Store: s, waiting: map[int64]waitingRun{}, byEvent: map[string]map[int64]struct{}{},
+		open: map[int64]openRun{}, keys: map[string]int64{}}
+	ix.timers.ix = ix
 	for _, id := range s.Runs() {
 		data, _ := s.Run(id)
 		ix.note(id, data)
@@ -139,9 +150,9 @@ func (ix *indexed) note(id int64, data []byte) {
 		return
 	}
 	if r.Status == "sleeping" {
-		ix.waiting[id] = waitingRun{r.WakeAt, r.WaitEvent}
+		ix.wait(id, waitingRun{r.WakeAt, r.WaitEvent})
 	} else {
-		delete(ix.waiting, id)
+		ix.unwait(id)
 	}
 	switch r.Status {
 	case "ready", "sleeping", "queued":
@@ -177,14 +188,131 @@ func (ix *indexed) firstQueued(job, group string) (int64, bool) {
 	return first, first >= 0
 }
 
-// sleeping lists the waiting runs, in the order they were started.
-func (ix *indexed) sleeping() []int64 {
-	ids := make([]int64, 0, len(ix.waiting))
-	for id := range ix.waiting {
+// wait records that a run waits, or changes what it waits for.
+func (ix *indexed) wait(id int64, w waitingRun) {
+	old, had := ix.waiting[id]
+	ix.waiting[id] = w
+	if !had {
+		heap.Push(&ix.timers, id)
+		ix.addEvent(id, w.event)
+		return
+	}
+	if old.wakeAt != w.wakeAt {
+		heap.Fix(&ix.timers, ix.timers.at[id])
+	}
+	if old.event != w.event {
+		ix.dropEvent(id, old.event)
+		ix.addEvent(id, w.event)
+	}
+}
+
+// unwait forgets a run that no longer waits.
+func (ix *indexed) unwait(id int64) {
+	old, had := ix.waiting[id]
+	if !had {
+		return
+	}
+	heap.Remove(&ix.timers, ix.timers.at[id])
+	ix.dropEvent(id, old.event)
+	delete(ix.waiting, id)
+}
+
+func (ix *indexed) addEvent(id int64, wait string) {
+	for _, k := range waitKeys(wait) {
+		set := ix.byEvent[k]
+		if set == nil {
+			set = map[int64]struct{}{}
+			ix.byEvent[k] = set
+		}
+		set[id] = struct{}{}
+	}
+}
+
+func (ix *indexed) dropEvent(id int64, wait string) {
+	for _, k := range waitKeys(wait) {
+		delete(ix.byEvent[k], id)
+		if len(ix.byEvent[k]) == 0 {
+			delete(ix.byEvent, k)
+		}
+	}
+}
+
+// waitKeys are the names of the events that wake a run waiting for wait
+// (waitsFor): the name itself, or, for runs/<id>,<id>…, each run/<id>. A
+// run that waits only for its time has none.
+func waitKeys(wait string) []string {
+	if wait == "" {
+		return nil
+	}
+	keys := []string{wait}
+	if ids, ok := strings.CutPrefix(wait, "runs/"); ok {
+		for _, s := range strings.Split(ids, ",") {
+			keys = append(keys, "run/"+s)
+		}
+	}
+	return keys
+}
+
+// firstToWake returns the waiting run that wakes first; of those that wake
+// at the same time, the one started first.
+func (ix *indexed) firstToWake() (int64, bool) {
+	if len(ix.timers.ids) == 0 {
+		return 0, false
+	}
+	return ix.timers.ids[0], true
+}
+
+// waitingFor lists the runs that an event named name wakes, in the order
+// they were started.
+func (ix *indexed) waitingFor(name string) []int64 {
+	set := ix.byEvent[name]
+	ids := make([]int64, 0, len(set))
+	for id := range set {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	return ids
+}
+
+// timerHeap is the waiting runs' ids, ordered by when they wake and then by
+// id, which is the order they were started. at is each id's place in ids,
+// so that a run whose wait changes or ends moves in O(log n).
+type timerHeap struct {
+	ix  *indexed
+	ids []int64
+	at  map[int64]int
+}
+
+func (h *timerHeap) Len() int { return len(h.ids) }
+
+func (h *timerHeap) Less(i, j int) bool {
+	a, b := h.ix.waiting[h.ids[i]].wakeAt, h.ix.waiting[h.ids[j]].wakeAt
+	if a != b {
+		return a < b
+	}
+	return h.ids[i] < h.ids[j]
+}
+
+func (h *timerHeap) Swap(i, j int) {
+	h.ids[i], h.ids[j] = h.ids[j], h.ids[i]
+	h.at[h.ids[i]], h.at[h.ids[j]] = i, j
+}
+
+func (h *timerHeap) Push(x any) {
+	id := x.(int64)
+	if h.at == nil {
+		h.at = map[int64]int{}
+	}
+	h.at[id] = len(h.ids)
+	h.ids = append(h.ids, id)
+}
+
+func (h *timerHeap) Pop() any {
+	n := len(h.ids) - 1
+	id := h.ids[n]
+	h.ids = h.ids[:n]
+	delete(h.at, id)
+	return id
 }
 
 // ---------------------------------------------------------------- the Go in-memory store

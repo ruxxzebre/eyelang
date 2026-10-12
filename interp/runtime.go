@@ -426,10 +426,7 @@ func (rt *runtime) record(c *Commit, name string, data []byte) {
 
 // wake makes ready the runs waiting for an event named name.
 func (rt *runtime) wake(name string) {
-	for _, id := range rt.index.sleeping() {
-		if !waitsFor(rt.index.waiting[id].event, name) {
-			continue
-		}
+	for _, id := range rt.index.waitingFor(name) {
 		data, _ := rt.store.Run(id)
 		run := decodeRun(data)
 		if run.Status == "sleeping" && waitsFor(run.WaitEvent, name) {
@@ -1037,13 +1034,8 @@ func (rt *runtime) wakeNext(target time.Time) bool {
 
 // nextSleeper returns the sleeping run that wakes first, if any.
 func (rt *runtime) nextSleeper() *jobRun {
-	first := int64(-1)
-	for _, id := range rt.index.sleeping() {
-		if first < 0 || rt.index.waiting[id].wakeAt < rt.index.waiting[first].wakeAt {
-			first = id
-		}
-	}
-	if first < 0 {
+	first, ok := rt.index.firstToWake()
+	if !ok {
 		return nil
 	}
 	data, _ := rt.store.Run(first)
