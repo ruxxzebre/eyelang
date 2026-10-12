@@ -55,10 +55,11 @@ yet.
    ([docs/internals/reviews](docs/internals/reviews/conclusions-2026-10-12.md)) is worked
    through: its correctness bugs (G.7 to G.10), the sweep of the text (G.11), dropped results
    (G.12) and the examples (C.7) are done.
-2. Runtime at scale (R.1 to R.7, under the phases): R.1 to R.6 are done (the exhaustiveness
-   check, waking runs, map updates and entity writes, string `+=`, the journal's format and
-   group commit, the interpreter's calls and records); left is waiting runs' records leaving
-   RAM (R.7). Before 7.5.
+2. Runtime at scale (R.1 to R.7, under the phases) is done. The last, R.7, keeps a 48-byte
+   handle per waiting run and loads its record when it wakes: 20,000 waiting runs cost about
+   7 MB above an idle runner instead of 32, and a restart reads no record. Native compilation
+   pauses here for the owner's decisions in the
+   [native compilation plan](docs/internals/reviews/native-plan-2026-10-12.md).
 3. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
    its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
    image layout of C.11 (the program is `/lab/deploy/digest`).
@@ -72,9 +73,9 @@ yet.
    the conformance suite. Not begun; it needs G.1, G.2 and G.4.
 6. Phase 7 (v0.4): the typed IR (7.1), the low IR with specialisation (7.2), checkpoints in the
    interpreter (7.3) and the C back end with `eye build` (7.4) are done: `testdata/programs/core`
-   builds for the five release targets and its tests pass natively. Next is reference counting
-   and reuse (7.5), after R.5 to R.7; the runner hosting compiled programs (7.6) waits on the
-   user's choice of how it loads them without cgo. The design is
+   builds for the five release targets and its tests pass natively. 7.5 and 7.6 wait on the
+   owner's decisions in the native compilation plan; 7.7 (benchmarks against Go) and S.1 (the
+   lexer, also a benchmark) are being built. The design is
    [docs/internals/compilation.md](docs/internals/compilation.md).
 
 The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all

@@ -132,7 +132,7 @@ are persistent vectors (R.3). Native code needs 7.5 to match it.
 | R.4 | String `+=` is amortised O(1) | 100k appends: 18 s → 90 ms |
 | R.5 | The journal: raw JSON records, a commit writes only new steps, grouped syncs | Starting 5k runs: 3.9 s → 0.37 s; a looping job's commit: 1.9 KB → 0.45 KB |
 | R.6 | The interpreter's calls, returns and records | fib(30) 2.7×, record updates 3.5–3.8×, `return`/`break` 6.5× |
-| R.7 | A waiting run's record leaves memory | In progress; its numbers go here when it lands |
+| R.7 | A waiting run keeps a 48-byte handle in memory; its record loads when it wakes, and a restart reads none | 20,000 runs sleeping a day, idle RSS: 51 → 25 MB on the journal, 54 → 26 MB on Postgres (an idle runner is 18–20 MB); restart 0.67 → 0.25 s and 0.61 → 0.16 s; live heap per waiting run 685 → 133 B |
 
 What this means for the native plan:
 
