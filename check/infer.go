@@ -2241,7 +2241,7 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Exp
 		return same(l)
 	case ln == "String" && op == "+":
 		return same(tString)
-	case ln == "List" && op == "+":
+	case (ln == "List" || ln == "Set") && op == "+":
 		return same(l)
 	case ln == "Duration":
 		if op == "*" || op == "/" {
@@ -2617,6 +2617,9 @@ func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 		}
 	}
 	w, _ := prune(orNil(want)).(*tfun)
+	if w == nil || w.callback == "" {
+		x.changingCaptures(e)
+	}
 	given := make([]typ, len(params)) // what a parameter takes, where it differs from its slot
 	switch {
 	case w != nil && len(w.params) == len(params):
@@ -2663,6 +2666,27 @@ func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 		inner.check(e.Func.Body, ret)
 	}
 	return f
+}
+
+// changingCaptures reports what a lambda that isn't a callback captures and
+// can change: a var, a mut parameter, or a mut self method's receiver. A
+// callback, given straight to a parameter whose function type has no uses,
+// runs before the call returns, so it reads the value at the call; any
+// other lambda may run later, after the value changed (SPECS.md §7).
+func (x *fnCheck) changingCaptures(e *ir.Lambda) {
+	for _, capt := range e.Func.Captures {
+		switch capt.Changing {
+		case "":
+		case "self":
+			what := "self, the receiver of a mut self method"
+			if capt.Name != "self" {
+				what = capt.Name + ", the state of the entity"
+			}
+			x.c.typeErrorf(capt.From.Position(), "a closure can't capture %s, unless it is a callback given straight to a call; copy what it needs into a let first", what)
+		default:
+			x.c.typeErrorf(capt.From.Position(), "a closure can't capture %s, %s, unless it is a callback given straight to a call; copy it into a let first", capt.Name, capt.Changing)
+		}
+	}
 }
 
 // record checks a record literal, which takes the record type expected

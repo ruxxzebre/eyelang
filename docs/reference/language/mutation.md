@@ -41,9 +41,29 @@ fn tally(times: List(Instant)) -> Counter {
   `var` or a `mut` parameter. A `mut` parameter is always passed that way, and only a `mut`
   parameter is. A method that takes `mut self` can only be called on a `var` or a `mut` parameter.
 - **No aliasing.** The same variable can't be passed as `mut` twice in one call, or passed as `mut`
-  and read in the same call: `swap(mut a, mut a)` is a compile error. Closures can't capture a
-  `var` or a `mut` parameter. An entity method's closures may read its state fields, though
-  ([section 14](/reference/language/entities)).
+  and read in the same call: `swap(mut a, mut a)` is a compile error. A lambda given to the call
+  that reads the variable reads it in the call too.
+- **Only callbacks read what can change.** A lambda copies what it captures when it is made. A
+  *callback*, a lambda given straight to a parameter whose function type has no `uses`
+  ([section 12](/reference/language/effects-and-signatures)), runs before the call returns, so it may read a `var`, a `mut` parameter, and
+  `self` in a `mut self` method, an entity's state included: it reads their values at the call.
+  It can't assign them; it returns what it computes, and the code around it assigns. Any other
+  lambda, one kept in a `let`, a field or a collection, or returned, could run after they
+  change, so it can't capture them: copy what it needs into a `let` first.
+
+  ```eye
+  type Post = { links: List(String) }
+
+  fn links(feed: List(Post)) -> Set(String) {
+    var seen: Set(String) = {}
+    for post in feed {
+      let fresh = post.links |> filter(fn l: !(seen |> contains(l)))   # a callback reads seen
+      seen = seen + toSet(fresh)
+    }
+    let isNew = fn l: !(seen |> contains(l))    # error: a closure can't capture seen, a var
+    seen
+  }
+  ```
 - **No references.** A `mut` parameter lasts for the call; it can't be stored or returned. Nothing
   in the language is a pointer, so values can't form cycles, and reference counting reclaims
   everything without a garbage collector.

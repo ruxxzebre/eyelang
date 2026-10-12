@@ -2,7 +2,7 @@
 # The example is a list of statements, wrapped in a function.
 fn example() {
   let x = 5                    # immutable, block-scoped; a later `let x` shadows it
-  var total = 0                # mutable local; closures can't capture a `var` (section 7)
+  var total = 0                # mutable local; only a callback's lambda may read it (section 7)
   total += x
 
   let inc = fn n: n + 1                                    # lambdas

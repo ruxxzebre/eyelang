@@ -51,7 +51,42 @@ type U = | A`, []string{"2:4: f is declared twice in this module", "4:6: A is de
 		{"closures don't capture vars", `fn f() {
   var a = 1
   let g = fn: a + 1
-}`, []string{"3:15: a closure can't capture a, a var"}},
+}`, []string{"3:15: a closure can't capture a, a var, unless it is a callback given straight to a call"}},
+		{"a callback reads a var", `type Item = { links: List(String) }
+fn fresh(feed: List(Item)) -> Set(String) {
+  var seen: Set(String) = {}
+  for item in feed {
+    let new = item.links |> filter(fn l: !(seen |> contains(l)))
+    seen = seen + toSet(new)
+  }
+  seen
+}
+fn deeper(xs: List(Int)) -> List(List(Int)) {
+  var limit = 3
+  limit += 1
+  xs |> map(fn x: xs |> filter(fn y: y + x < limit))
+}
+fn races() -> Int {
+  var n = 1
+  n += 1
+  race([fn: n, fn: n + 1])
+}`, nil},
+		{"a closure kept or returned doesn't capture a var", `fn kept() -> List(fn() -> Int) {
+  var n = 1
+  [fn: n]
+}
+fn returned() -> fn() -> Int {
+  var n = 1
+  fn: n
+}
+fn inner(xs: List(Int)) -> List(fn() -> Int) {
+  var n = 1
+  xs |> map(fn x: fn: x + n)
+}`, []string{
+			"3:8: a closure can't capture n, a var, unless it is a callback given straight to a call",
+			"7:7: a closure can't capture n, a var, unless it is a callback given straight to a call",
+			"11:27: a closure can't capture n, a var, unless it is a callback given straight to a call",
+		}},
 		{"a closure changes its own vars, not those outside", `fn f() {
   var a = 1
   let g = fn {
@@ -59,7 +94,11 @@ type U = | A`, []string{"2:4: f is declared twice in this module", "4:6: A is de
     b += 1
     a = b
   }
-}`, []string{"6:5: a closure can't capture a, a var"}},
+}`, []string{"6:5: a closure can't change a, a var outside it: a callback reads its value at the call"}},
+		{"a callback can't assign a var", `fn f(xs: List(Int)) {
+  var total = 0
+  let _ = xs |> map(fn x { total += x })
+}`, []string{"3:28: a closure can't change total, a var outside it"}},
 		{"waiting calls only in jobs", `entity E(id: Int) {
   state n: Int = 0
   pub fn m() { sleep!(1 min) }

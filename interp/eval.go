@@ -1111,6 +1111,26 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 			// `xs += [x]` and `xs + ys` append in place when they can.
 			return x.appended(y.Elems...)
 		}
+	case *Set:
+		// `seen + toSet(new)` is the union, in the order the elements came.
+		if op == "+" {
+			switch y := b.(type) {
+			case *Set:
+				for _, e := range y.Elems {
+					x = x.added(e)
+				}
+				return x
+			case Empty:
+				return x
+			}
+		}
+	case Empty:
+		if _, ok := b.(*Set); ok && op == "+" {
+			return b
+		}
+		if _, ok := b.(Empty); ok && op == "+" {
+			return b
+		}
 	case float64:
 		if y, ok := b.(float64); ok {
 			switch op {

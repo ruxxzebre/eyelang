@@ -125,7 +125,9 @@ Most code doesn't need a variable that changes. When it does, use `var`:
   4; `1..4` stops before it.
 - `if ... then ...` with a single statement needs no braces.
 
-A `var` is local. It can't be captured by a closure, and nothing else can see it change.
+A `var` is local, and nothing else can see it change. A lambda given straight to a call, such as
+`xs |> filter(fn x: x < total)`, may read it, and sees its value at the call; a lambda kept in a
+`let` or returned can't capture it.
 [Mutation](/reference/language/mutation) explains why that rules out a whole class of bugs.
 
 ## Next

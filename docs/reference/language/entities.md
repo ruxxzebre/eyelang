@@ -105,10 +105,12 @@ entity Player(id: PlayerId) {
   function `add`, even in an entity that has a method of that name. The state is loaded when the
   transaction first calls the entity and saved when it commits; nothing outside the transaction
   sees a change until the commit.
-  - **A method's closures may read state fields**, unlike a `var` ([section 7](/reference/language/mutation)):
-    `players |> filter(fn p: p != owner)`. A closure gets each field's value as it was when the
-    closure was made, as it gets a `let`'s, and can't change one: `a closure can't change the
-    entity's state`.
+  - **A method's callbacks may read state fields**, as they may read a `var` ([section 7](/reference/language/mutation)):
+    `players |> filter(fn p: p != owner)`. A callback gets each field's value as it was at the
+    call, and can't change one: `a closure can't change the entity's state`. A closure kept in
+    a `let` or returned can't capture the state, since it could run after the state changed:
+    `a closure can't capture owner, the state of the entity, unless it is a callback given
+    straight to a call`.
 - **Methods stay inside the program.** A method is a transaction, and the runtime may run one
   again after a conflict, so it does only what can happen twice without anyone outside seeing it:
   it changes its state, calls pure code and other entities' methods, ends its entity with

@@ -61,6 +61,7 @@ Words this document uses in one sense, and names that mean different things in d
 | handler | What `with` applies to the rest of a test's block: `fakes(…)`, `clock(…)`, of the built-in type `Handler` (section 20). A program may declare its own `Handler`, as section 12's example does; in its module the name is the program's. |
 | outcome | A run's `Outcome`, `Completed(value)` or `Failed(fault)` (section 15); a command's outcome is the variant its result is (section 17). |
 | fault | What ends a run that code can't catch, such as `DeadlinePassed` or `Unreachable` (section 15). An `Err` is a value, not a fault. |
+| callback | A function given to a parameter whose function type has no `uses`, as `filter`'s. It can't be kept, so it runs before the call returns: its effects count where it is given (section 12), and a lambda given as one may read a `var` (section 7). |
 | `end` | In an entity's own method, `end(ok)` ends the entity (section 14). Elsewhere `s.end()` is a string's end position, and `r.end` a range's end. |
 | `start` | `j.start(…)` starts a run of job `j`, and `claude.start!(…)` an agent's session. `s.start()` is a string's first position, and `r.start` a range's start. |
 | `first` | `first(xs)` is a collection's first element, an `Option`. Waiting for whichever of several runs finishes first is `firstDone!`, and for all of them `allDone!`, named apart from `first` and `all` (section 15). |
@@ -135,6 +136,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Programs | **`main` is an ordinary function**; files, processes and other I/O are effects called directly. `!` marks durable steps, and is used only in jobs and in the waiting functions they call. `unreachable("why")` is the one way for code to stop itself | The core is complete without the durable runtime; jobs stay explicit about every step |
 | What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
 | Callbacks and stored functions | **A parameter's function type without `uses` takes a callback; every other function type states its effects.** A callback may do anything, and its effects count where it is given. A lambda or named function kept in a field, a collection or a result does no more than that type states, and a callback can't be kept in data without its parameter's type stating its effects (section 12) | Higher-order functions stay generic over effects without effect variables, and a stored function can't do behind its caller's back what the caller's signature doesn't show |
+| Callbacks read what can change | **A lambda given straight to a callback parameter may read a `var`, a `mut` parameter and `self` in a `mut self` method or an entity's state, as their values at the call, and can't assign them; any other lambda can't capture them.** A lambda that reads a variable counts as reading it in the call, so the variable can't also be passed there as `mut`. Decided by the owner on 2026-10-12 for `var`s; `mut` parameters and `self` follow the same rule, which settles that a `mut self` method's lambdas could capture `self` anywhere while a `mut` parameter could be captured nowhere (section 7) | `items \|> filter(fn l: !(seen \|> contains(l)))` with `seen` a `var` is one of the commonest loops, and copying `seen` into a `let` first was ceremony. A callback can't outlive the call and values never alias, so it sees the one value the variable has during the call; a kept lambda could run after the variable changed, and would see an old value without saying so |
 | Writing effects | **`eye fmt` writes public functions' `uses` clauses.** Formatting a program's directory checks the program and writes each public function's inferred effects into its signature: it adds what is missing and drops what the body no longer does. A file formatted alone, and a program with other errors, keep their clauses as written (section 12) | Effects in a signature are there for the reviewer, who reads them in the diff; working them out and keeping them current is the compiler's job, not the author's, and a permission the code stopped using doesn't linger |
 | Live tests | **`eye test --live ai,notify` sends the named modules' calls to the real services, and a test that can't reach one is skipped, not failed; `--record` writes their answers where the fakes read them**, merged by operation and key, only from tests that passed, and never with a secret in them (section 20) | The same tests check the program against the recordings every day and against the real services when asked, with no second set of tests; a missing key on a laptop or in CI is a skip with a reason, and a re-recorded file is reviewed in the diff like code |
 | Tests and the machine | **A test works in an empty directory of its own, and draws random numbers from a fixed seed.** `fs` and `process` resolve relative paths there, and it is removed when the test ends | A test that touches files or runs programs gives the same result on every run and every machine, and can't change the repository it runs in |
@@ -526,7 +528,7 @@ Inside a function body:
 
 ```eye context=bindings
 let x = 5                    # immutable, block-scoped; a later `let x` shadows it
-var total = 0                # mutable local; closures can't capture a `var` (section 7)
+var total = 0                # mutable local; only a callback's lambda may read it (section 7)
 total += x
 
 let inc = fn n: n + 1                                    # lambdas
@@ -610,9 +612,29 @@ fn tally(times: List(Instant)) -> Counter {
   `var` or a `mut` parameter. A `mut` parameter is always passed that way, and only a `mut`
   parameter is. A method that takes `mut self` can only be called on a `var` or a `mut` parameter.
 - **No aliasing.** The same variable can't be passed as `mut` twice in one call, or passed as `mut`
-  and read in the same call: `swap(mut a, mut a)` is a compile error. Closures can't capture a
-  `var` or a `mut` parameter. An entity method's closures may read its state fields, though
-  (section 14).
+  and read in the same call: `swap(mut a, mut a)` is a compile error. A lambda given to the call
+  that reads the variable reads it in the call too.
+- **Only callbacks read what can change.** A lambda copies what it captures when it is made. A
+  *callback*, a lambda given straight to a parameter whose function type has no `uses`
+  (section 12), runs before the call returns, so it may read a `var`, a `mut` parameter, and
+  `self` in a `mut self` method, an entity's state included: it reads their values at the call.
+  It can't assign them; it returns what it computes, and the code around it assigns. Any other
+  lambda, one kept in a `let`, a field or a collection, or returned, could run after they
+  change, so it can't capture them: copy what it needs into a `let` first.
+
+  ```eye
+  type Post = { links: List(String) }
+
+  fn links(feed: List(Post)) -> Set(String) {
+    var seen: Set(String) = {}
+    for post in feed {
+      let fresh = post.links |> filter(fn l: !(seen |> contains(l)))   # a callback reads seen
+      seen = seen + toSet(fresh)
+    }
+    let isNew = fn l: !(seen |> contains(l))    # error: a closure can't capture seen, a var
+    seen
+  }
+  ```
 - **No references.** A `mut` parameter lasts for the call; it can't be stored or returned. Nothing
   in the language is a pointer, so values can't form cycles, and reference counting reclaims
   everything without a garbage collector.
@@ -925,7 +947,8 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 
   The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
   `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,
-  `Size + Size`, `Int / NonZero(Int)`, and `String + String` and `List(a) + List(a)`, which join.
+  `Size + Size`, `Int / NonZero(Int)`, `String + String` and `List(a) + List(a)`, which join,
+  and `Set(a) + Set(a)`, which gives the elements of both.
   Nothing converts implicitly: `1 + 2.0` is an error.
 
 ## 12. Effects and signatures
@@ -989,7 +1012,9 @@ has those effects instead of `ffi`.
   ```
 
   So `retry`, `timeout`, `race`, `parallelMap` and `reserve!` work with any function, and every
-  public signature still lists everything its body can do.
+  public signature still lists everything its body can do. A callback can't outlive the call,
+  so a lambda given as one may also read a `var` or a `mut` parameter, as its value at the call
+  (section 7).
 - **Functions stored in data state their effects.** A function type without `uses` is pure,
   except in a parameter's type, where it takes a callback (below). One kept in a field or a
   collection, and called later, says what it may do:
@@ -1161,8 +1186,9 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
 
 - **No `async` or `await`.** Any function can run in a task. A task that waits for input or output
   is parked by the runtime while others run, so functions don't come in two colours.
-- **No data races.** Tasks share only immutable values; a `var` or `mut` parameter can't be
-  captured. Results come back as return values.
+- **No data races.** Tasks share only immutable values. A task's function is a callback, so it
+  may read a `var` or a `mut` parameter, as its value when the call starts, and can't assign it
+  (section 7). Results come back as return values.
 - **Cheap tasks.** A task's stack starts small and grows, so thousands of waiting tasks cost little
   memory.
 - `race` cancels the losers at their next wait. `timeout(5 s, fn { … })` returns an `Option`:
@@ -1308,10 +1334,12 @@ entity Player(id: PlayerId) {
   function `add`, even in an entity that has a method of that name. The state is loaded when the
   transaction first calls the entity and saved when it commits; nothing outside the transaction
   sees a change until the commit.
-  - **A method's closures may read state fields**, unlike a `var` (section 7):
-    `players |> filter(fn p: p != owner)`. A closure gets each field's value as it was when the
-    closure was made, as it gets a `let`'s, and can't change one: `a closure can't change the
-    entity's state`.
+  - **A method's callbacks may read state fields**, as they may read a `var` (section 7):
+    `players |> filter(fn p: p != owner)`. A callback gets each field's value as it was at the
+    call, and can't change one: `a closure can't change the entity's state`. A closure kept in
+    a `let` or returned can't capture the state, since it could run after the state changed:
+    `a closure can't capture owner, the state of the entity, unless it is a callback given
+    straight to a call`.
 - **Methods stay inside the program.** A method is a transaction, and the runtime may run one
   again after a conflict, so it does only what can happen twice without anyone outside seeing it:
   it changes its state, calls pure code and other entities' methods, ends its entity with

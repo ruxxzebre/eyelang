@@ -245,6 +245,12 @@ type Param struct {
 type Capture struct {
 	From Expr // a Local, Self or SelfField of the enclosing function
 	Slot int
+	// Changing says what the captured value is when it can change after
+	// the lambda is made: "a var", "a mut parameter", or "self" for the
+	// receiver of a mut self method or an entity's state. Only a callback,
+	// which runs before the call returns, may capture one (SPECS.md §7).
+	Changing string
+	Name     string // the name the lambda reads it by, for messages
 }
 
 // Entity is an entity declaration.

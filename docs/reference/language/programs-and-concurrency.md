@@ -94,8 +94,9 @@ let fastest = race([fn { mirrorA.get(path) }, fn { mirrorB.get(path) }])
 
 - **No `async` or `await`.** Any function can run in a task. A task that waits for input or output
   is parked by the runtime while others run, so functions don't come in two colours.
-- **No data races.** Tasks share only immutable values; a `var` or `mut` parameter can't be
-  captured. Results come back as return values.
+- **No data races.** Tasks share only immutable values. A task's function is a callback, so it
+  may read a `var` or a `mut` parameter, as its value when the call starts, and can't assign it
+  ([section 7](/reference/language/mutation)). Results come back as return values.
 - **Cheap tasks.** A task's stack starts small and grows, so thousands of waiting tasks cost little
   memory.
 - `race` cancels the losers at their next wait. `timeout(5 s, fn { … })` returns an `Option`:

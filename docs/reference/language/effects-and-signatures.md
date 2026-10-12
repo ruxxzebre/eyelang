@@ -65,7 +65,9 @@ has those effects instead of `ffi`.
   ```
 
   So `retry`, `timeout`, `race`, `parallelMap` and `reserve!` work with any function, and every
-  public signature still lists everything its body can do.
+  public signature still lists everything its body can do. A callback can't outlive the call,
+  so a lambda given as one may also read a `var` or a `mut` parameter, as its value at the call
+  ([section 7](/reference/language/mutation)).
 - **Functions stored in data state their effects.** A function type without `uses` is pure,
   except in a parameter's type, where it takes a callback (below). One kept in a field or a
   collection, and called later, says what it may do:

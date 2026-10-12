@@ -569,7 +569,7 @@ fn d(m: Money) = -m
 fn e(at: Instant) = at * 2 min
 fn f(x: t) -> t = -x
 fn g(x: t) -> t where t: Neg(t) = -x
-fn h(s: Set(Int)) = s + s
+fn h(m: Map(Int, Int)) = m + m
 fn k() = abs("x")
 fn ok(n: Int, d: Duration, f: Float) -> (Int, Duration, Float) = (-n, abs(-d), -f + -1.0)
 fn l(s: String) = s.end() + 1`, []string{
@@ -579,7 +579,7 @@ fn l(s: String) = s.end() + 1`, []string{
 			"5:18: Money has no -: implement Neg for it, as `impl Neg(Money) for Money`",
 			"6:21: Instant * … isn't defined: a time moves by adding or subtracting a Duration",
 			"7:19: -t needs t: Neg, and t may be any type: require it, as `where t: Neg(t)`",
-			"9:21: Set(Int) + Set(Int) isn't defined",
+			"9:26: Map(Int, Int) + Map(Int, Int) isn't defined",
 			"10:10: abs needs t: Neg(String), and t is String here, which has no Neg",
 			"12:19: Offset + Int isn't defined: Offset doesn't implement Add(Int, …)",
 		}},
@@ -830,7 +830,38 @@ fn f() {
 }`, []string{"7:3: reset takes mut self, so it changes c, which can't change: declare it with var"}},
 		{"a closure can't capture what can change", `fn f(mut n: Int) {
   let g = fn: n + 1
-}`, []string{"2:15: a closure can't capture n, a mut parameter"}},
+}
+type Box = { a: Int, xs: List(Int) }
+impl Box {
+  fn keep(mut self) -> fn(Int) -> Bool = fn x: x != self.a
+}
+entity Room(id: String) {
+  state owner: String = ""
+  pub fn guard() -> Int {
+    let isOwner = fn p: p == owner
+    if isOwner("ann") then 1 else 0
+  }
+}`, []string{
+			"2:15: a closure can't capture n, a mut parameter, unless it is a callback given straight to a call",
+			"6:53: a closure can't capture self, the receiver of a mut self method, unless it is a callback given straight to a call",
+			"11:30: a closure can't capture owner, the state of the entity, unless it is a callback given straight to a call",
+		}},
+		{"a callback reads a mut parameter and self", `fn below(mut xs: List(Int), limit: Int) -> List(Int) = xs |> filter(fn x: x < limit + (xs |> size))
+type Box = { a: Int, xs: List(Int) }
+impl Box {
+  fn others(mut self) -> List(Int) = self.xs |> filter(fn x: x != self.a)
+  fn keep(self) -> fn(Int) -> Bool = fn x: x != self.a
+}
+entity Room(id: String) {
+  state owner: String = ""
+  state people: List(String) = []
+  pub fn guests() -> List(String) = people |> filter(fn p: p != owner)
+}`, nil},
+		{"a var a callback reads can't also be passed as mut", `fn keepOnly(mut xs: List(Int), keep: fn(Int) -> Bool) { xs = xs |> filter(keep) }
+fn f() {
+  var xs = [1, 2]
+  keepOnly(mut xs, fn x: xs |> contains(x))
+}`, []string{"4:20: xs is passed as mut and read in the same call"}},
 		{"? needs a Result or an Option, and a function that returns one", `fn f(o: Option(Int)) -> Result(Int, String) = Ok(o?)
 fn g(n: Int) -> Option(Int) = Some(n?)`, []string{
 			"1:50: ? on an Option returns its None from f, but f returns Result(Int, String): give a default with ?? value, match the None, or return an Option",

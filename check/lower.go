@@ -29,8 +29,12 @@ const (
 type local struct {
 	slot    int
 	mutable bool   // var, or a mut parameter
-	isVar   bool   // a var, which closures can't capture
+	isVar   bool   // a var, which only callbacks may capture
 	at      ir.Pos // where it is bound
+	// changing is set in a lambda for a capture of what can change
+	// outside it, as ir.Capture.Changing: the lambda reads it, and can't
+	// assign it.
+	changing string
 }
 
 // lowerer lowers one function body.
@@ -191,28 +195,39 @@ func (l *lowerer) lookupLocal(name string, n *syntax.Node) (local, bool) {
 	}
 	outer, ok := l.parent.lookupLocal(name, n)
 	if ok {
+		// A var or a mut parameter can be captured only by a callback,
+		// which the type check decides (SPECS.md §7): the capture says so.
+		changing := outer.changing
 		switch {
 		case outer.isVar:
-			l.errorf(n, "a closure can't capture %s, a var; copy it into a let first", name)
+			changing = "a var"
 		case outer.mutable:
-			l.errorf(n, "a closure can't capture %s, a mut parameter; copy it into a let first", name)
+			changing = "a mut parameter"
 		}
 		slot := l.newSlot()
-		l.fn.Captures = append(l.fn.Captures, ir.Capture{From: &ir.Local{At: l.at(n), Name: name, Slot: outer.slot}, Slot: slot})
-		l.scopes[0][name] = local{slot: slot, at: outer.at}
-		return local{slot: slot, at: outer.at}, true
+		l.fn.Captures = append(l.fn.Captures, ir.Capture{From: &ir.Local{At: l.at(n), Name: name, Slot: outer.slot}, Slot: slot, Changing: changing, Name: name})
+		v := local{slot: slot, at: outer.at, changing: changing}
+		l.scopes[0][name] = v
+		return v, true
 	}
-	// A state field or the receiver of the enclosing method.
+	// A state field or the receiver of the enclosing method. The receiver
+	// of a mut self method, an entity's included, can change, so only a
+	// callback may capture it, as a mut parameter.
 	if l.parent.selfField(name) || name == "self" && l.parent.hasSelf() {
 		slot := l.newSlot()
 		var from ir.Expr = &ir.Self{At: l.at(n)}
+		changing := ""
+		if l.method().fn.MutSelf {
+			changing = "self"
+		}
 		if l.parent.parent != nil {
 			if v, ok := l.parent.lookupLocal("self", n); ok {
 				from = &ir.Local{At: l.at(n), Name: "self", Slot: v.slot}
+				changing = v.changing
 			}
 		}
-		l.fn.Captures = append(l.fn.Captures, ir.Capture{From: from, Slot: slot})
-		l.scopes[0]["self"] = local{slot: slot}
+		l.fn.Captures = append(l.fn.Captures, ir.Capture{From: from, Slot: slot, Changing: changing, Name: name})
+		l.scopes[0]["self"] = local{slot: slot, changing: changing}
 		return local{}, false
 	}
 	return local{}, false
@@ -404,12 +419,16 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 	}
 	if v, ok := l.lookupLocal(name, root); ok {
 		l.c.use(l.pos(root), Local{At: v.at})
+		if v.changing != "" {
+			l.errorf(root, "a closure can't change %s, %s outside it: a callback reads its value at the call; return what it computes, and assign %s outside", name, v.changing, name)
+			return p, false
+		}
 		if !v.mutable {
 			l.errorf(root, "%s can't change: it is a let or a parameter; declare it with var, or as a mut parameter", name)
 			return p, false
 		}
-		// A var found here is the closure's own: lookupLocal refuses to
-		// capture one from outside.
+		// A var found here is the closure's own: a captured one is a copy,
+		// which can't change.
 		p.Slot = v.slot
 		return p, true
 	}
