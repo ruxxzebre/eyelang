@@ -92,6 +92,13 @@ title: "Values and types"
   built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(a)`). A
   variant list needs at least one `|`, so a type with a single variant starts with one:
   `type Wrapper = | Wrapped(Int)`. Without a `|`, `type Ids = List(Id)` is an alias.
+  A type and its one variant may share a name, `type Id = | Id(String)`.
+- **A variant is a value, not a type.** Where a type goes, a name means a type: the module's, the
+  prelude's, an import's or a built-in one. So a variant may be named like a built-in type:
+  with `type Token = Name | Int | String`, `fn next(n: Int) -> Int` takes the built-in `Int`,
+  while `Int` in an expression or a pattern is the variant. A variant written where a type goes
+  is an error that names its type, `Circle is a variant of Shape, not a type: write Shape`; the
+  one exception is a variant that shares its type's name, which names that type.
 - **Built-in variants:** `Option(a) = Some(a) | None` and `Result(a, e) = Ok(a) | Err(e)`.
   There is no null.
 - **Type variables** are lower-case names in types: `List(a)`, `Map(k, v)` ([section 8](/reference/language/methods-and-generics)).

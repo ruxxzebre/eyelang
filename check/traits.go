@@ -85,7 +85,7 @@ func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
 				entity = text(f, args.NamedChildren()[0])
 			}
 		}
-		if _, ok := c.lookupType(m, entity).(*ir.Entity); ok || name == "Ref" {
+		if _, ok := c.lookupTypeName(m, entity).(*ir.Entity); ok || name == "Ref" {
 			// An entity's methods are transactions; what a trait method on
 			// one would be isn't decided (ROADMAP G.6).
 			c.errorf(pos(f, typeNode), "an entity can't implement a trait yet, so impl %s for %s does nothing: implement it for a record that holds the entity's Ref, such as type %sLabel = { ref: Ref(%s) }",
@@ -94,12 +94,11 @@ func (c *checker) implDecl(m *module, f *ir.File, d *syntax.Node) {
 		}
 	}
 	t := m.mod.Types[name]
-	if t == nil {
-		if v, ok := m.types[name].(*ir.Variant); ok && v.Type.Module == m.mod {
-			t = v.Type
-		}
+	if v, ok := c.lookupType(m, name).(*ir.Variant); ok && t == nil && !builtinTypes[name] {
+		c.errorf(pos(f, typeNode), "%s is a variant of %s, not a type: write impl for %s", name, v.Type.Name, v.Type.Name)
+		return
 	}
-	if t == nil && (traitNode == nil || !builtinTypes[name] && c.lookupType(m, name) == nil) {
+	if t == nil && (traitNode == nil || !builtinTypes[name] && c.lookupTypeName(m, name) == nil) {
 		if traitNode == nil {
 			c.errorf(pos(f, typeNode), "impl for %s, which isn't a type declared in this module", name)
 		} else {

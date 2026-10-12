@@ -57,6 +57,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§7", "a closure assigning a var it captures", "a callback can't assign a var"},
 	{"§7", "a var a callback reads passed as mut to the same call", "a var a callback reads can't also be passed as mut"},
 	{"§8", "a type variable used as a type", "a type variable stands for any type"},
+	{"§5", "a variant where a type goes", "a variant isn't a type"},
 	{"§6", "a call of a generic private function with types its body's operators or traits don't take", "a private function without types is generic, and each call meets its body's needs"},
 	{"§8", "a type variable called or indexed, or an untyped parameter used as what a call can't be", "a type variable or an untyped parameter has only what its uses need"},
 	{"§8", "a type variable a declaration doesn't declare", "a type variable is declared where it is used"},

@@ -662,7 +662,7 @@ func (c *checker) typeExprAt(m *module, f *ir.File, n *syntax.Node, vars []strin
 	case syntax.TypeIdent:
 		name := text(f, n)
 		t := &ir.TypeExpr{Name: name}
-		d := c.lookupType(m, name)
+		d := c.lookupTypeName(m, name)
 		if _, ok := d.(ambiguous); !ok {
 			c.use(pos(f, n), d)
 		}
@@ -680,7 +680,9 @@ func (c *checker) typeExprAt(m *module, f *ir.File, n *syntax.Node, vars []strin
 			t.Trait = d
 		case *ir.Contract:
 		default:
-			if !builtinTypes[name] {
+			if v, ok := c.lookupType(m, name).(*ir.Variant); ok && !builtinTypes[name] {
+				c.errorf(pos(f, n), "%s is a variant of %s, not a type: write %s", name, v.Type.Name, v.Type.Name)
+			} else if !builtinTypes[name] {
 				c.errorf(pos(f, n), "undefined type %s", name)
 			}
 		}
@@ -1101,7 +1103,7 @@ func hasAttribute(f *ir.File, d *syntax.Node, name string) bool {
 func (c *checker) contractNamed(m *module, f *ir.File, n *syntax.Node) *ir.Contract {
 	switch n.Kind {
 	case syntax.TypeIdent:
-		ct, _ := c.lookupType(m, text(f, n)).(*ir.Contract)
+		ct, _ := c.lookupTypeName(m, text(f, n)).(*ir.Contract)
 		return ct
 	case syntax.QualifiedType:
 		imp, _ := m.values[text(f, n.ChildByField(syntax.FieldModule))].(*ir.Module)
@@ -1291,15 +1293,34 @@ func (c *checker) lookupValue(m *module, name string) any {
 // lookupType finds an upper-case name: this module's, the prelude's, or a
 // variant of an imported module when only one of them has that name.
 func (c *checker) lookupType(m *module, name string) any {
-	if d, ok := m.types[name]; ok {
+	return c.lookupUpper(m, name, func(any) bool { return true })
+}
+
+// lookupTypeName finds a name written where a type goes. A variant isn't a
+// type there unless it shares its type's name, `type Id = | Id(String)`, so
+// the variant Int of `type Kind = Name | Int` leaves Int the built-in type
+// in this module's types (SPECS.md §5).
+func (c *checker) lookupTypeName(m *module, name string) any {
+	return c.lookupUpper(m, name, namesType)
+}
+
+// namesType says whether d, found under its own name, stands for a type.
+func namesType(d any) bool {
+	v, ok := d.(*ir.Variant)
+	return !ok || v.Name == v.Type.Name
+}
+
+// lookupUpper is lookupType, keeping only the declarations keep accepts.
+func (c *checker) lookupUpper(m *module, name string, keep func(any) bool) any {
+	if d, ok := m.types[name]; ok && keep(d) {
 		return d
 	}
-	if d, ok := c.prelude.types[name]; ok {
+	if d, ok := c.prelude.types[name]; ok && keep(d) {
 		return d
 	}
 	var found, hidden any
 	for _, imp := range m.imports {
-		if v, ok := imp.types[name].(*ir.Variant); ok {
+		if v, ok := imp.types[name].(*ir.Variant); ok && keep(v) {
 			if c.privateUse(m.mod, v, name) != "" {
 				if hidden == nil {
 					hidden = v // where it is used says it is private

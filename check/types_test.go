@@ -211,6 +211,28 @@ fn f(u: User) {
 }`, []string{"3:11: User has no field nick", "4:3: User has no method grow"}},
 		{"a type variable stands for any type", `fn f(x: a) -> Int = x`,
 			[]string{"1:21: expected Int, found a"}},
+		{"a variant named like a built-in type leaves the type", `type Kind = Name | Int | String
+fn next(n: Int) -> Int = n + 1
+fn kind(s: String) -> Kind = match s {
+  "i" => Int
+  _ => String
+}
+fn label(k: Kind) -> String = match k {
+  Name => "name"
+  Int => "int"
+  String => "string"
+}
+fn wrong(n: Int) -> Kind = n`,
+			[]string{"12:28: expected Kind, found Int"}},
+		{"a variant isn't a type", `type Shape = Circle | Square
+type Id = | Id(String)
+fn area(s: Circle) -> Int = 1
+fn id(i: Id) -> Id = i
+impl Square {
+  fn side(self) -> Int = 1
+}`,
+			[]string{"3:12: Circle is a variant of Shape, not a type: write Shape",
+				"5:6: Square is a variant of Shape, not a type: write impl for Shape"}},
 		{"? wraps an error only in a variant that holds it", `type ParseError = | NotANumber(String)
 type CountError = | Usage | BadNumber(ParseError)
 type Other = | Other

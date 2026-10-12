@@ -1053,7 +1053,7 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 		}
 	case syntax.TypeIdent:
 		typeName := l.text(recv)
-		decl := l.c.lookupType(l.m, typeName)
+		decl := l.c.lookupTypeName(l.m, typeName)
 		if decl == nil && builtinTypes[typeName] {
 			// A function of a built-in type, as Int32.from (SPECS.md §5).
 			l.c.use(l.pos(recv), BuiltinType{Name: typeName})

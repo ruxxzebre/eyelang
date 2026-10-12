@@ -109,6 +109,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Errors | **Result only**: no exceptions. `?` wraps an error into the caller's error type when exactly one of its variants holds it; otherwise `.mapErr(…)`. Runtime faults and `unreachable` become outcomes of the run | Every failure is visible in a type, and wrapping needs no boilerplate |
 | Records | **Nominal**: a record type is its name, and a literal takes the type its context expects | Same-shaped types can't be mixed up, and methods, operators, schemas and error messages have a name to use |
 | Record literals in lambdas | **A lambda's record literal takes its type from where the call's result goes**, with no syntax at the literal: a call takes the type expected of it before its lambdas are checked, so `let rows: List(Row) = users \|> map(fn u: { … })` builds `Row`s, a later stage's lambda reads their fields, and a literal nested in one takes its field's type (section 5, open question 25). Decided by the owner on 2026-10-12 | Mapping records into other records is the commonest data program there is, and it failed with "which record type?" though the type was written on the `let`. Literals already take the type their context expects; a lambda's body is one more context, so nothing new is learned, and a type named at each literal would repeat what the `let` says |
+| Variants and types | **Where a type goes, a name means a type, never a variant**, except a variant that shares its one type's name, `type Id = \| Id(String)`. A variant there is an error that names its type (section 5). Decided 2026-10-12 | A variant named `Int` or `Date` silently turned every `Int` in its module's signatures into the variant's type, and the errors pointed far from the cause; Eyelang's lexer in Eyelang had to call its token kinds `IntLiteral` and `DateLiteral`. Refusing such names would cost the most natural names for token kinds and JSON values, while types and values never meet in one position, so letting each position see its own kind of name costs nothing |
 | Results | **A function without `->` returns `()` when its body is a block**, and its last value is dropped; one written `= expr` returns the expression's type, inferred. `while true` without `break` has any type, since only `return` leaves it | Entity methods, jobs and helpers that do something need no `-> ()`, and a loop that serves until it returns needs no `unreachable` after it. From the type checker: Notify's delivery loop |
 | Effects | **Inferred inside, stated at the boundary**: public functions list their effects with `uses` (none means pure); a callback's effects pass to the call that gives it; a function type kept in data states its effects | Permissions show up in the diff without annotating every helper, and higher-order functions work with any callback |
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
@@ -463,6 +464,13 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(a)`). A
   variant list needs at least one `|`, so a type with a single variant starts with one:
   `type Wrapper = | Wrapped(Int)`. Without a `|`, `type Ids = List(Id)` is an alias.
+  A type and its one variant may share a name, `type Id = | Id(String)`.
+- **A variant is a value, not a type.** Where a type goes, a name means a type: the module's, the
+  prelude's, an import's or a built-in one. So a variant may be named like a built-in type:
+  with `type Token = Name | Int | String`, `fn next(n: Int) -> Int` takes the built-in `Int`,
+  while `Int` in an expression or a pattern is the variant. A variant written where a type goes
+  is an error that names its type, `Circle is a variant of Shape, not a type: write Shape`; the
+  one exception is a variant that shares its type's name, which names that type.
 - **Built-in variants:** `Option(a) = Some(a) | None` and `Result(a, e) = Ok(a) | Err(e)`.
   There is no null.
 - **Type variables** are lower-case names in types: `List(a)`, `Map(k, v)` (section 8).

@@ -1045,7 +1045,7 @@ func (r *Result) Lookup(path, name string) any {
 		case ir.Builtin:
 			return ir.Builtin{Name: name}
 		}
-		if t, ok := r.c.lookupType(m, first).(*ir.Type); ok {
+		if t, ok := r.c.lookupTypeName(m, first).(*ir.Type); ok {
 			if fn, ok := t.Methods[rest]; ok {
 				return fn
 			}
