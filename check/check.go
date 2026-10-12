@@ -96,6 +96,11 @@ type checker struct {
 	// schemaOpen holds the types whose Schema is being decided, by name
 	// with their arguments, so that one met again inside itself is found.
 	schemaOpen map[string]bool
+	// slotPos is where each local of a function is bound, by slot, and
+	// unwitnessedAt the declarations marked @unwitnessed("why"): what the
+	// check of fields no recording contains needs (witness.go).
+	slotPos       map[*ir.Func]map[int]ir.Pos
+	unwitnessedAt []ir.Pos
 
 	root    string
 	prog    *ir.Program

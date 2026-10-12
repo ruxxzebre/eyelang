@@ -146,6 +146,7 @@ let skip: Choice = { id: "skip", label: "Not taking it" }
 ## Sends one reminder and acts on the answer. An unanswered question is
 ## dropped after six hours: a press long after the train has gone isn't a
 ## boarding worth recording.
+@unwitnessed("Notify declines to ask only when the person has no device; no recording has it")
 job ask(person: UserId, r: Reminder) -> Result((), notify.Refusal) {
   let key = "remind-{person}-{r.pin.train}-{r.pin.date}-{leadName(r.lead)}"
   let asked = notify.ask!(

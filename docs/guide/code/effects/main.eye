@@ -48,6 +48,7 @@ fn summary(late: List(OrderId)) -> String =
 
 ## Posts to the team's channel. Private, so its effects are inferred:
 ## wait and net Chat.post.
+@unwitnessed("Chat refuses only when the channel is archived, which no recording has")
 fn post(text: String, key: Key) {
   match chat.post!(text, key:).reconcile!() {
     Posted(_) => ()

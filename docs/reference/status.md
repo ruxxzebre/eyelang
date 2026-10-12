@@ -25,7 +25,7 @@ compile-time errors it links to the checker's test cases. Every error class the 
 listed in [check/classes_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/classes_test.go),
 along with the test that reports it.
 
-**The biggest gaps today.** Coding agents, `@unwitnessed` recordings, and native compilation of
+**The biggest gaps today.** Coding agents, and native compilation of
 entities, jobs, views and contracts (v0.4): `eye build` compiles the core language only.
 
 ## [A tour](/reference/language/a-tour)
@@ -274,7 +274,7 @@ Runs column says whether the runtime does what the attribute says.
 | `@http`, `@auth` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
 | `@port`, `@allow` | ✓ | ✓: a served contract and one with `@allow` need `@port`; a call from a module `@allow` doesn't list, a name that isn't a module, and any call under `@allow(nobody)` are errors | ✓: `eye run` serves a served contract on its `@port` (`<MODULE>_PORT` moves it); `@allow` isn't enforced at the port until network policy (6.5) | [ports_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/ports_test.go#L41), [serve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/serve_test.go) |
 | `@fresh`, `@destructive` | ✓ | ✓ on commands; `@destructive` on a function adds `approval: Approval` | ✓ on commands, and on a model's tool | [fresh_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/fresh_test.go#L61), [programs/contracts](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/contracts/contracts.eye#L92) |
-| `@unwitnessed("why")` | ✓ | partial: only where it goes ([#137](https://github.com/ruxxzebre/eyelang/issues/137)) | — | |
+| `@unwitnessed("why")` | ✓ | ✓ (on a function, job, test or type: its reads of fields no recording has are allowed) | n/a | [lab: digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L172) |
 | `@library`, `@host` | ✓ | ✓: a program's extern fn needs exactly one, and a C function's types must cross to C | ✓ (see "Calling C and Go" below) | [host_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/host/host_test.go), [clib_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/host/clib/clib_test.go) |
 
 ## [Views and triggers](/reference/language/views-and-triggers)
@@ -307,7 +307,7 @@ Runs column says whether the runtime does what the attribute says.
 | Over HTTP: paths, query parameters, key header, `status:` | ✓ | ✓ | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
 | `eye run` serves a contract over HTTP on its `@port`: routed by `@http`, the one JSON shape, `@auth` checked (401), one transaction per request, `status:` for the reply | n/a | n/a | ✓ | [listen_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/listen_test.go), [serve_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/serve_test.go) (the lab's notifier serving Notify to a second program) |
 | A service's URL from the environment; a served contract calls itself | n/a | n/a | ✓ | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24), [lab notifier](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/notifier/notifier.eye#L233) |
-| Fakes from recordings, checked against the contract | ✓ | partial: reading a field no recording contains isn't an error ([#137](https://github.com/ruxxzebre/eyelang/issues/137)) | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L57) |
+| Fakes from recordings, checked against the contract | ✓ | ✓ (reading a field no recording the tests replay contains is an error) | ✓ | [programs/tour](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/tour/tour.eye#L57) |
 | `http.get!` for services without a contract; a request that never reached the server is sent again for about a minute, then `NoAnswer` says why in words; tests answer it from recordings by URL with `fakes(http, …)` | ✓ | ✓ | ✓ | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L30), [fakes_http_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/fakes_http_test.go), [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24), [unreachable_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/unreachable_test.go) |
 | Generated types, clients and stubs for other languages: `eye gen go` and `eye gen ts` write each contract module's types in the one JSON shape, a client over `@http` and a server stub that routes as `eye run` does | n/a | ✓: tuples, maps without string keys, unnamed records and `extern type`s are refused | partial: Go and TypeScript; no Rust or Python; operations without `@http` get no method; the TypeScript stub checks that arguments are there, not their shapes | [codegen_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/internal/codegen/codegen_test.go) (golden [Notify](https://github.com/ruxxzebre/eyelang/blob/dev/internal/codegen/testdata/notify.ts.golden) and Miniflux, `go vet`, `tsc --strict`), [gen_roundtrip_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/cmd/eye/gen_roundtrip_test.go) (every type of the lab's contracts through the generated clients and stubs to `eye run` and back) |
 

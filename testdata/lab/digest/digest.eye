@@ -169,6 +169,7 @@ fn channel() -> Channel {
   { event, people, keys: if shadow then "{event}:" else "" }
 }
 
+@unwitnessed("Notify holds a send for an action, or refuses one, only when a destination is misconfigured; no recording has caught either")
 fn deliver(
   article: Article,
   dest: Channel,

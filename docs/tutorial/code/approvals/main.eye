@@ -145,6 +145,7 @@ type ReviewError =
 ## then the grant. The approver gets one question at a time, in the order the
 ## requests came in.
 @concurrency(1)
+@unwitnessed("Notify declines to ask only when the approver has no device, which no recording has")
 job review(id: RequestId, d: Details) -> Result(Status, ReviewError) {
   let summary = summarise!(d)
   Request(id).summarise!(summary.text)
@@ -185,6 +186,7 @@ job review(id: RequestId, d: Details) -> Result(Status, ReviewError) {
 # region tell
 ## Tells a person how their request went. Notify keeps what each key did, so
 ## a lost reply is settled by sending again with the same key.
+@unwitnessed("Notify refuses a send only for a person it doesn't know, which no recording has")
 pub fn tell(person: UserId, text: String, key: Key) uses {wait, net Notify.send} {
   match notify.send!(to: person, text:, key:).reconcile!() {
     Accepted(_) => ()

@@ -15,6 +15,7 @@ type WakeError =
 
 # Started when a player joins a sleeping world: restores it from its last
 # checkpoint. The world reports itself running once it has started.
+@unwitnessed("Zeropod refuses a restore only for a damaged checkpoint, which no test has seen")
 job wake(id: WorldId) -> Result((), WakeError) {
   match zeropod.restore!(id, key: "wake-{id}") {
     Restored(_) | NothingToRestore => Ok(())

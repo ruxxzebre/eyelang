@@ -202,6 +202,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Regular expressions | **A library module, not syntax: `regex.parse(pattern)` gives a `Result(Regex, RegexError)`, and patterns are RE2's, with no backreferences or lookaround. `re.matches(text)` asks about the whole text, `re.replace` replaces every match and `replaceFirst` the first, and a replacement names groups `$1` and `$<name>`** (section 5). From 2026-10-12 | The digest read links out of HTML with a loop of offsets for what a pattern says in a line. RE2 matches in time linear in the text, so a match's cost is bounded whatever the pattern, as section 1 asks; backreferences would make it exponential. A function rather than a literal, since a library covers it and only checking at compile time is lost (open question 44). `matches` on the whole text is what checking an id or a date means; `replace` replaces every match as a string's `replace` replaces every occurrence, so changing a string to a pattern doesn't change how many are replaced. `$<name>` because `${name}` is interpolation in an Eyelang string. A `Regex` holds its pattern, so it has `Eq`, `Show` and `Save` as a record does, and a job can keep one |
 | Schemas aren't recursive | **A type that holds itself, `()`, `Char`, `Byte`, `Bytes` and the fixed-width integers have no `Schema`**, so `eye check` refuses asking a model for them, at the call (section 19); a tool that returns `()` answers `null` | Anthropic's structured outputs take no recursive schema and OpenAI's strict mode limits them, so a `$ref` schema would work with one provider and not the other; the checker and the runtime now refuse the same types, where before the run faulted at the call. A tree is asked for as a flat list with parent names |
 | Midnight is `00:00` | **A time of day goes from `00:00` to `23:59:59`; `24:00` is not a time**, and a literal that names no real date or time is an error at it (section 4) | Each time of day has one spelling, so `daily(24:00, …)` can't mean two moments, and a schedule at `25:00` no longer fires at 01:00. The end of a day is the next day's `00:00` |
+| What recordings witness | **The recordings that count are those the tests replay with `fakes(m, from: "…")`; a read is a field access or a pattern that looks inside a field; a variant matched without reading its fields needs no recording** (section 17) | The tests' recordings are the ones checked against the contract and kept current, so they are the record of what the service sends; a stray JSON file isn't. Exhaustive matches must name every variant, so naming one can't need a witness, but using what it holds does. A contract with no recordings, or one the program serves, has no recordings to hold its reads to |
 
 ## 3. A tour
 
@@ -2242,7 +2243,19 @@ type Delivery =
     a timer or another service.
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
-  error, unless it is marked `@unwitnessed("why")`. A recording is a JSON file per contract module,
+  error, unless it is marked `@unwitnessed("why")`:
+  - The recordings are the ones the program's tests replay: each `fakes(m, from: "dir/")` whose
+    directory is written as a string names `dir/m.json`, beside the file it is written in. A
+    contract none of them records isn't checked, and nor is one the program serves.
+  - A field is one of a type the contract's module declares and an operation's result holds. A
+    recording contains it when some recorded result has it, present even if `null`.
+  - A read is a field access, `r.receipt`, or a pattern that looks inside the field,
+    `Refused(error)`. `Refused(_)` and `Refused(..)` read nothing, so a match handles a variant
+    no recording has without a mark.
+  - `@unwitnessed("why")` goes on the function, job or test that reads the field, or on the type,
+    and says why the author believes the service sends what no recording shows.
+
+  A recording is a JSON file per contract module,
   named after it (`receipts/notify.json`), that lists exchanges by operation and key, each result
   in the shape above:
 

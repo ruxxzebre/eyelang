@@ -87,12 +87,14 @@ function on the path states them all:
 
 <<< ./code/effects/main.eye#inferred
 
-`post` calls `chat.post!`, so its effects are `wait` and `net Chat.post`. `tellLate` calls `post`,
+`post` calls `chat.post!`, so its effects are `wait` and `net Chat.post`. (Its
+`@unwitnessed("…")` is about the recordings, not effects: no recording has Chat refusing a post,
+so reading `Refused(error)` needs the mark, as [Testing](/guide/testing#what-the-recordings-show) explains.) `tellLate` calls `post`,
 so it has the same effects, and states them. If someone later makes `tellLate` read the channel's
 history first, through `post` or directly, the signature has to change:
 
 ```text
-main.eye:59:1: tellLate uses net Chat.history, which its uses clause doesn't list: run eye fmt, or add it
+main.eye:60:1: tellLate uses net Chat.history, which its uses clause doesn't list: run eye fmt, or add it
 ```
 
 `eye fmt` writes the new clause, and the change shows in the diff, where a reviewer sees it:
@@ -118,7 +120,7 @@ the lambda that `printLate` passes, so `stdio` is `printLate`'s effect. Leave it
 checker puts it where it belongs:
 
 ```text
-main.eye:74:1: printLate uses stdio, which its uses clause doesn't list: run eye fmt, or add it
+main.eye:75:1: printLate uses stdio, which its uses clause doesn't list: run eye fmt, or add it
 ```
 
 That is how `map`, `filter`, `parallelMap` and `timeout` stay pure while working with any function,
@@ -148,7 +150,7 @@ restarts, the job resumes after the last saved step, and steps already taken are
 A function that waits is called with `!` too. Call `tellLate` without it and the checker says:
 
 ```text
-main.eye:86:3: tellLate waits, so calling it is a durable step: write tellLate!(…)
+main.eye:87:3: tellLate waits, so calling it is a durable step: write tellLate!(…)
 ```
 
 In a job, every call that reaches outside the program is a step as well, and is written with `!`:
@@ -207,7 +209,7 @@ same goes for a waiting function, whose variables, parameters included, are part
 state:
 
 ```text
-main.eye:94:11: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`
+main.eye:95:11: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`
 ```
 
 A function is saved as its code and what it captured, so a lambda written in the job, or a
@@ -222,7 +224,7 @@ main.eye:14:64: retry keeps call across a waiting call, so the function given fo
 A job's arguments are saved too:
 
 ```text
-main.eye:92:1: hold's argument token is a Secret, which can't be saved, and a job's arguments are
+main.eye:93:1: hold's argument token is a Secret, which can't be saved, and a job's arguments are
 ```
 
 A step's result is saved too, so a step can't return one of them. In a job, read a secret, or use

@@ -211,6 +211,11 @@ func (c *checker) checkOwnAttributes(f *ir.File, d *syntax.Node) {
 		}
 		seen[name] = true
 		c.checkAttributeArgs(f, attr, name, spec)
+		if name == "unwitnessed" {
+			// What is read inside it, or of the type's fields, needs no
+			// recording (witness.go).
+			c.unwitnessedAt = append(c.unwitnessedAt, pos(f, d))
+		}
 	}
 }
 

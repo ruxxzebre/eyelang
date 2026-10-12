@@ -363,6 +363,7 @@ func (c *checker) checkTypes() {
 	c.checkEffects()
 	c.checkExterns()
 	c.writeTypes()
+	c.checkWitnessed()
 }
 
 // body is a function body to check, with what it is checked in.

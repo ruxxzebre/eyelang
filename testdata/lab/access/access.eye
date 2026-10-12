@@ -134,6 +134,7 @@ type AdmitError =
 ## the order they joined.
 @on(event(netbird.pending))
 @concurrency(1)
+@unwitnessed("Notify declines to ask only when the operator has no device; no recording has it")
 job admit(user: Pending) -> Result(Decision, AdmitError) {
   let asked = notify.ask!(
     event: "netbird.approval",

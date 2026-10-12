@@ -248,6 +248,12 @@ to expiry:
 - `with fakes(ai, notify, access, from: "recordings/")` answers each call from a recording,
   matched by operation and key, and checked against the contract when it is loaded.
 
+The recordings are also what `eye check` trusts about the services. Reading a field that no
+recording has is an error, since nothing shows the service ever sends it. No recording here has
+Notify declining to ask, so `review` reads `NotAsked(reason)` only because it is marked
+`@unwitnessed("…")`, with the reason the author believes it can happen. Matching a variant
+without reading its fields, as `NoSuchGroup` or `Refused(_)`, needs no mark.
+
 The recording for the access service includes a grant whose reply was lost:
 
 <<< ./code/approvals/recordings/access.json

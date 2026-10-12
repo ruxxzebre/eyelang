@@ -167,6 +167,13 @@ func (l *lowerer) newSlot() int {
 // bind declares the local that n names.
 func (l *lowerer) bind(n *syntax.Node, name string, mutable, isVar bool) int {
 	s := l.newSlot()
+	if l.c.slotPos == nil {
+		l.c.slotPos = map[*ir.Func]map[int]ir.Pos{}
+	}
+	if l.c.slotPos[l.fn] == nil {
+		l.c.slotPos[l.fn] = map[int]ir.Pos{}
+	}
+	l.c.slotPos[l.fn][s] = l.pos(n)
 	l.scopes[len(l.scopes)-1][name] = local{slot: s, mutable: mutable, isVar: isVar, at: l.pos(n)}
 	l.c.use(l.pos(n), Local{At: l.pos(n)})
 	return s

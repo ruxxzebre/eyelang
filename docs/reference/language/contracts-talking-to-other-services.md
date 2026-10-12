@@ -313,7 +313,19 @@ type Delivery =
     a timer or another service.
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
-  error, unless it is marked `@unwitnessed("why")`. A recording is a JSON file per contract module,
+  error, unless it is marked `@unwitnessed("why")`:
+  - The recordings are the ones the program's tests replay: each `fakes(m, from: "dir/")` whose
+    directory is written as a string names `dir/m.json`, beside the file it is written in. A
+    contract none of them records isn't checked, and nor is one the program serves.
+  - A field is one of a type the contract's module declares and an operation's result holds. A
+    recording contains it when some recorded result has it, present even if `null`.
+  - A read is a field access, `r.receipt`, or a pattern that looks inside the field,
+    `Refused(error)`. `Refused(_)` and `Refused(..)` read nothing, so a match handles a variant
+    no recording has without a mark.
+  - `@unwitnessed("why")` goes on the function, job or test that reads the field, or on the type,
+    and says why the author believes the service sends what no recording shows.
+
+  A recording is a JSON file per contract module,
   named after it (`receipts/notify.json`), that lists exchanges by operation and key, each result
   in the shape above:
 
