@@ -9,19 +9,6 @@
 #include "eye.h"
 #include "builtins.h"
 
-static _Noreturn void out_of_memory(void) {
-	fputs("out of memory\n", stderr);
-	exit(2);
-}
-
-static void drop_as(const ey_type *t, ey_v v) {
-	if (ey_counted(t)) ey_drop(v);
-}
-
-static void dup_as(const ey_type *t, ey_v v) {
-	if (ey_counted(t)) ey_dup(v);
-}
-
 /* ---------------------------------------------------------------- Iter values */
 
 static ey_lazy *lazy_alloc(uint32_t n) {
@@ -71,7 +58,7 @@ void ey_lazy_free(ey_obj *o) {
 		ey_drop(it->s[i].fn);
 		ey_drop(it->s[i].other);
 	}
-	free(o);
+	ey_free_obj(o, sizeof(ey_lazy) + it->n * sizeof(ey_step));
 }
 
 /* ---------------------------------------------------------------- cursors */
@@ -95,7 +82,7 @@ static void cur_close(cursor *c);
 
 static void *xcalloc(size_t n, size_t size) {
 	void *p = calloc(n ? n : 1, size);
-	if (!p) out_of_memory();
+	if (!p) ey_out_of_memory();
 	return p;
 }
 
@@ -154,11 +141,11 @@ static bool src_next(cursor *c, ey_v *out) {
 	switch (o->ty->kind) {
 	case EY_LIST:
 		*out = ((ey_list *)o)->items[c->pos++];
-		dup_as(c->elem, *out);
+		ey_dup_as(c->elem, *out);
 		return true;
 	case EY_SET:
 		*out = ((ey_map *)o)->keys[c->pos++];
-		dup_as(c->elem, *out);
+		ey_dup_as(c->elem, *out);
 		return true;
 	case EY_MAP: {
 		ey_map *m = (ey_map *)o;
@@ -166,8 +153,8 @@ static bool src_next(cursor *c, ey_v *out) {
 		t->f[0] = m->keys[c->pos];
 		t->f[1] = m->vals[c->pos];
 		c->pos++;
-		dup_as(c->elem->args[0], t->f[0]);
-		dup_as(c->elem->args[1], t->f[1]);
+		ey_dup_as(c->elem->args[0], t->f[0]);
+		ey_dup_as(c->elem->args[1], t->f[1]);
 		*out = EY_V(t);
 		return true;
 	}
@@ -206,7 +193,7 @@ static bool pull(cursor *c, int k, ey_v *out) {
 	case EY_STEP_MAP:
 		if (!pull(c, k - 1, &x)) return false;
 		*out = ey_call(s->fn, &x);
-		drop_as(in, x);
+		ey_drop_as(in, x);
 		return true;
 	case EY_STEP_FILTER:
 		for (;;) {
@@ -215,7 +202,7 @@ static bool pull(cursor *c, int k, ey_v *out) {
 				*out = x;
 				return true;
 			}
-			drop_as(in, x);
+			ey_drop_as(in, x);
 		}
 	case EY_STEP_TAKE:
 		if (c->state[k] <= 0) return false; /* without asking for one more */
@@ -224,7 +211,7 @@ static bool pull(cursor *c, int k, ey_v *out) {
 	case EY_STEP_DROP:
 		for (; c->state[k] > 0; c->state[k]--) {
 			if (!pull(c, k - 1, &x)) return false;
-			drop_as(in, x);
+			ey_drop_as(in, x);
 		}
 		return pull(c, k - 1, out);
 	case EY_STEP_ENUMERATE:
@@ -236,7 +223,7 @@ static bool pull(cursor *c, int k, ey_v *out) {
 		ey_v y;
 		if (!pull(c, k - 1, &x)) return false;
 		if (!cur_next(c->sub[k], &y)) {
-			drop_as(in, x);
+			ey_drop_as(in, x);
 			return false;
 		}
 		*out = pair(s->out, x, y);
@@ -251,7 +238,7 @@ static bool pull(cursor *c, int k, ey_v *out) {
 			}
 			if (!pull(c, k - 1, &x)) return false;
 			ey_v part = ey_call(s->fn, &x);
-			drop_as(in, x);
+			ey_drop_as(in, x);
 			c->sub[k] = cur_open(part, s->out);
 			ey_drop(part);
 		}
@@ -280,13 +267,13 @@ ey_v ey_lazy_list(ey_v v, const ey_type *list) {
 	cursor *c = cur_open(v, list->args[0]);
 	int64_t n = 0, cap = 8;
 	ey_v *items = malloc(sizeof(ey_v) * (size_t)cap);
-	if (!items) out_of_memory();
+	if (!items) ey_out_of_memory();
 	ey_v x;
 	while (cur_next(c, &x)) {
 		if (n == cap) {
 			cap *= 2;
 			items = realloc(items, sizeof(ey_v) * (size_t)cap);
-			if (!items) out_of_memory();
+			if (!items) ey_out_of_memory();
 		}
 		items[n++] = x;
 	}
@@ -312,7 +299,7 @@ ey_v eyb_iter_find(ey_v it, ey_v f, const ey_type *opt) {
 		if (ey_call(f, &x))
 			r = ey_some(opt, x);
 		else
-			drop_as(et, x);
+			ey_drop_as(et, x);
 	}
 	cur_close(c);
 	return r ? r : ey_none(opt);
@@ -326,7 +313,7 @@ ey_v eyb_iter_test(ey_v it, ey_v f, int how) {
 	bool r = how == 1;
 	while (cur_next(c, &x)) {
 		bool yes = ey_call(f, &x) != 0;
-		drop_as(et, x);
+		ey_drop_as(et, x);
 		if (how == 0 && yes) {
 			r = true;
 			break;
@@ -347,7 +334,7 @@ bool eyb_iter_contains(ey_v it, ey_v y) {
 	bool found = false;
 	while (!found && cur_next(c, &x)) {
 		found = ey_eq(et, x, y);
-		drop_as(et, x);
+		ey_drop_as(et, x);
 	}
 	cur_close(c);
 	return found;
@@ -357,7 +344,7 @@ bool eyb_iter_is_empty(ey_v it) {
 	cursor *c = cur_open(it, NULL);
 	ey_v x;
 	bool more = cur_next(c, &x);
-	if (more) drop_as(cur_elem(c), x);
+	if (more) ey_drop_as(cur_elem(c), x);
 	cur_close(c);
 	return !more;
 }
@@ -394,7 +381,7 @@ ey_v ey_loop_next(ey_v v) {
 
 void ey_loop_free(ey_obj *o) {
 	ey_loop *l = (ey_loop *)o;
-	if (l->has) drop_as(cur_elem(l->c), l->next);
+	if (l->has) ey_drop_as(cur_elem(l->c), l->next);
 	cur_close(l->c);
-	free(o);
+	ey_free_obj(o, sizeof(ey_loop));
 }

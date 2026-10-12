@@ -46,10 +46,15 @@ func (e *fn) op(x *lir.Op) {
 			set("ey_int_sub(%s, %s)", va, vb)
 		case "*":
 			set("ey_int_mul(%s, %s)", va, vb)
-		case "/":
-			set("ey_int_div(%s, %s, %s)", e.at, va, vb)
-		case "%":
-			set("ey_int_mod(%s, %s, %s)", e.at, va, vb)
+		case "/", "%":
+			name := map[string]string{"/": "div", "%": "mod"}[x.Op]
+			// By a constant other than 0 and -1, which can't fault or
+			// overflow, the C compiler divides by multiplying.
+			if k, ok := e.smallConst(b); ok && k != 0 && k != -1 {
+				set("ey_int_%s_k(%s, %s, INT64_C(%d))", name, e.at, va, k)
+			} else {
+				set("ey_int_%s(%s, %s, %s)", name, e.at, va, vb)
+			}
 		default:
 			e.unsupported("the operator " + x.Op + " on Int")
 		}
@@ -98,8 +103,15 @@ func (e *fn) compare(x *lir.Op, k, va, vb string) {
 			set("ey_int_eq(%s, %s)", va, vb)
 		case "!=":
 			set("!ey_int_eq(%s, %s)", va, vb)
-		default:
-			set("ey_int_cmp(%s, %s) %s 0", va, vb, op)
+		// The inline ey_int_lt compares small Ints without a call.
+		case "<":
+			set("ey_int_lt(%s, %s)", va, vb)
+		case ">":
+			set("ey_int_lt(%s, %s)", vb, va)
+		case "<=":
+			set("!ey_int_lt(%s, %s)", vb, va)
+		default: // >=
+			set("!ey_int_lt(%s, %s)", va, vb)
 		}
 	case "Float":
 		switch op {

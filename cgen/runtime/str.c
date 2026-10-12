@@ -60,11 +60,7 @@ ey_v eyo_concat(ey_v sv, int n, const ey_v *parts) {
 	if (need > room) {
 		int64_t cap = room * 2 > need ? room * 2 : need;
 		if (cap < 32) cap = 32;
-		s = realloc(s, sizeof(ey_str) + (size_t)cap);
-		if (!s) {
-			fputs("out of memory\n", stderr);
-			exit(2);
-		}
+		s = ey_mem_realloc(s, sizeof(ey_str) + (size_t)room, sizeof(ey_str) + (size_t)cap);
 		s->cap = cap;
 	}
 	for (int i = 0; i < n; i++) {

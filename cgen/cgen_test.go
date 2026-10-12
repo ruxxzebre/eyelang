@@ -161,6 +161,7 @@ func compilable(t *testing.T) map[string]*ir.Program {
 		"testdata/failures",
 		"testdata/hello",
 		"testdata/inplace",
+		"testdata/numbers",
 		"testdata/updates",
 	} {
 		if out[must] == nil {

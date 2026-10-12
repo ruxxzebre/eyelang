@@ -238,13 +238,13 @@ static void divmod(const char *at, ey_v x, ey_v y, ey_v *qo, ey_v *ro) {
 	free(r);
 }
 
-ey_v ey_int_div(const char *at, ey_v a, ey_v b) {
+ey_v ey_int_div_slow(const char *at, ey_v a, ey_v b) {
 	ey_v q;
 	divmod(at, a, b, &q, NULL);
 	return q;
 }
 
-ey_v ey_int_mod(const char *at, ey_v a, ey_v b) {
+ey_v ey_int_mod_slow(const char *at, ey_v a, ey_v b) {
 	ey_v r;
 	divmod(at, a, b, NULL, &r);
 	return r;
@@ -350,7 +350,7 @@ bool ey_int_i64_of(ey_v x, int64_t *out) {
 
 void ey_int_write(ey_buf *b, ey_v x) {
 	if (EY_IS_SMALL(x)) {
-		ey_buf_printf(b, "%lld", (long long)EY_SMALL_VAL(x));
+		ey_buf_i64(b, EY_SMALL_VAL(x));
 		return;
 	}
 	bigv a;
@@ -370,8 +370,8 @@ void ey_int_write(ey_buf *b, ey_v x) {
 		while (n > 0 && cur[n - 1] == 0) n--;
 	}
 	if (a.neg) ey_buf_char(b, '-');
-	ey_buf_printf(b, "%u", chunks[nc - 1]);
-	for (size_t i = nc - 1; i-- > 0;) ey_buf_printf(b, "%09u", chunks[i]);
+	ey_buf_u64(b, chunks[nc - 1], 0);
+	for (size_t i = nc - 1; i-- > 0;) ey_buf_u64(b, chunks[i], 9);
 	free(cur);
 	free(q);
 	free(chunks);

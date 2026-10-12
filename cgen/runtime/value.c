@@ -10,6 +10,7 @@
 /* ---------------------------------------------------------------- aggregates */
 
 ey_agg *ey_agg_new(const ey_type *ty, uint32_t tag, uint32_t n) {
+	if (n == 0 && ty->kind == EY_VARIANT && ty->variants[tag].unit) return ty->variants[tag].unit;
 	ey_agg *a = ey_alloc(sizeof(ey_agg) + n * sizeof(ey_v), ty);
 	a->tag = tag;
 	a->n = n;
@@ -369,11 +370,14 @@ static void show_duration(ey_buf *b, int64_t d) {
 				ey_buf_str(b, "1 day");
 				return;
 			}
-			ey_buf_printf(b, "%lld %s", (long long)n, units[i].name);
+			ey_buf_i64(b, n);
+			ey_buf_char(b, ' ');
+			ey_buf_str(b, units[i].name);
 			return;
 		}
 	}
-	ey_buf_printf(b, "%lld ms", (long long)(d / 1000000));
+	ey_buf_i64(b, d / 1000000);
+	ey_buf_str(b, " ms");
 }
 
 static void show_size(ey_buf *b, int64_t s) {
@@ -383,11 +387,14 @@ static void show_size(ey_buf *b, int64_t s) {
 	} units[] = {{"GiB", 1LL << 30}, {"MiB", 1LL << 20}, {"KiB", 1LL << 10}};
 	for (int i = 0; i < 3; i++) {
 		if (s != 0 && s % units[i].n == 0) {
-			ey_buf_printf(b, "%lld %s", (long long)(s / units[i].n), units[i].name);
+			ey_buf_i64(b, s / units[i].n);
+			ey_buf_char(b, ' ');
+			ey_buf_str(b, units[i].name);
 			return;
 		}
 	}
-	ey_buf_printf(b, "%lld B", (long long)s);
+	ey_buf_i64(b, s);
+	ey_buf_str(b, " B");
 }
 
 void ey_instant_write(ey_buf *b, ey_v v); /* time.c */
@@ -428,11 +435,11 @@ void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested) {
 	case EY_BYTE:
 	case EY_UINT32:
 	case EY_UINT64:
-		ey_buf_printf(b, "%llu", (unsigned long long)v);
+		ey_buf_u64(b, v, 0);
 		return;
 	case EY_INT32:
 	case EY_INT64:
-		ey_buf_printf(b, "%lld", (long long)(int64_t)v);
+		ey_buf_i64(b, (int64_t)v);
 		return;
 	case EY_DURATION:
 		show_duration(b, (int64_t)v);
@@ -464,7 +471,10 @@ void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested) {
 	case EY_BYTES: {
 		ey_str *s = EY_STR(v);
 		ey_buf_char(b, '[');
-		for (int64_t i = 0; i < s->len; i++) ey_buf_printf(b, i ? ", %u" : "%u", (unsigned char)s->b[i]);
+		for (int64_t i = 0; i < s->len; i++) {
+			if (i) ey_buf_str(b, ", ");
+			ey_buf_u64(b, (unsigned char)s->b[i], 0);
+		}
 		ey_buf_char(b, ']');
 		return;
 	}
@@ -561,7 +571,40 @@ void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested) {
 	}
 }
 
+ey_v ey_show_int(ey_v v) {
+	if (EY_IS_SMALL(v)) {
+		char s[24];
+		char *p = ey_fmt_i64(s + sizeof s, EY_SMALL_VAL(v));
+		return ey_str_new(p, s + sizeof s - p, &ey_t_string);
+	}
+	ey_buf b = {0};
+	ey_int_write(&b, v);
+	return ey_buf_take(&b);
+}
+
 ey_v ey_show(const ey_type *t, ey_v v) {
+	switch (t->kind) {
+	case EY_INT:
+		return ey_show_int(v);
+	case EY_INT32:
+	case EY_INT64: {
+		char s[24];
+		char *p = ey_fmt_i64(s + sizeof s, (int64_t)v);
+		return ey_str_new(p, s + sizeof s - p, &ey_t_string);
+	}
+	case EY_BYTE:
+	case EY_UINT32:
+	case EY_UINT64: {
+		char s[24];
+		char *p = ey_fmt_u64(s + sizeof s, v);
+		return ey_str_new(p, s + sizeof s - p, &ey_t_string);
+	}
+	case EY_STRING:
+		ey_dup(v); /* a String shows as itself */
+		return v;
+	default:
+		break;
+	}
 	ey_buf b = {0};
 	ey_show_to(&b, t, v, false);
 	return ey_buf_take(&b);

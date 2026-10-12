@@ -190,7 +190,7 @@ C11: one file per module (`m_main.c`, `m_tally.c`, …), `program.h` with every 
 type descriptor, and `program.c` with the descriptors, the `dyn` tables, the time zones the
 program names, and the entry point. Every position the low IR marks (`lir.At`) becomes a
 `#line` directive, so a debugger or a crash report names the `.eye` line. The runtime's C, about
-4,100 lines in `cgen/runtime`, is embedded in `eye` and compiled with every program. `eye` runs
+4,400 lines in `cgen/runtime`, is embedded in `eye` and compiled with every program. `eye` runs
 the pinned zig (`internal/zig`) as a separate process; `eye` itself has no cgo.
 
 - `-O2` by default, `-O0 -g` with `-g`; always `-std=c11 -fwrapv -fno-strict-aliasing`.
@@ -199,9 +199,14 @@ the pinned zig (`internal/zig`) as a separate process; `eye` itself has no cgo.
 - `--test` makes a binary that runs the program's test blocks and reports as `eye test` does,
   with `--run` and `-v`; without it the binary runs `main`, and an `Err` from `main` goes to
   stderr with exit status 1.
+- At `-O2` the runtime and the program are compiled as one translation unit (`eye_unit.c`
+  includes every `.c` file), so the runtime's small functions inline into the program's code:
+  comparisons, division, allocation and freeing. At `-O0` each file is compiled on its own, in
+  parallel, and the runtime's objects are shared between programs.
 - Object files are cached in the user's cache directory (`EYE_BUILD_CACHE` overrides it), named
-  by a SHA-256 of zig's version, the flags and target, the file and every header. A build marks
-  the objects it used, and removes those no build used for 30 days.
+  by a SHA-256 of zig's version, the flags and target, the file and every file it may include. A
+  rebuild of an unchanged program only links (core: 0.3 s). A build marks the objects it used,
+  and removes those no build used for 30 days.
 - `--emit-c dir` writes the C instead of compiling it.
 - zig is fetched once into the user's cache from ziglang.org and checked against the checksum
   `internal/zig` pins, rather than shipped inside the release archives.
@@ -227,7 +232,7 @@ methods. A closure is its code and its captures.
 
 | File | What it holds |
 |---|---|
-| `rt.c` | allocation, freeing by descriptor, faults, `print` and `log`, running `main` or the tests |
+| `rt.c` | allocation (free lists by 8-byte size class up to 256 bytes, carved from 256 KB chunks; `malloc` above), freeing by descriptor, counts of objects, integers in decimal, faults, `print` and `log`, running `main` or the tests |
 | `int.c` | `Int`: the small fast path inline in `eye.h` with `__builtin_*_overflow`, and a big integer of 32-bit limbs (schoolbook multiplication; division a limb at a time by one limb, and by shifting and subtracting by more), written for this runtime, not vendored |
 | `str.c` | UTF-8 strings and `Bytes`, `Offset` positions as byte offsets, searching, slicing, parsing numbers |
 | `coll.c` | lists; sets and maps in insertion order with an open-addressing hash index; the collection functions |
@@ -241,7 +246,12 @@ methods. A closure is its code and its captures.
 variable of the low IR owns one reference, dropped when the variable is set again and when the
 function returns; arguments are borrowed and results owned. A parameter the function sets takes
 a reference of its own first. Faults in a test `longjmp` out and leak what was live, as the plan
-for faults (section 2) allows until runs get regions.
+for faults (section 2) allows until runs get regions. A variant without fields (`None`, `Leaf`,
+an enum's cases) is one static, immortal value per type, which counting leaves alone.
+
+**Counts of objects.** The runtime counts the objects it makes and frees. With `EYE_ALLOCS` set,
+a binary writes `allocs N frees M faulted K` to stderr when it exits, after dropping its globals;
+`K` is what failing tests left behind.
 
 **Updates in place.** Simple counts already make the common loops linear. A variable updated by
 itself (`s += t`, `s = "{s}…"`, `xs += ys`, `xs = xs.add(x)`, `seen = seen.add(x)`,
@@ -264,8 +274,10 @@ tests, one of in-place updates and one of slow updates), at both `-O0 -g` and `-
 and checks the output is `eye test`'s line for line (durations aside); a program joins as soon
 as it compiles. It also builds core for all five targets and runs a `main`. `cgen/updates_test.go`
 times the update loops that still copy natively (an append through a helper, a map insert through
-a `let`, a record updated from its own list) at two sizes and records them as quadratic until 7.5. Valgrind finds no invalid
-access and no leak in the core program's tests.
+a `let`, a record updated from its own list) at two sizes and records them as quadratic until 7.5. Valgrind can't check for
+leaks, since it doesn't see the heap of a static musl binary; instead `cgen/alloc_test.go` runs
+the test binaries of core, traits, the lexer and cgen's programs, and a `main`, with `EYE_ALLOCS`,
+and checks that every object is freed by exit except those a failing test left.
 
 ### Where the runtime lives
 

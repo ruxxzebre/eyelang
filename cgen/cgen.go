@@ -454,7 +454,13 @@ func (g *gen) define(d *desc) string {
 				}
 				fl := list(fmt.Sprintf("v%d_f", i), fts)
 				nl := names(fmt.Sprintf("v%d_n", i), fns)
-				vs = append(vs, fmt.Sprintf("{%s, %d, %s, %s}", cstring(v.Name), len(v.Fields), fl, nl))
+				// A variant without fields is one static value, never freed.
+				unit := "NULL"
+				if len(v.Fields) == 0 {
+					unit = fmt.Sprintf("&%s_u%d", d.name, i)
+					fmt.Fprintf(&b, "static ey_agg %s_u%d = {{EY_IMMORTAL, &%s}, %d, 0};\n", d.name, i, d.name, i)
+				}
+				vs = append(vs, fmt.Sprintf("{%s, %d, %s, %s, %s}", cstring(v.Name), len(v.Fields), fl, nl, unit))
 			}
 			fmt.Fprintf(&b, "static const ey_variant %s_vs[] = {%s};\n", d.name, strings.Join(vs, ", "))
 			variants = d.name + "_vs"
@@ -529,8 +535,10 @@ func (g *gen) modules() []File {
 		byFile[name] = append(byFile[name], f)
 	}
 	var files []File
-	for _, name := range order {
-		fs := &fileState{g: g, strs: map[string]string{}}
+	for i, name := range order {
+		// Each file's constants have names of their own, so that the files
+		// can be compiled as one unit with the runtime.
+		fs := &fileState{g: g, strs: map[string]string{}, prefix: fmt.Sprintf("ey_m%d", i)}
 		var body strings.Builder
 		for _, f := range byFile[name] {
 			body.WriteString(g.function(fs, f))
@@ -548,10 +556,11 @@ func (g *gen) modules() []File {
 // fileState is what one file declares once: its string constants and big
 // integers.
 type fileState struct {
-	g     *gen
-	strs  map[string]string
-	n     int
-	decls strings.Builder
+	g      *gen
+	strs   map[string]string
+	n      int
+	prefix string // of its constants' names
+	decls  strings.Builder
 }
 
 // str is a static String with the text s, made once per file.
@@ -560,7 +569,7 @@ func (fs *fileState) str(s string, ty string) string {
 	if name, ok := fs.strs[key]; ok {
 		return name
 	}
-	name := fmt.Sprintf("ey_s%d", fs.n)
+	name := fmt.Sprintf("%s_s%d", fs.prefix, fs.n)
 	fs.n++
 	fs.strs[key] = name
 	fmt.Fprintf(&fs.decls, "static struct { ey_obj h; int64_t len, cap; char b[%d]; } %s = {{EY_IMMORTAL, %s}, %d, 0, %s};\n",
@@ -587,7 +596,7 @@ func (fs *fileState) bigInt(n *big.Int) string {
 		limbs = append(limbs, strconv.FormatUint(new(big.Int).And(mag, big.NewInt(0xffffffff)).Uint64(), 10)+"u")
 		mag.Rsh(mag, 32)
 	}
-	name := fmt.Sprintf("ey_k%d", fs.n)
+	name := fmt.Sprintf("%s_k%d", fs.prefix, fs.n)
 	fs.n++
 	neg := 0
 	if n.Sign() < 0 {
@@ -803,9 +812,22 @@ func (g *gen) entry() string {
 					show = g.names[s] + "(EY_AGG(r)->f[0], 0)"
 				}
 			}
-			fmt.Fprintf(&b, "\tif (EY_AGG(r)->tag == 1) {\n\t\tey_eprintln(%s);\n\t\texit(1);\n\t}\n", show)
+			fmt.Fprintf(&b, "\tif (EY_AGG(r)->tag == 1) {\n\t\tey_v s = %s;\n\t\tey_eprintln(s);\n\t\tey_drop(s);\n\t\tey_drop(r);\n", show)
+			if len(args) > 0 && args[0] == "args" {
+				b.WriteString("\t\tey_drop(args);\n")
+			}
+			b.WriteString("\t\texit(1);\n\t}\n")
 		}
-		b.WriteString("\t(void)r;\n}\n")
+		// What main made is dropped, so that a count of objects balances.
+		if counted(m.Result) {
+			b.WriteString("\tey_drop(r);\n")
+		} else {
+			b.WriteString("\t(void)r;\n")
+		}
+		if len(args) > 0 && args[0] == "args" {
+			b.WriteString("\tey_drop(args);\n")
+		}
+		b.WriteString("}\n")
 		fmt.Fprintf(&b, "static const ey_program ey_prog = {NULL, 0, ey_run_main, ey_zone_list, %d};\n", g.nzones)
 	}
 	b.WriteString("int main(int argc, char **argv) { return ey_start(&ey_prog, argc, argv); }\n")

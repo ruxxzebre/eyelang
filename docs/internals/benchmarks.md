@@ -12,29 +12,29 @@ Native code and Go ran 5 times each, taking turns, and the interpreter 1 time. T
 
 | | |
 |---|---|
-| Machine | Intel(R) Xeon(R) Processor @ 2.10GHz, 4 cores, linux/amd64 |
+| Machine | Intel(R) Xeon(R) Processor @ 2.80GHz, 4 cores, linux/amd64 |
 | Go | go1.27.2 |
 | zig | 0.17.0 |
 | Date | 2026-10-12 |
-| Commit | `df87b9e` |
+| Commit | `7b2faa2` |
 
 ## Results
 
 | Benchmark | Native ms | Go ms | Time × Go | Native MB | Go MB | Memory × Go | Interpreter ms | Interpreter MB |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| fib | 455 | 96.1 | 4.74× | 0.16 | 2.03 | 0.08× | 7382 | 18.4 |
-| mandelbrot | 278 | 118 | 2.34× | 0.16 | 1.97 | 0.08× | 26318 | 23.5 |
-| trees | 1051 | 468 | 2.25× | 80.2 | 13.0 | 6.17× | 7749 | 50.3 |
-| records | 1346 | 284 | 4.75× | 0.16 | 1.97 | 0.08× | 9761 | 21.1 |
-| strings | 378 | 188 | 2.01× | 83.0 | 43.4 | 1.91× | 3323 | 733.7 |
-| lists | 179 | 162 | 1.10× | 42.3 | 46.5 | 0.91× | 3312 | 131.7 |
-| maps | 548 | 96.7 | 5.67× | 1.18 | 2.53 | 0.47× | 16824 | 31.9 |
-| logs | 383 | 263 | 1.46× | 54.7 | 59.9 | 0.91× | 1671 | 81.8 |
-| lexer | 1786 | 388 | 4.61× | 478.0 | 191.8 | 2.49× | 28247 | 1798.8 |
+| fib | 522 | 144 | 3.62× | 0.28 | 2.03 | 0.14× | 11488 | 18.7 |
+| mandelbrot | 273 | 226 | 1.20× | 0.28 | 2.03 | 0.14× | 40380 | 21.5 |
+| trees | 672 | 596 | 1.13× | 25.2 | 12.1 | 2.08× | 11904 | 52.9 |
+| records | 1702 | 240 | 7.08× | 0.28 | 1.91 | 0.15× | 15143 | 21.3 |
+| strings | 222 | 355 | 0.63× | 67.9 | 48.2 | 1.41× | 6107 | 719.3 |
+| lists | 240 | 174 | 1.38× | 42.3 | 48.1 | 0.88× | 5112 | 142.3 |
+| maps | 601 | 155 | 3.89× | 0.89 | 2.53 | 0.35× | 30092 | 32.7 |
+| logs | 325 | 345 | 0.94× | 43.8 | 60.1 | 0.73× | 3185 | 94.1 |
+| lexer | 1540 | 516 | 2.98× | 200.2 | 191.7 | 1.04× | 42339 | 1715.4 |
 
-Faster than Go: none yet.  
+Faster than Go: strings, logs.  
 Less memory than Go: fib, mandelbrot, records, lists, maps, logs.  
-Geometric mean: 2.78× Go's time, 0.57× Go's memory.  
+Geometric mean: 1.90× Go's time, 0.50× Go's memory.  
 
 Where each gap comes from, and the work that must close it, is in the [native compilation plan](./reviews/native-plan-2026-10-12.md#against-go).
 

@@ -23,6 +23,7 @@ type fn struct {
 	mut     map[*lir.Value]bool
 	param   map[*lir.Value]int
 	consts  map[*lir.Value]*lir.Const
+	defs    map[*lir.Value]int // how many instructions set each value
 	// loops are the values a for loop walks with iter.more and iter.next:
 	// the iter that makes one starts a walk, not an Iter value.
 	loops map[*lir.Value]bool
@@ -31,7 +32,7 @@ type fn struct {
 // function writes f, and what calls it as a closure, a dyn method or a
 // global.
 func (g *gen) function(fs *fileState, f *lir.Func) string {
-	e := &fn{g: g, fs: fs, f: f, mut: map[*lir.Value]bool{}, param: map[*lir.Value]int{}, consts: map[*lir.Value]*lir.Const{}, loops: map[*lir.Value]bool{}}
+	e := &fn{g: g, fs: fs, f: f, mut: map[*lir.Value]bool{}, param: map[*lir.Value]int{}, consts: map[*lir.Value]*lir.Const{}, defs: map[*lir.Value]int{}, loops: map[*lir.Value]bool{}}
 	e.at = cstring(posString(f.Src.Pos))
 	mut := mutParams(f)
 	for i, p := range f.Params {
@@ -78,6 +79,12 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 		for _, in := range b.Instrs {
 			if d := lir.Dst(in); d != nil {
 				set[d] = true
+				e.defs[d]++
+			}
+			if c, ok := in.(*lir.Call); ok {
+				for _, i := range c.Mut {
+					e.defs[c.Args[i]]++
+				}
 			}
 		}
 	}
@@ -160,7 +167,16 @@ func (e *fn) extras() {
 		fmt.Fprintf(&e.b, "ey_v %s_dm(ey_v self, const ey_v *a) {\n\t(void)a;\n\treturn %s;\n}\n\n", name, call([]string{"self"}, "a", 1))
 	}
 	if f.Kind == lir.KindGlobal {
-		fmt.Fprintf(&e.b, "ey_v %s_g(void) {\n\tstatic bool done;\n\tstatic ey_v value;\n\tif (!done) {\n\t\tvalue = %s();\n\t\tdone = true;\n\t}\n\treturn value;\n}\n\n", name, name)
+		// A global's instance says () for its result; what it returns has
+		// the global's type.
+		keep := ""
+		for _, b := range f.Blocks {
+			if r, ok := b.Term.(*lir.Return); ok && r.Value != nil && counted(r.Value.Ty) {
+				keep = "\n\t\tey_keep_global(&value);"
+				break
+			}
+		}
+		fmt.Fprintf(&e.b, "ey_v %s_g(void) {\n\tstatic bool done;\n\tstatic ey_v value;\n\tif (!done) {\n\t\tvalue = %s();\n\t\tdone = true;%s\n\t}\n\treturn value;\n}\n\n", name, name, keep)
 	}
 }
 
@@ -206,6 +222,28 @@ func (e *fn) v(x *lir.Value) string {
 		return fmt.Sprintf("(*v%d)", x.ID)
 	}
 	return fmt.Sprintf("v%d", x.ID)
+}
+
+// smallConst reports whether x is an Int constant in the small range,
+// which nothing but its Const sets, and its value.
+func (e *fn) smallConst(x *lir.Value) (int64, bool) {
+	c, ok := e.consts[x]
+	if !ok || e.defs[x] != 1 || kind(x) != "Int" {
+		return 0, false
+	}
+	var n int64
+	switch v := c.Value.(type) {
+	case int64:
+		n = v
+	case *big.Int:
+		if !v.IsInt64() {
+			return 0, false
+		}
+		n = v.Int64()
+	default:
+		return 0, false
+	}
+	return n, n >= -(1<<62) && n < 1<<62
 }
 
 // absent reports whether x is the Absent a call passes for a parameter it
@@ -626,6 +664,11 @@ func (e *fn) makeVariant(x *lir.MakeVariant) {
 		e.borrowed(x.Dst, e.v(x.Args[0]))
 		return
 	}
+	if len(x.Args) == 0 {
+		// The variant's static value, which counting leaves alone.
+		e.assign(x.Dst, fmt.Sprintf("EY_V((%s)->variants[%d].unit)", e.g.desc(x.Dst.Ty), variantIndex(x.Variant)))
+		return
+	}
 	e.makeAgg(x.Dst, e.g.desc(x.Dst.Ty), variantIndex(x.Variant), x.Args, nil)
 }
 
@@ -723,6 +766,10 @@ func (e *fn) derived(x *lir.Derived) {
 	d := e.g.desc(a.Ty)
 	switch x.Method {
 	case "show":
+		if d == "&ey_t_int" {
+			e.assign(x.Dst, fmt.Sprintf("ey_show_int(%s)", e.v(a)))
+			return
+		}
 		e.assign(x.Dst, fmt.Sprintf("ey_show(%s, %s)", d, e.v(a)))
 	case "eq":
 		e.assign(x.Dst, fmt.Sprintf("ey_eq(%s, %s, %s)", d, e.v(a), e.v(x.Args[1])))

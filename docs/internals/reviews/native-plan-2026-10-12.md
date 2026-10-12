@@ -153,6 +153,24 @@ heap grows to about twice what is live. Trees, strings and the lexer use more. B
 stretch of this shared machine a time ratio moved by up to 40% (fib, 3.5× to 4.9×), so the check
 allows 25% and measures a benchmark that looks worse twice more before it fails.
 
+**After 7.14** (the cheap fixes: one translation unit, a size-class allocator, static field-less
+variants, integer formatting, constant division). The session ran on a different 4-core host, so
+the code before and after was measured there within the hour; Go's own times there move by up to
+70% with the machine's load (the lexer's from 516 to 888 ms), native code's by under 10%:
+
+| | fib | mandelbrot | trees | records | strings | lists | maps | logs | lexer |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Native ms, before | 600 | 361 | 1,810 | 2,359 | 618 | 342 | 1,001 | 675 | 2,918 |
+| Native ms, after | 522 | 273 | 672 | 1,702 | 222 | 240 | 601 | 325 | 1,540 |
+| Time × Go, before | 4.23× | 1.61× | 2.94× | 9.39× | 1.65× | 1.53× | 5.70× | 1.49× | 3.29× |
+| Time × Go, after (recorded) | 3.62× | 1.20× | 1.13× | 7.08× | 0.63× | 1.38× | 3.89× | 0.94× | 2.98× |
+
+Peak memory fell on the programs that hold data: trees 80 → 25 MB, strings 83 → 68, logs 55 →
+44, the lexer 477 → 200 (1.04× Go's). The start-up floor grew from about 0.16 to 0.28 MB: the
+binary's code is larger and laid out differently, and the kernel maps code in 64 KB windows.
+Strings and logs now beat Go on time; 1.90× Go's time on the geometric mean, from 2.87×. What is
+left is 7.13's and 7.5's: fib and records are `dup`/`drop` and boxed records.
+
 Where each gap comes from, read from the emitted C (`eye build --emit-c`) and from callgrind on
 the `-O2` binaries:
 

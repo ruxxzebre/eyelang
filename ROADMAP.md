@@ -821,7 +821,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.11 Native code faster than Go, and leaner without entities or jobs | [#114](https://github.com/ruxxzebre/eyelang/issues/114) |
 | 7.12 Reuse of matched cells, and a fault frees its region | [#115](https://github.com/ruxxzebre/eyelang/issues/115) |
 | 7.13 Values laid out by type | [#117](https://github.com/ruxxzebre/eyelang/issues/117) |
-| 7.14 Cheap native fixes: one unit, an allocator, static variants, number formatting | [#118](https://github.com/ruxxzebre/eyelang/issues/118) |
+| 7.14 Cheap native fixes: one unit, an allocator, static variants, number formatting (done) | [#118](https://github.com/ruxxzebre/eyelang/issues/118) |
 
 - **7.1 Typed IR.** The checker keeps what it computes: a resolved type on every expression,
   every call resolved to its target, the impls each generic call's `where` bounds use, and each
@@ -1002,6 +1002,22 @@ whole-program specialisation, and jobs resuming from saved frames.
   number formatting without `snprintf`, and constant division inline.
   **Done when:** each is measured and recorded with `go run ./tools/bench --write`, no ratio
   gets worse, and a warm rebuild stays under a second.
+  Done on 2026-10-12: at `-O2` the runtime and the program compile as one unit (`eye_unit.c`),
+  cached whole, so an unchanged program rebuilds in 0.3 s (a cold build of core takes about 3 s
+  longer, 12 s against 9.5); `<` on `Int` is the inline `ey_int_lt`, and `/` and `%` have an
+  inline small path, with a literal divisor as a constant the C compiler multiplies by; free
+  lists by 8-byte size class up to 256 bytes replace `malloc` for objects; a field-less variant
+  is one static value per type; integers are written without `snprintf`. Callgrind's
+  instructions at reduced sizes, per fix: one unit with the allocator took fib −19%, trees
+  −37%, maps −18%, the lexer −32%; static variants trees a further −19%; formatting strings −59%
+  and logs −30%; constant division lists and maps about −10%. Measured before and after on the
+  same host (recorded with `--write`), time × Go went from 4.23 to 3.62 (fib), 1.61 to 1.20
+  (mandelbrot), 2.94 to 1.13 (trees), 9.39 to 7.08 (records), 1.65 to 0.63 (strings), 1.53 to
+  1.38 (lists), 5.70 to 3.89 (maps), 1.49 to 0.94 (logs) and 3.29 to 2.98 (the lexer, whose
+  native time halved), 2.87× to 1.90× on the geometric mean; peak memory fell from 80 to 25 MB
+  (trees) and from 477 to 200 MB (the lexer), and the start-up floor grew from 0.16 to 0.28 MB. The binary counts objects (`EYE_ALLOCS`), and
+  `cgen/alloc_test.go` checks that frees match allocations in core, traits, the lexer and
+  cgen's programs, counting what failing tests leave apart.
 - **7.12 Reuse and fault regions.** A `match` arm that builds a value of the same size reuses the
   matched cell; a fault frees what its run allocated as a whole.
   **Done when:** allocation counts drop on the tree and pattern benchmarks, and a failing native

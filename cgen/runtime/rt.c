@@ -34,21 +34,116 @@ SCALAR(ey_t_instant, EY_INSTANT);
 
 /* ---------------------------------------------------------------- memory */
 
-static _Noreturn void out_of_memory(void) {
+_Noreturn void ey_out_of_memory(void) {
 	fputs("out of memory\n", stderr);
 	exit(2);
 }
 
+/* Small blocks come from free lists, one per size class of 8 bytes up to
+ * EY_CLASS_MAX, carved from chunks that are taken from malloc and never
+ * given back; larger blocks come from malloc. A program runs on one
+ * thread (eye.h), so the lists need no lock. The caller says a block's
+ * size when it frees it, so a block has no header. */
+#define EY_CLASS_MAX 256
+#define EY_CHUNK (256 * 1024)
+
+static void *free_lists[EY_CLASS_MAX / 8 + 1];
+static char *chunk_at, *chunk_end;
+
+uint64_t ey_allocs, ey_frees;
+
+static void *carve(size_t size) {
+	if ((size_t)(chunk_end - chunk_at) < size) {
+		/* what is left of the old chunk, less than a block, is lost */
+		chunk_at = malloc(EY_CHUNK);
+		if (!chunk_at) ey_out_of_memory();
+		chunk_end = chunk_at + EY_CHUNK;
+	}
+	void *p = chunk_at;
+	chunk_at += size;
+	return p;
+}
+
+void *ey_mem_alloc(size_t n) {
+	if (n <= EY_CLASS_MAX) {
+		size_t c = (n + 7) >> 3;
+		void *p = free_lists[c];
+		if (p) {
+			free_lists[c] = *(void **)p;
+			return p;
+		}
+		return carve(c << 3);
+	}
+	void *p = malloc(n);
+	if (!p) ey_out_of_memory();
+	return p;
+}
+
+void ey_mem_free(void *p, size_t n) {
+	if (n <= EY_CLASS_MAX) {
+		size_t c = (n + 7) >> 3;
+		*(void **)p = free_lists[c];
+		free_lists[c] = p;
+		return;
+	}
+	free(p);
+}
+
+void *ey_mem_realloc(void *p, size_t old, size_t n) {
+	if (old > EY_CLASS_MAX && n > EY_CLASS_MAX) {
+		p = realloc(p, n);
+		if (!p) ey_out_of_memory();
+		return p;
+	}
+	if (n <= EY_CLASS_MAX && (old + 7) >> 3 == (n + 7) >> 3) return p;
+	void *q = ey_mem_alloc(n);
+	memcpy(q, p, old < n ? old : n);
+	ey_mem_free(p, old);
+	return q;
+}
+
 void *ey_alloc(size_t size, const ey_type *ty) {
-	ey_obj *o = malloc(size);
-	if (!o) out_of_memory();
+	ey_obj *o = ey_mem_alloc(size);
+	ey_allocs++;
 	o->rc = 1;
 	o->ty = ty;
 	return o;
 }
 
-static void drop_as(const ey_type *t, ey_v v) {
-	if (ey_counted(t)) ey_drop(v);
+/* The size of an object as it was allocated, which freeing it needs. */
+static size_t obj_size(const ey_obj *o) {
+	switch (o->ty->kind) {
+	case EY_TUPLE:
+	case EY_RECORD:
+	case EY_VARIANT:
+	case EY_RANGE:
+		return sizeof(ey_agg) + ((const ey_agg *)o)->n * sizeof(ey_v);
+	case EY_FN:
+		return sizeof(ey_fn) + ((const ey_fn *)o)->n * sizeof(ey_v);
+	case EY_STRING:
+	case EY_BYTES: {
+		const ey_str *s = (const ey_str *)o;
+		return sizeof(ey_str) + (size_t)(s->cap ? s->cap : s->len + 1);
+	}
+	case EY_BIG:
+		return sizeof(ey_big) + ((const ey_big *)o)->n * sizeof(uint32_t);
+	case EY_LIST:
+		return sizeof(ey_list);
+	case EY_SET:
+	case EY_MAP:
+		return sizeof(ey_map);
+	case EY_DYN:
+		return sizeof(ey_dyn);
+	case EY_INSTANT:
+		return sizeof(ey_instant);
+	default:
+		ey_fault("<free>", "an object of no known size");
+	}
+}
+
+void ey_free_obj(ey_obj *o, size_t size) {
+	ey_frees++;
+	ey_mem_free(o, size);
 }
 
 void ey_free(ey_obj *o) {
@@ -59,23 +154,23 @@ void ey_free(ey_obj *o) {
 	case EY_FN: {
 		ey_v *f = t->kind == EY_FN ? ((ey_fn *)o)->cap : ((ey_agg *)o)->f;
 		uint32_t n = t->kind == EY_FN ? ((ey_fn *)o)->n : ((ey_agg *)o)->n;
-		for (uint32_t i = 0; i < n && i < t->n; i++) drop_as(t->args[i], f[i]);
+		for (uint32_t i = 0; i < n && i < t->n; i++) ey_drop_as(t->args[i], f[i]);
 		break;
 	}
 	case EY_VARIANT: {
 		ey_agg *a = (ey_agg *)o;
 		const ey_variant *v = &t->variants[a->tag];
-		for (uint32_t i = 0; i < a->n && i < v->n; i++) drop_as(v->fields[i], a->f[i]);
+		for (uint32_t i = 0; i < a->n && i < v->n; i++) ey_drop_as(v->fields[i], a->f[i]);
 		break;
 	}
 	case EY_RANGE: {
 		ey_agg *a = (ey_agg *)o;
-		drop_as(t->args[0], a->f[0]);
-		drop_as(t->args[0], a->f[1]);
+		ey_drop_as(t->args[0], a->f[0]);
+		ey_drop_as(t->args[0], a->f[1]);
 		break;
 	}
 	case EY_DYN:
-		drop_as(t->args[0], ((ey_dyn *)o)->val);
+		ey_drop_as(t->args[0], ((ey_dyn *)o)->val);
 		break;
 	case EY_LIST: {
 		ey_list *l = (ey_list *)o;
@@ -105,7 +200,7 @@ void ey_free(ey_obj *o) {
 	default:
 		break;
 	}
-	free(o);
+	ey_free_obj(o, obj_size(o));
 }
 
 /* ---------------------------------------------------------------- buffers */
@@ -115,7 +210,7 @@ void ey_buf_add(ey_buf *b, const char *s, int64_t n) {
 		int64_t c = b->cap ? b->cap * 2 : 64;
 		while (c < b->len + n + 1) c *= 2;
 		b->b = realloc(b->b, (size_t)c);
-		if (!b->b) out_of_memory();
+		if (!b->b) ey_out_of_memory();
 		b->cap = c;
 	}
 	memcpy(b->b + b->len, s, (size_t)n);
@@ -149,6 +244,45 @@ void ey_buf_rune(ey_buf *b, uint32_t r) {
 	}
 }
 
+/* Integers in decimal, without snprintf, which is slow in musl. */
+static const char digit_pairs[] = "0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+				  "5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899";
+
+char *ey_fmt_u64(char *end, uint64_t v) {
+	while (v >= 100) {
+		unsigned r = (unsigned)(v % 100);
+		v /= 100;
+		end -= 2;
+		memcpy(end, digit_pairs + 2 * r, 2);
+	}
+	if (v >= 10) {
+		end -= 2;
+		memcpy(end, digit_pairs + 2 * v, 2);
+	} else {
+		*--end = (char)('0' + v);
+	}
+	return end;
+}
+
+char *ey_fmt_i64(char *end, int64_t v) {
+	char *p = ey_fmt_u64(end, v < 0 ? (uint64_t)0 - (uint64_t)v : (uint64_t)v);
+	if (v < 0) *--p = '-';
+	return p;
+}
+
+void ey_buf_u64(ey_buf *b, uint64_t v, int width) {
+	char s[24];
+	char *p = ey_fmt_u64(s + sizeof s, v);
+	while (s + sizeof s - p < width) *--p = '0';
+	ey_buf_add(b, p, s + sizeof s - p);
+}
+
+void ey_buf_i64(ey_buf *b, int64_t v) {
+	char s[24];
+	char *p = ey_fmt_i64(s + sizeof s, v);
+	ey_buf_add(b, p, s + sizeof s - p);
+}
+
 void ey_buf_printf(ey_buf *b, const char *fmt, ...) {
 	char small[256];
 	va_list ap;
@@ -160,7 +294,7 @@ void ey_buf_printf(ey_buf *b, const char *fmt, ...) {
 		return;
 	}
 	char *big = malloc((size_t)n + 1);
-	if (!big) out_of_memory();
+	if (!big) ey_out_of_memory();
 	va_start(ap, fmt);
 	vsnprintf(big, (size_t)n + 1, fmt, ap);
 	va_end(ap);
@@ -279,7 +413,7 @@ static char **g_argv;
 
 ey_v ey_args(const ey_type *list) {
 	ey_v *items = malloc(sizeof(ey_v) * (size_t)(g_argc > 0 ? g_argc : 1));
-	if (!items) out_of_memory();
+	if (!items) ey_out_of_memory();
 	for (int i = 0; i < g_argc; i++) items[i] = ey_str_c(g_argv[i]);
 	return ey_list_take(list, g_argc, items);
 }
@@ -347,6 +481,36 @@ static void write_indented(ey_buf *out, const char *s, int64_t n) {
 	}
 }
 
+/* Objects that failing tests left: a fault jumps out of a test's code
+ * without dropping what it holds (7.12 frees them). */
+static uint64_t faulted;
+
+/* The slots of the globals computed so far, which the count drops. */
+static ey_v **globals;
+static int nglobals, cglobals;
+
+void ey_keep_global(ey_v *slot) {
+	if (nglobals == cglobals) {
+		cglobals = cglobals ? cglobals * 2 : 16;
+		globals = realloc(globals, sizeof(ey_v *) * (size_t)cglobals);
+		if (!globals) ey_out_of_memory();
+	}
+	globals[nglobals++] = slot;
+}
+
+/* With EYE_ALLOCS set, a program writes how many objects it made and freed
+ * when it exits, after dropping its globals, and how many of those not
+ * freed failing tests left: "allocs 10 frees 8 faulted 2". */
+static void report_allocs(void) {
+	for (int i = 0; i < nglobals; i++) {
+		ey_drop(*globals[i]);
+		*globals[i] = 0;
+	}
+	fflush(stdout);
+	fprintf(stderr, "allocs %llu frees %llu faulted %llu\n", (unsigned long long)ey_allocs, (unsigned long long)ey_frees,
+		(unsigned long long)faulted);
+}
+
 static int run_tests(const ey_program *p, int argc, char **argv) {
 	const char *filter = "";
 	bool verbose = false;
@@ -372,6 +536,7 @@ static int run_tests(const ey_program *p, int argc, char **argv) {
 		test_log.len = 0;
 		test_failure.len = 0;
 		int64_t start = now_ns();
+		uint64_t live = ey_allocs - ey_frees;
 		volatile bool ok = true;
 		if (setjmp(test_fault) == 0)
 			t->run();
@@ -380,6 +545,7 @@ static int run_tests(const ey_program *p, int argc, char **argv) {
 		int64_t took = now_ns() - start;
 		total += took;
 		ey_sandbox_end();
+		if (!ok) faulted += ey_allocs - ey_frees - live;
 		ey_buf_str(&out, ok ? "ok    " : "FAIL  ");
 		ey_buf_str(&out, t->name);
 		ey_buf_str(&out, " (");
@@ -413,6 +579,8 @@ int ey_start(const ey_program *p, int argc, char **argv) {
 	g_argc = argc;
 	g_argv = argv;
 	ey_zones(p->zones, p->nzones);
+	const char *count = getenv("EYE_ALLOCS");
+	if (count && *count) atexit(report_allocs);
 	if (!p->main) return run_tests(p, argc, argv);
 	p->main();
 	fflush(stdout);

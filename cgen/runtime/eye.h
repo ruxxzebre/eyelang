@@ -75,11 +75,14 @@ enum {
 
 typedef struct ey_type ey_type;
 
+typedef struct ey_agg ey_agg;
+
 typedef struct ey_variant {
 	const char *name;
 	uint32_t n;                  /* fields */
 	const ey_type *const *fields;
 	const char *const *names;    /* "" for a positional field */
+	ey_agg *unit;                /* without fields: its one static, immortal value */
 } ey_variant;
 
 /* A type's descriptor: what showing, comparing, hashing and freeing a
@@ -111,12 +114,12 @@ typedef struct ey_obj {
 
 /* A record, a variant, a tuple or a range: fields in their declared order.
  * A range's are its start, its end and flags (EY_RANGE_*). */
-typedef struct ey_agg {
+struct ey_agg {
 	ey_obj h;
 	uint32_t tag;
 	uint32_t n;
 	ey_v f[];
-} ey_agg;
+};
 
 #define EY_RANGE_INCLUSIVE 1
 #define EY_RANGE_NO_START 2
@@ -213,8 +216,20 @@ typedef struct ey_lazy {
 #define EY_DYNP(v) ((ey_dyn *)(uintptr_t)(v))
 #define EY_V(p) ((ey_v)(uintptr_t)(p))
 
+/* Blocks of memory from the runtime's allocator: free lists by size class
+ * for small blocks, malloc for large ones. Freeing or growing a block
+ * needs the size it was allocated with. */
+void *ey_mem_alloc(size_t n);
+void ey_mem_free(void *p, size_t n);
+void *ey_mem_realloc(void *p, size_t old, size_t n);
+
+/* Objects: ey_alloc makes one with a count of 1; ey_free frees one whose
+ * count reached 0, and what it holds; ey_free_obj gives back its memory.
+ * ey_allocs and ey_frees count objects made and freed (EYE_ALLOCS). */
 void ey_free(ey_obj *o);
+void ey_free_obj(ey_obj *o, size_t size);
 void *ey_alloc(size_t size, const ey_type *ty);
+extern uint64_t ey_allocs, ey_frees;
 
 static inline void ey_dup(ey_v v) {
 	if ((v & 1) == 0 && v != 0) {
@@ -229,6 +244,16 @@ static inline void ey_drop(ey_v v) {
 		if (o->rc != EY_IMMORTAL && --o->rc == 0) ey_free(o);
 	}
 }
+
+/* dup or drop a value of type t, which may not be counted */
+static inline void ey_dup_as(const ey_type *t, ey_v v) {
+	if (ey_counted(t)) ey_dup(v);
+}
+static inline void ey_drop_as(const ey_type *t, ey_v v) {
+	if (ey_counted(t)) ey_drop(v);
+}
+
+_Noreturn void ey_out_of_memory(void);
 
 /* ---------------------------------------------------------------- faults */
 
@@ -264,8 +289,8 @@ ey_v ey_int_big(int neg, const uint32_t *d, uint32_t n); /* normalized */
 ey_v ey_int_add_slow(ey_v a, ey_v b);
 ey_v ey_int_sub_slow(ey_v a, ey_v b);
 ey_v ey_int_mul_slow(ey_v a, ey_v b);
-ey_v ey_int_div(const char *at, ey_v a, ey_v b);
-ey_v ey_int_mod(const char *at, ey_v a, ey_v b);
+ey_v ey_int_div_slow(const char *at, ey_v a, ey_v b);
+ey_v ey_int_mod_slow(const char *at, ey_v a, ey_v b);
 ey_v ey_int_neg(ey_v a);
 int ey_int_cmp(ey_v a, ey_v b);
 bool ey_int_eq(ey_v a, ey_v b);
@@ -298,6 +323,45 @@ static inline ey_v ey_int_mul(ey_v a, ey_v b) {
 		return EY_SMALL(r);
 	return ey_int_mul_slow(a, b);
 }
+/* Int's / is floor division, and % its remainder, which has the divisor's
+ * sign: -7 / 2 is -4 and -7 % 2 is 1. Small values divide here; a big one,
+ * a zero divisor (a fault) and SMALL_MIN / -1 (a big result) go to the
+ * slow path. */
+static inline ey_v ey_int_div(const char *at, ey_v a, ey_v b) {
+	if (EY_IS_SMALL(a) && EY_IS_SMALL(b) && b != EY_SMALL(0) && b != EY_SMALL(-1)) {
+		int64_t x = EY_SMALL_VAL(a), y = EY_SMALL_VAL(b), q = x / y, r = x % y;
+		if (r != 0 && ((r < 0) != (y < 0))) q--;
+		return EY_SMALL(q);
+	}
+	return ey_int_div_slow(at, a, b);
+}
+static inline ey_v ey_int_mod(const char *at, ey_v a, ey_v b) {
+	if (EY_IS_SMALL(a) && EY_IS_SMALL(b) && b != EY_SMALL(0) && b != EY_SMALL(-1)) {
+		int64_t x = EY_SMALL_VAL(a), y = EY_SMALL_VAL(b), r = x % y;
+		if (r != 0 && ((r < 0) != (y < 0))) r += y;
+		return EY_SMALL(r);
+	}
+	return ey_int_mod_slow(at, a, b);
+}
+/* / and % by a constant k, small and neither 0 nor -1, which the back end
+ * writes for a literal divisor: the C compiler turns the division into a
+ * multiplication. */
+static inline ey_v ey_int_div_k(const char *at, ey_v a, int64_t k) {
+	if (EY_IS_SMALL(a)) {
+		int64_t x = EY_SMALL_VAL(a), q = x / k, r = x % k;
+		if (r != 0 && ((r < 0) != (k < 0))) q--;
+		return EY_SMALL(q);
+	}
+	return ey_int_div_slow(at, a, EY_SMALL(k));
+}
+static inline ey_v ey_int_mod_k(const char *at, ey_v a, int64_t k) {
+	if (EY_IS_SMALL(a)) {
+		int64_t x = EY_SMALL_VAL(a), r = x % k;
+		if (r != 0 && ((r < 0) != (k < 0))) r += k;
+		return EY_SMALL(r);
+	}
+	return ey_int_mod_slow(at, a, EY_SMALL(k));
+}
 static inline bool ey_int_lt(ey_v a, ey_v b) {
 	if (EY_IS_SMALL(a) && EY_IS_SMALL(b)) return (int64_t)a < (int64_t)b;
 	return ey_int_cmp(a, b) < 0;
@@ -310,6 +374,12 @@ void ey_buf_str(ey_buf *b, const char *s);
 void ey_buf_char(ey_buf *b, char c);
 void ey_buf_rune(ey_buf *b, uint32_t r);
 void ey_buf_printf(ey_buf *b, const char *fmt, ...);
+/* Integers in decimal: ey_fmt_* write v's digits so that they end at end,
+ * and give where they start; ey_buf_u64 pads with zeros to width. */
+char *ey_fmt_u64(char *end, uint64_t v);
+char *ey_fmt_i64(char *end, int64_t v);
+void ey_buf_u64(ey_buf *b, uint64_t v, int width);
+void ey_buf_i64(ey_buf *b, int64_t v);
 ey_v ey_buf_take(ey_buf *b); /* a String of what b holds; b is emptied */
 
 /* ---------------------------------------------------------------- strings */
@@ -329,10 +399,12 @@ int ey_cmp(const ey_type *t, ey_v a, ey_v b);
 uint64_t ey_hash(const ey_type *t, ey_v v);
 void ey_show_to(ey_buf *b, const ey_type *t, ey_v v, bool nested);
 ey_v ey_show(const ey_type *t, ey_v v);
+ey_v ey_show_int(ey_v v); /* an Int in decimal */
 void ey_float_write(ey_buf *b, double d);
 
 /* ---------------------------------------------------------------- aggregates */
 
+/* A new aggregate; for a variant without fields (n is 0), its static value. */
 ey_agg *ey_agg_new(const ey_type *ty, uint32_t tag, uint32_t n);
 /* Makes the aggregate *p points at uniquely owned, copying it if it is
  * shared, so that a field can be set in place. */
@@ -401,6 +473,7 @@ typedef struct ey_program {
 } ey_program;
 
 int ey_start(const ey_program *p, int argc, char **argv);
+void ey_keep_global(ey_v *slot); /* a global's value, which the count of objects drops at exit */
 ey_v ey_args(const ey_type *list);
 void ey_print(int n, const ey_v *parts);
 void ey_log(const char *level, int n, const ey_v *parts);

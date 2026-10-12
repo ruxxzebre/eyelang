@@ -52,6 +52,13 @@ Recorded on 2026-10-12 (4-core Xeon, Go 1.27.2, zig 0.17.0; fastest of 5 runs, p
 | logs, 200k lines | 383 | 263 | 1.46× | 54.7 | 59.9 | 0.91× | 1,671 | 81.8 |
 | lexer, 7.5 MB of Eyelang | 1,786 | 388 | 4.61× | 478.0 | 191.8 | 2.49× | 28,247 | 1,798.8 |
 
+**After 7.14** (section 3's cheap fixes), measured before and after on another host, time × Go:
+trees 2.94× → 1.13×, strings 1.65× → 0.63×, logs 1.49× → 0.94×, maps 5.70× → 3.89×, records
+9.39× → 7.08×, fib 4.23× → 3.62×, the lexer 3.29× → 2.98× (its native time halved, 2,918 →
+1,540 ms, and its memory fell from 477 to 200 MB); 1.90× Go's time on the geometric mean. The
+table above is the review's evidence and stays as it was; the native plan's
+[Against Go](./native-plan-2026-10-12.md#against-go) has the rest.
+
 Native code takes 1.1–5.7× Go's time, 2.8× on the geometric mean, and uses less memory in six of
 nine (0.57× on the geometric mean). Four of those six win only on start-up: a static binary starts
 at 0.16 MB and a Go program at 2 MB. That floor is real and useful, since a program that mostly
