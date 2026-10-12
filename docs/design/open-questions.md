@@ -199,3 +199,15 @@ title: "Open questions"
     starting a job twice ([section 13](/reference/language/programs-and-concurrency)), but its entity calls and publishes happen again on every
     start: `pub fn main() { Ledger("x").credit(10) }` credits on each restart. Should `main` be
     held to keyed work only, or should a program's setup move to something that runs once?
+41. **Runs pinned to the code they started on.** Any change to a job or a waiting function where
+    runs are paused stops them: `eye run` refuses to start, or a replayed step faults (`the code
+    of … changed while this run was paused`), and the way out is to keep the old job under its
+    name or end the runs ([section 15](/reference/language/jobs-and-waiting)). Making the lab's `web.page` read `env.get!(…)` was such a
+    change: one more step, so a digest run stopped while fetching pages faults after the deploy.
+    Temporal's worker versioning and Restate's deployments instead finish a run on the version
+    it started on. Should the runner keep each version of a program, by the hash of its code,
+    while runs paused in it remain, and start new runs on the newest? A job that never ends, such
+    as the train watcher, would then need a safe point to move on: the top of its loop, where it
+    resumes from its variables if the statement still reads the same, or ending and starting
+    itself again with its state. What does `eye runs` show of the versions, and when is an old one
+    dropped?

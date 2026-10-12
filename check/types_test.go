@@ -303,6 +303,36 @@ job j() {
 			"7:11: double neither waits nor reaches outside the program, so it isn't a durable step: write double(…) without !",
 			"8:18: size neither waits nor reaches outside the program, so it isn't a durable step: write size(…) without !",
 		}},
+		{"outside calls in waiting functions are durable steps", `fn stamp() -> Instant = now()
+fn double(n: Int) -> Int = n * 2
+fn at(n: Int) -> Instant = stamp()
+fn fetch() -> Int uses {wait, clock, env} {
+  sleep!(1 min)
+  let a = now()
+  let b = env.get("HOME")
+  let c = stamp()
+  let d = double!(2)
+  let e = [1] |> map(at)
+  let f = now!()
+  let g = env.get!("HOME")
+  let h = [1] |> map(fn n: at!(n))
+  double(1)
+}
+job j() -> Int { fetch!() }`, []string{
+			"6:11: in a waiting function, now uses clock, so calling it is a durable step: write now!(…)",
+			"7:11: in a waiting function, env.get uses env, so calling it is a durable step: write env.get!(…)",
+			"8:11: in a waiting function, stamp uses clock, so calling it is a durable step: write stamp!(…)",
+			"9:11: double neither waits nor reaches outside the program, so it isn't a durable step: write double(…) without !",
+			"10:22: in a waiting function, at uses clock, so each call of it is a durable step, and named as a value its calls aren't recorded: pass a lambda that calls it with !",
+		}},
+		{"a task in a waiting function only computes", `fn stamp() -> Instant = now()
+fn fan() -> List(Instant) uses {wait, clock} {
+  sleep!(1 min)
+  [1, 2] |> parallelMap(fn n: stamp())
+}
+job j() -> List(Instant) { fan!() }`, []string{
+			"4:31: a task in a waiting function can only compute, and stamp uses clock: start a child run for this step instead",
+		}},
 		{"a value is a dyn Trait only if its type implements the trait", `trait Shape {
   fn area(self) -> Int
 }
@@ -1442,5 +1472,47 @@ func TestModelCallExpectedType(t *testing.T) {
 	if found == nil || found.Name != "Result" || len(found.Args) != 2 || found.Args[0].Name != "Briefing" ||
 		found.Args[0].Decl == nil || found.Args[1].Name != "AiError" {
 		t.Fatalf("ai.generate's expected type = %+v, want Result(Briefing, AiError)", found)
+	}
+}
+
+// TestContractCallInWaitingFunction checks that a contract operation is a
+// durable step in a waiting function too, and in a task it starts can't be
+// called at all: the lowerer reports one without `!` only in jobs.
+func TestContractCallInWaitingFunction(t *testing.T) {
+	dir := writeProgram(t, map[string]string{
+		"eye.toml": "",
+		"mail/mail.eye": `contract Mail {
+  command send(to: String) -> Result((), String)
+  query count(to: String) -> Int
+}
+`,
+		"main.eye": `import mail
+
+fn notify() -> List(Int) uses {wait, net} {
+  sleep!(1 min)
+  let a = mail.send("me")
+  let b = mail.send!("me")
+  ["a"] |> parallelMap(fn to: mail.count(to))
+}
+
+job j() { notify!() }
+`,
+	})
+	res := Check(dir, Options{})
+	want := []string{
+		"main.eye:5:11: in a waiting function, a call to another service is a durable step: write send!(…)",
+		"main.eye:7:31: a task in a waiting function can only compute, and count uses net Mail.count: start a child run for this step instead",
+	}
+	var got []string
+	for _, d := range res.Diagnostics {
+		got = append(got, d.String())
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	for i := range want {
+		if !strings.HasSuffix(got[i], want[i]) {
+			t.Errorf("got %q, want one ending %q", got[i], want[i])
+		}
 	}
 }

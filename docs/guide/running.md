@@ -161,7 +161,9 @@ that directory and keep secrets out of the environment. A `Secret(String)` can't
 or saved, so it can't leak into the journal or a log line.
 
 `env.get(name)` returns an `Option(String)` and has the effect `env`, so a public function that
-reads configuration says so in its signature. See [Effects](/guide/effects).
+reads configuration says so in its signature. In a job, or a function with `!` steps, the read
+is a recorded step, `env.get!(…)`: a resumed run sees the value it read before, even if the
+variable has changed since. See [Effects](/guide/effects).
 
 Settings are read when they are used, not when the program starts. A missing one stops the run that
 needed it, with a message that names the variable. From the

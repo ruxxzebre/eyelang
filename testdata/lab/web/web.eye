@@ -14,7 +14,7 @@ pub type FetchError =
 
 ## A page's HTML. VPN_PROXY_URL is the address of the VPN's HTTP proxy.
 pub fn page(url: String, via: Route = Direct) -> Result(String, FetchError) uses {wait, net, env} {
-  let proxy = env.get("VPN_PROXY_URL")
+  let proxy = env.get!("VPN_PROXY_URL")
   if via == VpnBrowser {
     let solved = flaresolverr.request!(
       cmd: "request.get",

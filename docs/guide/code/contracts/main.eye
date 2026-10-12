@@ -99,7 +99,7 @@ pub fn balanceText(c: CustomerId) -> String uses {net Payments.balance} {
 ## Whether the payment service's public status page says all is well. The
 ## page has no contract, so it is read with http.get.
 pub fn serviceUp() -> Bool uses {wait, net, env} {
-  let url = env.get("PAYMENTS_STATUS_URL") ?? "https://status.example.com"
+  let url = env.get!("PAYMENTS_STATUS_URL") ?? "https://status.example.com"
   match http.get!(url, headers: { "Accept": "text/html" }) {
     Ok(page) => looksUp(page)
     Err(_) => false

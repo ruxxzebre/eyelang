@@ -105,9 +105,13 @@ func (c *checker) checkEffects() {
 		}
 		for _, f := range c.bodiesOf(m) {
 			c.checkWaitingCalls(f, kinds[f], all)
+			if kinds[f] == kindPlain && hasSteps(f) && m.Main != f {
+				// A waiting function's steps are the job's (SPECS.md §12).
+				c.checkSteps(f, "in a waiting function", all)
+			}
 		}
 		for _, j := range m.Jobs {
-			c.checkSteps(j.Func, all)
+			c.checkSteps(j.Func, "in a job", all)
 			c.checkSave(j)
 		}
 	}
@@ -782,23 +786,24 @@ func effectsOf(g *ir.Func, all map[*ir.Func]map[string]bool) map[string]bool {
 	return set
 }
 
-// checkSteps holds a job to SPECS.md §12: every call with an outside effect
-// is a `!` step, a call that neither waits nor reaches outside isn't one, and
-// a task the job starts (parallelMap, both, race, timeout) only computes,
-// since its steps couldn't be recorded in order.
-func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
+// checkSteps holds a job or a waiting function, as where says, to SPECS.md
+// §12: every call with an outside effect is a `!` step, a call that neither
+// waits nor reaches outside isn't one, and a task it starts (parallelMap,
+// both, race, timeout) only computes, since its steps couldn't be recorded
+// in order.
+func (c *checker) checkSteps(fn *ir.Func, where string, all map[*ir.Func]map[string]bool) {
 	var visit func(e ir.Expr, waiting, task bool) bool
 	inTask := func(e ir.Expr) {
 		walk(e, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, true) })
 	}
 	visit = func(e ir.Expr, waiting, task bool) bool {
 		if w, ok := e.(*ir.Waiting); ok && task {
-			c.typeErrorf(w.Pos, "a task in a job can only compute, since its steps couldn't be recorded: start a child run for this step instead")
+			c.typeErrorf(w.Pos, "a task %s can only compute, since its steps couldn't be recorded: start a child run for this step instead", where)
 			return false
 		}
 		if r, ok := e.(*ir.Ref); ok {
 			if !c.isToolRef(r) { // a tool's calls are the model call's steps
-				c.namedStep(r, job, all, task)
+				c.namedStep(r, where, all, task)
 			}
 			return true
 		}
@@ -842,7 +847,7 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 			}
 		case *ir.Func:
 			name = d.Name
-			if d.Module != nil && d.Module != job.Module && d.Receiver == nil {
+			if d.Module != nil && d.Module != fn.Module && d.Receiver == nil {
 				// As it is written: http.get, not get.
 				name = d.Module.Name + "." + d.Name
 			}
@@ -852,26 +857,36 @@ func (c *checker) checkSteps(job *ir.Func, all map[*ir.Func]map[string]bool) {
 			} else if effect = outside(set); effect != "" {
 				step = true
 			}
+		case *ir.Op:
+			// The lowerer reports one without `!` in a job.
+			name, effect, step = d.Name, "net "+d.Contract.Name+"."+d.Name, true
+			if !waiting && !task && where != "in a job" {
+				c.typeErrorf(call.Pos, "%s, a call to another service is a durable step: write %s!(…)", where, name)
+			}
+			if !task {
+				return args()
+			}
 		default:
-			return args() // contract operations and entities are checked as they are lowered
+			return args() // entities are checked as they are type-checked
 		}
 		switch {
 		case task && step:
-			c.typeErrorf(call.Pos, "a task in a job can only compute, and %s uses %s: start a child run for this step instead", name, effect)
+			c.typeErrorf(call.Pos, "a task %s can only compute, and %s uses %s: start a child run for this step instead", where, name, effect)
 		case !waiting && step && effect != "wait":
-			c.typeErrorf(call.Pos, "in a job, %s uses %s, so calling it is a durable step: write %s!(…)", name, effect, name)
+			c.typeErrorf(call.Pos, "%s, %s uses %s, so calling it is a durable step: write %s!(…)", where, name, effect, name)
 		case waiting && !step && !misnamedWait:
 			c.typeErrorf(call.Pos, "%s neither waits nor reaches outside the program, so it isn't a durable step: write %s(…) without !", name, name)
 		}
 		return args()
 	}
-	walk(job.Body, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, false) })
+	walk(fn.Body, false, func(x ir.Expr, waiting bool) bool { return visit(x, waiting, false) })
 }
 
-// namedStep reports a function named as a value in a job when calling it
-// would be a durable step: wherever it is called, such as inside map, its
-// calls aren't recorded. A lambda that calls it with ! is.
-func (c *checker) namedStep(r *ir.Ref, job *ir.Func, all map[*ir.Func]map[string]bool, task bool) {
+// namedStep reports a function named as a value in a job or a waiting
+// function when calling it would be a durable step: wherever it is called,
+// such as inside map, its calls aren't recorded. A lambda that calls it
+// with ! is.
+func (c *checker) namedStep(r *ir.Ref, where string, all map[*ir.Func]map[string]bool, task bool) {
 	var name, effect string
 	switch d := r.Decl.(type) {
 	case *ir.Func:
@@ -890,11 +905,11 @@ func (c *checker) namedStep(r *ir.Ref, job *ir.Func, all map[*ir.Func]map[string
 		return
 	}
 	if task {
-		c.typeErrorf(r.Pos, "a task in a job can only compute, and %s uses %s: start a child run for this step instead", name, effect)
+		c.typeErrorf(r.Pos, "a task %s can only compute, and %s uses %s: start a child run for this step instead", where, name, effect)
 		return
 	}
 	text := r.Pos.Text()
-	c.typeErrorf(r.Pos, "in a job, %s uses %s, so each call of it is a durable step, and named as a value its calls aren't recorded: pass a lambda that calls it with !, as fn …: %s!(…)", text, effect, text)
+	c.typeErrorf(r.Pos, "%s, %s uses %s, so each call of it is a durable step, and named as a value its calls aren't recorded: pass a lambda that calls it with !, as fn …: %s!(…)", where, text, effect, text)
 }
 
 // walk calls visit for e and, if visit returns true, everything in it.

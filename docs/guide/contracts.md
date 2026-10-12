@@ -422,6 +422,8 @@ module reads them:
 `http.get!` returns `Result(http.Response, http.HttpError)`. Any answer is `Ok`, whatever its
 status, with the status, the headers (names in lower case) and the body as text. `Err` means there
 was no answer: `NoAnswer(reason)` or `TimedOut`. `via:` is the URL of an HTTP proxy to go through.
+`serviceUp` has `!` steps, so it runs only in a run, and every outside call in it is a step, the
+read of `PAYMENTS_STATUS_URL` included: `env.get!(…)`.
 
 Prefer a contract for any service you call more than once. `http.get` has the broad effect `net`
 rather than `net Payments.balance`, it has no keys or reconciling, and its answers have no types.
