@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -122,32 +123,94 @@ func native(t *testing.T, exe string) string {
 	return strings.Join(lines, "\n")
 }
 
-// TestTestsPassAsInterpreted builds the tests of programs as native
-// binaries for this machine and runs them: each test passes or fails as
-// under eye test, with the same messages and the same output. The core
-// language's program is ROADMAP 7.4's measure.
+// compilable checks every program in testdata/programs and cgen/testdata
+// and gives those whose C eye build generates, by directory: a program
+// joins the cross-check as soon as it compiles. The ones that must be
+// among them are listed, so that a program that stops compiling fails
+// instead of dropping out quietly.
+func compilable(t *testing.T) map[string]*ir.Program {
+	t.Helper()
+	var dirs []string
+	for _, pattern := range []string{"../testdata/programs/*", "testdata/*"} {
+		found, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range found {
+			if info, err := os.Stat(d); err == nil && info.IsDir() {
+				dirs = append(dirs, d)
+			}
+		}
+	}
+	out := map[string]*ir.Program{}
+	for _, dir := range dirs {
+		prog := load(t, dir)
+		low, errs := lir.Lower(prog)
+		if len(errs) > 0 {
+			continue
+		}
+		if _, err := Generate(prog, low, Options{Tests: true}); err != nil {
+			continue
+		}
+		out[dir] = prog
+	}
+	for _, must := range []string{
+		"../testdata/programs/core",
+		"../testdata/programs/traits",
+		"../testdata/programs/lexer",
+		"testdata/failures",
+		"testdata/hello",
+		"testdata/inplace",
+		"testdata/updates",
+	} {
+		if out[must] == nil {
+			t.Errorf("eye build no longer compiles %s", must)
+		}
+	}
+	return out
+}
+
+// TestTestsPassAsInterpreted builds the tests of every program eye build
+// compiles as native binaries for this machine, at both levels (-O0 -g, as
+// eye build -g and the debugger use, and -O2, as releases ship), and runs
+// them: each test passes or fails as under eye test, with the same messages
+// and the same output, line for line. The core language's program is ROADMAP
+// 7.4's measure; both levels are 7.8's.
 func TestTestsPassAsInterpreted(t *testing.T) {
 	needZig(t)
 	if HostTarget() == "" {
 		t.Skip("eye build doesn't target this machine")
 	}
-	for _, dir := range []string{
-		"../testdata/programs/core",
-		"../testdata/programs/traits",
-		"../testdata/programs/lexer",
-		"testdata/failures",
-		"testdata/inplace",
-	} {
-		t.Run(filepath.Base(dir), func(t *testing.T) {
-			t.Parallel()
-			prog := load(t, dir)
-			want := interpreted(prog)
-			got := native(t, build(t, prog, "", true, true))
-			if got != want {
-				t.Errorf("the native tests differ from eye test's\n--- native\n%s\n--- eye test\n%s", got, want)
-			}
-		})
+	for dir, prog := range compilable(t) {
+		want := sync.OnceValue(func() string { return interpreted(prog) })
+		name := filepath.Base(dir)
+		for _, level := range []struct {
+			name  string
+			debug bool
+		}{{"O0", true}, {"O2", false}} {
+			t.Run(name+"/"+level.name, func(t *testing.T) {
+				t.Parallel()
+				got := native(t, build(t, prog, "", true, level.debug))
+				if got != want() {
+					t.Errorf("the native tests at -%s differ from eye test's\n%s", level.name, lineDiff(got, want()))
+				}
+			})
+		}
 	}
+}
+
+// lineDiff names the first line where the native output and eye test's
+// differ, and shows both in full.
+func lineDiff(got, want string) string {
+	g, w := strings.Split(got, "\n"), strings.Split(want, "\n")
+	first := min(len(g), len(w))
+	for i := 0; i < len(g) && i < len(w); i++ {
+		if g[i] != w[i] {
+			first = i
+			break
+		}
+	}
+	return fmt.Sprintf("line %d first differs\n--- native\n%s\n--- eye test\n%s", first+1, got, want)
 }
 
 // TestMain runs a program's main: its output, and an Err from main on

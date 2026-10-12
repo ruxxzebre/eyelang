@@ -813,7 +813,7 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.5 Reference counting in the low IR: drop after last use, in place when unique | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
 | 7.6 The runner hosts compiled programs, and the digest runs natively | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
 | 7.7 Benchmarks against Go: native code faster and leaner, checked (done) | [#110](https://github.com/ruxxzebre/eyelang/issues/110) |
-| 7.8 Native code checked against the interpreter at both levels, and stale numbers fixed | [#111](https://github.com/ruxxzebre/eyelang/issues/111) |
+| 7.8 Native code checked against the interpreter at both levels, and stale numbers fixed (done) | [#111](https://github.com/ruxxzebre/eyelang/issues/111) |
 | 7.9 Core gaps in the C back end: time, toJson, saved types, random, http.get | [#112](https://github.com/ruxxzebre/eyelang/issues/112) |
 | 7.10 Count the crossings between compiled code and the runner (done) | [#113](https://github.com/ruxxzebre/eyelang/issues/113) |
 | 7.11 Native code faster than Go, and leaner without entities or jobs | [#114](https://github.com/ruxxzebre/eyelang/issues/114) |
@@ -892,11 +892,11 @@ whole-program specialisation, and jobs resuming from saved frames.
   as the interpreter prints, and `fs`, `process` and `stdio`. A variable updated by itself
   (`s += t`, `xs = xs.add(x)`, `m = m.insert(k, v)`) changes in place when it holds the only
   reference, so the interpreter's quadratic cases are linear. `cgen/cgen_test.go` builds
-  `testdata/programs/core` for all five targets and runs its 48 tests on linux/x86_64 with
-  `eye test`'s output, line for line; `traits`, failing tests and a `main` too. zig is fetched
-  and checked on first use rather than packed in the release archives. Entities, jobs, views,
-  contracts, durable steps, `with` in tests and foreign code aren't compiled; such a program
-  gets an error that says so.
+  `testdata/programs/core` for all five targets and runs its tests (48 then, 60 by 7.8) on
+  linux/x86_64 with `eye test`'s output, line for line; `traits`, failing tests and a `main` too.
+  zig is fetched and checked on first use rather than packed in the release archives. Entities,
+  jobs, views, contracts, durable steps, `with` in tests and foreign code aren't compiled; such
+  a program gets an error that says so.
 - **7.5 Reference counting in the low IR.** `Dup`, `Drop` and in-place updates become low-IR
   instructions instead of being decided while C is printed: a value is dropped after its last
   use, borrowed parameters are inferred (Lean's scheme), and an update whose operand is unique at
@@ -950,6 +950,18 @@ whole-program specialisation, and jobs resuming from saved frames.
   compilation.md and the performance review are fixed.
   **Done when:** `go test ./cgen` runs both levels on every compilable program and the counts
   balance.
+  Done on 2026-10-12: `TestTestsPassAsInterpreted` finds every program in `testdata/programs`
+  and `cgen/testdata` whose C generates (core, traits, the lexer, and cgen's failures, hello,
+  inplace and updates today; a new one joins as soon as it compiles, and the ones listed must
+  stay), builds its tests at `-O0 -g` and `-O2`, and compares each with `eye test -v` line for
+  line; the two levels and the interpreter agree on all of them. `cgen/testdata/updates` holds
+  the native plan's slow loops (an append through a helper, a map insert through a `let`, a
+  record updated from its own list), whose results its tests check on both engines;
+  `TestSlowLoops` times them natively at two sizes and records them as quadratic until 7.5
+  (size^2.1–2.5 today, against size^0.8–1.2 for an in-place append), failing when one turns
+  linear so that it is moved to the linear list. The stale numbers in 7.4, compilation.md and
+  the performance review are fixed. The allocation check (the counting allocator in debug
+  builds) landed with 7.14.
 - **7.9 Core gaps in C.** The time methods, `toJson`, the `Schema`/`Save` derivations,
   `random.*` and `http.get`, each matching the interpreter.
   **Done when:** the lab's six core-blocked functions compile and `testdata/programs/limits`

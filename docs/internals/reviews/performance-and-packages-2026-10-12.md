@@ -8,6 +8,16 @@ so repeated runs of one benchmark differed by up to about 30%. Guesses are marke
 the coordinating session concluded from it is in
 [conclusions-2026-10-12.md](./conclusions-2026-10-12.md), section 6.
 
+> **Note, added later on 2026-10-12 (ROADMAP 7.8).** This page is kept as it was written; some
+> of its numbers are out of date. The quadratic string and map cases (summary items 1 and 2, the
+> quadratic rows of section 1.1) were fixed by R.3 and R.4: 100k string appends now take about
+> 90 ms in the interpreter, and 20k updates over 10k keys about 45 ms, both linear. R.6 made the
+> interpreter's calls and records 2–3× faster, so fib(30) takes about 220–340 ms interpreted, not
+> 750 ms, and the guess of "50–200× over the interpreter" for compiled code (section 1.5) became
+> 10–80× as measured, at 1.1–5.7× Go's time. The current figures, native against Go and the
+> interpreter, are on [Benchmarks against Go](../benchmarks.md); the
+> [native plan](./native-plan-2026-10-12.md), section 2, says where they come from.
+
 ## Executive summary
 
 - **Plain computation is acceptable for now.** The interpreter is 2–9× slower than CPython on

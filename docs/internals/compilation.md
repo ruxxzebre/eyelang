@@ -72,7 +72,7 @@ produce `unknown`, mostly in `check/infer.go`, and function types in signatures 
 
 ### The interpreter
 
-[`interp/`](https://github.com/ruxxzebre/eyelang/tree/dev/interp) is about 10,700 lines of Go
+[`interp/`](https://github.com/ruxxzebre/eyelang/tree/dev/interp) is about 19,600 lines of Go
 without its tests. The parts that matter for compilation:
 
 - **Values** are Go `any`: `int64`, or `*big.Int` once an `Int` outgrows it; `string`; `*List`,
@@ -250,6 +250,7 @@ when its count is one, growing strings and lists by doubling, and copies it firs
 record's field assignment does the same through `ey_agg_own`. Measured on 2026-10-12 against the
 interpreter's quadratic cases (performance review, section 1.1): 100k string appends take 18 ms
 (18 s interpreted), 20k map updates over 10k keys 2 ms (10.8 s), 1M field updates 10 ms.
+R.3 and R.4 have since made the interpreter linear on both (about 90 ms and 45 ms).
 Precise counting (7.5) extends this to values whose last use is a call, not an assignment.
 
 **Not compiled yet.** Entities, jobs, views and contracts (the runner hosts them, 7.6),
@@ -257,9 +258,13 @@ durable `!` steps, `with` in tests, foreign code (`@library`), and the clock and
 A program that declares one gets an error that names what it declares and says `eye run` and
 `eye test` run it. `parallelMap` runs its function on one thread, in order.
 
-**Tests.** `cgen/cgen_test.go` builds `testdata/programs/core` and `traits`, a program of failing
-tests and one of in-place updates, runs them, and checks the output is `eye test`'s line for line
-(durations aside); builds core for all five targets; runs a `main`. Valgrind finds no invalid
+**Tests.** `cgen/cgen_test.go` builds the tests of every program in `testdata/programs` and
+`cgen/testdata` that `eye build` compiles (today core, traits, the lexer, a program of failing
+tests, one of in-place updates and one of slow updates), at both `-O0 -g` and `-O2`, runs them,
+and checks the output is `eye test`'s line for line (durations aside); a program joins as soon
+as it compiles. It also builds core for all five targets and runs a `main`. `cgen/updates_test.go`
+times the update loops that still copy natively (an append through a helper, a map insert through
+a `let`, a record updated from its own list) at two sizes and records them as quadratic until 7.5. Valgrind finds no invalid
 access and no leak in the core program's tests.
 
 ### Where the runtime lives
@@ -272,7 +277,7 @@ different needs.
   `stdio` primitives. The self-hosted compiler needs only this.
 - **The durable runner** is what programs with entities and jobs need: the scheduler, the
   journal, the Postgres store, the HTTP client, JSON, TLS, time zones, model calls and approvals.
-  Today it is most of `interp/`, about 6,000 of its lines, tested by every program in the
+  Today it is most of `interp/`, about 12,700 of its lines, tested by every program in the
   repository.
 
 **Recommendation:** write the core runtime in C (and later in Eyelang over `extern` functions),
