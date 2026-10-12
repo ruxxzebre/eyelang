@@ -9,3 +9,4 @@ fn admit(choice: String, user: UserId) -> Step =
   }
 
 let buttons: List(Button) = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+let order = Member.index()                  # 1

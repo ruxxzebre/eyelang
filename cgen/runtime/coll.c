@@ -631,3 +631,33 @@ ey_v eyb_seq_average(ey_v c, const ey_type *opt) {
 	ey_drop(total);
 	return ey_some(opt, ey_f2v(m));
 }
+
+/* ---------------------------------------------------------------- elements and bytes */
+
+ey_v *eyo_list_slot(const char *at, ey_v *p, ey_v i) {
+	ey_list *a = EY_LIST(*p);
+	int64_t k;
+	if (!ey_int_i64_of(i, &k) || k < 0 || k >= a->len) {
+		ey_buf b = {0};
+		ey_int_write(&b, i);
+		ey_buf_char(&b, 0);
+		ey_faultf(at, "index %s is out of range for a list of %lld", b.b, (long long)a->len);
+	}
+	if (!alone(*p)) {
+		ey_v c = ey_list_new(a->h.ty, a->len, a->items);
+		ey_drop(*p);
+		*p = c;
+		a = EY_LIST(c);
+	}
+	return &a->items[k];
+}
+
+ey_v eyb_list_to_bytes(ey_v l) {
+	ey_list *a = EY_LIST(l);
+	ey_str *s = ey_alloc(sizeof(ey_str) + (size_t)a->len + 1, &ey_t_bytes);
+	s->len = a->len;
+	s->cap = 0;
+	for (int64_t i = 0; i < a->len; i++) s->b[i] = (char)(uint8_t)a->items[i];
+	s->b[a->len] = 0;
+	return EY_V(s);
+}

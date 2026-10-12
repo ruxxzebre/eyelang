@@ -33,10 +33,37 @@ fn tally(times: List(Instant)) -> Counter {
 }
 ```
 
-- **What can change:** a `var`, a `mut` parameter, and fields of either (`c.last = …`). `+=`, `-=`,
+- **What can change:** a `var`, a `mut` parameter, and fields and elements of either
+  (`c.last = …`, `xs[i] = …`). `+=`, `-=`,
   `*=`, `/=` and `%=` combine an operation with an assignment, so `found += [text]` appends to a
   list and `out += "\n"` to a string, in place when nothing else refers to them. A `let` never
   changes.
+- **Elements.** `xs[i] = v` changes one element of a `List`, and `xs[i] += v` and the other
+  compound forms combine it with an operation, as for fields; steps chain, so
+  `points[i].x = 0`, `grid[y][x] = '#'` and `self.open[n - 1] = s` all work. The change is in
+  place when nothing else refers to the list, and a copy's otherwise, so a name that saw the list
+  before still sees it as it was. The value is computed first, then the indexes, left to right.
+
+  ```eye
+  fn histogram(data: Bytes) -> List(Int) {
+    var counts = (0..256) |> map(fn _: 0)
+    for b in data {
+      counts[b.toInt()] += 1
+    }
+    counts
+  }
+  ```
+
+  - **An index out of range is a fault**, `index 3 is out of range for a list of 3`, which ends
+    the run as `unreachable` does ([section 10](/reference/language/errors-result-only)). Reading an element gives an `Option`, since a
+    missing one is a case code handles; writing where there is no element is a bug, and doing
+    nothing would lose the write without a word. A list grows with `xs += [v]`.
+  - **`m[key] = v`** inserts the key into a `Map`, or replaces its value, and is total. It is the
+    one form for maps: the key may be missing, so `m[key] += v` and `m[key].field = v` are errors,
+    and the first says to write `m[key] = (m[key] ?? 0) + v`.
+  - `Bytes` don't change one byte at a time, since their slices share storage ([section 5](/reference/language/values-and-types)): build
+    a `List(Byte)` and make `Bytes` with `toBytes`. A slice, `xs[a..b]`, can't be assigned, and an
+    element can't be passed as `mut`: copy it into a `var`, pass that, and assign it back.
 - **Visible at the call.** A `mut` argument is written `mut x` (or `mut x.field`) and must be a
   `var` or a `mut` parameter. A `mut` parameter is always passed that way, and only a `mut`
   parameter is. A method that takes `mut self` can only be called on a `var` or a `mut` parameter.

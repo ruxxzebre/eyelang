@@ -281,7 +281,7 @@ func (c *checker) checkAttributeArg(f *ir.File, a *syntax.Node, what string, wan
 	}
 	switch want.kind {
 	case aInt:
-		n, err := strconv.ParseInt(strings.ReplaceAll(text(f, a), "_", ""), 10, 64)
+		n, err := literalInt64(text(f, a))
 		if a.Kind != syntax.Int || err != nil || n < 1 {
 			bad("a whole number above zero")
 		}
@@ -410,7 +410,7 @@ func budget(f *ir.File, d *syntax.Node) *ir.Budget {
 		b.USD, _ = strconv.ParseFloat(strings.ReplaceAll(text(f, n), "_", ""), 64)
 	}
 	if n := named["tokens"]; n != nil {
-		b.Tokens, _ = strconv.ParseInt(strings.ReplaceAll(text(f, n), "_", ""), 10, 64)
+		b.Tokens, _ = literalInt64(text(f, n))
 	}
 	return b
 }
@@ -433,11 +433,11 @@ func (c *checker) jobLimits(m *module, f *ir.File, d *syntax.Node, job *ir.Job) 
 		return -1
 	}
 	if args, named, ok := attribute(f, d, "concurrency"); ok && len(args) == 1 {
-		n, _ := strconv.Atoi(strings.ReplaceAll(text(f, args[0]), "_", ""))
+		n, _ := literalInt(text(f, args[0]))
 		job.Concurrency = &ir.Concurrency{N: n, By: param(named["by"], "concurrency")}
 	}
 	if args, named, ok := attribute(f, d, "limit"); ok && len(args) == 1 && named["per"] != nil && named["per"].Kind == syntax.Duration {
-		n, _ := strconv.Atoi(strings.ReplaceAll(text(f, args[0]), "_", ""))
+		n, _ := literalInt(text(f, args[0]))
 		per := named["per"]
 		job.Limit = &ir.RateLimit{
 			N:   n,

@@ -82,6 +82,40 @@ test "an interpolation ends at the } that closes no record" {
   ])
 }
 
+test "hexadecimal and binary integers" {
+  expect(kinds("0xC2 0xdf_FF 0b1010 0x 0xG 0b2 0b1_") == [
+    Int,
+    Int,
+    Int,
+    Int,
+    Ident,
+    Int,
+    Ident,
+    Int,
+    Ident,
+    Int,
+    Underscore,
+    EOF,
+  ])
+  expect(texts("0x1F.5") == ["0x1F", ".", "5", ""])
+}
+
+test "bytes that aren't UTF-8 are illegal, one at a time" {
+  # a, then 0xFF, the lead byte 0xC3 without its second byte, and 0xE0 0x80 0x80,
+  # an overlong form, each byte on its own
+  let src = toBytes([0x61, 0x20, 0xFF, 0xC3, 0x20, 0xE0, 0x80, 0x80])
+  let tokens = lex(src) |> filter(fn t: !isTrivia(t.kind))
+  expect(tokens |> map(fn t: (t.kind, t.end - t.start)) == [
+    (Ident, 1),
+    (Illegal, 1),
+    (Illegal, 1),
+    (Illegal, 1),
+    (Illegal, 1),
+    (Illegal, 1),
+    (EOF, 0),
+  ])
+}
+
 test "a multi-line string holds line breaks and quotes" {
   let src = "\"\"\"\n  say \"hi\" \{x}\n  \"\"\""
   expect(kinds(src) == [StringStart, StringText, InterpOpen, Ident, InterpClose, StringText, StringEnd, EOF])
@@ -123,4 +157,5 @@ test "the kinds are numbered as in syntax/token.go" {
   expect(all.first() == Some(EOF))
   expect(all.last() == Some(KwFalse))
   expect(all.size() == 74)  # syntax.KwFalse
+  expect(KwFalse.index() + 1 == 74 && EOF.index() + 1 == 1)
 }

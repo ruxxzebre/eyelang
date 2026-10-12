@@ -82,5 +82,9 @@ test "var and for" {
   var sum = 0
   for i in 1..=4 { sum += i }
   expect(sum == 10)
+  var basket = [250, 120, 80]
+  basket[1] = 99
+  basket[2] += 1
+  expect(basket == [250, 99, 81])
 }
 # endregion var-for

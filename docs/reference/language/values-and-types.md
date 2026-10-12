@@ -28,9 +28,9 @@ title: "Values and types"
 
   ```eye
   fn fnv1a(data: Bytes) -> UInt32 {
-    var hash: UInt32 = 2166136261
+    var hash: UInt32 = 0x811C_9DC5
     for b in data {
-      hash = hash.xor(UInt32.from(b.toInt()) ?? 0).wrappingMul(16777619)
+      hash = hash.xor(UInt32.from(b.toInt()) ?? 0).wrappingMul(0x0100_0193)
     }
     hash
   }
@@ -48,7 +48,22 @@ title: "Values and types"
   ```
 
   Any other character, such as `'é'`, is more than one byte in UTF-8, and is an error where a
-  `Byte` is expected.
+  `Byte` is expected; a string literal matches its bytes where `Bytes` are matched ([section 9](/reference/language/pattern-matching)).
+
+  `Bytes` come from a string, `s.bytes()`; from a file, `fs.readBytes(path)`, whatever it holds;
+  and from a list, `toBytes(xs)`, which takes a `List(Byte)`. Bytes that aren't text are built
+  as a list, changed with element assignment ([section 7](/reference/language/mutation)), and made `Bytes`; `b.toText()` gives
+  `Some` of their text when they are UTF-8, and `fs.writeBytes(path, b)` writes them:
+
+  ```eye
+  fn utf8FromLatin1(text: Bytes) -> Bytes {
+    var out: List(Byte) = []
+    for b in text {
+      out += if b < 0x80 then [b] else [b.shiftRight(6).or(0xC0), b.and(0x3F).or(0x80)]
+    }
+    toBytes(out)
+  }
+  ```
 - **Time:** `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`. **Memory:** `Size`.
 - **Collections:** `List(a)`, `Map(k, v)` and `Set(a)`. A `List` is a growable array. Collections
   are values: assigning or passing one never shares later changes ([section 7](/reference/language/mutation)). An update to a

@@ -13,6 +13,7 @@ entity-member-expression.eye:2:3: expected 'state', 'fn' or 'migrate', found '1'
 event-without-on.eye:2:16: expected 'on', found a string
 extern-type-lower-case.eye:1:13: expected a type name, found 'db'
 extern-type-with-value.eye:1:16: expected a line break or ';', found '='
+hex-without-digits.eye:2:11: 0x starts a hexadecimal number and needs a digit 0-9, a-f or A-F after it, as in 0xC2
 illegal-character.eye:1:9: unexpected character '$'
 import-empty-names.eye:1:11: expected a name, found '}'
 import-number-name.eye:1:11: expected a name, found '1'

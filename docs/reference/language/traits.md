@@ -40,9 +40,12 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   does a value of a program's `extern type` ([section 18](/reference/language/calling-c-and-go)). A function has no `Show`, `Save` or
   `Schema`. Printing a secret, or holding one across a `!`, is a compile error, and so is a record
   that holds one in either place.
-- **Enums list and read their variants.** A type whose variants have no fields gets two functions
-  on the type, derived as the traits are: `T.variants()`, every variant in the order declared, and
-  `T.parse(s)`, `Some` of the variant whose name is `s`, else `None`. A choice that arrives as text,
+- **Enums list, read and number their variants.** A type whose variants have no fields gets two
+  functions on the type, derived as the traits are: `T.variants()`, every variant in the order
+  declared, and `T.parse(s)`, `Some` of the variant whose name is `s`, else `None`. Each value
+  gets a method too, `v.index()`, its place in `T.variants()` counting from 0, so
+  `T.variants()[v.index()]` is `Some(v)`: a number for a table, a checksum or a foreign format,
+  as Go's `int(kind)` is. A choice that arrives as text,
   such as a pressed button, is then matched as a variant, so a misspelt name or a forgotten choice
   is a compile error:
 
@@ -57,12 +60,13 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
     }
 
   let buttons: List(Button) = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+  let order = Member.index()                  # 1
   ```
 
   `parse` takes the variant's name, which is what the derived `Show` writes, so
   `T.parse("{v}")` is `Some(v)` unless an impl of `Show` writes something else. A record, or a
-  type with a variant that has fields, has neither function: `Shape.variants()` is a compile
-  error that names the variant with fields. A method the type declares with either name is
+  type with a variant that has fields, has none of the three: `Shape.variants()` is a compile
+  error that names the variant with fields. A method the type declares with one of the names is
   called instead. Whether a choice's label should come from its `##` comment or from `Show` is
   open question 15.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.

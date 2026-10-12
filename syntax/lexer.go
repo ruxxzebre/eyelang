@@ -315,13 +315,38 @@ func (l *lexer) punctuation(c byte) Kind {
 
 // number lexes an Int, Float, Date or Time, taking the longest that matches:
 //
-//	Int    [0-9](_?[0-9])*
-//	Float  Int "." [0-9](_?[0-9])* ([eE][+-]?[0-9]+)?
+//	Int    [0-9](_?[0-9])* | 0x[0-9a-fA-F](_?[0-9a-fA-F])* | 0b[01](_?[01])*
+//	Float  [0-9](_?[0-9])* "." [0-9](_?[0-9])* ([eE][+-]?[0-9]+)?
 //	Date   [0-9]{4} "-" [0-9]{2} "-" [0-9]{2}
 //	Time   [0-9]{2} ":" [0-9]{2} (":" [0-9]{2})?
 func (l *lexer) number() {
 	start := l.pos
 	src := l.src
+
+	if src[start] == '0' {
+		var digit func(byte) bool
+		switch byteAt(src, start+1) {
+		case 'x':
+			digit = isHex
+		case 'b':
+			digit = isBinary
+		}
+		if digit != nil && digit(byteAt(src, start+2)) {
+			i := start + 3
+			for {
+				if digit(byteAt(src, i)) {
+					i++
+				} else if byteAt(src, i) == '_' && digit(byteAt(src, i+1)) {
+					i += 2
+				} else {
+					break
+				}
+			}
+			l.pos = i
+			l.emit(Int, start)
+			return
+		}
+	}
 
 	if end, ok := matchDigits(src, start, 4); ok && byteAt(src, end) == '-' {
 		if end, ok := matchDigits(src, end+1, 2); ok && byteAt(src, end) == '-' {
@@ -549,9 +574,10 @@ func byteAt(src []byte, i int) byte {
 func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'
 }
-func isLower(c byte) bool { return c >= 'a' && c <= 'z' }
-func isUpper(c byte) bool { return c >= 'A' && c <= 'Z' }
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+func isLower(c byte) bool  { return c >= 'a' && c <= 'z' }
+func isUpper(c byte) bool  { return c >= 'A' && c <= 'Z' }
+func isDigit(c byte) bool  { return c >= '0' && c <= '9' }
+func isBinary(c byte) bool { return c == '0' || c == '1' }
 func isHex(c byte) bool {
 	return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }

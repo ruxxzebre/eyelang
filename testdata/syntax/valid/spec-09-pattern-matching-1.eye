@@ -13,7 +13,7 @@ fn example() {
   let (key, value) = entry
 
   match rest {                                 # rest: Bytes
-    ['-', '>', ..] => Arrow
+    ["->", ..] => Arrow
     ['0'..='9', ..] => number(rest)
     [] => End
     _ => Illegal

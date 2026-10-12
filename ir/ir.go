@@ -671,12 +671,39 @@ type Arm struct {
 }
 
 // Place is something that can be assigned: a local or the receiver (an
-// entity's state, or `self` in a `mut self` method), then field names.
+// entity's state, or `self` in a `mut self` method), then the fields and
+// elements inside it: `p.x`, `xs[i]`, `self.rows[i].name`, `m[key]`.
 type Place struct {
 	Self bool // the receiver, rather than the local in Slot
 	Slot int
-	Path []string
+	Path []Step
 	Pos  Pos
+}
+
+// Step is one step into a place: a field, `.name`, or an element, `[i]` of a
+// List or `[key]` of a Map (SPECS.md §7).
+type Step struct {
+	Field string // the field's name; "" for an element
+	Index Expr   // the element's index or key; nil for a field
+}
+
+// Fields are the steps of a path of field names.
+func Fields(names ...string) []Step {
+	steps := make([]Step, len(names))
+	for i, n := range names {
+		steps[i] = Step{Field: n}
+	}
+	return steps
+}
+
+// HasIndex reports whether a place has an element on its path.
+func (p Place) HasIndex() bool {
+	for _, s := range p.Path {
+		if s.Index != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Builtin is a function provided by the runtime.

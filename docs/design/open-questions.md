@@ -217,18 +217,9 @@ title: "Open questions"
 42. **Callbacks across a `!`.** **Decided** (see the decision log, row "Functions across a
     `!`"): a function is saved as its code and what it captured, when the checker sees both, so
     a waiting helper such as `retry` can call a callback after a `!` ([section 15](/reference/language/jobs-and-waiting)).
-43. **Byte-level code.** Eyelang's lexer written in Eyelang (S.1, `testdata/programs/lexer`)
-    reads well, and asked for five things the language lacks. Which earn syntax, and which a
-    function?
-    - Hex literals: UTF-8's byte ranges are written `194..=223`, with `0xC2..=0xDF` in a comment.
-    - Byte-string patterns: the keyword `continue` is matched as
-      `['c', 'o', 'n', 't', 'i', 'n', 'u', 'e']`; a string literal where `Bytes` are matched
-      would read better.
-    - Changing one element of a list: `xs[i] = v` is an error, so the lexer replaces its
-      innermost open string with `(xs |> take(xs.size() - 1)) + [s]`. `xs.set(i, v)`, or
-      assignment to `xs[i]` in a `var`?
-    - `Bytes` that aren't text: `Bytes` come only from `s.bytes()`, and `fs` reads text, so a
-      lexer can't be given, or tested on, bytes that aren't UTF-8. `fs.readBytes`, and
-      `Bytes.from(List(Byte))`?
-    - A variant's number: Go's `int(kind)`. An enum's place in `T.variants()` takes a
-      `Map(Kind, Int)` built at the start.
+43. **Byte-level code.** **Decided** (see the decision log, rows "Element assignment", "Hex and
+    binary literals", "String patterns over bytes", "Bytes that aren't text" and "A variant's
+    number"): Eyelang's lexer in Eyelang (S.1, `testdata/programs/lexer`) asked for five things,
+    and each is now a rule: `xs[i] = v` on a `var` or `mut` list and `m[key] = v` on a map
+    ([section 7](/reference/language/mutation)), `0xC2` and `0b1010` ([section 4](/reference/language/lexical-structure)), a string literal as a pattern over `Bytes`
+    ([section 9](/reference/language/pattern-matching)), `fs.readBytes` and `toBytes` ([section 5](/reference/language/values-and-types)), and `v.index()` ([section 11](/reference/language/traits)).

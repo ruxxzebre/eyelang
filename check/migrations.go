@@ -3,7 +3,6 @@ package check
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"eyelang/ir"
@@ -24,7 +23,7 @@ import (
 func (c *checker) entityVersions(m *module, f *ir.File, d *syntax.Node, e *ir.Entity) {
 	e.Version = 1
 	if args := attributeArgs(f, d, "version"); len(args) == 1 && args[0].Kind == syntax.Int {
-		e.Version, _ = strconv.Atoi(strings.ReplaceAll(text(f, args[0]), "_", ""))
+		e.Version, _ = literalInt(text(f, args[0]))
 	}
 	from := map[int]bool{}
 	for _, member := range d.ChildByField(syntax.FieldBody).NamedChildren() {
@@ -32,7 +31,7 @@ func (c *checker) entityVersions(m *module, f *ir.File, d *syntax.Node, e *ir.En
 			continue
 		}
 		at := pos(f, member)
-		k, _ := strconv.Atoi(text(f, member.ChildByField(syntax.FieldVersion)))
+		k, _ := literalInt(text(f, member.ChildByField(syntax.FieldVersion)))
 		switch {
 		case k < 1:
 			c.errorf(at, "versions start at 1; there is no version %d to migrate from", k)

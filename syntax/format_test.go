@@ -11,6 +11,17 @@ import (
 // separators matches the tokens formatting may add or remove.
 var separators = regexp.MustCompile(` ";"| ","`)
 
+// hexLiteral is a hexadecimal integer in an s-expression with text.
+var hexLiteral = regexp.MustCompile(`"0x[0-9a-fA-F_]+"`)
+
+// meaning is a tree's s-expression without what the formatter may change:
+// separators, trailing commas and the case of hexadecimal digits.
+func meaning(sexpr string) string {
+	return hexLiteral.ReplaceAllStringFunc(separators.ReplaceAllString(sexpr, ""), func(s string) string {
+		return `"0x` + strings.ToUpper(s[3:])
+	})
+}
+
 // formatCases returns every valid input of the conformance suite and the
 // tree-sitter corpus.
 func formatCases(t *testing.T) map[string][]byte {
@@ -47,8 +58,8 @@ func TestFormatKeepsMeaning(t *testing.T) {
 				t.Fatalf("the formatted file doesn't parse: %v\n%s", f.Diagnostics, out)
 			}
 			opts := SExprOptions{Fields: true, Tokens: true, Text: true}
-			before := separators.ReplaceAllString(Parse(src).Root.SExpr(src, opts), "")
-			after := separators.ReplaceAllString(f.Root.SExpr(out, opts), "")
+			before := meaning(Parse(src).Root.SExpr(src, opts))
+			after := meaning(f.Root.SExpr(out, opts))
 			if before != after {
 				t.Errorf("formatting changed the tree\n%s\nbefore: %s\n after: %s\n%s", out, before, after, firstDifference(before, after))
 			}
@@ -122,8 +133,8 @@ func FuzzFormat(f *testing.F) {
 		if len(f2.Diagnostics) > 0 {
 			t.Fatalf("formatted output doesn't parse: %v\ninput:\n%s\noutput:\n%s", f2.Diagnostics, src, out)
 		}
-		before := separators.ReplaceAllString(Parse([]byte(src)).Root.SExpr([]byte(src), opts), "")
-		after := separators.ReplaceAllString(f2.Root.SExpr(out, opts), "")
+		before := meaning(Parse([]byte(src)).Root.SExpr([]byte(src), opts))
+		after := meaning(f2.Root.SExpr(out, opts))
 		if before != after {
 			t.Fatalf("formatting changed the tree\ninput:\n%q\noutput:\n%q", src, out)
 		}

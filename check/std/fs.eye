@@ -31,9 +31,17 @@ impl Show for FsError {
 @host("fs.readText")
 pub extern fn readText(path: String) -> Result(String, FsError) uses {fs}
 
+## The bytes of a file, whatever they hold: for files that may not be UTF-8 text.
+@host("fs.readBytes")
+pub extern fn readBytes(path: String) -> Result(Bytes, FsError) uses {fs}
+
 ## Writes text to a file, which it creates or replaces.
 @host("fs.writeText")
 pub extern fn writeText(path: String, text: String) -> Result((), FsError) uses {fs}
+
+## Writes bytes to a file, which it creates or replaces.
+@host("fs.writeBytes")
+pub extern fn writeBytes(path: String, bytes: Bytes) -> Result((), FsError) uses {fs}
 
 ## Adds text to the end of a file, which it creates if there is none.
 @host("fs.appendText")

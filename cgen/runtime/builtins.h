@@ -91,6 +91,13 @@ ey_v eyo_list_concat(ey_v l, ey_v other);
 ey_v eyo_list_add(ey_v l, ey_v x);
 ey_v eyo_set_add(ey_v s, ey_v x);
 ey_v eyo_map_insert(ey_v m, ey_v k, ey_v v);
+/* The slot of element i of the list *p points at, for an assignment to
+ * it, `xs[i] = v` (SPECS.md §7): *p is made unique first, copied if it is
+ * shared, and an index out of range is a fault. */
+ey_v *eyo_list_slot(const char *at, ey_v *p, ey_v i);
+
+/* Bytes of a List(Byte): toBytes(list) */
+ey_v eyb_list_to_bytes(ey_v l);
 
 /* fixed-width integers */
 enum { EYF_WADD, EYF_WSUB, EYF_WMUL, EYF_AND, EYF_OR, EYF_XOR, EYF_NOT, EYF_SHL, EYF_SHR };
@@ -129,6 +136,8 @@ int64_t eyb_instant_sub(ey_v a, ey_v b);
 void ey_sandbox(bool on);
 void ey_sandbox_end(void);
 ey_v eyb_fs_read_text(ey_v p, const ey_type *res);
+ey_v eyb_fs_read_bytes(ey_v p, const ey_type *res);
+/* writes a String's or Bytes' bytes */
 ey_v eyb_fs_write_text(ey_v p, ey_v text, bool append, const ey_type *res);
 bool eyb_fs_exists(ey_v p);
 ey_v eyb_fs_list(ey_v p, const ey_type *res);

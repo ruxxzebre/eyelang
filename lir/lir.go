@@ -235,10 +235,12 @@ type (
 		Names  []string
 		Fields []*Value
 	}
-	// SetPlace writes a variable's value, or a field inside it.
+	// SetPlace writes a variable's value, or a field or an element inside
+	// it: an element of a list, which must be there, or a map's value for a
+	// key, which is inserted or replaced (SPECS.md §7).
 	SetPlace struct {
 		Var  *Value
-		Path []string
+		Path []Step
 		Src  *Value
 	}
 	// Global reads a module-level let, computed once by its instance.
@@ -278,6 +280,21 @@ func (*Update) isInstr()      {}
 func (*SetPlace) isInstr()    {}
 func (*Global) isInstr()      {}
 func (*At) isInstr()          {}
+
+// Step is one step of a SetPlace's path: a field, or the element at Index.
+type Step struct {
+	Field string // "" for an element
+	Index *Value // nil for a field
+}
+
+// FieldSteps are the steps of a path of field names.
+func FieldSteps(path []ir.Step) []Step {
+	steps := make([]Step, len(path))
+	for i, s := range path {
+		steps[i] = Step{Field: s.Field}
+	}
+	return steps
+}
 
 // Absent is the value a call passes for a parameter it leaves out.
 type Absent struct{}
@@ -480,7 +497,11 @@ func instrString(in Instr) string {
 	case *SetPlace:
 		path := x.Var.String()
 		for _, p := range x.Path {
-			path += "." + p
+			if p.Index != nil {
+				path += "[" + p.Index.String() + "]"
+				continue
+			}
+			path += "." + p.Field
 		}
 		return "set " + path + " = " + x.Src.String()
 	case *Global:

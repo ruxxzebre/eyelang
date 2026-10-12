@@ -879,7 +879,7 @@ func (x *fnCheck) infer(e ir.Expr, want typ) typ {
 		x.top.lets = append(x.top.lets, pendingLet{l: e, t: t})
 		return tUnit
 	case *ir.Assign:
-		target := x.placeType(e.Target)
+		target := x.placeType(e.Target, e.Op)
 		if e.Op == "=" {
 			x.check(e.Value, target)
 			return tUnit
@@ -1774,6 +1774,11 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			if t, ok := x.fieldCall(r, e, want); ok {
 				return t
 			}
+			if e.Name == "index" {
+				if t, ok := x.variantIndex(r, e); ok {
+					return t
+				}
+			}
 		case r.decl == nil && r.entity == nil:
 			if t, ok := x.timeMethod(r, e); ok {
 				c.useName(e, method(e.Name))
@@ -1866,6 +1871,46 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 		}
 	}
 	return c.unknownf(e.Pos, "%s has no method %s%s", show(defaultLiteral(recv)), e.Name, x.importHint(e.Name))
+}
+
+// variantIndex checks `v.index()`, the place of v's variant in
+// `T.variants()`, derived on a type whose variants have no fields (SPECS.md
+// §11). On another type it is an error, unless a function named index is in
+// scope to call instead.
+func (x *fnCheck) variantIndex(r *tcon, e *ir.MethodCall) (typ, bool) {
+	c := x.c
+	d := r.decl
+	why := ""
+	switch {
+	case d.Fields != nil || d.Alias != nil:
+		why = d.Name + " is a record"
+		if d.Alias != nil && d.Alias.Name != "record" {
+			why = d.Name + " is another name for " + d.Alias.Name
+		}
+	case len(d.Variants) == 0:
+		why = d.Name + " has no variants"
+	default:
+		for _, v := range d.Variants {
+			if len(v.Fields) > 0 {
+				why = "its variant " + v.Name + " has fields"
+				break
+			}
+		}
+	}
+	if why != "" {
+		if e.Func != nil {
+			return nil, false
+		}
+		x.inferArgs(e.Args)
+		return c.unknownf(e.Pos, "index() is derived only for a type whose variants have no fields, and %s: match the value and give each variant its number", why), true
+	}
+	if od, ok := c.opaqueTo(x.top.fn.Module, r); ok {
+		x.inferArgs(e.Args)
+		return c.unknownf(e.Pos, "%s", c.opaqueMessage(od, "variants")), true
+	}
+	c.useName(e, ir.EnumFn{Type: d, Name: "index"})
+	x.args(&tfun{ret: tInt}, e.Args, "index", e.Pos)
+	return tInt, true
 }
 
 // funcMethod checks `x.f(a)` where f is a function in scope and x's type has
@@ -2314,18 +2359,19 @@ func (x *fnCheck) index(e *ir.Index) typ {
 	return c.unknownf(e.Pos, "%s can't be indexed: xs[i] takes an element of a List or Bytes, and m[key] a value of a Map", show(defaultLiteral(coll)))
 }
 
-// placeType is the type of what an assignment changes.
-func (x *fnCheck) placeType(p ir.Place) typ {
+// placeType is the type of what an assignment changes; op is its operator,
+// "=" or a compound one such as "+=".
+func (x *fnCheck) placeType(p ir.Place, op string) typ {
 	var t typ
 	shift := 0 // names before p.Path in the target as written
 	if p.Self {
 		t = x.self
 		if x.entity != nil && len(p.Path) > 0 {
-			x.c.usePlace(p.Pos, 0, Member{Of: x.entity, Name: p.Path[0]})
+			x.c.usePlace(p.Pos, 0, Member{Of: x.entity, Name: p.Path[0].Field})
 			shift = 1
-			st, ok := x.c.stateType(x.entity, p.Path[0])
+			st, ok := x.c.stateType(x.entity, p.Path[0].Field)
 			if !ok {
-				return x.c.unknownf(p.Pos, "%s has no state %s", x.entity.Name, p.Path[0])
+				return x.c.unknownf(p.Pos, "%s has no state %s", x.entity.Name, p.Path[0].Field)
 			}
 			t = st
 			p.Path = p.Path[1:]
@@ -2336,7 +2382,12 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 	if t == nil {
 		return x.c.unknownf(p.Pos, "internal error: what this assigns to has no type")
 	}
-	for i, name := range p.Path {
+	for i, step := range p.Path {
+		if step.Index != nil {
+			t = x.elementType(t, step.Index, i == len(p.Path)-1, op, p.Pos)
+			continue
+		}
+		name := step.Field
 		if owner := x.c.memberOwner(t, name); owner != nil {
 			x.c.usePlace(p.Pos, i+shift, Member{Of: owner, Name: name})
 		}
@@ -2358,6 +2409,42 @@ func (x *fnCheck) placeType(p ir.Place) typ {
 		t = ft
 	}
 	return t
+}
+
+// elementType is the type of the element `[index]` of a value of type t on
+// the left of an assignment (SPECS.md §7): an element of a List, which must
+// be there, or a Map's value for a key, which `=` inserts or replaces.
+func (x *fnCheck) elementType(t typ, index ir.Expr, last bool, op string, at ir.Pos) typ {
+	c := x.c
+	if r, ok := defaultLiteral(t).(*tcon); ok && r.decl == nil && r.entity == nil {
+		switch r.name {
+		case "List":
+			x.check(index, tInt)
+			return r.args[0]
+		case "Map":
+			x.check(index, r.args[0])
+			switch {
+			case !last:
+				return c.unknownf(index.Position(), "a map's value can't be changed inside, since the key may be missing: read it with m[key], change the copy, and assign it back with m[key] = v")
+			case op != "=":
+				return c.unknownf(index.Position(), "a map may not hold the key, so m[key] %s v has nothing to start from: write m[key] = (m[key] ?? 0) %s v", op, strings.TrimSuffix(op, "="))
+			}
+			return r.args[1]
+		case "Bytes":
+			x.check(index, nil)
+			return c.unknownf(index.Position(), "Bytes don't change one byte at a time: build a List(Byte), assign its elements, and make Bytes with toBytes(list)")
+		}
+	}
+	x.check(index, nil)
+	switch r := defaultLiteral(t).(type) {
+	case tunknown:
+		return r
+	case *tvar:
+		if !r.rigid {
+			return c.unknownf(at, "the type of what this assigns to isn't known here, so its elements can't be found: write its type where it is declared")
+		}
+	}
+	return c.unknownf(index.Position(), "%s has no elements to assign: xs[i] = v changes an element of a List, and m[key] = v a value of a Map", show(defaultLiteral(t)))
 }
 
 func (x *fnCheck) binary(e *ir.Binary) typ {
@@ -3140,6 +3227,10 @@ func (x *fnCheck) bindPattern(p ir.Pattern, t typ, at ir.Pos) ir.Pattern {
 	case ir.PWild, ir.PEmpty:
 		return p
 	case ir.PLit:
+		if s, ok := p.Value.(string); ok && bytesLike(t) {
+			// A string where Bytes are matched is its bytes (SPECS.md §9).
+			return ir.PList{Pats: byteLits(s, p.Pos), Rest: -1}
+		}
 		p.Value = x.literalPattern(p.Value, t, written(p.Pos, at))
 		return p
 	case ir.PRange:
@@ -3176,6 +3267,9 @@ func (x *fnCheck) bindPattern(p ir.Pattern, t typ, at ir.Pos) ir.Pattern {
 			x.expect(at, t, con("List", elem))
 		default:
 			x.expect(at, t, con("List", elem))
+		}
+		if fixedName(elem) == "Byte" {
+			p = spliceStrings(p)
 		}
 		for i := range p.Pats {
 			p.Pats[i] = x.bindPattern(p.Pats[i], elem, at)

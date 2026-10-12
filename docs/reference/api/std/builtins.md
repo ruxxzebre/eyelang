@@ -711,6 +711,15 @@ fn toText(b: Bytes) -> Option(String)
 
 The text the bytes spell in UTF-8, or `None` if they aren't UTF-8.
 
+### toBytes {#toBytes}
+
+```eye
+fn toBytes(xs: List(Byte)) -> Bytes
+```
+
+The bytes of a list, in order, as `Bytes`: for bytes that aren't text, built or changed one at a
+time. `toBytes([0xC3, 0xA9]).toText()` is `Some("é")`.
+
 ### indexOf {#indexOf}
 
 ```eye

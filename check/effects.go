@@ -987,6 +987,9 @@ func walk(e ir.Expr, waiting bool, visit func(e ir.Expr, waiting bool) bool) {
 		w(e.Else)
 	case *ir.Assign:
 		w(e.Value)
+		for _, st := range e.Target.Path {
+			w(st.Index)
+		}
 	case *ir.For:
 		w(e.Iter)
 		w(e.Body)

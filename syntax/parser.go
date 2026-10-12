@@ -225,6 +225,17 @@ func (p *parser) errorExpected(what string) {
 		return
 	}
 	p.errTok = p.pos
+	if p.pos > 0 && t.Kind == Ident && t.Flags&(SpaceBefore|NewlineBefore) == 0 && p.text(p.toks[p.pos-1]) == "0" {
+		// `0xG` or `0b2`: a base with no digit of it after.
+		switch p.text(t)[0] {
+		case 'x':
+			p.errorAt(Span{p.toks[p.pos-1].Span.Start, t.Span.End}, "0x starts a hexadecimal number and needs a digit 0-9, a-f or A-F after it, as in 0xC2")
+			return
+		case 'b':
+			p.errorAt(Span{p.toks[p.pos-1].Span.Start, t.Span.End}, "0b starts a binary number and needs a digit 0 or 1 after it, as in 0b1010")
+			return
+		}
+	}
 	switch {
 	case t.Kind == EOF:
 		// Point just after the last token rather than at the end of the file.

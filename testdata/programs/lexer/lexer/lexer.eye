@@ -53,9 +53,9 @@ impl Lexer {
   ## source it closes the strings left open, and then gives `EOF` each time.
   pub fn next(mut self) -> Token = match self.strings.last() {
     Some(s) if !s.interp => self.inString(s)
-    Some(s) if self.pos >= self.src.size() => {
+    Some(_) if self.pos >= self.src.size() => {
       # The source ends in an interpolation: close it, and then its string.
-      self.replaceString({ s with interp: false })
+      self.strings[self.innermost()].interp = false
       self.missing(InterpClose)
     }
     _ if self.pos >= self.src.size() => self.take(EOF, self.pos)
@@ -135,19 +135,24 @@ impl Lexer {
 
   ## An integer, float, date or time, whichever is longest:
   ##
-  ##     integer  [0-9](_?[0-9])*
-  ##     float    integer "." [0-9](_?[0-9])* ([eE][+-]?[0-9]+)?
+  ##     integer  [0-9](_?[0-9])* | 0x[0-9a-fA-F](_?[0-9a-fA-F])* | 0b[01](_?[01])*
+  ##     float    [0-9](_?[0-9])* "." [0-9](_?[0-9])* ([eE][+-]?[0-9]+)?
   ##     date     [0-9]{4} "-" [0-9]{2} "-" [0-9]{2}
   ##     time     [0-9]{2} ":" [0-9]{2} (":" [0-9]{2})?
   fn number(mut self) -> Token {
     let src = self.src
     let start = self.pos
+    match src[start..start + 3] {
+      ["0x", c] if isHex(c) => return self.take(Int, digits(src, start + 2, isHex))
+      ["0b", c] if isBinary(c) => return self.take(Int, digits(src, start + 2, isBinary))
+      _ => ()
+    }
     if isDate(src[start..start + 10]) then return self.take(Date, start + 10)
     let time = timeLength(src[start..start + 8])
     if time > 0 then return self.take(Time, start + time)
-    let end = digits(src, start)
+    let end = digits(src, start, isDigit)
     match src[end..end + 2] {
-      ['.', '0'..='9'] => self.take(Float, exponent(src, digits(src, end + 1)))
+      ['.', '0'..='9'] => self.take(Float, exponent(src, digits(src, end + 1, isDigit)))
       _ => self.take(Int, end)
     }
   }
@@ -183,7 +188,7 @@ impl Lexer {
       ['"', '"', '"'] if s.multiline => self.endString(width: 3)
       ['"', ..] if !s.multiline => self.endString(width: 1)
       ['{', ..] => {
-        self.replaceString({ s with interp: true, depth: 0 })
+        self.strings[self.innermost()] = { s with interp: true, depth: 0 }
         self.take(InterpOpen, start + 1)
       }
       ['\\', ..] => self.escape()
@@ -214,30 +219,25 @@ impl Lexer {
   ## A `{`, which in an interpolation must be closed before the
   ## interpolation is.
   fn openBrace(mut self) -> Token {
-    match self.strings.last() {
-      Some(s) => self.replaceString({ s with depth: s.depth + 1 })
-      None => ()
-    }
+    if self.strings != [] then self.strings[self.innermost()].depth += 1
     self.take(LBrace, self.pos + 1)
   }
 
   ## A `}`, or the end of an interpolation when no `{` is open in it.
   fn closeBrace(mut self) -> Token = match self.strings.last() {
     Some(s) if s.depth == 0 => {
-      self.replaceString({ s with interp: false })
+      self.strings[self.innermost()].interp = false
       self.take(InterpClose, self.pos + 1)
     }
-    Some(s) => {
-      self.replaceString({ s with depth: s.depth - 1 })
+    Some(_) => {
+      self.strings[self.innermost()].depth -= 1
       self.take(RBrace, self.pos + 1)
     }
     None => self.take(RBrace, self.pos + 1)
   }
 
-  ## Puts s in place of the innermost string.
-  fn replaceString(mut self, s: OpenString) {
-    self.strings = (self.strings |> take(self.strings.size() - 1)) + [s]
-  }
+  ## The innermost string's place in `strings`.
+  fn innermost(self) -> Int = self.strings.size() - 1
 }
 
 ## The first position from `from` on whose byte keep rejects, or the end of src.
@@ -247,13 +247,14 @@ fn skip(src: Bytes, from: Int, keep: fn(Byte) -> Bool) -> Int {
   i
 }
 
-## Where the digits that start at from end: `[0-9](_?[0-9])*`.
-fn digits(src: Bytes, from: Int) -> Int {
+## Where the digits that start at from end, with `_` between them: for
+## decimal digits, `[0-9](_?[0-9])*`.
+fn digits(src: Bytes, from: Int, digit: fn(Byte) -> Bool) -> Int {
   var i = from + 1
   while true {
     match src[i..i + 2] {
-      ['0'..='9', ..] => i += 1
-      ['_', '0'..='9'] => i += 2
+      [c, ..] if digit(c) => i += 1
+      ['_', c] if digit(c) => i += 2
       _ => return i
     }
   }
@@ -319,27 +320,26 @@ fn textEnd(src: Bytes, from: Int, multiline: Bool) -> Int {
 ## How many bytes the UTF-8 character that the bytes start with takes, as Go's
 ## `utf8.DecodeRune` counts them: 1 for a byte that starts no character.
 fn runeSize(next: Bytes) -> Int = match next {
-  [0..=127, ..] => 1
-  # 0xC2..=0xDF, then 0x80..=0xBF
-  [194..=223, 128..=191, ..] => 2
-  # 0xE0 0xA0..=0xBF, 0xE1..=0xEC or 0xEE..=0xEF 0x80..=0xBF, 0xED 0x80..=0x9F
-  [224, 160..=191, 128..=191, ..] => 3
-  [225..=236 | 238..=239, 128..=191, 128..=191, ..] => 3
-  [237, 128..=159, 128..=191, ..] => 3
-  # 0xF0 0x90..=0xBF, 0xF1..=0xF3 0x80..=0xBF, 0xF4 0x80..=0x8F
-  [240, 144..=191, 128..=191, 128..=191, ..] => 4
-  [241..=243, 128..=191, 128..=191, 128..=191, ..] => 4
-  [244, 128..=143, 128..=191, 128..=191, ..] => 4
+  [0x00..=0x7F, ..] => 1
+  [0xC2..=0xDF, 0x80..=0xBF, ..] => 2
+  [0xE0, 0xA0..=0xBF, 0x80..=0xBF, ..] => 3
+  [0xE1..=0xEC | 0xEE..=0xEF, 0x80..=0xBF, 0x80..=0xBF, ..] => 3
+  [0xED, 0x80..=0x9F, 0x80..=0xBF, ..] => 3
+  [0xF0, 0x90..=0xBF, 0x80..=0xBF, 0x80..=0xBF, ..] => 4
+  [0xF1..=0xF3, 0x80..=0xBF, 0x80..=0xBF, 0x80..=0xBF, ..] => 4
+  [0xF4, 0x80..=0x8F, 0x80..=0xBF, 0x80..=0xBF, ..] => 4
   _ => 1
 }
 
 fn isSpace(c: Byte) -> Bool = match c {
-  # \u{b} and \u{c} are the vertical tab and the form feed
-  ' ' | '\t' | '\n' | '\r' | '\u{b}' | '\u{c}' => true
+  # 0x0B and 0x0C are the vertical tab and the form feed
+  ' ' | '\t' | '\n' | '\r' | 0x0B | 0x0C => true
   _ => false
 }
 
 fn isDigit(c: Byte) -> Bool = c >= '0' && c <= '9'
+
+fn isBinary(c: Byte) -> Bool = c == '0' || c == '1'
 
 fn isHex(c: Byte) -> Bool = match c {
   '0'..='9' | 'a'..='f' | 'A'..='F' => true

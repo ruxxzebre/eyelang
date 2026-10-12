@@ -193,6 +193,11 @@ Words this document uses in one sense, and names that mean different things in d
 | Calls without a contract | **`http.get` and `ai.generate` try a service that can't be reached again for about a minute, as a contract's query does, and then return `Err`** with the reason in words, instead of ending the run as `Unavailable`: their results already say how they fail. `ai.generate` also tries again on 429 and 5xx answers. A request that reached the service and had no answer isn't sent again (sections 17 and 19). Decided 2026-10-12 | Network rules in a new pod take effect seconds after it starts, and the digest's 07:40 run, missed while the pod was down, runs right then: contract calls waited for the network, and these two failed at once. They declare their failures, so a program that reads pages can report one it couldn't read and go on. Sending again only what never arrived keeps a slow page from holding a run for minutes, and a model call from being paid twice. From the lab, 2026-10-12 |
 | One retry rule | **The runtime tries again only where the program didn't ask to see the failure**: an operation that declares `http.HttpError` gets it at once; one that declares no failures, and `http.get` and `ai.generate`, whose results always declare theirs, try again for about a minute what never reached the service (section 17). Making declared-failure operations retry too was weighed and left: it would hide a minute inside each try of a program's own wait, and take away the only way to see a failure at once. Decided 2026-10-12 | The owner asked for one rule. The digest polls Miniflux's `me`, declared `Result(User, http.HttpError)`, every minute for up to six hours; that program chose its wait, and the built-ins' callers never could. From the lab, 2026-10-12 |
 | Waiting runs leave RAM | **A run's record is in memory only while the run is ready.** A run that waits or has ended keeps a handle in memory (its number, job, when it wakes, what wakes it, where it resumes); the journal and the Postgres store keep its record on disk and read it back when the run wakes or something asks for it, and opening a store reads no waiting run's record (section 15). Decided 2026-10-12 | Waiting that costs no memory is a pillar, and the records were what it cost: 20,000 runs sleeping for a day took 32 MB with their records in memory, and take 7 MB with their handles. A waiting run needs nothing of its record until it wakes; what the runner asks of it before then, when it wakes and what wakes it, fits in the handle |
+| Element assignment | **`xs[i] = v` and `xs[i] += v` change an element of a `List` in a `var` or a `mut` parameter, and `m[key] = v` inserts or replaces a `Map`'s value; an index out of range is a fault** (section 7). Accepted by the owner on 2026-10-12 | Changing one element was a rebuild, linear where every other language is constant, and the lexer's string stack paid it on every brace. It is local, visible mutation, as `p.x = v` is for records, and in place when the list is unique, so no pillar moves. Reading stays an `Option`, since a missing element is a case code handles; writing where there is no element is a bug, like a negative shift, and a fault says so where a quiet no-op would lose the write. A map has no such edge: `=` is total there, and `m[key] += v`, which would need the missing key's value, is an error that names `m[key] = (m[key] ?? 0) + v`. From the benchmark review ([docs/internals/reviews/benchmarks-review-2026-10-12.md](docs/internals/reviews/benchmarks-review-2026-10-12.md), section 4) |
+| Hex and binary literals | **`0xC2` and `0b1010`, with `_` between digits, are integer literals of any integer type**; the prefix is lower case, and `eye fmt` keeps the base and writes hex digits upper case (section 4). Accepted by the owner on 2026-10-12 | The notation is universal, and byte-level code is unreadable in decimal: UTF-8's ranges were `194..=223` with `0xC2..=0xDF` in a comment. Keeping the base the author chose keeps a mask a mask; one case for the digits is the formatter's one style. A leading `0` stays decimal, so `007` is 7, not octal |
+| String patterns over bytes | **Where `Bytes` or a `List(Byte)` are matched, a string literal is its bytes in UTF-8**: alone it matches exactly them, and as an element of a list pattern it stands for them in a row, so `["..=", ..]` is a prefix (section 9). Accepted by the owner on 2026-10-12 | A typing rule on syntax that exists, as a character literal is already a `Byte` where one is expected: `"continue"` instead of eight character literals, and no new prefix syntax. Exhaustiveness sees the list patterns they are |
+| Bytes that aren't text | **`fs.readBytes` and `fs.writeBytes` read and write a file's bytes, and `toBytes(xs)` makes `Bytes` of a `List(Byte)`** (sections 5 and 12). Accepted by the owner on 2026-10-12 | `Bytes` came only from a string, so a lexer couldn't be given, or tested on, a file that isn't UTF-8. `toBytes` is named as `toSet`, `toList` and `toText` are; with element assignment on a `List(Byte)` it is how bytes are built one at a time, while `Bytes` themselves stay unchanged values whose slices share storage |
+| A variant's number | **`v.index()`, derived on a type whose variants have no fields, is the variant's place in `T.variants()`, counting from 0** (section 11). Accepted by the owner on 2026-10-12 | Go's `int(kind)`: a table, a checksum or a foreign format numbers a choice, and building a `Map(Kind, Int)` at the start to find out was ceremony. A derived method, like `variants` and `parse`, not syntax; `index` is the word the library already uses for a place (`indexOf`, `xs[i]`), and a type's own `index` method is called instead |
 
 ## 3. A tour
 
@@ -295,7 +300,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 
   | Kind | Examples |
   |---|---|
-  | Int (arbitrary precision) | `0`, `42`, `1_000_000` |
+  | Int (arbitrary precision) | `0`, `42`, `1_000_000`, `0xC2`, `0b1010_0101` |
   | Float (64-bit IEEE) | `1.5`, `0.25`, `6.02e23` |
   | String, with interpolation | `"hello"`, `"ireland-{day}"`, `"\{literal brace}"` |
   | Bool | `true`, `false` |
@@ -313,6 +318,13 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time. The zone
   after `in` is a zone's name, or a name for a `Zone` value: `dublin` after
   `pub let dublin: Zone = "Europe/Dublin"`.
+
+  An integer may be written in hexadecimal after `0x` (`0xC2`, `0xFFFF_FFFF`) or in binary after
+  `0b` (`0b1010_0101`), with `_` between digits as in decimal, and is an `Int`, or any
+  fixed-width type where one is expected: `let lead: Byte = 0xC2`. The prefix is lower case; hex
+  digits may be either, and `eye fmt` writes them upper case, keeping the base the author wrote,
+  so a byte range stays `0xC2..=0xDF` and a mask stays binary. A leading `0` doesn't make a
+  number octal: `007` is 7. `0x` with no hex digit after it is an error that says so.
 - **Characters:** `'a'` is a `Char`, one Unicode scalar value, with the escapes of strings plus
   `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`
   (section 5).
@@ -349,8 +361,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 - **Attributes:** `@name` or `@name(args)` before a declaration or member.
 - **One style.** `eye fmt` keeps the line breaks you chose and fixes everything else: two spaces
   of indentation, spacing around operators and after commas and colons, `;` turned into line
-  breaks, trailing commas in lists that end on their own line, and aligned trailing comments. It
-  has no options. Formatting a program's directory also writes public functions' `uses` clauses
+  breaks, trailing commas in lists that end on their own line, aligned trailing comments, and
+  hex digits in upper case (`0xc2` is written `0xC2`). It has no options. Formatting a program's directory also writes public functions' `uses` clauses
   (section 12).
 - **Newlines end statements.** A line break ends a statement, declaration, member or match arm
   wherever one could end. It doesn't when the next line (ignoring blank and comment lines) starts
@@ -404,9 +416,9 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 
   ```eye
   fn fnv1a(data: Bytes) -> UInt32 {
-    var hash: UInt32 = 2166136261
+    var hash: UInt32 = 0x811C_9DC5
     for b in data {
-      hash = hash.xor(UInt32.from(b.toInt()) ?? 0).wrappingMul(16777619)
+      hash = hash.xor(UInt32.from(b.toInt()) ?? 0).wrappingMul(0x0100_0193)
     }
     hash
   }
@@ -424,7 +436,22 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   ```
 
   Any other character, such as `'é'`, is more than one byte in UTF-8, and is an error where a
-  `Byte` is expected.
+  `Byte` is expected; a string literal matches its bytes where `Bytes` are matched (section 9).
+
+  `Bytes` come from a string, `s.bytes()`; from a file, `fs.readBytes(path)`, whatever it holds;
+  and from a list, `toBytes(xs)`, which takes a `List(Byte)`. Bytes that aren't text are built
+  as a list, changed with element assignment (section 7), and made `Bytes`; `b.toText()` gives
+  `Some` of their text when they are UTF-8, and `fs.writeBytes(path, b)` writes them:
+
+  ```eye
+  fn utf8FromLatin1(text: Bytes) -> Bytes {
+    var out: List(Byte) = []
+    for b in text {
+      out += if b < 0x80 then [b] else [b.shiftRight(6).or(0xC0), b.and(0x3F).or(0x80)]
+    }
+    toBytes(out)
+  }
+  ```
 - **Time:** `Instant`, `Date`, `Time`, `Duration`, `Zone`, `Schedule`. **Memory:** `Size`.
 - **Collections:** `List(a)`, `Map(k, v)` and `Set(a)`. A `List` is a growable array. Collections
   are values: assigning or passing one never shares later changes (section 7). An update to a
@@ -637,10 +664,37 @@ fn tally(times: List(Instant)) -> Counter {
 }
 ```
 
-- **What can change:** a `var`, a `mut` parameter, and fields of either (`c.last = …`). `+=`, `-=`,
+- **What can change:** a `var`, a `mut` parameter, and fields and elements of either
+  (`c.last = …`, `xs[i] = …`). `+=`, `-=`,
   `*=`, `/=` and `%=` combine an operation with an assignment, so `found += [text]` appends to a
   list and `out += "\n"` to a string, in place when nothing else refers to them. A `let` never
   changes.
+- **Elements.** `xs[i] = v` changes one element of a `List`, and `xs[i] += v` and the other
+  compound forms combine it with an operation, as for fields; steps chain, so
+  `points[i].x = 0`, `grid[y][x] = '#'` and `self.open[n - 1] = s` all work. The change is in
+  place when nothing else refers to the list, and a copy's otherwise, so a name that saw the list
+  before still sees it as it was. The value is computed first, then the indexes, left to right.
+
+  ```eye
+  fn histogram(data: Bytes) -> List(Int) {
+    var counts = (0..256) |> map(fn _: 0)
+    for b in data {
+      counts[b.toInt()] += 1
+    }
+    counts
+  }
+  ```
+
+  - **An index out of range is a fault**, `index 3 is out of range for a list of 3`, which ends
+    the run as `unreachable` does (section 10). Reading an element gives an `Option`, since a
+    missing one is a case code handles; writing where there is no element is a bug, and doing
+    nothing would lose the write without a word. A list grows with `xs += [v]`.
+  - **`m[key] = v`** inserts the key into a `Map`, or replaces its value, and is total. It is the
+    one form for maps: the key may be missing, so `m[key] += v` and `m[key].field = v` are errors,
+    and the first says to write `m[key] = (m[key] ?? 0) + v`.
+  - `Bytes` don't change one byte at a time, since their slices share storage (section 5): build
+    a `List(Byte)` and make `Bytes` with `toBytes`. A slice, `xs[a..b]`, can't be assigned, and an
+    element can't be passed as `mut`: copy it into a `var`, pass that, and assign it back.
 - **Visible at the call.** A `mut` argument is written `mut x` (or `mut x.field`) and must be a
   `var` or a `mut` parameter. A `mut` parameter is always passed that way, and only a `mut`
   parameter is. A method that takes `mut self` can only be called on a `var` or a `mut` parameter.
@@ -799,7 +853,7 @@ let [first, ..rest] = items else { return }
 let (key, value) = entry
 
 match rest {                                 # rest: Bytes
-  ['-', '>', ..] => Arrow
+  ["->", ..] => Arrow
   ['0'..='9', ..] => number(rest)
   [] => End
   _ => Illegal
@@ -818,8 +872,24 @@ module needs no module prefix in a pattern, even when another module has a varia
 be written alone too, `fn t() = Blocked`, when no other imported module has one of that name, or
 when the type expected where it is written says which (section 13).
 
+**A string literal matches bytes.** Where `Bytes` or a `List(Byte)` are matched, a string literal
+stands for the bytes of its text in UTF-8: alone it matches exactly those bytes, and as an element
+of a list pattern it matches them in a row, so `"->"` above is `'-', '>'`. With `..` it matches a
+prefix, and `..rest` binds what follows:
+
+```eye
+type Word = Keyword | Number | Other
+
+fn word(src: Bytes) -> Word = match src {
+  "let" | "var" | "continue" => Keyword
+  ["0x", _, ..] | ["0b", _, ..] => Number
+  _ => Other
+}
+```
+
 Every `match` must be exhaustive. Adding a variant to a type makes each `match` that doesn't handle
-it a compile error, which is how a new outcome from another service reaches every caller.
+it a compile error, which is how a new outcome from another service reaches every caller. A string
+pattern over bytes counts as the list pattern it is.
 
 ## 10. Errors: Result only
 
@@ -883,7 +953,9 @@ it a compile error, which is how a new outcome from another service reaches ever
   and `parseInt(s)` returns `Result`.
 - **`unreachable("why")`** is the one way for code to stop itself. It ends the program, or the
   job's run, as a fault: `Failed(Unreachable("why"))`. It is for states the code has already ruled
-  out, such as an index a loop just checked, never for failures that can happen.
+  out, such as an index a loop just checked, never for failures that can happen. The two
+  operations whose misuse can only be a bug stop the same way: assigning an element out of range
+  (section 7) and shifting by a negative count (section 5).
 - **Arithmetic is total.** `Int` has arbitrary precision, so it can't overflow. Small values stay
   unboxed at run time. `/` and `%` take a `NonZero(Int)` divisor. Literals other than `0` qualify
   automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows
@@ -953,9 +1025,12 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
   does a value of a program's `extern type` (section 18). A function has no `Show`, `Save` or
   `Schema`. Printing a secret, or holding one across a `!`, is a compile error, and so is a record
   that holds one in either place.
-- **Enums list and read their variants.** A type whose variants have no fields gets two functions
-  on the type, derived as the traits are: `T.variants()`, every variant in the order declared, and
-  `T.parse(s)`, `Some` of the variant whose name is `s`, else `None`. A choice that arrives as text,
+- **Enums list, read and number their variants.** A type whose variants have no fields gets two
+  functions on the type, derived as the traits are: `T.variants()`, every variant in the order
+  declared, and `T.parse(s)`, `Some` of the variant whose name is `s`, else `None`. Each value
+  gets a method too, `v.index()`, its place in `T.variants()` counting from 0, so
+  `T.variants()[v.index()]` is `Some(v)`: a number for a table, a checksum or a foreign format,
+  as Go's `int(kind)` is. A choice that arrives as text,
   such as a pressed button, is then matched as a variant, so a misspelt name or a forgotten choice
   is a compile error:
 
@@ -970,12 +1045,13 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
     }
 
   let buttons: List(Button) = Admission.variants() |> map(fn a: { id: "{a}", label: "{a}" })
+  let order = Member.index()                  # 1
   ```
 
   `parse` takes the variant's name, which is what the derived `Show` writes, so
   `T.parse("{v}")` is `Some(v)` unless an impl of `Show` writes something else. A record, or a
-  type with a variant that has fields, has neither function: `Shape.variants()` is a compile
-  error that names the variant with fields. A method the type declares with either name is
+  type with a variant that has fields, has none of the three: `Shape.variants()` is a compile
+  error that names the variant with fields. A method the type declares with one of the names is
   called instead. Whether a choice's label should come from its `##` comment or from `Show` is
   open question 15.
 - Trait calls are resolved at compile time where the type is known, so they cost nothing extra.
@@ -1190,8 +1266,9 @@ pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
 - `main` returns `()` or `Result((), e)`. An `Err` is printed with `Show`, and the program exits
   with status 1.
 - **Files, programs and random numbers** come from the standard modules `fs`, `process` and
-  `random`, each with the effect of its name. `fs.readText`, `writeText`, `appendText`, `list`,
-  `makeDir` and `remove` return a `Result` whose error is an `FsError` (`NotFound(path)`,
+  `random`, each with the effect of its name. `fs.readText`, `writeText`, `appendText`,
+  `readBytes`, `writeBytes`, `list`, `makeDir` and `remove` return a `Result` whose error is an
+  `FsError` (`NotFound(path)`,
   `NotAllowed(path)`, …), and `fs.exists` a `Bool`. `process.run("git", args: ["pull"], input:
   "", dir: None)` runs a program without a shell and gives `Ok` with its exit status and output
   for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,
@@ -2755,7 +2832,7 @@ stmt       = let | "var" ident [ ":" type ] "=" expr | place assign expr
            | "for" pattern "in" expr block | "while" expr block
            | "with" expr | "return" [ expr ] | "break" | "continue" | expr ;
 let        = "let" pattern [ ":" typeexpr ] "=" expr [ "else" block ] ;
-place      = ident { "." ident } ;
+place      = ident { "." ident | "[" expr "]" } ;
 assign     = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 
 expr       = lambda | binary ;                              (* precedence table below *)
@@ -2777,6 +2854,7 @@ field      = ident ":" expr | ident ;
 key        = string | int | date | time | "(" expr ")" ;
 arm        = pattern [ "if" expr ] "=>" ( block | branch ) ;  (* "{" name ":"|","|"with" is a record *)
 branch     = expr | place assign expr ;
+int        = digit { [ "_" ] digit } | "0x" hex { [ "_" ] hex } | "0b" bit { [ "_" ] bit } ;
 literal    = int | float | char | string | "true" | "false" | "()" | number unit
            | date | time | date time "in" zone | time "in" zone ;
 zone       = string | ident ;
@@ -3032,18 +3110,9 @@ operator. All binary operators associate to the left except `??`, which associat
 42. **Callbacks across a `!`.** **Decided** (see the decision log, row "Functions across a
     `!`"): a function is saved as its code and what it captured, when the checker sees both, so
     a waiting helper such as `retry` can call a callback after a `!` (section 15).
-43. **Byte-level code.** Eyelang's lexer written in Eyelang (S.1, `testdata/programs/lexer`)
-    reads well, and asked for five things the language lacks. Which earn syntax, and which a
-    function?
-    - Hex literals: UTF-8's byte ranges are written `194..=223`, with `0xC2..=0xDF` in a comment.
-    - Byte-string patterns: the keyword `continue` is matched as
-      `['c', 'o', 'n', 't', 'i', 'n', 'u', 'e']`; a string literal where `Bytes` are matched
-      would read better.
-    - Changing one element of a list: `xs[i] = v` is an error, so the lexer replaces its
-      innermost open string with `(xs |> take(xs.size() - 1)) + [s]`. `xs.set(i, v)`, or
-      assignment to `xs[i]` in a `var`?
-    - `Bytes` that aren't text: `Bytes` come only from `s.bytes()`, and `fs` reads text, so a
-      lexer can't be given, or tested on, bytes that aren't UTF-8. `fs.readBytes`, and
-      `Bytes.from(List(Byte))`?
-    - A variant's number: Go's `int(kind)`. An enum's place in `T.variants()` takes a
-      `Map(Kind, Int)` built at the start.
+43. **Byte-level code.** **Decided** (see the decision log, rows "Element assignment", "Hex and
+    binary literals", "String patterns over bytes", "Bytes that aren't text" and "A variant's
+    number"): Eyelang's lexer in Eyelang (S.1, `testdata/programs/lexer`) asked for five things,
+    and each is now a rule: `xs[i] = v` on a `var` or `mut` list and `m[key] = v` on a map
+    (section 7), `0xC2` and `0b1010` (section 4), a string literal as a pattern over `Bytes`
+    (section 9), `fs.readBytes` and `toBytes` (section 5), and `v.index()` (section 11).

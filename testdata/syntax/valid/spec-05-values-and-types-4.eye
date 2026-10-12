@@ -1,7 +1,4 @@
 # SPECS.md section 5, example 4.
-let rows: List(Row) = users |> map(fn u: { name: u.name, age: u.age })   # each a Row
-
-fn adults(users: List(User)) -> List(Row) =
-  users |> map(fn u: { name: u.name, age: u.age }) |> filter(fn r: r.age >= 18)   # r is a Row
-
-let names = users |> map(fn u: { name: u.name }) |> map(fn r: r.name)   # error: which record type?
+fn make() -> User = { name: "Ann", age: 3 }    # a User: the return type says so
+let u: User = { name: "Bo", age: 4 }
+let x = { name: "Cy", age: 5 }                 # error: which record type? write `let x: User = …`

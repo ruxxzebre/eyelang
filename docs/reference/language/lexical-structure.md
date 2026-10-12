@@ -29,7 +29,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 
   | Kind | Examples |
   |---|---|
-  | Int (arbitrary precision) | `0`, `42`, `1_000_000` |
+  | Int (arbitrary precision) | `0`, `42`, `1_000_000`, `0xC2`, `0b1010_0101` |
   | Float (64-bit IEEE) | `1.5`, `0.25`, `6.02e23` |
   | String, with interpolation | `"hello"`, `"ireland-{day}"`, `"\{literal brace}"` |
   | Bool | `true`, `false` |
@@ -47,6 +47,13 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   `2026 - 10 - 10` is still subtraction. Times are two digits each: `7:40` is not a time. The zone
   after `in` is a zone's name, or a name for a `Zone` value: `dublin` after
   `pub let dublin: Zone = "Europe/Dublin"`.
+
+  An integer may be written in hexadecimal after `0x` (`0xC2`, `0xFFFF_FFFF`) or in binary after
+  `0b` (`0b1010_0101`), with `_` between digits as in decimal, and is an `Int`, or any
+  fixed-width type where one is expected: `let lead: Byte = 0xC2`. The prefix is lower case; hex
+  digits may be either, and `eye fmt` writes them upper case, keeping the base the author wrote,
+  so a byte range stays `0xC2..=0xDF` and a mask stays binary. A leading `0` doesn't make a
+  number octal: `007` is 7. `0x` with no hex digit after it is an error that says so.
 - **Characters:** `'a'` is a `Char`, one Unicode scalar value, with the escapes of strings plus
   `\'`. Where a `Byte` is expected, an ASCII character literal is a `Byte`: `src[i] == Some('"')`
   ([section 5](/reference/language/values-and-types)).
@@ -83,8 +90,8 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
 - **Attributes:** `@name` or `@name(args)` before a declaration or member.
 - **One style.** `eye fmt` keeps the line breaks you chose and fixes everything else: two spaces
   of indentation, spacing around operators and after commas and colons, `;` turned into line
-  breaks, trailing commas in lists that end on their own line, and aligned trailing comments. It
-  has no options. Formatting a program's directory also writes public functions' `uses` clauses
+  breaks, trailing commas in lists that end on their own line, aligned trailing comments, and
+  hex digits in upper case (`0xc2` is written `0xC2`). It has no options. Formatting a program's directory also writes public functions' `uses` clauses
   ([section 12](/reference/language/effects-and-signatures)).
 - **Newlines end statements.** A line break ends a statement, declaration, member or match arm
   wherever one could end. It doesn't when the next line (ignoring blank and comment lines) starts

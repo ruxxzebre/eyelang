@@ -23,6 +23,10 @@ import (
 
 func init() {
 	hostFuncs["fs.readText"] = hostReadText
+	hostFuncs["fs.readBytes"] = hostReadBytes
+	hostFuncs["fs.writeBytes"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
+		return in.fsWrite(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, at)
+	}
 	hostFuncs["fs.writeText"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
 		return in.fsWrite(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, at)
 	}
@@ -126,6 +130,17 @@ func (in *Interp) fsResult(path string, err error, ok Value, at ir.Pos) Value {
 	return in.ok(ok)
 }
 
+func hostReadBytes(in *Interp, p map[string]Value, at ir.Pos) Value {
+	path := show(p["path"])
+	var data []byte
+	var err error
+	in.blocking(func(context.Context) { data, err = os.ReadFile(in.path(p["path"], at)) })
+	if err != nil {
+		return in.errV(in.fsError(path, err, at))
+	}
+	return in.ok(bytesValue(data))
+}
+
 func hostReadText(in *Interp, p map[string]Value, at ir.Pos) Value {
 	path := show(p["path"])
 	var data []byte
@@ -143,6 +158,9 @@ func hostReadText(in *Interp, p map[string]Value, at ir.Pos) Value {
 func (in *Interp) fsWrite(p map[string]Value, flags int, at ir.Pos) Value {
 	path := show(p["path"])
 	text, _ := p["text"].(string)
+	if b, ok := p["bytes"]; ok {
+		text = string(in.byteSlice(b, at))
+	}
 	var err error
 	in.blocking(func(context.Context) {
 		var f *os.File

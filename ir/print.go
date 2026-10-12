@@ -163,6 +163,12 @@ func (p *printer) expr(depth int, e Expr) {
 		}
 	case *Assign:
 		p.node(depth, e, "assign "+placeString(e.Target)+" "+e.Op+implString(e.Impl))
+		for _, st := range e.Target.Path {
+			if st.Index != nil {
+				p.line(d, "index")
+				p.expr(d+1, st.Index)
+			}
+		}
 		p.expr(d, e.Value)
 	case *For:
 		p.node(depth, e, "for "+PatternString(e.Pattern))
@@ -327,7 +333,11 @@ func placeString(p Place) string {
 		s = "self"
 	}
 	for _, f := range p.Path {
-		s += "." + f
+		if f.Index != nil {
+			s += "[…]"
+			continue
+		}
+		s += "." + f.Field
 	}
 	return s
 }

@@ -73,6 +73,10 @@ func stringBuiltins(add func(string, builtinFunc)) {
 		}
 		return in.some(string(b))
 	})
+	add("toBytes", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 1, "toBytes", at)
+		return &List{Elems: in.elems(args[0], at)}
+	})
 	add("code", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "code", at)
 		c, ok := args[0].(rune)

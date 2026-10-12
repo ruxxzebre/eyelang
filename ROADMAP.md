@@ -531,7 +531,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.17 `?` on an `Option` outside a function that returns an `Option` is an error (done) | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |
 | G.18 `eye doc` never deletes a folder it didn't write (done) | [#108](https://github.com/ruxxzebre/eyelang/issues/108) |
 | G.19 A test can read a run's result; `run.join()` doesn't fail at run time after checking (done) | [#109](https://github.com/ruxxzebre/eyelang/issues/109) |
-| G.20 Byte-level code: element assignment, hex literals, string patterns over `Bytes`, `fs.readBytes`, a variant's number | [#119](https://github.com/ruxxzebre/eyelang/issues/119) |
+| G.20 Byte-level code: element assignment, hex literals, string patterns over `Bytes`, `fs.readBytes`, a variant's number (done) | [#119](https://github.com/ruxxzebre/eyelang/issues/119) |
 
 G.7 to G.16 come from the spec review of 2026-10-12, and G.18 and G.19 from the ergonomics
 analysis of the same day (docs/internals/reviews). Each issue says

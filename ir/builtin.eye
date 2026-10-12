@@ -465,6 +465,10 @@ pub extern fn bytes(s: String) -> Bytes
 ## The text the bytes spell in UTF-8, or `None` if they aren't UTF-8.
 pub extern fn toText(b: Bytes) -> Option(String)
 
+## The bytes of a list, in order, as `Bytes`: for bytes that aren't text, built or changed one at a
+## time. `toBytes([0xC3, 0xA9]).toText()` is `Some("é")`.
+pub extern fn toBytes(xs: List(Byte)) -> Bytes
+
 ## Where the first part at or after from starts, or `None` if there is none. Without from, it
 ## looks from the start.
 pub extern fn indexOf(s: String, part: String, from: Offset = start) -> Option(Offset)

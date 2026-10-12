@@ -53,6 +53,9 @@ job sleepWhenIdle(w: Ref(World)) -> Result((), SleepError) {
 #         ^^^^^ constant.numeric.integer.eyelang
 #                 ^^^^^ constant.numeric.float.eyelang
 #                          ^^^ keyword.operator.range.eyelang
+  let bits = 0xC2_DF + 0b1010
+#            ^^^^^^^ constant.numeric.integer.hexadecimal.eyelang
+#                      ^^^^^^ constant.numeric.integer.binary.eyelang
   let at = 2026-10-10 07:40 in "Europe/Dublin"
 #          ^^^^^^^^^^ constant.numeric.date.eyelang
 #                     ^^^^^ constant.numeric.time.eyelang

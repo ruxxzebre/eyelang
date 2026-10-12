@@ -201,6 +201,11 @@ func children(e ir.Expr) (kids []ir.Expr, known bool) {
 		kids = append(kids, x.Value, x.Else)
 	case *ir.Assign:
 		kids = append(kids, x.Value)
+		for _, st := range x.Target.Path {
+			if st.Index != nil {
+				kids = append(kids, st.Index)
+			}
+		}
 	case *ir.Return:
 		kids = append(kids, x.Value)
 	case *ir.Record:

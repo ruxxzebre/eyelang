@@ -648,7 +648,7 @@ func (x *fnb) mutArg(a ir.Arg) *Value {
 	v := x.readPlace(a.Place)
 	tmp := x.value("", v.Ty)
 	x.emit(&Move{Dst: tmp, Src: v})
-	x.after = append(x.after, &SetPlace{Var: x.placeRoot(a.Place, nil), Path: a.Place.Path, Src: tmp})
+	x.after = append(x.after, &SetPlace{Var: x.placeRoot(a.Place, nil), Path: FieldSteps(a.Place.Path), Src: tmp})
 	return tmp
 }
 
@@ -763,6 +763,12 @@ func (x *fnb) methodCall(e *ir.MethodCall) *Value {
 		return v
 	case *ir.Func:
 		return x.methodFunc(e, target, t, durable)
+	case ir.EnumFn:
+		// v.index(), the variant's place in T.variants() (SPECS.md §11).
+		recv := x.expr(e.Recv)
+		v := x.value("", t)
+		x.emit(&Derived{Dst: v, Method: target.Name, Args: []*Value{recv}})
+		return v
 	}
 	x.b.errs = append(x.b.errs, &Error{Pos: e.Pos, Msg: "the checker left this method call without a target"})
 	return x.unit()
@@ -1078,13 +1084,22 @@ func (x *fnb) let(e *ir.Let) *Value {
 	return x.unit()
 }
 
+// assign lowers an assignment: the value first, then the indexes of the
+// elements on the place's path, in order, as the interpreter evaluates them.
 func (x *fnb) assign(e *ir.Assign) *Value {
 	v := x.expr(e.Value)
+	path := make([]Step, len(e.Target.Path))
+	for i, s := range e.Target.Path {
+		path[i] = Step{Field: s.Field}
+		if s.Index != nil {
+			path[i].Index = x.expr(s.Index)
+		}
+	}
 	if e.Op != "=" {
-		old := x.readPlace(e.Target)
+		old := x.readSteps(e.Target, path)
 		v = x.arith(strings.TrimSuffix(e.Op, "="), old, v, e.Impl, old.Ty, e.Pos)
 	}
-	x.emit(&SetPlace{Var: x.placeRoot(e.Target, v.Ty), Path: e.Target.Path, Src: v})
+	x.emit(&SetPlace{Var: x.placeRoot(e.Target, v.Ty), Path: path, Src: v})
 	return x.unit()
 }
 
@@ -1097,10 +1112,22 @@ func (x *fnb) placeRoot(p ir.Place, t ir.Ty) *Value {
 }
 
 func (x *fnb) readPlace(p ir.Place) *Value {
+	return x.readSteps(p, FieldSteps(p.Path))
+}
+
+// readSteps reads what a place's path leads to, with the indexes of its
+// elements already lowered; an element is a list's, which must be there.
+func (x *fnb) readSteps(p ir.Place, path []Step) *Value {
 	v := x.placeRoot(p, nil)
-	for _, name := range p.Path {
-		f := x.value("", fieldTy(v.Ty, name))
-		x.emit(&Field{Dst: f, Src: v, Name: name})
+	for _, s := range path {
+		if s.Index != nil {
+			el := x.value("", elemOf(v.Ty))
+			x.emit(&Builtin{Dst: el, Name: "at", Args: []*Value{v, s.Index}})
+			v = el
+			continue
+		}
+		f := x.value("", fieldTy(v.Ty, s.Field))
+		x.emit(&Field{Dst: f, Src: v, Name: s.Field})
 		v = f
 	}
 	return v

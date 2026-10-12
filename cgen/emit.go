@@ -650,10 +650,21 @@ func (e *fn) setPlace(x *lir.SetPlace) {
 	}
 	e.printf("{ ey_v *p_ = &%s;", e.v(x.Var))
 	t := x.Var.Ty
-	for _, name := range x.Path {
-		k := e.fieldIndex(t, name)
+	for _, s := range x.Path {
+		if s.Index != nil {
+			if kind(&lir.Value{Ty: t}) == "Map" {
+				// A map's value is the last step (SPECS.md §7): insert or
+				// replace it, in place when the map is unique.
+				e.printf("  *p_ = eyo_map_insert(*p_, %s, %s); }", e.v(s.Index), e.v(x.Src))
+				return
+			}
+			e.printf("  p_ = eyo_list_slot(%s, p_, %s);", e.at, e.v(s.Index))
+			t = lir.ElemOf(lir.Resolve(t))
+			continue
+		}
+		k := e.fieldIndex(t, s.Field)
 		e.printf("  ey_agg_own(p_); p_ = &EY_AGG(*p_)->f[%d];", k)
-		t = fieldType(t, name)
+		t = fieldType(t, s.Field)
 	}
 	if counted(x.Src.Ty) {
 		e.printf("  ey_dup(%s); ey_drop(*p_);", e.v(x.Src))
@@ -721,6 +732,9 @@ func (e *fn) derived(x *lir.Derived) {
 		e.assign(x.Dst, fmt.Sprintf("EY_SMALL((int64_t)(ey_hash(%s, %s) >> 2))", d, e.v(a)))
 	case "parse":
 		e.assign(x.Dst, fmt.Sprintf("eyb_enum_parse(%s, %s)", e.v(a), e.g.desc(x.Dst.Ty)))
+	case "index":
+		// The variant's place in T.variants(): its tag, as IsVariant reads it.
+		e.assign(x.Dst, fmt.Sprintf("EY_SMALL((int64_t)EY_AGG(%s)->tag)", e.v(a)))
 	default:
 		e.errorf("the C back end doesn't derive %s yet", x.Method)
 	}

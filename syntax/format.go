@@ -18,6 +18,8 @@ import (
 //     doesn't loses it;
 //   - comments stay where they are, and trailing comments on consecutive lines
 //     are aligned;
+//   - a hexadecimal literal's digits are upper case, `0xC2`; every integer
+//     literal keeps its base and its `_` separators;
 //   - at most one blank line in a row, none after `{` or before `}`, and one
 //     newline at the end.
 //
@@ -76,6 +78,9 @@ func (fm *formatter) collect(n, parent *Node) {
 			return
 		}
 		t := &ftoken{n: n, parent: parent, text: n.Text(fm.src), elementEnd: -1}
+		if n.Kind == Int {
+			t.text = canonicalInt(t.text)
+		}
 		lines := 0
 		for _, tr := range n.Leading {
 			text := string(fm.src[tr.Span.Start:tr.Span.End])
@@ -488,4 +493,13 @@ func space(a, b *ftoken) bool {
 		}
 	}
 	return true
+}
+
+// canonicalInt is an integer literal as the formatter writes it: as written,
+// but a hexadecimal one's digits in upper case, `0xc2` as `0xC2`.
+func canonicalInt(text string) string {
+	if rest, ok := strings.CutPrefix(text, "0x"); ok {
+		return "0x" + strings.ToUpper(rest)
+	}
+	return text
 }

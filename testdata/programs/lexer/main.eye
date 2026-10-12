@@ -13,8 +13,8 @@ pub fn main(args: List(String)) -> Result((), Problem) uses {fs, stdio} {
     return Ok(())
   }
   for path in args |> drop(1) {
-    let src = fs.readText(path).context("reading {path}")?
-    let lines = lexer.lex(src.bytes()) |> map(describe)
+    let src = fs.readBytes(path).context("reading {path}")?
+    let lines = lexer.lex(src) |> map(describe)
     print("file {path}\n{lines |> join("\n")}")
   }
   Ok(())

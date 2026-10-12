@@ -51,7 +51,7 @@ stmt       = let | "var" ident [ ":" type ] "=" expr | place assign expr
            | "for" pattern "in" expr block | "while" expr block
            | "with" expr | "return" [ expr ] | "break" | "continue" | expr ;
 let        = "let" pattern [ ":" typeexpr ] "=" expr [ "else" block ] ;
-place      = ident { "." ident } ;
+place      = ident { "." ident | "[" expr "]" } ;
 assign     = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 
 expr       = lambda | binary ;                              (* precedence table below *)
@@ -73,6 +73,7 @@ field      = ident ":" expr | ident ;
 key        = string | int | date | time | "(" expr ")" ;
 arm        = pattern [ "if" expr ] "=>" ( block | branch ) ;  (* "{" name ":"|","|"with" is a record *)
 branch     = expr | place assign expr ;
+int        = digit { [ "_" ] digit } | "0x" hex { [ "_" ] hex } | "0b" bit { [ "_" ] bit } ;
 literal    = int | float | char | string | "true" | "false" | "()" | number unit
            | date | time | date time "in" zone | time "in" zone ;
 zone       = string | ident ;

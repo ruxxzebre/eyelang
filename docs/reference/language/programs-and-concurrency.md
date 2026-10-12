@@ -24,8 +24,9 @@ pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
 - `main` returns `()` or `Result((), e)`. An `Err` is printed with `Show`, and the program exits
   with status 1.
 - **Files, programs and random numbers** come from the standard modules `fs`, `process` and
-  `random`, each with the effect of its name. `fs.readText`, `writeText`, `appendText`, `list`,
-  `makeDir` and `remove` return a `Result` whose error is an `FsError` (`NotFound(path)`,
+  `random`, each with the effect of its name. `fs.readText`, `writeText`, `appendText`,
+  `readBytes`, `writeBytes`, `list`, `makeDir` and `remove` return a `Result` whose error is an
+  `FsError` (`NotFound(path)`,
   `NotAllowed(path)`, …), and `fs.exists` a `Bool`. `process.run("git", args: ["pull"], input:
   "", dir: None)` runs a program without a shell and gives `Ok` with its exit status and output
   for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,

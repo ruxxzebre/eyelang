@@ -95,6 +95,11 @@ var edgeCases = map[string]string{
 	"edge-braces.eye":    "\"{\"{\"{a}\"}\"}\" \"{ {x: {y: 1}} }\" } { \"{}}\"",
 	"edge-space.eye":     "a\r\nb\f\vc\t# c\r\n  ## d\n\n?? ? |> | || & &&",
 	"edge-end.eye":       "\"\"\"\n  x {\"a{",
+	"edge-bases.eye":     "0x 0xG 0xc2_dF 0x_1 0x1_ 0b 0b2 0b1_0 0b_1 0X1 0B1 00x1 0x1F.5 0b1.5 1_0x5 0x10 KiB",
+	// Bytes that aren't UTF-8, which the lexer program reads with
+	// fs.readBytes: lone bytes, a lead byte without the rest, overlong and
+	// surrogate forms, in code, a string, a comment and a character.
+	"edge-bytes.eye": "a \xff b \xc3 \xe0\x80\x80 \xed\xa0\x80 \xf4\x90\x80\x80 \"x\xffy\" # \xfe\n'\xc3' é\xc3\xa9",
 }
 
 // runLexer runs the lexer program's main with args and returns what it

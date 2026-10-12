@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 
 	"eyelang/ir"
@@ -23,7 +22,7 @@ import (
 // checked once every module is loaded.
 func (c *checker) contractPolicy(m *module, f *ir.File, d *syntax.Node, ct *ir.Contract) {
 	if args, _, ok := attribute(f, d, "port"); ok && len(args) == 1 && args[0].Kind == syntax.Int {
-		n, err := strconv.Atoi(strings.ReplaceAll(text(f, args[0]), "_", ""))
+		n, err := literalInt(text(f, args[0]))
 		switch {
 		case err != nil || n > 65535:
 			c.errorf(pos(f, args[0]), "@port takes a port from 1 to 65535, not %s", text(f, args[0]))

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"errors"
 	"math/big"
 	"strconv"
 	"strings"
@@ -392,18 +393,28 @@ func (l *lowerer) stmt(n *syntax.Node) ir.Expr {
 
 // place lowers the left side of an assignment or a `mut` argument.
 func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
-	var path []string
+	var path []ir.Step
 	var names []ir.Pos
 	root := n
-	for root.Kind == syntax.FieldExpression {
-		path = append([]string{l.text(root.ChildByField(syntax.FieldField))}, path...)
-		names = append([]ir.Pos{l.pos(root.ChildByField(syntax.FieldField))}, names...)
+	for root.Kind == syntax.FieldExpression || root.Kind == syntax.IndexExpression {
+		if root.Kind == syntax.IndexExpression {
+			index := root.ChildByField(syntax.FieldIndex)
+			if index.Kind == syntax.RangeExpression {
+				l.errorf(index, "a slice can't be assigned: assign its elements one at a time, xs[i] = v")
+				return ir.Place{Pos: l.pos(n)}, false
+			}
+			path = append([]ir.Step{{Index: l.expr(index)}}, path...)
+			names = append([]ir.Pos{l.pos(index)}, names...)
+		} else {
+			path = append([]ir.Step{{Field: l.text(root.ChildByField(syntax.FieldField))}}, path...)
+			names = append([]ir.Pos{l.pos(root.ChildByField(syntax.FieldField))}, names...)
+		}
 		root = root.ChildByField(syntax.FieldValue)
 	}
 	p := ir.Place{Path: path, Pos: l.pos(n)}
 	l.c.placeAt(p.Pos, names)
 	if root.Kind != syntax.Ident {
-		l.errorf(n, "only a variable, a mut parameter, or a field of one, can be assigned")
+		l.errorf(n, "only a variable, a mut parameter, or a field or element of one, can be assigned")
 		return p, false
 	}
 	name := l.text(root)
@@ -443,7 +454,7 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 			return p, false
 		}
 		p.Self = true
-		p.Path = append([]string{name}, path...)
+		p.Path = append([]ir.Step{{Field: name}}, path...)
 		l.c.placeAt(p.Pos, append([]ir.Pos{l.pos(root)}, names...))
 		return p, true
 	}
@@ -454,10 +465,10 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 // quietPlace returns the place a method's receiver names, if it is a var, a
 // mut parameter or a field of one, without reporting anything.
 func (l *lowerer) quietPlace(n *syntax.Node) *ir.Place {
-	var path []string
+	var path []ir.Step
 	root := n
 	for root.Kind == syntax.FieldExpression {
-		path = append([]string{l.text(root.ChildByField(syntax.FieldField))}, path...)
+		path = append([]ir.Step{{Field: l.text(root.ChildByField(syntax.FieldField))}}, path...)
 		root = root.ChildByField(syntax.FieldValue)
 	}
 	if root.Kind != syntax.Ident || l.parent != nil {
@@ -885,6 +896,12 @@ func (l *lowerer) arg(a *syntax.Node) ir.Arg {
 		return arg
 	case syntax.MutArgument:
 		v := a.ChildByField(syntax.FieldValue)
+		for e := v; e.Kind == syntax.FieldExpression || e.Kind == syntax.IndexExpression; e = e.ChildByField(syntax.FieldValue) {
+			if e.Kind == syntax.IndexExpression {
+				l.errorf(v, "mut takes a variable or a field of one, not an element: copy the element into a var, pass that, and assign it back")
+				return ir.Arg{Value: l.expr(v)}
+			}
+		}
 		place, _ := l.place(v)
 		return ir.Arg{Value: l.expr(v), Mut: true, Place: place}
 	case syntax.Placeholder:
@@ -1359,9 +1376,35 @@ func (l *lowerer) lowerPattern(n *syntax.Node, binds map[string]int) ir.Pattern 
 
 // ---------------------------------------------------------------- literals
 
+// parseInt is the value of an integer literal: decimal, `0x` hexadecimal or
+// `0b` binary, with `_` between digits. A leading 0 doesn't make it octal.
 func parseInt(s string) *big.Int {
-	v, _ := new(big.Int).SetString(strings.ReplaceAll(s, "_", ""), 10)
+	s = strings.ReplaceAll(s, "_", "")
+	base := 10
+	if rest, ok := strings.CutPrefix(s, "0x"); ok {
+		s, base = rest, 16
+	} else if rest, ok := strings.CutPrefix(s, "0b"); ok {
+		s, base = rest, 2
+	}
+	v, _ := new(big.Int).SetString(s, base)
 	return v
+}
+
+// literalInt64 is the value of an integer literal written in an attribute or
+// a declaration, such as `@port(8080)`; an error if it isn't one, or is too
+// large for an int64.
+func literalInt64(s string) (int64, error) {
+	v := parseInt(s)
+	if v == nil || !v.IsInt64() {
+		return 0, errors.New(s + " isn't a whole number that fits in 64 bits")
+	}
+	return v.Int64(), nil
+}
+
+// literalInt is literalInt64 as an int.
+func literalInt(s string) (int, error) {
+	n, err := literalInt64(s)
+	return int(n), err
 }
 
 func unescape(s string) string {

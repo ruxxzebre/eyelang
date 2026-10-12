@@ -218,6 +218,48 @@ func written(p, at ir.Pos) ir.Pos {
 // literalPattern checks a literal in a pattern against t, the type of what
 // the pattern matches, and returns the literal as the pattern keeps it: a
 // character literal matching a Byte is a number.
+// bytesLike reports whether t is Bytes or a List(Byte), where a string
+// literal in a pattern stands for its bytes.
+func bytesLike(t typ) bool {
+	k, ok := prune(t).(*tcon)
+	if !ok || k.decl != nil {
+		return false
+	}
+	return k.name == "Bytes" || k.name == "List" && len(k.args) == 1 && fixedName(k.args[0]) == "Byte"
+}
+
+// byteLits are the patterns of a string's bytes in UTF-8, one literal for
+// each byte.
+func byteLits(s string, at ir.Pos) []ir.Pattern {
+	pats := make([]ir.Pattern, len(s))
+	for i := 0; i < len(s); i++ {
+		pats[i] = ir.PLit{Value: big.NewInt(int64(s[i])), Pos: at}
+	}
+	return pats
+}
+
+// spliceStrings replaces each string literal among the elements of a list
+// pattern over bytes with the literals of its bytes, so `["..=", ..]` is
+// `['.', '.', '=', ..]` (SPECS.md §9).
+func spliceStrings(p ir.PList) ir.PList {
+	var pats []ir.Pattern
+	rest := p.Rest
+	for i, q := range p.Pats {
+		lit, ok := q.(ir.PLit)
+		s, isString := lit.Value.(string)
+		if !ok || !isString {
+			pats = append(pats, q)
+			continue
+		}
+		pats = append(pats, byteLits(s, lit.Pos)...)
+		if p.Rest > i {
+			rest += len(s) - 1
+		}
+	}
+	p.Pats, p.Rest = pats, rest
+	return p
+}
+
 func (x *fnCheck) literalPattern(v any, t typ, at ir.Pos) any {
 	r, ok := v.(rune)
 	if !ok {

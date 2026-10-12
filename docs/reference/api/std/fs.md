@@ -48,6 +48,15 @@ pub extern fn readText(path: String) -> Result(String, FsError) uses {fs}
 
 The text of a file.
 
+### readBytes {#readBytes}
+
+```eye
+@host("fs.readBytes")
+pub extern fn readBytes(path: String) -> Result(Bytes, FsError) uses {fs}
+```
+
+The bytes of a file, whatever they hold: for files that may not be UTF-8 text.
+
 ### writeText {#writeText}
 
 ```eye
@@ -56,6 +65,15 @@ pub extern fn writeText(path: String, text: String) -> Result((), FsError) uses 
 ```
 
 Writes text to a file, which it creates or replaces.
+
+### writeBytes {#writeBytes}
+
+```eye
+@host("fs.writeBytes")
+pub extern fn writeBytes(path: String, bytes: Bytes) -> Result((), FsError) uses {fs}
+```
+
+Writes bytes to a file, which it creates or replaces.
 
 ### appendText {#appendText}
 

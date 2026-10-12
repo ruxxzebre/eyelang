@@ -78,6 +78,10 @@ func describe(target any, link func(string) (string, bool)) string {
 		}
 		return hoverText("type "+t.Name, "A type built into the language.", link)
 	case ir.EnumFn:
+		if t.Name == "index" {
+			return hoverText("fn index(self: "+t.Type.Name+") -> Int",
+				"The variant's place in `"+t.Type.Name+".variants()`, counting from 0. Derived for a type whose variants have no fields.", link)
+		}
 		if t.Name == "variants" {
 			return hoverText("fn "+t.Type.Name+".variants() -> List("+t.Type.Name+")",
 				"Every variant of "+t.Type.Name+", in the order declared. Derived for a type whose variants have no fields.", link)

@@ -66,7 +66,9 @@ title: "Errors: Result only"
   and `parseInt(s)` returns `Result`.
 - **`unreachable("why")`** is the one way for code to stop itself. It ends the program, or the
   job's run, as a fault: `Failed(Unreachable("why"))`. It is for states the code has already ruled
-  out, such as an index a loop just checked, never for failures that can happen.
+  out, such as an index a loop just checked, never for failures that can happen. The two
+  operations whose misuse can only be a bug stop the same way: assigning an element out of range
+  ([section 7](/reference/language/mutation)) and shifting by a negative count ([section 5](/reference/language/values-and-types)).
 - **Arithmetic is total.** `Int` has arbitrary precision, so it can't overflow. Small values stay
   unboxed at run time. `/` and `%` take a `NonZero(Int)` divisor. Literals other than `0` qualify
   automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows

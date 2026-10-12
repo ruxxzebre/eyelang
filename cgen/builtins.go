@@ -432,6 +432,8 @@ func (e *fn) builtin(in *lir.Builtin) {
 		set(fmt.Sprintf("eyb_str_bytes(%s)", v(0)))
 	case "toText":
 		set(fmt.Sprintf("eyb_bytes_to_text(%s, %s)", v(0), rt()))
+	case "toBytes":
+		set(fmt.Sprintf("eyb_list_to_bytes(%s)", v(0)))
 	case "code":
 		set(fmt.Sprintf("EY_SMALL((int64_t)%s)", v(0)))
 	case "fromCode":
@@ -690,8 +692,12 @@ func (e *fn) host(x *lir.Runtime, f *ir.Func) {
 	switch f.Host {
 	case "fs.readText":
 		e.assign(x.Dst, fmt.Sprintf("eyb_fs_read_text(%s, %s)", v("path"), rt))
+	case "fs.readBytes":
+		e.assign(x.Dst, fmt.Sprintf("eyb_fs_read_bytes(%s, %s)", v("path"), rt))
 	case "fs.writeText", "fs.appendText":
 		e.assign(x.Dst, fmt.Sprintf("eyb_fs_write_text(%s, %s, %v, %s)", v("path"), v("text"), f.Host == "fs.appendText", rt))
+	case "fs.writeBytes":
+		e.assign(x.Dst, fmt.Sprintf("eyb_fs_write_text(%s, %s, false, %s)", v("path"), v("bytes"), rt))
 	case "fs.exists":
 		e.assign(x.Dst, fmt.Sprintf("eyb_fs_exists(%s)", v("path")))
 	case "fs.list":

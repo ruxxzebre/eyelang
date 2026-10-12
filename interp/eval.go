@@ -287,7 +287,7 @@ func (in *Interp) callDirect(f *frame, c *ir.Call, fn *ir.Func, captured []Value
 	for i, a := range c.Args {
 		if a.Mut {
 			if v := plain(fr.slots[fn.Params[i].Slot]); v != nil {
-				in.writePlace(f, a.Place, v)
+				in.writePlace(f, a.Place, nil, v)
 			}
 		}
 	}
@@ -595,10 +595,11 @@ func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
 			return ir.Unit{}
 		}
 		v := in.eval(f, x.Value)
+		keys := in.placeKeys(f, x.Target)
 		if x.Op != "=" {
-			v = in.binary(strings.TrimSuffix(x.Op, "="), in.readPlace(f, x.Target), v, x.Pos)
+			v = in.binary(strings.TrimSuffix(x.Op, "="), in.readPlace(f, x.Target, keys), v, x.Pos)
 		}
-		in.writePlace(f, x.Target, v)
+		in.writePlace(f, x.Target, keys, v)
 		return ir.Unit{}
 	case *ir.For:
 		in.forLoop(f, x)
@@ -899,7 +900,7 @@ func (in *Interp) callArgs(f *frame, c *ir.Call, callee Value) Value {
 	for i, a := range c.Args {
 		if a.Mut {
 			if v := plain(fr.slots[fn.Params[paramOf[i]].Slot]); v != nil {
-				in.writePlace(f, a.Place, v)
+				in.writePlace(f, a.Place, nil, v)
 			}
 		}
 	}
@@ -951,6 +952,14 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 		return in.snapshots(recv, m.Pos)
 	}
 	args := in.evalArgs(f, m.Args)
+	if d, ok := m.Target.(ir.EnumFn); ok && d.Name == "index" {
+		// The variant's place in T.variants() (SPECS.md §11).
+		v, ok := recv.(*Variant)
+		if !ok {
+			in.faultf(m.Pos, "index() takes a variant, and this is %s", kindName(recv))
+		}
+		return int64(variantIndex(v.V))
+	}
 	if b, ok := m.Target.(ir.Builtin); ok && fixedMethods[b.Name] {
 		return in.fixedCall(b.Name, m.Recv.Ty(), append([]argVal{{v: recv}}, args...), m.Pos)
 	}
@@ -972,7 +981,7 @@ func (in *Interp) evalMethod(f *frame, m *ir.MethodCall) Value {
 	}
 	result, newRecv := in.method(recv, m.Name, args, m.Pos, false)
 	if newRecv != nil && m.RecvPlace != nil {
-		in.writePlace(f, *m.RecvPlace, newRecv)
+		in.writePlace(f, *m.RecvPlace, nil, newRecv)
 	}
 	return result
 }
@@ -1561,7 +1570,9 @@ func (in *Interp) wrapError(err Value, target *ir.Type) Value {
 
 // ---------------------------------------------------------------- places
 
-func (in *Interp) readPlace(f *frame, p ir.Place) Value {
+// readPlace reads a place. keys holds the value of each element's index on
+// its path, from placeKeys; nil when the path has none.
+func (in *Interp) readPlace(f *frame, p ir.Place, keys []Value) Value {
 	var v Value
 	if p.Self {
 		v = f.getSelf()
@@ -1571,51 +1582,122 @@ func (in *Interp) readPlace(f *frame, p ir.Place) Value {
 			f.slots[p.Slot] = v // the record may be held elsewhere from now on
 		}
 	}
-	for _, name := range p.Path {
-		v = in.field(v, name, p.Pos)
+	for i, step := range p.Path {
+		if step.Index != nil {
+			v = in.element(v, keys[i], p.Pos)
+			continue
+		}
+		v = in.field(v, step.Field, p.Pos)
 	}
 	return v
 }
 
-func (in *Interp) writePlace(f *frame, p ir.Place, v Value) {
+// placeKeys evaluates the indexes of the elements on a place's path, in
+// order: one value for each step, nil for a field.
+func (in *Interp) placeKeys(f *frame, p ir.Place) []Value {
+	if !p.HasIndex() {
+		return nil
+	}
+	keys := make([]Value, len(p.Path))
+	for i, step := range p.Path {
+		if step.Index != nil {
+			keys[i] = in.eval(f, step.Index)
+		}
+	}
+	return keys
+}
+
+// writePlace sets a place to v; keys are as for readPlace.
+func (in *Interp) writePlace(f *frame, p ir.Place, keys []Value, v Value) {
 	if p.Self {
-		f.setSelf(in.setPath(f.getSelf(), p.Path, v, p.Pos))
+		f.setSelf(in.setPath(f.getSelf(), p.Path, keys, v, p.Pos))
 		return
 	}
 	if len(p.Path) == 0 {
 		f.slots[p.Slot] = v
 		return
 	}
-	if o, ok := f.slots[p.Slot].(*ownRec); ok {
+	if o, ok := f.slots[p.Slot].(*ownRec); ok && p.Path[0].Index == nil {
 		// Only this variable holds the record: change it in place.
 		r := (*Record)(o)
-		i := r.field(p.Path[0])
+		i := r.field(p.Path[0].Field)
 		if i < 0 {
-			in.faultf(p.Pos, "the record has no field %s", p.Path[0])
+			in.faultf(p.Pos, "the record has no field %s", p.Path[0].Field)
 		}
-		r.Vals[i] = in.setPath(r.Vals[i], p.Path[1:], v, p.Pos)
+		var rest []Value
+		if keys != nil {
+			rest = keys[1:]
+		}
+		r.Vals[i] = in.setPath(r.Vals[i], p.Path[1:], rest, v, p.Pos)
 		return
 	}
 	// setPath makes a new record, which only this variable holds.
-	own(f, p.Slot, in.setPath(f.slots[p.Slot], p.Path, v, p.Pos))
+	own(f, p.Slot, in.setPath(plain(f.slots[p.Slot]), p.Path, keys, v, p.Pos))
 }
 
-// setPath returns base with the field at path replaced by v.
-func (in *Interp) setPath(base Value, path []string, v Value, at ir.Pos) Value {
+// setPath returns base with what is at path replaced by v: a field of a
+// record, an element of a list, which must be there, or a map's value for
+// a key, which is inserted or replaced. keys are as for readPlace.
+func (in *Interp) setPath(base Value, path []ir.Step, keys []Value, v Value, at ir.Pos) Value {
 	if len(path) == 0 {
 		return v
+	}
+	var key, rest []Value
+	if keys != nil {
+		key, rest = keys[:1], keys[1:]
+	}
+	if path[0].Index != nil {
+		switch c := base.(type) {
+		case *List:
+			i := in.listIndex(c, key[0], at)
+			elems := make([]Value, len(c.Elems))
+			copy(elems, c.Elems)
+			elems[i] = in.setPath(c.Elems[i], path[1:], rest, v, at)
+			return &List{Elems: elems}
+		case *Map:
+			return c.with(key[0], v)
+		case Empty: // `{}`, an empty map here
+			return newMap(nil, nil).with(key[0], v)
+		}
+		in.faultf(at, "only a list's elements and a map's values can be assigned, and this is %s", kindName(base))
 	}
 	r, ok := base.(*Record)
 	if !ok {
 		in.faultf(at, "only a record's fields can be assigned, and this is %s", kindName(base))
 	}
-	i := r.field(path[0])
+	i := r.field(path[0].Field)
 	if i < 0 {
-		in.faultf(at, "the record has no field %s", path[0])
+		in.faultf(at, "the record has no field %s", path[0].Field)
 	}
 	out := r.copied()
-	out.Vals[i] = in.setPath(r.Vals[i], path[1:], v, at)
+	out.Vals[i] = in.setPath(r.Vals[i], path[1:], rest, v, at)
 	return out
+}
+
+// element reads the element at key of a list, which must be there, for a
+// compound assignment to it: `xs[i] += 1`.
+func (in *Interp) element(v, key Value, at ir.Pos) Value {
+	switch c := v.(type) {
+	case *List:
+		return c.Elems[in.listIndex(c, key, at)]
+	case *Map:
+		if x, ok := c.get(key); ok {
+			return x
+		}
+		in.faultf(at, "the map has no key %s", show(key))
+	}
+	in.faultf(at, "only a list's elements and a map's values can be assigned, and this is %s", kindName(v))
+	return nil
+}
+
+// listIndex is key as an index of l's elements. An index out of range is a
+// fault, as SPECS.md §7 says: the code assigning there has a bug.
+func (in *Interp) listIndex(l *List, key Value, at ir.Pos) int {
+	i, ok := key.(int64)
+	if !ok || i < 0 || i >= int64(len(l.Elems)) {
+		in.faultf(at, "index %s is out of range for a list of %d", show(key), len(l.Elems))
+	}
+	return int(i)
 }
 
 // ---------------------------------------------------------------- loops

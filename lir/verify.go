@@ -208,7 +208,13 @@ func readsOf(in Instr) []*Value {
 	case *Update:
 		return append([]*Value{x.Src}, x.Fields...)
 	case *SetPlace:
-		return []*Value{x.Src}
+		vs := []*Value{x.Src}
+		for _, s := range x.Path {
+			if s.Index != nil {
+				vs = append(vs, s.Index)
+			}
+		}
+		return vs
 	}
 	return nil
 }

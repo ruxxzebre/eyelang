@@ -39,3 +39,10 @@ test "an exact integer fault" {
   let [a, b, c] = xs else { unreachable("not three: {xs}") }
   expect(a + b + c == 0)
 }
+
+test "an element out of range is a fault" {
+  var xs = [1, 2, 3]
+  xs[1] = 20
+  xs[3] = 40
+  expect(xs.size() == 4)
+}

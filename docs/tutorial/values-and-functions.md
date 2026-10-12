@@ -24,7 +24,8 @@ The program is [`docs/tutorial/code/values-and-functions/main.eye`](https://gith
 - `"€{euros}.{rest}"` is string interpolation. Any expression can go inside the braces.
 
 `Int` has arbitrary precision, so it never overflows. `/` on two `Int`s rounds down, and `%` gives
-the remainder.
+the remainder. Long numbers take `_` between digits, `1_000_000`, and bits read best in hex or
+binary: `0xFF` and `0b1010` are `Int`s too.
 
 ## Tests
 
@@ -124,6 +125,9 @@ Most code doesn't need a variable that changes. When it does, use `var`:
 - `for x in xs { ... }` runs the block once for each element. `1..=4` is a range that includes
   4; `1..4` stops before it.
 - `if ... then ...` with a single statement needs no braces.
+- `basket[1] = 99` changes one element of a `var` list, and `basket[2] += 1` adds to one. The
+  element must be there: an index past the end stops the program, as a bug, since a change that
+  went nowhere would be lost. Add elements with `+=`, as in `basket += [99]`.
 
 A `var` is local, and nothing else can see it change. A lambda given straight to a call, such as
 `xs |> filter(fn x: x < total)`, may read it, and sees its value at the call; a lambda kept in a

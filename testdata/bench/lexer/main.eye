@@ -13,7 +13,7 @@
 #   go run testdata/bench/lexer/main.go 100 $(git ls-files '*.eye')
 
 import fs
-import lexer.{Kind, Token}
+import lexer.{Token}
 
 pub fn main(args: List(String)) -> Result((), Problem) uses {fs, stdio} {
   let times = parseInt(args[1] ?? "").context("usage: lexer TIMES FILE...")?
@@ -30,17 +30,14 @@ pub fn main(args: List(String)) -> Result((), Problem) uses {fs, stdio} {
   Ok(())
 }
 
-## A checksum of the tokens: their kinds, as syntax/token.go numbers them,
-## spans and flags, mixed into a number below 1_000_000_007.
+## A checksum of the tokens: their kinds, as syntax/token.go numbers them
+## (from 1, after its Invalid), spans and flags, mixed into a number below
+## 1_000_000_007.
 fn checksum(tokens: List(Token)) -> Int {
-  var numbers: Map(Kind, Int) = {}
-  for (i, kind) in Kind.variants() |> enumerate {
-    numbers = numbers.insert(kind, i + 1)
-  }
   var sum = 0
   for t in tokens {
     let flags = flag(t.spaceBefore, 1) + flag(t.newlineBefore, 2) + flag(t.missing, 4)
-    sum = sum.mix(numbers[t.kind] ?? 0).mix(t.start).mix(t.end).mix(flags)
+    sum = sum.mix(t.kind.index() + 1).mix(t.start).mix(t.end).mix(flags)
   }
   sum
 }
