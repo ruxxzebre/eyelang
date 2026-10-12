@@ -29,7 +29,7 @@ decisions; the owner decides.
   `malloc`, and static values for variants without fields.
 - **The lexer asked for five small language changes**, all in line with the pillars: hex
   literals, string patterns over `Bytes`, `xs[i] = v` on a variable, `fs.readBytes`, and a
-  variant's number. It also found one checker bug. None is fundamental.
+  variant's number. It also found one checker bug, since fixed. None is fundamental.
 - **The design philosophy holds.** Values without aliasing are what *permit* the fast layout
   (Go can't put a shared object in a register; Eyelang can, since nothing shares it). Reference
   counting is not the bottleneck. `Int` with arbitrary precision costs about Go's speed on
@@ -149,7 +149,7 @@ the way is open question 43. Recommendations:
 | A string literal as a pattern over `Bytes`: `"continue"` instead of eight characters | Typing rule, no new syntax | **Yes.** The literal already exists; a pattern over `Bytes` accepts it |
 | `fs.readBytes`, and `Bytes` from a `List(Byte)` | Library | **Yes.** Bytes that aren't text must be readable and testable |
 | A variant's number (Go's `int(kind)`) | Library (a derived method) | **Yes, as a derived method on enums without fields**, not syntax. Name to choose |
-| A variant named like a built-in type (`Int`) takes the type's name over in its module | Checker bug | **Fix.** Suggested as a task |
+| A variant named like a built-in type (`Int`) takes the type's name over in its module | Checker bug | **Fixed** in 104fa0d: a variant isn't a type |
 | `if let`, escaping `{` in test sources | Ergonomics | No change now; `match` covers `if let`, and raw strings are open question territory |
 
 ### The design philosophy, checked
