@@ -32,6 +32,17 @@ jobs:
       - name: Fetch zig
         run: go run ./tools/zig version
 
+      # The Go that internal/gotool pins builds programs that the runner hosts (eye build
+      # --runner, B′); fetched once per pin.
+      - name: Cache the pinned Go
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/eyelang/go
+          key: go-pinned-${{ runner.os }}-${{ hashFiles('internal/gotool/gotool.go') }}
+
+      - name: Fetch the pinned Go
+        run: go run ./tools/gotool version
+
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 
