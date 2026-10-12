@@ -639,6 +639,9 @@ func (c *checker) fromExpr(t *ir.TypeExpr, env typeEnv, rigid bool) typ {
 	if t.Trait != nil {
 		return c.unknownf(at, "%s is a trait, and a trait is a type only where a parameter's type is written, as `x: %s`; elsewhere write dyn %s", t.Name, t.Name, t.Name)
 	}
+	if c.brokenTypes[t] {
+		return c.fresh() // its declaration's syntax error is reported
+	}
 	return c.unknownf(at, "%s isn't a type: a contract's operations take and return the types it names", t.Name)
 }
 

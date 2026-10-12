@@ -74,8 +74,12 @@ func (c *checker) program(path string) (*ir.Program, []Diagnostic) {
 	}
 	c.prog.Modules = append([]*ir.Module{prelude.mod}, c.prog.Modules...)
 	// Types are checked once every name resolves, so that one undefined
-	// name doesn't bring a crowd of type errors with it.
-	if len(c.diags) == 0 {
+	// name doesn't bring a crowd of type errors with it. A syntax error
+	// doesn't stop them: the declaration it is in was skipped, and a use of
+	// what it declares may be any type. A type whose declaration was
+	// skipped does stop them where it is written, since nothing about its
+	// values could be checked.
+	if len(c.diags) == c.syntaxErrors && len(c.brokenTypes) == 0 {
 		c.checkTypes()
 	}
 	sort.SliceStable(c.diags, func(i, j int) bool {
@@ -118,6 +122,12 @@ type checker struct {
 	// signatures are the public functions whose uses clause eye fmt rewrites.
 	signatures []Signature
 
+	// syntaxErrors is how many of diags are syntax errors, and brokenTypes
+	// the types written that name a declaration skipped for one: each may
+	// be any type, as its first use decides.
+	syntaxErrors int
+	brokenTypes  map[*ir.TypeExpr]bool
+
 	// builtins are the signatures and effects ir/builtin.eye declares.
 	builtins builtinDecls
 }
@@ -137,6 +147,9 @@ type module struct {
 	imports []*module
 	decls   []func() // lowering of bodies, run once every module is collected
 	loading bool
+	// broken holds the names of the declarations skipped for a syntax
+	// error in them, so that a use of one isn't also reported as undefined.
+	broken map[string]bool
 }
 
 // errorf reports a problem at pos, once: a type written once and used at
@@ -215,35 +228,38 @@ func (c *checker) parse(path, dir string, files []*ir.File) *module {
 		values:  map[string]any{},
 		types:   map[string]any{},
 		loading: true,
+		broken:  map[string]bool{},
 	}
 	c.modules[path] = m
+	// A declaration with a syntax error in it is skipped, and the rest of
+	// its file is checked, so that an editor keeps its errors, hover and
+	// completion while one declaration is half typed.
+	var whole []*syntax.Node
+	var wholeFile []*ir.File
 	for _, f := range files {
+		before := len(c.diags)
 		for _, d := range f.Tree.Diagnostics {
 			c.errorf(ir.Pos{File: f, Offset: d.Span.Start}, "%s", d.Message)
 		}
+		c.syntaxErrors += len(c.diags) - before
+		for _, d := range f.Tree.Root.Children {
+			if !c.skipBroken(m, f, d) {
+				whole, wholeFile = append(whole, d), append(wholeFile, f)
+			}
+		}
 	}
 	// Imports first, so that their names are known when bodies are lowered.
-	for _, f := range files {
-		if len(f.Tree.Diagnostics) > 0 {
-			continue
-		}
-		for _, d := range f.Tree.Root.Children {
-			if d.Kind == syntax.ImportDeclaration {
-				c.importDecl(m, f, d)
-			}
+	for i, d := range whole {
+		if d.Kind == syntax.ImportDeclaration {
+			c.importDecl(m, wholeFile[i], d)
 		}
 	}
 	// Impls last, so that the type, trait or contract an impl names is
 	// known wherever in the module it is declared.
 	for _, impls := range []bool{false, true} {
-		for _, f := range files {
-			if len(f.Tree.Diagnostics) > 0 {
-				continue
-			}
-			for _, d := range f.Tree.Root.Children {
-				if (d.Kind == syntax.ImplDeclaration) == impls {
-					c.collect(m, f, d)
-				}
+		for i, d := range whole {
+			if (d.Kind == syntax.ImplDeclaration) == impls {
+				c.collect(m, wholeFile[i], d)
 			}
 		}
 	}
@@ -255,6 +271,29 @@ func (c *checker) parse(path, dir string, files []*ir.File) *module {
 		c.order = append([]*module{m}, c.order...)
 	}
 	return m
+}
+
+// skipBroken reports whether a top-level declaration has a syntax error in
+// it, which its file's diagnostics say, and then records the name it
+// declares, when that can be read.
+func (c *checker) skipBroken(m *module, f *ir.File, d *syntax.Node) bool {
+	broken := d.Kind == syntax.ErrorNode
+	for _, diag := range f.Tree.Diagnostics {
+		if d.Span.Start <= diag.Span.Start && diag.Span.Start <= d.Span.End {
+			broken = true
+		}
+	}
+	if !broken {
+		return false
+	}
+	name := d.ChildByField(syntax.FieldName)
+	if d.Kind == syntax.LetStatement {
+		name = d.ChildByField(syntax.FieldPattern)
+	}
+	if name != nil && name.IsToken() {
+		m.broken[text(f, name)] = true
+	}
+	return true
 }
 
 func text(f *ir.File, n *syntax.Node) string { return n.Text(f.Src) }
@@ -319,6 +358,10 @@ func (c *checker) importDecl(m *module, f *ir.File, d *syntax.Node) {
 			decl = imp.values[n]
 		}
 		if decl == nil {
+			if imp.broken[n] {
+				m.broken[n] = true // it has a syntax error, reported in its own file
+				continue
+			}
 			c.errorf(pos(f, item), "module %s has no %s", path, n)
 			continue
 		}
@@ -646,6 +689,14 @@ var builtinTypes = map[string]bool{
 	"Event": true, "TaskGroup": true, "Sender": true, "Receiver": true, "Handler": true,
 }
 
+// brokenType records that t names a declaration skipped for a syntax error.
+func (c *checker) brokenType(t *ir.TypeExpr) {
+	if c.brokenTypes == nil {
+		c.brokenTypes = map[*ir.TypeExpr]bool{}
+	}
+	c.brokenTypes[t] = true
+}
+
 // typeExpr resolves a type as written, and keeps where it is written for
 // the type checker's messages.
 func (c *checker) typeExpr(m *module, f *ir.File, n *syntax.Node, vars []string) *ir.TypeExpr {
@@ -687,6 +738,8 @@ func (c *checker) typeExprAt(m *module, f *ir.File, n *syntax.Node, vars []strin
 		default:
 			if v, ok := c.lookupType(m, name).(*ir.Variant); ok && !builtinTypes[name] {
 				c.errorf(pos(f, n), "%s is a variant of %s, not a type: write %s", name, v.Type.Name, v.Type.Name)
+			} else if m.broken[name] {
+				c.brokenType(t)
 			} else if !builtinTypes[name] {
 				c.errorf(pos(f, n), "undefined type %s", name)
 			}
@@ -731,7 +784,11 @@ func (c *checker) typeExprAt(m *module, f *ir.File, n *syntax.Node, vars []strin
 		case *ir.Trait:
 			t.Trait = d
 		default:
-			c.errorf(pos(f, n), "module %s has no type %s", mod, name)
+			if c.modules[imp.Path].broken[name] {
+				c.brokenType(t)
+			} else {
+				c.errorf(pos(f, n), "module %s has no type %s", mod, name)
+			}
 		}
 		return t
 	case syntax.UnitType:

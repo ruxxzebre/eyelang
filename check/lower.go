@@ -458,7 +458,9 @@ func (l *lowerer) place(n *syntax.Node) (ir.Place, bool) {
 		l.c.placeAt(p.Pos, append([]ir.Pos{l.pos(root)}, names...))
 		return p, true
 	}
-	l.errorf(root, "undefined name %s", name)
+	if !l.m.broken[name] {
+		l.errorf(root, "undefined name %s", name)
+	}
 	return p, false
 }
 
@@ -668,9 +670,17 @@ func (l *lowerer) name(n *syntax.Node) ir.Expr {
 		l.mayCall(n, d)
 		return &ir.Ref{At: at, Decl: d}
 	}
+	if l.m.broken[name] {
+		return &ir.Lit{At: at, Value: brokenRef{}}
+	}
 	l.errorf(n, "undefined name %s", name)
 	return &ir.Lit{At: at, Value: ir.Unit{}}
 }
+
+// brokenRef is the value of a use of a name whose declaration has a syntax
+// error, which the checker skipped: it may be any type, as its first use
+// decides, so that it brings no type errors of its own.
+type brokenRef struct{}
 
 // typeName resolves an upper-case name in an expression: a variant, an
 // entity, or a type (for its static methods).
@@ -692,6 +702,9 @@ func (l *lowerer) typeName(n *syntax.Node) ir.Expr {
 		l.c.variantChoices[r] = d.choices
 		return r
 	default:
+		if l.m.broken[name] {
+			return &ir.Lit{At: at, Value: brokenRef{}}
+		}
 		l.errorf(n, "undefined name %s", name)
 	}
 	return &ir.Lit{At: at, Value: ir.Unit{}}
@@ -925,6 +938,9 @@ func (l *lowerer) callee(n, fnNode *syntax.Node, args []ir.Arg, waiting bool) ir
 		recvNode := fnNode.ChildByField(syntax.FieldValue)
 		name := l.text(fnNode.ChildByField(syntax.FieldField))
 		if decl := l.qualified(recvNode, name); decl != nil {
+			if _, ok := decl.(brokenRef); ok {
+				return &ir.Lit{At: at, Value: decl}
+			}
 			l.c.use(l.pos(fnNode.ChildByField(syntax.FieldField)), decl)
 			l.visible(fnNode.ChildByField(syntax.FieldField), decl, name)
 			l.mayCall(fnNode.ChildByField(syntax.FieldField), decl)
@@ -1061,6 +1077,9 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 			if decl, ok := mod.types[name]; ok {
 				return decl
 			}
+			if mod.broken[name] {
+				return brokenRef{}
+			}
 			l.errorf(recv, "module %s has no %s", recvName, name)
 			return ir.Builtin{Name: "?"}
 		case ir.Builtin:
@@ -1106,6 +1125,9 @@ func (l *lowerer) qualified(recv *syntax.Node, name string) any {
 		typeName := l.text(typeNode)
 		decl, ok := l.c.modules[d.Path].types[typeName]
 		if !ok {
+			if l.c.modules[d.Path].broken[typeName] {
+				return brokenRef{}
+			}
 			l.errorf(modNode, "module %s has no %s", modName, typeName)
 			return ir.Builtin{Name: "?"}
 		}
@@ -1177,6 +1199,9 @@ func (l *lowerer) field(n *syntax.Node) ir.Expr {
 	recv := n.ChildByField(syntax.FieldValue)
 	name := l.text(n.ChildByField(syntax.FieldField))
 	if decl := l.qualified(recv, name); decl != nil {
+		if _, ok := decl.(brokenRef); ok {
+			return &ir.Lit{At: l.at(n), Value: decl}
+		}
 		l.c.use(l.pos(n.ChildByField(syntax.FieldField)), decl)
 		l.visible(n.ChildByField(syntax.FieldField), decl, name)
 		l.mayCall(n.ChildByField(syntax.FieldField), decl)

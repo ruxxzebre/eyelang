@@ -1063,6 +1063,11 @@ func (x *fnCheck) literal(e *ir.Lit, want typ) typ {
 		}
 		return tInstant
 	}
+	if _, ok := e.Value.(brokenRef); ok {
+		// Its declaration's syntax error is reported. Any type, as the
+		// first use decides, so that one more use is still checked.
+		return x.c.never()
+	}
 	return x.c.unknownf(e.Pos, "internal error: the checker doesn't know the literal %T", e.Value)
 }
 

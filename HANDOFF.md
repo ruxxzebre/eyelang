@@ -155,8 +155,6 @@ Checker:
   migration reads the old row by name, which nothing declares.
 
 Language server and editor:
-- The checker could skip only the declaration with a syntax error, so type errors, hover and
-  completion keep working while a file is half typed.
 - CI could cache `editors/vscode/node_modules` by `package-lock.json` (about 4 s).
 
 Library:

@@ -48,7 +48,10 @@ Highlighting for `.eye` files, and, through the language server `eye lsp`:
   fields and methods, or an entity's state and methods, by the value's type.
 
 Fields and methods resolve once the program type-checks: while it has errors, go-to-definition
-still finds every other name. A value's members are offered while the rest of the file parses.
+still finds every other name. A declaration with a syntax error in it is skipped, and the rest of
+the file is checked as usual, so type errors, hover and completion keep working in the other
+declarations while you type one; a value's members are offered once the declaration you are in
+parses without the `.` being typed.
 
 ## Programs and eye.toml
 
