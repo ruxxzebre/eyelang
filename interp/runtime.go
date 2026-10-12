@@ -647,7 +647,7 @@ type jobRun struct {
 	Checkpoint *checkpoint `json:",omitempty"`
 	Log        []step      // the steps since the checkpoint
 	Status     string      // ready, sleeping, done, failed
-	WakeAt int64  `json:",omitempty"` // Unix nanoseconds, while sleeping
+	WakeAt     int64       `json:",omitempty"` // Unix nanoseconds, while sleeping
 	// WaitEvent is the event a sleeping run waits for in next!; one wakes it.
 	WaitEvent string `json:",omitempty"`
 	// Since is the sequence number of the last event published before the

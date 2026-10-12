@@ -669,7 +669,7 @@ func builtinTable() map[string]*BuiltinFn {
 			return in.some(r)
 		})
 	}
-	add("min",func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+	add("min", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "min", at)
 		if c, ok := compare(args[0], args[1]); ok && c > 0 {
 			return args[1]

@@ -484,4 +484,3 @@ func marshalRecorded(v any) ([]byte, error) {
 	}
 	return bytes.TrimRight(b.Bytes(), "\n"), nil
 }
-

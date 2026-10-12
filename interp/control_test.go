@@ -170,7 +170,7 @@ fn loops() -> Int {
 		return flag, panics, catch
 	}
 	for _, tc := range []struct {
-		name                 string
+		name                string
 		flag, panics, catch int
 	}{
 		{"sign", 2, 0, 0},
