@@ -204,3 +204,11 @@ test "a time of day in a zone is the next instant its clock shows it" {
   advance(1 day)
   expect(Stamps("wake").seen == [2026-10-13 07:45 in dublin])
 }
+
+test "a start already due runs with the call" {
+  with clock(2026-10-12 09:00 in dublin)
+  stampAt.start(at: 2026-10-12 08:00 in dublin)
+  stampAt.start(after: 0 s)
+  stampAt.start()
+  expect(Stamps("at").seen == [2026-10-12 09:00 in dublin, 2026-10-12 09:00 in dublin, 2026-10-12 09:00 in dublin])
+}

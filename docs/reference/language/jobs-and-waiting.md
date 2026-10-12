@@ -259,7 +259,9 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   start the child again. Starting a job is the effect `start J` ([section 12](/reference/language/effects-and-signatures)), so a function that
   starts one is a step in a job too, `kick!()`. Scheduled starts take
   `after:` or `at:`: `sleepWhenIdle.start(w, after: 20 min)`,
-  `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. With `key:`, a job starts once per key:
+  `irelandDigest.start(day, at: 07:40 in "Europe/Dublin")`. A start already due (`after: 0 s`, or
+  `at:` an instant that has passed) is a start whose time has come: it runs at once, as a start
+  without a time does, in a test as under `eye run`. With `key:`, a job starts once per key:
   a later start with the same key returns the run the first one started, finished or not.
 - **Reading a run's outcome without waiting.** Only a job waits for a run, with `run.join!()`. A
   test, `main` and the functions they call read where it got to with `run.outcome()`, an

@@ -780,6 +780,11 @@ func (rt *runtime) newRun(job *ir.Job, args []Value, named map[string]Value, at 
 	if when, ok := named["at"].(time.Time); ok {
 		run.Status, run.WakeAt = "sleeping", when.UnixNano()
 	}
+	if run.Status == "sleeping" && run.WakeAt <= rt.now.UnixNano() {
+		// Already due: it runs with the call, as a start without a time
+		// does, on a test's clock as on the system clock.
+		run.Status, run.WakeAt = "ready", 0
+	}
 	if len(args) != len(job.Func.Params) {
 		rt.in.faultf(at, "%s takes %d arguments", job.Name, len(job.Func.Params))
 	}
