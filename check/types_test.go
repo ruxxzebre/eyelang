@@ -1201,6 +1201,23 @@ impl svc.Svc {
 			"28:43: stamp uses clock, which an entity method can't",
 			"39:13: now uses clock, which serving an operation can't: it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, which the operation can start",
 		}},
+		{"a view stays inside the program", `import svc
+import random
+entity Disk(host: String) {
+  state used: Int = 0
+  state seen: Instant = now()
+}
+fn full(d: Disk) -> Bool uses {net Svc.raw, stdio, random} {
+  print("checking {d.host}")
+  let _ = svc.raw(d.host)
+  d.used >= (random.int(0..100) ?? 0)
+}
+view nearlyFull = Disk.all |> filter(full)
+view stale = Disk.all |> filter(fn d: d.seen < now() - 1 h)
+view calm = Disk.all |> filter(fn d: d.used < 10)`, []string{
+			"12:38: full uses net Svc.raw, random, which a view can't: it is computed as each entity transaction commits, so what reaches outside the program or waits belongs in a job, such as one @on(enters(nearlyFull)) starts, or one on a schedule",
+			"13:48: now uses clock, which a view can't",
+		}},
 		{"public entity methods and jobs state their effects", `import svc
 import fs
 job worker(n: Int) {}

@@ -583,18 +583,33 @@ func (c *checker) checkTransactions(all map[*ir.Func]map[string]bool) {
 				}
 			}
 		}
+		views := map[*ir.Func]*ir.View{}
+		for _, v := range m.Views {
+			if v.Func != nil && v.Func.Body != nil {
+				fns = append(fns, v.Func)
+				views[v.Func] = v
+			}
+		}
 		sort.Slice(fns, func(i, j int) bool { return fns[i].Pos.Offset < fns[j].Pos.Offset })
 		for _, f := range fns {
-			c.checkTransaction(f, all)
+			c.checkTransaction(f, views[f], all)
 		}
 	}
 }
 
-// checkTransaction reports the effects of one entity method or served
-// operation that a transaction can't have.
-func (c *checker) checkTransaction(f *ir.Func, all map[*ir.Func]map[string]bool) {
+// checkTransaction reports the effects of one entity method, served
+// operation or view that a transaction can't have. A view is computed as
+// each entity transaction commits (SPECS.md §16), so it is held to the same
+// rule.
+func (c *checker) checkTransaction(f *ir.Func, view *ir.View, all map[*ir.Func]map[string]bool) {
+	why := "it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, "
 	what, starts := "an entity method can't", "which the method can start"
-	if f.Entity == nil {
+	switch {
+	case view != nil:
+		what = "a view can't"
+		why = "it is computed as each entity transaction commits, so what reaches outside the program or waits belongs in a job, "
+		starts = "such as one @on(enters(" + view.Name + ")) starts, or one on a schedule"
+	case f.Entity == nil:
 		what, starts = "serving an operation can't", "which the operation can start"
 	}
 	reported := map[string]bool{}
@@ -611,7 +626,7 @@ func (c *checker) checkTransaction(f *ir.Func, all map[*ir.Func]map[string]bool)
 			return
 		}
 		sort.Strings(bad)
-		c.typeErrorf(at, "%s uses %s, which %s: it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, %s", name, strings.Join(bad, ", "), what, starts)
+		c.typeErrorf(at, "%s uses %s, which %s: %s%s", name, strings.Join(bad, ", "), what, why, starts)
 	}
 	// effects is what calling or naming decl does, and false for a
 	// declaration whose effects are checked elsewhere: an entity's methods

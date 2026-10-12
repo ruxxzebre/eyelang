@@ -281,7 +281,7 @@ Runs column says whether the runtime does what the attribute says.
 
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
-| A view is a pipeline over an entity set, kept up to date | ✓ | partial: its pipeline may reach outside the program, as a method can't ([#124](https://github.com/ruxxzebre/eyelang/issues/124)) | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L24), [read by name](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/views.eye#L15) |
+| A view is a pipeline over an entity set, kept up to date | ✓ | ✓ (its pipeline stays inside the program, as a method does) | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L24), [read by name](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/views.eye#L15) |
 | A view must start from an entity set | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L110) |
 | `enters(view)` and `leaves(view)`, each time an entity enters or leaves | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L54), [enters, leaves, enters again](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/views.eye#L61) |
 | Pipelines over entities compiled to SQL | n/a | n/a | — (they run in memory, over the entities the store holds; SQL waits for several runners on one database, open question 28) | |
