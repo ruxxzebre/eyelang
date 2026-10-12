@@ -401,7 +401,7 @@ job ring() -> Result(Rung, ai.AiError) {
   ai.generate!(model: "claude-sonnet-5-5", prompt: "Ring both bells.", tools: [first, second])
 }
 
-pub fn main() {
+pub fn main() uses {start ring} {
   ring.start(key: "once")
 }
 `})

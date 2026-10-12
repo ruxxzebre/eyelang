@@ -269,7 +269,7 @@ entity A(id: String) {
   state log: List(String) = []
 
   ## Counts one, calls B, which comes back to bump, and faults if asked.
-  pub fn ping(fail: Bool) -> Int {
+  pub fn ping(fail: Bool) -> Int uses {entity A, entity B, publish Bus.pings, start note} {
     n += 1
     let before = n
     note.start("ping")
@@ -280,14 +280,14 @@ entity A(id: String) {
     n
   }
 
-  pub fn bump() {
+  pub fn bump() uses {publish Bus.pings, start note} {
     n += 1
     note.start("bump")
     bus.pings.publish(3)
   }
 
   ## Comes back to A from inside a private method.
-  pub fn viaHelper() { helper() }
+  pub fn viaHelper() uses {entity A, entity B, publish Bus.pings, start note} { helper() }
 
   fn helper() {
     n += 10
@@ -299,7 +299,7 @@ entity A(id: String) {
 
   ## Changes A, has B end it, and changes it again: both changes are
   ## dropped with the state.
-  pub fn countThenRetired(ok: Approval) {
+  pub fn countThenRetired(ok: Approval) uses {entity A, entity B} {
     n += 1
     B(id).retireA(ok)
     n += 1
@@ -310,7 +310,7 @@ entity B(id: String) {
   state calls: Int = 0
   state sawN: Int = 0
 
-  pub fn pong() {
+  pub fn pong() uses {entity A, publish Bus.pings, start note} {
     calls += 1
     sawN = A(id).n
     note.start("pong")
@@ -318,7 +318,7 @@ entity B(id: String) {
     A(id).bump()
   }
 
-  pub fn retireA(ok: Approval) {
+  pub fn retireA(ok: Approval) uses {entity A} {
     calls += 1
     A(id).retire(ok)
   }

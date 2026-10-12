@@ -35,7 +35,7 @@ entity Ping(id: String) {
   state log: List(String) = []
 
   ## Counts one, has Pong come back to bump, and gives the count after.
-  pub fn ping() -> Int {
+  pub fn ping() -> Int uses {entity Ping, entity Pong} {
     n += 1
     let before = n
     Pong(id).pong()
@@ -49,7 +49,7 @@ entity Ping(id: String) {
 entity Pong(id: String) {
   state saw: Int = 0
 
-  pub fn pong() {
+  pub fn pong() uses {entity Ping} {
     saw = Ping(id).n
     Ping(id).bump()
   }
