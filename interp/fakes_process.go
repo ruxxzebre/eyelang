@@ -3,7 +3,6 @@ package interp
 import (
 	"bytes"
 	"encoding/json"
-	"os"
 	"strconv"
 	"strings"
 
@@ -40,7 +39,7 @@ type processFakes struct {
 // loadProcessFakes reads the recorded answers to process.run at path, each
 // checked against its result type.
 func (in *Interp) loadProcessFakes(path string, at ir.Pos) *processFakes {
-	data, err := os.ReadFile(path)
+	data, err := in.readFile(path)
 	if err != nil {
 		in.faultf(at, "no recordings for process: %v", err)
 	}
