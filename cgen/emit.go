@@ -374,6 +374,10 @@ func (e *fn) instr(in lir.Instr) {
 		e.printf("{ ey_dyn *d_ = ey_alloc(sizeof(ey_dyn) + sizeof(%s), &%s_d); d_->methods = %s; *(%s *)EY_DYN_VAL(d_) = %s; %s = EY_V(d_); }",
 			e.ct(x.Src), name, name, e.ct(x.Src), e.v(x.Src), e.v(x.Dst))
 	case *lir.Field:
+		if kind(x.Src) == "Range" {
+			e.rangeEnd(x)
+			return
+		}
 		e.field(x.Dst, x.Src, e.fieldIndex(x.Src.Ty, x.Name), x.Take)
 	case *lir.TupleGet:
 		e.field(x.Dst, x.Src, x.Index, false)

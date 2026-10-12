@@ -159,6 +159,14 @@ static inline int64_t ey_count(const char *at, ey_v n) {
 /* time */
 ey_v eyb_instant_add(ey_v i, int64_t d);
 int64_t eyb_instant_sub(ey_v a, ey_v b);
+ey_v eyb_instant_unix(ey_v i);
+int64_t eyb_instant_date(const char *at, ey_v i, ey_v zone);
+int32_t eyb_instant_time(const char *at, ey_v i, ey_v zone);
+ey_v eyb_time_next(const char *at, int32_t secs, ey_v zone, ey_v after);
+ey_v eyb_date_at(const char *at, int64_t day, int32_t secs, ey_v zone);
+ey_v eyb_date_format(int64_t day, ey_v pattern);
+ey_v eyb_time_format(int32_t secs, ey_v pattern);
+bool eyb_time_range_contains(const char *at, ey_v range, int32_t t);
 
 /* fs and process */
 void ey_sandbox(bool on);

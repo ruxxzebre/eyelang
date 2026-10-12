@@ -150,6 +150,10 @@ func (e *fn) builtin(in *lir.Builtin) {
 	if (k0 == "Iter" || name == "zip" && kind(arg(1)) == "Iter") && e.iterBuiltin(in, arg) {
 		return
 	}
+	// The time methods (times.go).
+	if e.timeBuiltin(in) {
+		return
+	}
 	switch name {
 	case "expect":
 		switch len(in.Args) {

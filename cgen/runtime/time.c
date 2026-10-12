@@ -80,7 +80,9 @@ ey_v ey_instant_new(int64_t ns, const ey_zone *z) {
 }
 
 /* local_to_unix is Go's time.Date: the instant the clock in z shows
- * local seconds, an hour after a gap and the first of an overlap. */
+ * local seconds, with Go's choice in a gap or an overlap: in Dublin, 01:30
+ * on the day the clocks go forward is 02:30, and on the day they go back
+ * the second 01:30. */
 static int64_t local_to_unix(const ey_zone *z, int64_t local) {
 	int64_t start, end;
 	int32_t off = lookup(z, local, &start, &end);
@@ -127,4 +129,109 @@ ey_v eyb_instant_add(ey_v i, int64_t d) {
 
 int64_t eyb_instant_sub(ey_v a, ey_v b) {
 	return ((ey_instant *)(uintptr_t)a)->ns - ((ey_instant *)(uintptr_t)b)->ns;
+}
+
+/* ---------------------------------------------------------------- the time methods (SPECS.md §20) */
+
+/* local_secs is the clock in z at the instant: seconds since 1970 as the
+ * clock shows them. */
+static int64_t local_secs(const ey_instant *t) {
+	int64_t unix = floor_div(t->ns, 1000000000), start, end;
+	return unix + lookup(t->zone, unix, &start, &end);
+}
+
+/* at.unix(): whole seconds since 1970-01-01 00:00 UTC */
+ey_v eyb_instant_unix(ey_v i) { return ey_int_i64(floor_div(((ey_instant *)(uintptr_t)i)->ns, 1000000000)); }
+
+/* at.date(in: zone) and at.time(in: zone) */
+static int64_t clock_in(const char *at, ey_v i, ey_v zone) {
+	ey_instant t = *(ey_instant *)(uintptr_t)i;
+	t.zone = ey_zone_find(at, zone);
+	return local_secs(&t);
+}
+int64_t eyb_instant_date(const char *at, ey_v i, ey_v zone) { return floor_div(clock_in(at, i, zone), 86400); }
+int32_t eyb_instant_time(const char *at, ey_v i, ey_v zone) {
+	int64_t local = clock_in(at, i, zone);
+	return (int32_t)(local - floor_div(local, 86400) * 86400);
+}
+
+/* t.next(in: zone, after: instant): the first instant after `after` when
+ * the clock in zone shows t, on after's day there or the next */
+ey_v eyb_time_next(const char *at, int32_t secs, ey_v zone, ey_v after) {
+	const ey_zone *z = ey_zone_find(at, zone);
+	ey_instant a = *(ey_instant *)(uintptr_t)after;
+	a.zone = z;
+	int64_t day = floor_div(local_secs(&a), 86400);
+	int64_t t = local_to_unix(z, day * 86400 + secs);
+	if (t * 1000000000 <= a.ns) t = local_to_unix(z, (day + 1) * 86400 + secs);
+	return ey_instant_new(t * 1000000000, z);
+}
+
+/* day.at(t, in: zone) */
+ey_v eyb_date_at(const char *at, int64_t day, int32_t secs, ey_v zone) {
+	return ey_instant_local(at, day, secs, zone);
+}
+
+static const char *const month_names[] = {"January", "February", "March",     "April",   "May",      "June",
+                                          "July",    "August",   "September", "October", "November", "December"};
+static const char *const weekday_names[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+/* strftime's directives, as the interpreter's formatDate has them: %A
+ * weekday, %B month, %d day, %m month number, %Y year; %H hour from 00 to
+ * 23, %I hour from 01 to 12, %M minute, %S second, %p AM or PM; %% a
+ * percent sign. A - after the % drops the leading zero: %-d, %-H, %-I. Any
+ * other character after a % is written without the %. */
+static ey_v format_clock(int64_t day, int64_t secs, ey_v pattern) {
+	int64_t y, m, d;
+	ey_civil_from_days(day, &y, &m, &d);
+	int64_t h = secs / 3600, mi = secs / 60 % 60, s = secs % 60, h12 = h % 12 == 0 ? 12 : h % 12;
+	int64_t wd = ((day % 7) + 11) % 7; /* 1970-01-01 was a Thursday */
+	ey_str *p = EY_STR(pattern);
+	ey_buf b = {0};
+	for (int64_t i = 0; i < p->len; i++) {
+		char c = p->b[i];
+		if (c != '%' || i + 1 == p->len) {
+			ey_buf_char(&b, c);
+			continue;
+		}
+		c = p->b[++i];
+		switch (c) {
+		case 'A': ey_buf_str(&b, weekday_names[wd]); break;
+		case 'B': ey_buf_str(&b, month_names[m - 1]); break;
+		case 'd': ey_buf_u64(&b, (uint64_t)d, 2); break;
+		case 'm': ey_buf_u64(&b, (uint64_t)m, 2); break;
+		case 'Y': ey_buf_i64(&b, y); break;
+		case 'H': ey_buf_u64(&b, (uint64_t)h, 2); break;
+		case 'I': ey_buf_u64(&b, (uint64_t)h12, 2); break;
+		case 'M': ey_buf_u64(&b, (uint64_t)mi, 2); break;
+		case 'S': ey_buf_u64(&b, (uint64_t)s, 2); break;
+		case 'p': ey_buf_str(&b, h < 12 ? "AM" : "PM"); break;
+		case '-':
+			if (i + 1 == p->len) break;
+			switch (p->b[i + 1]) {
+			case 'd': i++; ey_buf_u64(&b, (uint64_t)d, 0); break;
+			case 'H': i++; ey_buf_u64(&b, (uint64_t)h, 0); break;
+			case 'I': i++; ey_buf_u64(&b, (uint64_t)h12, 0); break;
+			}
+			break;
+		default: ey_buf_char(&b, c);
+		}
+	}
+	return ey_buf_take(&b);
+}
+
+/* day.format(pattern) and t.format(pattern); a time of day is on day 0,
+ * 0000-01-01, as the interpreter has it */
+ey_v eyb_date_format(int64_t day, ey_v pattern) { return format_clock(day, 0, pattern); }
+ey_v eyb_time_format(int32_t secs, ey_v pattern) { return format_clock(ey_days_from_civil(0, 1, 1), secs, pattern); }
+
+/* whether a range of times of day holds t: one whose end comes before its
+ * start wraps midnight, so 23:00..08:00 holds 23:30 and 07:00 */
+bool eyb_time_range_contains(const char *at, ey_v range, int32_t t) {
+	ey_range_obj *r = EY_RANGEP(range);
+	if (r->flags & (EY_RANGE_NO_START | EY_RANGE_NO_END)) ey_unsupported(at, "contains on a range of times without both ends");
+	int64_t s = (int64_t)r->start, e = (int64_t)r->end, v = t;
+	bool after_end = v > e || (v == e && !(r->flags & EY_RANGE_INCLUSIVE));
+	if (s <= e) return v >= s && !after_end;
+	return v >= s || !after_end;
 }
