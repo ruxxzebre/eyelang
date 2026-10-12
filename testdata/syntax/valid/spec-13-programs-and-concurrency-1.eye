@@ -3,8 +3,8 @@ import fs
 
 pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
   for path in args |> drop(1) {
-    let text = fs.readText(path)?
-    print("{path}: {text |> lines |> size} lines")
+    let lines = fs.lines(path)?
+    print("{path}: {lines |> size} lines")
   }
   Ok(())
 }

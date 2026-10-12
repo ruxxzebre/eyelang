@@ -31,6 +31,13 @@ impl Show for FsError {
 @host("fs.readText")
 pub extern fn readText(path: String) -> Result(String, FsError) uses {fs}
 
+## The lines of a text file, as `text |> lines` splits a string: a line ends
+## at `\n` or `\r\n`, which it leaves out, and a line break at the end of the
+## file adds no empty line. So a file holding `"a\r\nb\n"` has the lines
+## `["a", "b"]`, and an empty file has none.
+@host("fs.lines")
+pub extern fn lines(path: String) -> Result(List(String), FsError) uses {fs}
+
 ## The bytes of a file, whatever they hold: for files that may not be UTF-8 text.
 @host("fs.readBytes")
 pub extern fn readBytes(path: String) -> Result(Bytes, FsError) uses {fs}

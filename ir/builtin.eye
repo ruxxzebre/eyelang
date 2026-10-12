@@ -431,7 +431,8 @@ pub extern fn iter(c: Collection(a)) -> Iter(a)
 
 # == Strings and numbers
 
-## The lines of s, without their line breaks.
+## The lines of s, without their line breaks: a line ends at `\n` or `\r\n`, and a line break at
+## the end adds no empty line, so `"a\r\nb\n".lines()` is `["a", "b"]` and `"".lines()` is `[]`.
 pub extern fn lines(s: String) -> List(String)
 
 ## The parts of s between separators.

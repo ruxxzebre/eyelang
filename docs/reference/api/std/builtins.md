@@ -619,7 +619,8 @@ elements, whatever the size of xs. A map gives its (key, value) pairs, a string 
 fn lines(s: String) -> List(String)
 ```
 
-The lines of s, without their line breaks.
+The lines of s, without their line breaks: a line ends at `\n` or `\r\n`, and a line break at
+the end adds no empty line, so `"a\r\nb\n".lines()` is `["a", "b"]` and `"".lines()` is `[]`.
 
 ### split {#split}
 

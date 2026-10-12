@@ -39,6 +39,20 @@ test "files are written, read, listed and removed" {
   expect(!fs.exists("notes/b.txt"))
 }
 
+test "a file is read as its lines" {
+  expect(fs.writeText("a.txt", "one\r\ntwo\n\nfour\n") == Ok(()))
+  expect(fs.lines("a.txt") == Ok(["one", "two", "", "four"]))
+  expect(fs.writeText("b.txt", "no line break at the end") == Ok(()))
+  expect(fs.lines("b.txt") == Ok(["no line break at the end"]))
+  expect(fs.writeText("empty.txt", "") == Ok(()))
+  expect(fs.lines("empty.txt") == Ok([]))
+  expect(fs.writeText("blank.txt", "\n") == Ok(()))
+  expect(fs.lines("blank.txt") == Ok([""]))
+  expect(fs.lines("missing.txt") == Err(NotFound(path: "missing.txt")))
+  expect(fs.writeBytes("latin1.txt", toBytes([0x63, 0x61, 0x66, 0xE9])) == Ok(()))
+  expect(fs.lines("latin1.txt") == Err(SystemError(path: "latin1.txt", reason: "not UTF-8 text")))
+}
+
 test "a test starts in an empty directory" {
   expect(fs.list(".") == Ok([]))
   expect(fs.readText("a.txt") == Err(NotFound(path: "a.txt")))

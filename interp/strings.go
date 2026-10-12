@@ -178,6 +178,20 @@ func stringBuiltins(add func(string, builtinFunc)) {
 
 // charOffset returns the byte offset after the first n characters of s, or
 // its length if it has fewer.
+// textLines is the lines of s, as `lines` and fs.lines give them: a line
+// ends at "\n" or "\r\n", which it leaves out, and a final line break adds
+// no empty line, so "" has no lines and "a\n" has one.
+func textLines(s string) []Value {
+	if s == "" {
+		return nil
+	}
+	var out []Value
+	for _, l := range strings.Split(strings.TrimSuffix(s, "\n"), "\n") {
+		out = append(out, strings.TrimSuffix(l, "\r"))
+	}
+	return out
+}
+
 func charOffset(s string, n int) int {
 	for i := range s {
 		if n == 0 {

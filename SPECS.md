@@ -1257,8 +1257,8 @@ import fs
 
 pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
   for path in args |> drop(1) {
-    let text = fs.readText(path)?
-    print("{path}: {text |> lines |> size} lines")
+    let lines = fs.lines(path)?
+    print("{path}: {lines |> size} lines")
   }
   Ok(())
 }
@@ -1267,10 +1267,17 @@ pub fn main(args: List(String)) -> Result((), fs.FsError) uses {fs, stdio} {
 - `main` returns `()` or `Result((), e)`. An `Err` is printed with `Show`, and the program exits
   with status 1.
 - **Files, programs and random numbers** come from the standard modules `fs`, `process` and
-  `random`, each with the effect of its name. `fs.readText`, `writeText`, `appendText`,
+  `random`, each with the effect of its name. `fs.readText`, `lines`, `writeText`, `appendText`,
   `readBytes`, `writeBytes`, `list`, `makeDir` and `remove` return a `Result` whose error is an
   `FsError` (`NotFound(path)`,
-  `NotAllowed(path)`, …), and `fs.exists` a `Bool`. `process.run("git", args: ["pull"], input:
+  `NotAllowed(path)`, …), and `fs.exists` a `Bool`. `fs.lines(path)` reads a text file as a
+  `List(String)`, split as `text |> lines` splits a string: a line ends at `\n` or `\r\n`, which
+  it leaves out, and a line break at the end of the file adds no empty line, so a file holding
+  `a\r\nb\n` has the lines `["a", "b"]` and an empty file has none. It gives a list, not an
+  `Iter`: reading a file is an effect, and an `Iter`'s steps only compute (section 5), so the
+  file is read whole, in one call, and in a job in one step, `fs.lines!(path)`. Call it as
+  `fs.lines`: imported by name, it would also be what `text.lines()` calls, since it takes a
+  `String` first (section 8). `process.run("git", args: ["pull"], input:
   "", dir: None)` runs a program without a shell and gives `Ok` with its exit status and output
   for any status, `Err(NotStarted(…))` when it couldn't start. `random.int(1..=6)` (an `Option`,
   `None` for an empty range), `random.float()`, `random.pick(xs)` and `random.shuffle(xs)` draw

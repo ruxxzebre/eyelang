@@ -24,6 +24,7 @@ import (
 func init() {
 	hostFuncs["fs.readText"] = hostReadText
 	hostFuncs["fs.readBytes"] = hostReadBytes
+	hostFuncs["fs.lines"] = hostLines
 	hostFuncs["fs.writeBytes"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
 		return in.fsWrite(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, at)
 	}
@@ -142,17 +143,36 @@ func hostReadBytes(in *Interp, p map[string]Value, at ir.Pos) Value {
 }
 
 func hostReadText(in *Interp, p map[string]Value, at ir.Pos) Value {
+	text, failed := in.readText(p, at)
+	if failed != nil {
+		return failed
+	}
+	return in.ok(text)
+}
+
+// hostLines is fs.lines: the file's text, split as `lines` splits a string.
+func hostLines(in *Interp, p map[string]Value, at ir.Pos) Value {
+	text, failed := in.readText(p, at)
+	if failed != nil {
+		return failed
+	}
+	return in.ok(&List{Elems: textLines(text)})
+}
+
+// readText reads the UTF-8 text of the file at p["path"], or gives the Err
+// to return instead.
+func (in *Interp) readText(p map[string]Value, at ir.Pos) (string, Value) {
 	path := show(p["path"])
 	var data []byte
 	var err error
 	in.blocking(func(context.Context) { data, err = os.ReadFile(in.path(p["path"], at)) })
 	if err != nil {
-		return in.errV(in.fsError(path, err, at))
+		return "", in.errV(in.fsError(path, err, at))
 	}
 	if !utf8.Valid(data) {
-		return in.errV(in.fsError(path, errors.New("not UTF-8 text"), at))
+		return "", in.errV(in.fsError(path, errors.New("not UTF-8 text"), at))
 	}
-	return in.ok(string(data))
+	return string(data), nil
 }
 
 func (in *Interp) fsWrite(p map[string]Value, flags int, at ir.Pos) Value {

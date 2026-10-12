@@ -497,15 +497,7 @@ func builtinTable() map[string]*BuiltinFn {
 
 	// Strings and numbers.
 	add("lines", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
-		s := in.str(args, "lines", at)
-		var out []Value
-		for _, l := range strings.Split(strings.TrimSuffix(s, "\n"), "\n") {
-			out = append(out, strings.TrimSuffix(l, "\r"))
-		}
-		if s == "" {
-			out = nil
-		}
-		return &List{Elems: out}
+		return &List{Elems: textLines(in.str(args, "lines", at))}
 	})
 	add("split", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 2, "split", at)
