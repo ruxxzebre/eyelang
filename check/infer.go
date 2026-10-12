@@ -1906,6 +1906,7 @@ func (x *fnCheck) methodCall(e *ir.MethodCall, want typ) typ {
 			return c.unknownf(e.Pos, "this Handler, such as clock(…), keeps no calls: only fakes(…) lists the calls it answered")
 		case e.Name == "reconcile" && r.decl != nil:
 			c.useName(e, method("reconcile"))
+			x.stepCall(e, "reconciling")
 			x.inferArgs(e.Args)
 			if r.uncertain && !r.reconcilable {
 				c.typeErrorf(e.Pos, "this command names no @reconcile query, so its Uncertain outcome can't be reconciled: match Uncertain(key) instead")

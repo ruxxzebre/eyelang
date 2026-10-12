@@ -379,6 +379,14 @@ test "t" {
 job j(text: String) {
   let r = svc.raw!(text).reconcile!()
 }`, []string{"3:11: this command names no @reconcile query"}},
+		{"reconciling in a job is a step", `import svc
+job j(text: String) {
+  let r = svc.send!(text, key: "k").reconcile()
+  let s = svc.send!(text, key: "l").reconcile!()
+}
+fn f(text: String) uses {net Svc.send} {
+  let r = svc.send(text, key: "k").reconcile()
+}`, []string{"3:11: in a job, reconciling is a durable step: write reconcile!(…)"}},
 		{"events carry their type", `import svc
 job j() {
   let p = next!(svc.pings, where: fn p: p.missing == 1, within: 1 min)
