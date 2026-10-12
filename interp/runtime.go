@@ -1,6 +1,7 @@
 package interp
 
 import (
+	"context"
 	"encoding/json"
 	"math/rand/v2"
 	"net/http"
@@ -18,6 +19,9 @@ type runtime struct {
 	store    Store
 	now      time.Time
 	real     bool // the clock is the system's (eye run), not a test's
+	// signalled, while main runs under eye run, ends with Ctrl-C or SIGTERM:
+	// what main waits for, its tasks included, stops waiting then.
+	signalled context.Context
 	queue    []int64
 	draining bool
 	tx       *txn

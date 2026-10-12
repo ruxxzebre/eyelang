@@ -106,10 +106,7 @@ func (in *Interp) currentTask() *taskCtx {
 // waited stops here.
 func (in *Interp) blocking(f func(ctx context.Context)) {
 	t := in.currentTask()
-	ctx := context.Background()
-	if t != nil && t.ctx != nil {
-		ctx = t.ctx
-	}
+	ctx := in.taskContext(t)
 	if in.g != nil {
 		in.g.mu.Unlock()
 		f(ctx)
@@ -121,6 +118,18 @@ func (in *Interp) blocking(f func(ctx context.Context)) {
 	if ctx.Err() != nil {
 		panic(cancelSignal{})
 	}
+}
+
+// taskContext is what cancels the code of task t, or, outside a task,
+// main's code under eye run when a signal stops it.
+func (in *Interp) taskContext(t *taskCtx) context.Context {
+	if t != nil && t.ctx != nil {
+		return t.ctx
+	}
+	if in.rt.signalled != nil {
+		return in.rt.signalled
+	}
+	return context.Background()
 }
 
 // pause waits d: on the system clock for real, and on a test's clock by
@@ -379,10 +388,8 @@ func (in *Interp) runParallel(fns []func(*Interp) Value, limit int, first bool, 
 		in.g = &gil{}
 		in.g.mu.Lock() // the code running now holds it from here on
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	if t := in.currentTask(); t != nil && t.ctx != nil {
-		ctx, cancel = context.WithCancel(t.ctx)
-	}
+	base := in.taskContext(in.currentTask())
+	ctx, cancel := context.WithCancel(base)
 	if within > 0 {
 		var c2 context.CancelFunc
 		ctx, c2 = context.WithTimeout(ctx, within)
@@ -443,6 +450,9 @@ func (in *Interp) runParallel(fns []func(*Interp) Value, limit int, first bool, 
 		if r.fault != nil {
 			panic(r.fault)
 		}
+	}
+	if base.Err() != nil {
+		panic(cancelSignal{}) // the caller was cancelled, its tasks with it
 	}
 	return results, winner
 }

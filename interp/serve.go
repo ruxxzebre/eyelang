@@ -64,6 +64,26 @@ type VirtualClock struct {
 	Wakes int
 }
 
+// runMain calls main, and reports whether ctx ended first: a signal stops
+// what main waits for (a timer, a service, its tasks, a channel), which
+// unwinds it at once. Code that computes without waiting isn't stopped.
+func (in *Interp) runMain(ctx context.Context, main *ir.Func, argv []argVal) (result Value, stopped bool) {
+	in.rt.signalled = ctx
+	depth := in.depth
+	defer func() {
+		in.rt.signalled = nil
+		if r := recover(); r != nil {
+			if _, ok := r.(cancelSignal); !ok || ctx.Err() == nil {
+				panic(r)
+			}
+			in.depth = depth
+			stopped = true
+		}
+	}()
+	result, _ = in.callFunc(main, nil, nil, argv, main.Pos)
+	return result, false
+}
+
 // Run runs a program as `eye run` does. main runs first, if the program has
 // one, every time the program starts. Then, if the program has jobs, Run
 // keeps going on the system clock: sleeping runs wake when their time comes,
@@ -173,9 +193,15 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		if c := in.rt.crossings; c != nil {
 			c.enter("main")
 		}
-		result, _ := in.callFunc(main, nil, nil, argv, main.Pos)
+		result, stopped := in.runMain(ctx, main, argv)
 		if c := in.rt.crossings; c != nil {
 			c.enter("the runner")
+		}
+		if stopped {
+			// main is ordinary code, so stopping it loses nothing the
+			// store keeps; what it committed is synced on the way out.
+			fmt.Fprintln(stderr, "eye run: stopped while main ran")
+			return code
 		}
 		if e, ok := isVariant(result, "Err"); ok {
 			fmt.Fprintln(stderr, in.display(e.Vals[0])) // with its Show, as a Problem has

@@ -288,6 +288,11 @@ Ctrl-C (SIGINT) and SIGTERM stop `eye run`, and it exits with status 0 unless a 
 is lost: every step that finished is already in the journal, and a step that was cut off runs again
 on the next start. A service manager can stop and restart the program at any time.
 
+A signal also stops `main` while it waits, for a timer, a service, its tasks or a channel: it
+prints `eye run: stopped while main ran` and exits. `main` is ordinary code, so stopping it half-way
+loses nothing the journal keeps. Code that computes without ever waiting isn't interrupted; a
+second Ctrl-C ends the process.
+
 A minimal systemd unit, with secrets mounted as credentials:
 
 ```ini

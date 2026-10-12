@@ -66,6 +66,39 @@ pub fn main() uses {start nap} {
 	}
 }
 
+// eye run stops on SIGTERM while main waits, as Kubernetes sends it to a
+// program whose main waits for a service at startup.
+func TestRunStopsWhileMainWaits(t *testing.T) {
+	dir := program(t, map[string]string{"main.eye": `
+job nap() {
+  sleep!(1 h)
+}
+
+pub fn main() uses {stdio, wait, start nap} {
+  nap.start(key: "nap")
+  sleep(30 s)
+  print("woke")
+}
+`})
+	cmd, out := eyeProcess(t, "run", dir)
+	journal := filepath.Join(dir, ".eye", "journal")
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if store, err := interp.ReadJournal(journal); err == nil && len(store.Runs()) == 1 {
+			break
+		}
+	}
+	start := time.Now()
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("eye run on SIGTERM: %v\n%s", err, out)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second || strings.Contains(out.String(), "woke") || !strings.Contains(out.String(), "stopped while main ran") {
+		t.Errorf("eye run stopped after %v:\n%s", elapsed, out)
+	}
+}
+
 // The exit test of the durable runner: a job sleeps, the process is killed
 // in the middle of the sleep, and when eye run starts again the job finishes
 // when its sleep was meant to end.

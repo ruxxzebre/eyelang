@@ -220,10 +220,7 @@ func (in *Interp) taskGroup(f Value, at ir.Pos) Value {
 		in.g.mu.Lock() // the code running now holds it from here on
 	}
 	parent := in.currentTask()
-	ctx := context.Background()
-	if parent != nil && parent.ctx != nil {
-		ctx = parent.ctx
-	}
+	ctx := in.taskContext(parent)
 	g := &rgroup{root: in, at: at, owned: parent != nil}
 	g.ctx, g.cancel = context.WithCancel(ctx)
 	defer g.cancel()
@@ -246,7 +243,7 @@ func (in *Interp) taskGroup(f Value, at ir.Pos) Value {
 	if g.fault != nil {
 		panic(g.fault)
 	}
-	if parent != nil && parent.ctx != nil && parent.ctx.Err() != nil {
+	if ctx.Err() != nil {
 		panic(cancelSignal{})
 	}
 	return result

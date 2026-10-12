@@ -121,6 +121,12 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	opts := interp.RunOptions{Args: append([]string{dir}, progArgs...), Stdout: stdout, Stderr: stderr, Inbox: inboxPath(dir), MemoryLimit: limit}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		// The first signal stops the runner cleanly; a second one, for
+		// code that computes without ever waiting, ends the process.
+		<-ctx.Done()
+		stop()
+	}()
 	switch {
 	case url != "":
 		// A database that can't be reached yet is waited for, as one that
