@@ -41,15 +41,17 @@ func (s *server) definition(d *document, p Position) (any, *responseError) {
 			return []location{loc}, nil
 		}
 	}
+	// An extern fn's name is a use of its own declaration; its definition is
+	// the Go its @host names.
+	if loc, ok := s.hostLocation(d, offset); ok {
+		return []location{loc}, nil
+	}
 	res := s.checked(path)
 	if use, ok := res.Index.At(path, offset); ok {
 		if loc, ok := s.targetLocation(use.Target); ok {
 			return []location{loc}, nil
 		}
 		return nil, nil
-	}
-	if loc, ok := s.hostLocation(d, offset); ok {
-		return []location{loc}, nil
 	}
 	if word := commentWord(d, offset); word != "" {
 		if target := res.Lookup(path, word); target != nil {
@@ -128,7 +130,7 @@ func declaredName(d *document, offset int) *syntax.Node {
 // the program it belongs to, and the open documents in place of what is on
 // disk.
 func (s *server) checked(path string) *check.Result {
-	root := check.Root(path)
+	root := s.rootOf(path)
 	return check.Check(root, check.Options{Overlay: s.overlay(root), Module: filepath.Dir(path)})
 }
 
@@ -202,7 +204,7 @@ func (s *server) references(d *document, p Position, withDecl bool) (any, *respo
 	if !ok {
 		return out, nil
 	}
-	root := check.Root(path)
+	root := s.rootOf(path)
 	res := s.checkAll(root, filepath.Dir(path))
 	use, ok := res.Index.At(path, d.offset(p))
 	if !ok {
@@ -248,7 +250,7 @@ func (s *server) references(d *document, p Position, withDecl bool) (any, *respo
 // with module, if given, among them.
 func (s *server) checkAll(root, module string) *check.Result {
 	opts := check.Options{Overlay: s.overlay(root), Module: module}
-	if _, err := os.Stat(filepath.Join(root, "eye.toml")); err == nil {
+	if _, err := os.Stat(filepath.Join(root, "eye.toml")); err == nil || s.root != "" {
 		opts.All = true // without one, the program is its own directory only
 	}
 	return check.Check(root, opts)

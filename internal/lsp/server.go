@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"eyelang/check"
 	"eyelang/syntax"
 )
 
@@ -23,6 +24,18 @@ type server struct {
 	folders  []string              // the workspace's folders, where trimmed Go paths are looked up
 	sources  map[string]sourceText // eye's own source files, as read for keywords
 	shutdown bool
+	// root, when set, is the directory of the one program every document
+	// belongs to, as in a Workspace held in memory, where nothing on disk
+	// says where a program starts.
+	root string
+}
+
+// rootOf returns the directory of the program the file at path belongs to.
+func (s *server) rootOf(path string) string {
+	if s.root != "" {
+		return s.root
+	}
+	return check.Root(path)
 }
 
 func (s *server) run() error {

@@ -128,7 +128,7 @@ func (s *server) checkedWithoutLine(d *document, offset int) (*check.Result, str
 // checkText checks the program that the file at path belongs to, with text
 // as that file's source.
 func (s *server) checkText(path string, text []byte) *check.Result {
-	root := check.Root(path)
+	root := s.rootOf(path)
 	overlay := s.overlay(root)
 	overlay[path] = text
 	return check.Check(root, check.Options{Overlay: overlay, Module: filepath.Dir(path)})
