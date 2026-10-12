@@ -80,8 +80,12 @@ session), the digest in the homelab, and findings that have no issue yet.
    language rule is in the way, every gap is the C back end's. 7.8 (checked against the
    interpreter at both levels) and 7.14 (cheap fixes: one unit, an allocator, static variants,
    number formatting, constant division) are done: native code now takes 1.90× Go's time on the
-   geometric mean, down from 2.87×, and beats Go on strings and logs. Now 7.13 (values laid out by type) with 7.5 (counting in the low IR), then 7.9
-   (core gaps in C) and 7.6 with B′ hosting (one static binary, Go linked
+   geometric mean, down from 2.87×, and beats Go on strings and logs. 7.5 (counting in the low
+   IR) is done and most of 7.13 (values laid out by type): native code now takes 0.85× Go's time
+   on the geometric mean and 0.36× its memory, with records 0.53×, the lexer 0.65× (and a third
+   of Go's memory) and trees 0.66×. Left of 7.13: maps (1.62×, probes specialised per key type)
+   and strings and `Bytes` as views. Next 7.9 (core gaps in C), with the groundwork of 7.6 under
+   way in parallel, and 7.6 with B′ hosting (one static binary, Go linked
    through cgo); 7.11 (faster than Go, the owner's bar) throughout; 7.12 last; S.2 (the runner in
    Eyelang) after v0.4. 7.10 is done: a digest morning crosses between compiled code and the
    runner 214 times, about 7.5 µs under B′. G.20, the lexer's five language changes (element

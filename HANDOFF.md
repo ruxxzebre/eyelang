@@ -5,8 +5,8 @@ findings that have no issue yet. Delete an item once it is done or moved to an i
 file once nothing is left.
 
 In flight on 2026-10-12, in worktrees of the coordinating session, to be merged into `dev` by
-it: 7.13 with 7.5 (#117, #78; the low IR's layouts and counting are written, the C back end
-switches over next). 7.8, 7.14, G.20 and the audit's fixable bugs (#120 to #130, #133, #137,
+it: none of the coordinator's own; the helper session builds 7.6's groundwork (the pinned Go
+toolchain and the B′ link path). 7.5 is merged and 7.13 mostly (maps and string views left). 7.8, 7.14, G.20 and the audit's fixable bugs (#120 to #130, #133, #137,
 #138) are merged; #131, #134, #135 and #136 wait on the owner. If they are merged, `git
 worktree list` shows nothing under `.claude/worktrees` and ROADMAP marks them done. If one is
 still open with no worktree, it was never merged: start it again from its issue.
