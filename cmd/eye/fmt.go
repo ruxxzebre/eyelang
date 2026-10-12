@@ -8,8 +8,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/term"
@@ -125,10 +127,11 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 		}
 		stats.phase("check", fmt.Sprintf("%s, %s, for uses clauses", plural(stats.programs, "program"), plural(stats.modules, "module")))
 	}
-	for _, path := range files {
+	abs := absPaths(files)
+	for i, path := range files {
 		fileStart := time.Now()
 		src, err := os.ReadFile(path)
-		session.RecordSource(absPath(path), src, err)
+		session.RecordSource(abs[i], src, err)
 		if err != nil {
 			fmt.Fprintf(stderr, "eye fmt: %v\n", err)
 			code = exitErrors
@@ -136,10 +139,10 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 			continue
 		}
 		in := src
-		if s := sigs[absPath(path)]; len(s) > 0 {
+		if s := sigs[abs[i]]; len(s) > 0 {
 			in = writeUses(path, src, s, stderr)
 		}
-		parsed := session.File(absPath(path))
+		parsed := session.File(abs[i])
 		if parsed == nil || !bytes.Equal(in, parsed.Src) {
 			parsed = syntax.Parse(in)
 		}
@@ -238,25 +241,77 @@ func eyeFiles(paths []string) (files, inDirs []string, err error) {
 // say what their bodies do. It reports a program with other errors, whose
 // clauses it leaves as written, and returns false.
 func signatures(files []string, session *check.FormatSession, stats *fmtStats, stderr io.Writer) (map[string][]check.Signature, bool) {
+	var dirs []string // one program for each directory, in the order of files
+	listed := map[string]bool{}
+	for _, path := range absPaths(files) {
+		if dir := filepath.Dir(path); !listed[dir] {
+			listed[dir] = true
+			dirs = append(dirs, dir)
+		}
+	}
+
+	// The programs are checked on every CPU, but their results are taken in
+	// order, so the output is what checking one after another gives. A
+	// directory that an earlier program checked as one of its modules is
+	// skipped: a worker skips it when that program's result was already
+	// taken, and otherwise its result is dropped.
+	type program struct {
+		root string
+		res  *check.Result
+		done chan struct{}
+	}
+	programs := make([]program, len(dirs))
+	for i := range programs {
+		programs[i].done = make(chan struct{})
+	}
+	var mu sync.Mutex
+	checked := map[string]bool{} // module directories, of the results taken
+	workers := max(1, min(runtime.GOMAXPROCS(0), len(dirs)))
+	ahead := make(chan struct{}, 2*workers) // bounds the results held at once
+	next := make(chan int)
+	go func() {
+		for i := range dirs {
+			ahead <- struct{}{}
+			next <- i
+		}
+		close(next)
+	}()
+	for range workers {
+		go func() {
+			for i := range next {
+				mu.Lock()
+				skip := checked[dirs[i]]
+				mu.Unlock()
+				if !skip {
+					programs[i].root = session.Root(dirs[i])
+					programs[i].res = session.Check(programs[i].root, dirs[i])
+				}
+				close(programs[i].done)
+			}
+		}()
+	}
+
 	out := map[string][]check.Signature{}
-	checked := map[string]bool{} // module directories
-	seen := map[string]bool{}    // functions, by file and offset: a module imported by two checked ones comes back twice
+	seen := map[string]bool{} // functions, by file and offset: a module imported by two checked ones comes back twice
 	ok := true
-	for _, path := range files {
-		dir := filepath.Dir(absPath(path))
+	for i, dir := range dirs {
+		<-programs[i].done
+		root, res := programs[i].root, programs[i].res
+		programs[i].res = nil
+		<-ahead
 		if checked[dir] {
 			continue
 		}
-		root := session.Root(dir)
-		res := session.Check(root, dir)
+		mu.Lock()
 		checked[dir] = true
-		stats.programs++
-		stats.modules += len(res.Program.Modules)
 		for _, m := range res.Program.Modules {
 			if m.Dir != "" {
 				checked[absPath(m.Dir)] = true
 			}
 		}
+		mu.Unlock()
+		stats.programs++
+		stats.modules += len(res.Program.Modules)
 		sigs, clean := res.Signatures()
 		if !clean {
 			fmt.Fprintf(stderr, "eye fmt: %s has errors, so its uses clauses weren't written; eye check %s lists them\n", dir, root)
@@ -331,4 +386,22 @@ func absPath(path string) string {
 		return abs
 	}
 	return path
+}
+
+// absPaths is absPath of each path. It asks for the working directory once:
+// os.Getwd makes two system calls each time, which add up over every file.
+func absPaths(paths []string) []string {
+	wd, err := os.Getwd()
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		switch {
+		case filepath.IsAbs(p):
+			out[i] = filepath.Clean(p)
+		case err == nil:
+			out[i] = filepath.Join(wd, p)
+		default:
+			out[i] = p
+		}
+	}
+	return out
 }

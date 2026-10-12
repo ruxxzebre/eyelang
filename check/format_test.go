@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -107,5 +108,47 @@ func TestFormatSessionUnfinishedLambda(t *testing.T) {
 	}
 	if _, clean := res.Signatures(); clean {
 		t.Fatal("unfinished source returned writable effects")
+	}
+}
+
+// TestFormatSessionConcurrent checks real programs at the same time through
+// one session, as eye fmt does, and compares each with a check of its own.
+// Under -race it also shows that checks share nothing they write.
+func TestFormatSessionConcurrent(t *testing.T) {
+	var dirs []string
+	for _, pattern := range []string{"../testdata/programs/*", "../testdata/lab/*"} {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range matches {
+			if info, err := os.Stat(m); err == nil && info.IsDir() {
+				abs, err := filepath.Abs(m)
+				if err != nil {
+					t.Fatal(err)
+				}
+				dirs = append(dirs, abs)
+			}
+		}
+	}
+	if len(dirs) < 10 {
+		t.Fatalf("found %d programs, want more to check at once", len(dirs))
+	}
+	var session FormatSession
+	results := make([]*Result, len(dirs))
+	var wg sync.WaitGroup
+	for i, dir := range dirs {
+		wg.Go(func() { results[i] = session.Check(session.Root(dir), dir) })
+	}
+	wg.Wait()
+	for i, dir := range dirs {
+		var alone FormatSession
+		want := alone.Check(alone.Root(dir), dir)
+		gotSigs, gotClean := formatSignatures(results[i])
+		wantSigs, wantClean := formatSignatures(want)
+		if gotClean != wantClean || !reflect.DeepEqual(gotSigs, wantSigs) || fmt.Sprint(results[i].Diagnostics) != fmt.Sprint(want.Diagnostics) {
+			t.Errorf("%s: checked with the others: %v %v %v; alone: %v %v %v", dir,
+				gotClean, gotSigs, results[i].Diagnostics, wantClean, wantSigs, want.Diagnostics)
+		}
 	}
 }

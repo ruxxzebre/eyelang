@@ -77,8 +77,8 @@ func coversFiles(inputs []check.FormatInput, files []string) bool {
 			read[input.Path] = true
 		}
 	}
-	for _, file := range files {
-		if !read[absPath(file)] {
+	for _, file := range absPaths(files) {
+		if !read[file] {
 			return false
 		}
 	}

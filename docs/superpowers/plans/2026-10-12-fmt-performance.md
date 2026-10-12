@@ -124,4 +124,6 @@ Done: steps 2–4 and 6, plus `--stats` and a summary line at a terminal. Tests 
 | Cache miss, `bin/eye` with an empty cache | 210–360 ms |
 | First run after a source edit (rebuild through `scripts/eye`) | about 530 ms |
 
-Not done: step 5. The cold path checks programs one after another; profile it before adding a worker pool.
+Step 5, done the same day: a profile of the cold path showed a third of its time in system calls, much of it `os.Getwd` behind `filepath.Abs`, which eye fmt called four times per file. Paths are now made absolute with one `Getwd`, and the programs are checked on every CPU through the shared session, their results taken in the order the files list them, so output and exit status are byte for byte what the serial loop gave (compared on this repository, `testdata/lab`, `testdata/programs` and `check`, checking and formatting in place). A directory an earlier program checked as a module is skipped as before; a worker that started on it anyway has its result dropped. `TestFormatSessionConcurrent` checks every program under `testdata/programs` and `testdata/lab` at once and compares each with a check of its own, under `-race` in CI.
+
+`--cold` on this repository, five runs alternating with the serial build: the check from about 150 ms to about 85 ms, the whole run from about 190 ms to about 117 ms (10 CPUs).
