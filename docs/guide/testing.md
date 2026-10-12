@@ -161,11 +161,46 @@ main.eye:31:9: job digest: notify.send calls another service; replay recordings 
 Model calls are faked the same way: `with fakes(ai, from: "recordings/")` reads
 `recordings/ai.json`, whose exchanges are the replies, used in order. See [AI calls](/guide/ai-calls).
 
+### Running against the real services
+
+`eye test --live ai,notify` runs the same tests against the real model and the real Notify. A
+`with fakes(…)` leaves the modules named out, and their calls go where `eye run` sends them, with
+the address and secret from the environment: `NOTIFY_URL` and `NOTIFY_TOKEN` for Notify, and
+`AI_URL`, `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for a model. The other modules' fakes keep
+replaying, and `sent.calls(op)` still lists what was sent.
+
+A test whose service has no address or secret set is skipped, with what to set. A skipped test
+doesn't fail the run, so `--live` works on a laptop that has some keys and not others:
+
+```text
+ok    a sent digest is not sent again (2ms)
+skip  the digest is written by a model
+      --live ai: no model provider is set: set AI_URL, ANTHROPIC_API_KEY or OPENAI_API_KEY
+3 tests passed, 1 skipped (12ms)
+```
+
 ### Making a recording
 
-Write a recording from what the real service answered: a reply you saw in its logs, or one you got
-by calling it with `curl`. Keep one directory per situation when tests need different answers to
-the same call, and name it in `from:`, as the tutorial's
+`eye test --live notify --record` writes what the real service answered as the recording the
+`with fakes(…)` reads, and names each file it writes. The next plain `eye test` replays it:
+
+```text
+ok    a sent digest is not sent again (240ms)
+ok    a refused digest keeps the items for tomorrow (180ms)
+recorded recordings/notify.json (2 exchanges)
+2 tests passed (420ms)
+```
+
+- Only a test that passed writes. A failed or skipped test writes nothing.
+- A contract's recording keeps one exchange per operation and key, and the exchanges of other
+  operations and keys stay, so `--run` re-records one test without losing the others' answers.
+- `ai.json` holds one test's replies in order, and is replaced.
+- The value of every secret the test read is written as `<secret name>`, even inside an answer
+  that repeats it. A recording never holds a request or its headers.
+
+The file is updated in place: review the change with the rest of the diff. You can also write a
+recording by hand, from a reply you saw in a service's logs. Keep one directory per situation when
+tests need different answers to the same call, and name it in `from:`, as the tutorial's
 [approvals](/tutorial/approvals) program does for a model that fails.
 
 ## Outcomes, approvals and events
@@ -218,8 +253,7 @@ The same test gives the same result on every run, on any machine.
 | Tests that pass alone and fail together | Each test has its own store |
 
 ::: info Not yet
-There is no recorder yet: you write recordings by hand. `eye test --live`, which runs model-backed
-tests against real models, and `with memory(...)` are designed but not built. A test can't join a
+`with memory(...)` is designed but not built. A test can't join a
 run itself, so a job joins it, as `refresh` does. See [What runs today](/reference/status#time-secrets-tests).
 :::
 

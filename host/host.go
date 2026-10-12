@@ -107,5 +107,6 @@ type TestResult = interp.TestResult
 // a clock that moves only when the test advances it. A test that calls an
 // extern fn whose code can't be found fails at the call.
 func (p *Program) Test(filter string) []TestResult {
-	return interp.RunTestsWith(p.prog, filter, p.hosts)
+	results, _, _ := interp.RunTestsWith(p.prog, interp.TestOptions{Filter: filter, Hosts: p.hosts})
+	return results
 }

@@ -36,6 +36,10 @@ type fakeSet struct {
 	// answered are the calls the fakes answered, in order, for
 	// fakes.calls(op).
 	answered []fakeCall
+	// live says the real service answers instead, under eye test --live,
+	// and file is where --record keeps its answers (live.go).
+	live bool
+	file *taking
 }
 
 // fakeCall is a call a fake answered: the operation, and its arguments as
@@ -139,6 +143,14 @@ func (h *fakesHandler) apply(in *Interp, at ir.Pos) {
 		base = filepath.Dir(at.File.Path)
 	}
 	for _, m := range h.modules {
+		if in.rt.isLive(m) {
+			name := m.Name + ".json"
+			if m.Dir == "" {
+				name = m.Path + ".json"
+			}
+			h.applyLive(in, m, filepath.Join(base, h.dir, name), at)
+			continue
+		}
 		if m.Path == "ai" && m.Dir == "" {
 			in.rt.aiReplies = in.loadReplies(filepath.Join(base, h.dir, "ai.json"), at)
 			continue
@@ -261,6 +273,9 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 			rt.in.faultf(at, "%s.%s calls another service; replay recordings with `with fakes(%s, from: \"…\")`, or say how it goes over HTTP with @http", mod, op.Name, mod)
 		}
 		rt.in.faultf(at, "%s.%s calls another service: set %s_URL to its address, or replay recordings with `with fakes(%s, from: \"…\")`", mod, op.Name, envName(op.Contract.Module.Path), mod)
+	}
+	if fs.live {
+		return rt.callLive(fs, op, args, named, at)
 	}
 	key, _ := named["key"].(string)
 	for _, e := range fs.exchanges {

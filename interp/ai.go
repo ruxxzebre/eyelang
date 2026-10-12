@@ -196,6 +196,13 @@ func (in *Interp) complete(req *aiRequest, at ir.Pos) (aiReply, int, string) {
 		}
 		return reply, 0, ""
 	}
+	reply, status, failure := in.ask(req, at)
+	in.rt.recordReply(reply, failure)
+	return reply, status, failure
+}
+
+// ask sends one model call to its provider.
+func (in *Interp) ask(req *aiRequest, at ir.Pos) (aiReply, int, string) {
 	switch providerFor(req) {
 	case "Anthropic":
 		return in.completeAnthropic(req, at)
@@ -204,14 +211,20 @@ func (in *Interp) complete(req *aiRequest, at ir.Pos) (aiReply, int, string) {
 		if !ok {
 			base = "https://api.openai.com/v1"
 		}
-		key, _ := lookupSecret("openai-api-key")
+		key, ok := in.lookupSecret("openai-api-key")
+		if !ok && in.rt.liveAI() {
+			in.rt.skipTest(at, "--live ai: ai.generate asks OpenAI for %s, and OPENAI_API_KEY isn't set", req.model)
+		}
 		return in.completeChat(req, base, key, "max_completion_tokens", at)
 	}
 	base, ok := serviceURL("ai")
 	if !ok {
+		if in.rt.liveAI() {
+			in.rt.skipTest(at, "--live ai: ai.generate needs a model gateway for %s, and AI_URL isn't set", req.model)
+		}
 		in.faultf(at, "ai.generate needs a model gateway for %s: set AI_URL to its base URL, such as http://gateway:8317/v1, or name the provider with provider:", req.model)
 	}
-	key, _ := lookupSecret("ai-key")
+	key, _ := in.lookupSecret("ai-key")
 	return in.completeChat(req, base, key, "max_tokens", at)
 }
 
@@ -319,8 +332,11 @@ func (in *Interp) completeAnthropic(req *aiRequest, at ir.Pos) (aiReply, int, st
 	if !ok {
 		base = "https://api.anthropic.com"
 	}
-	key, ok := lookupSecret("anthropic-api-key")
+	key, ok := in.lookupSecret("anthropic-api-key")
 	if !ok {
+		if in.rt.liveAI() {
+			in.rt.skipTest(at, "--live ai: ai.generate asks Anthropic for %s, and ANTHROPIC_API_KEY isn't set", req.model)
+		}
 		in.faultf(at, "ai.generate asks Anthropic for %s, and has no key: set ANTHROPIC_API_KEY, or put it in $EYE_SECRETS/anthropic-api-key", req.model)
 	}
 	body := map[string]any{

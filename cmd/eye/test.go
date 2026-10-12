@@ -11,17 +11,21 @@ import (
 	"eyelang/interp"
 )
 
-// runTest implements `eye test [--run text] [-v] [program-directory]`.
+// runTest implements `eye test [--run text] [-v] [--live modules [--record]] [program-directory]`.
 func runTest(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("eye test", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	filter := flags.String("run", "", "run only the tests whose names contain this text")
 	verbose := flags.Bool("v", false, "show what passing tests logged too")
+	live := flags.String("live", "", "call the real services of these `modules`, separated by commas (ai, http or contract modules),\ninstead of replaying their recordings; a test whose service has no address or secret set is skipped")
+	record := flags.Bool("record", false, "with --live, write what the real services answered as the recordings\nthe fakes read, for the tests that passed")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: eye test [--run text] [-v] [program-directory]")
+		fmt.Fprintln(stderr, "usage: eye test [--run text] [-v] [--live modules [--record]] [program-directory]")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Runs the test blocks of a program's module, each with a fresh in-memory store")
-		fmt.Fprintln(stderr, "and a clock that moves only when the test advances it.")
+		fmt.Fprintln(stderr, "and a clock that moves only when the test advances it. Calls to other services")
+		fmt.Fprintln(stderr, "are answered from recordings, except for the modules --live names, whose calls")
+		fmt.Fprintln(stderr, "go where eye run sends them, with the address and secret from the environment.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -29,6 +33,16 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 	}
 	if flags.NArg() > 1 {
 		flags.Usage()
+		return exitUsage
+	}
+	var names []string
+	for _, n := range strings.Split(*live, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			names = append(names, n)
+		}
+	}
+	if *record && len(names) == 0 {
+		fmt.Fprintln(stderr, "eye test: --record writes what the real services answered, so it needs --live and the modules to call, such as --live ai,notify")
 		return exitUsage
 	}
 	dir := "."
@@ -42,35 +56,68 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 		}
 		return exitErrors
 	}
-	results := interp.RunTests(prog, *filter)
-	failed := 0
+	mods, err := interp.LiveModules(prog, names)
+	if err != nil {
+		fmt.Fprintln(stderr, "eye test:", err)
+		return exitUsage
+	}
+	results, recorded, recErr := interp.RunTestsWith(prog, interp.TestOptions{Filter: *filter, Live: mods, Record: *record})
+	failed, skipped := 0, 0
 	var total time.Duration
 	for _, r := range results {
 		total += r.Duration
-		if r.Failure == "" {
+		switch {
+		case r.Skipped != "":
+			skipped++
+			fmt.Fprintf(stdout, "skip  %s\n", r.Name)
+			fmt.Fprint(stdout, indent(r.Skipped))
+		case r.Failure == "":
 			fmt.Fprintf(stdout, "ok    %s (%s)\n", r.Name, r.Duration.Round(time.Microsecond))
 			if *verbose && r.Log != "" {
 				fmt.Fprint(stdout, indent(r.Log))
 			}
-			continue
+		default:
+			failed++
+			fmt.Fprintf(stdout, "FAIL  %s (%s)\n", r.Name, r.Duration.Round(time.Microsecond))
+			fmt.Fprintln(stdout, indent(r.Failure))
+			if r.Log != "" {
+				fmt.Fprint(stdout, indent(r.Log))
+			}
 		}
-		failed++
-		fmt.Fprintf(stdout, "FAIL  %s (%s)\n", r.Name, r.Duration.Round(time.Microsecond))
-		fmt.Fprintln(stdout, indent(r.Failure))
-		if r.Log != "" {
-			fmt.Fprint(stdout, indent(r.Log))
-		}
+	}
+	for _, f := range recorded {
+		fmt.Fprintf(stdout, "recorded %s (%s)\n", f.Path, plural(f.Exchanges, "exchange"))
+	}
+	if *record && len(recorded) == 0 && recErr == nil {
+		fmt.Fprintln(stdout, "recorded nothing: no test that passed called a live service through `with fakes(…)`")
+	}
+	if recErr != nil {
+		fmt.Fprintln(stdout, "eye test: recording:", recErr)
+	}
+	also := ""
+	if skipped > 0 {
+		also = fmt.Sprintf(", %d skipped", skipped)
 	}
 	switch {
 	case len(results) == 0:
 		fmt.Fprintln(stdout, "no tests to run")
 	case failed > 0:
-		fmt.Fprintf(stdout, "%d of %d tests failed\n", failed, len(results))
+		fmt.Fprintf(stdout, "%d of %d tests failed%s\n", failed, len(results), also)
 		return exitErrors
 	default:
-		fmt.Fprintf(stdout, "%d tests passed (%s)\n", len(results), total.Round(time.Microsecond))
+		fmt.Fprintf(stdout, "%d tests passed%s (%s)\n", len(results)-skipped, also, total.Round(time.Microsecond))
+	}
+	if recErr != nil {
+		return exitErrors
 	}
 	return 0
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
 }
 
 func indent(s string) string {

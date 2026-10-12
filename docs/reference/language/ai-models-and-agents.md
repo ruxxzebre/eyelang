@@ -70,7 +70,8 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   the model again nor pays twice, and it sees the same answer.
 - **Tests replay recordings.** `with fakes(ai, from: "recordings/")` makes model-backed tests
   deterministic and free, and a recording that no longer matches the schema fails its test.
-  `eye test --live` runs them against the real models.
+  `eye test --live ai` runs them against the real models, and `--record` writes their replies
+  as the recordings ([section 20](/reference/language/time-secrets-tests)).
 - **Budgets.** `@budget(usd: 5, tokens: 2_000_000)` on a job or function works like `@memory`: a call
   that would go over it isn't sent, and the run ends as `Failed(OverBudget)`. A job's budget is for
   its run, a function's for each call of it, and a call counts against every budget it runs

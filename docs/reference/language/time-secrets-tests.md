@@ -83,3 +83,45 @@ text contains it, and fails the test when none or several do.
 fake with no recorded answer) fails the test too; one that ends as an outcome the program
 declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
 by joining the run.
+
+**Live tests.** `eye test --live ai,notify` runs the tests against the real services and models of
+the modules named, instead of their recordings. A `with fakes(…)` leaves those modules out, and
+their calls go where `eye run` sends them: to the address and with the secret the environment
+gives, such as `NOTIFY_URL` and `NOTIFY_TOKEN` for a contract, and `AI_URL`, `ANTHROPIC_API_KEY`
+or `OPENAI_API_KEY` for a model (sections 17 and 19). `calls(op)` still lists the calls the live
+service answered, and the fakes of the other modules keep replaying. `--live` takes `ai`, `http`
+and modules that declare one contract, by path or by name.
+
+A test that needs a live service it can't reach is skipped, not failed: when the `with` names a
+contract module whose address or `@auth` secret isn't set, or `ai` while no provider is, and when
+a model call's provider has no key, or a call's operation has no `@http`. `eye test` prints `skip`
+and why, and a skipped test doesn't change the exit code, which is 1 only when a test failed:
+
+```text
+ok    a reminder is due once, inside its lead (2ms)
+skip  the morning reads its sources, has the briefing written, and sends it
+      --live ai: no model provider is set: set AI_URL, ANTHROPIC_API_KEY or OPENAI_API_KEY
+11 tests passed, 1 skipped (40ms)
+```
+
+`--record`, with `--live`, writes what the live services answered as recordings, in the file the
+`with fakes(…)` would have read, so the next plain `eye test` replays them. `eye test` names each
+file it writes:
+
+- **Only a test that passed writes.** A failed or skipped test writes nothing.
+- **A contract's file keeps one exchange per operation and key,** the last answer the service gave
+  (for a lost reply, the answer to the send that settled it, not `Uncertain`). `http.json` keeps
+  one per URL. Exchanges already in the file for other operations, keys or URLs stay, so
+  re-recording one test with `--run` doesn't lose what the others replay. A file is updated in
+  place, so `--record` overwrites; review the change with the rest of the diff.
+- **`ai.json` holds one test's replies, in order,** with what each spent and the tools it called,
+  since replies are replayed in order. It replaces the file; when several tests record into one
+  file, the first that passes writes it. A provider's failure or refusal isn't written.
+- **Keys and times are written as they were.** A call's key is the one it was sent with, which
+  comes from the test's clock and data, so the replay sends the same. A result keeps the times the
+  service answered with, and nothing says when it was recorded, so recording an unchanged answer
+  again leaves the file as it was.
+- **A secret is never written.** A recording holds results, never the requests or headers sent,
+  and the value of every secret the test read (an `@auth` secret, a `secret(…)`, a provider's key)
+  is replaced by `<secret name>` wherever it appears in an answer, such as a service's error that
+  repeats the token.

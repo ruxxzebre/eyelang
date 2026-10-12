@@ -249,10 +249,18 @@ each run waits for.
 ## eye test {#test}
 
 ```text
-usage: eye test [--run text] [-v] [program-directory]
+usage: eye test [--run text] [-v] [--live modules [--record]] [program-directory]
 
 Runs the test blocks of a program's module, each with a fresh in-memory store
-and a clock that moves only when the test advances it.
+and a clock that moves only when the test advances it. Calls to other services
+are answered from recordings, except for the modules --live names, whose calls
+go where eye run sends them, with the address and secret from the environment.
+  -live modules
+    	call the real services of these modules, separated by commas (ai, http or contract modules),
+    	instead of replaying their recordings; a test whose service has no address or secret set is skipped
+  -record
+    	with --live, write what the real services answered as the recordings
+    	the fakes read, for the tests that passed
   -run string
     	run only the tests whose names contain this text
   -v	show what passing tests logged too

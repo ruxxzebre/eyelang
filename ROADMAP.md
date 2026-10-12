@@ -562,7 +562,7 @@ waits.
 | 6.6 Notify's boundary generated from its contract | [#58](https://github.com/ruxxzebre/eyelang/issues/58) |
 | 6.7 Model tools: functions passed as `tools:` (done) | [#59](https://github.com/ruxxzebre/eyelang/issues/59) |
 | 6.8 The `agents` module: coding-agent sessions owned by jobs | [#60](https://github.com/ruxxzebre/eyelang/issues/60) |
-| 6.9 `eye test --live`, and recording real exchanges | [#61](https://github.com/ruxxzebre/eyelang/issues/61) |
+| 6.9 `eye test --live`, and recording real exchanges (done) | [#61](https://github.com/ruxxzebre/eyelang/issues/61) |
 | 6.10 `extern type` replaces `Handle`, and can't be saved (done) | [#62](https://github.com/ruxxzebre/eyelang/issues/62) |
 | 6.11 Enums: `T.variants()` and `T.parse(s)` (done) | [#63](https://github.com/ruxxzebre/eyelang/issues/63) |
 | 6.12 A test sees what a fake received (done) | [#64](https://github.com/ruxxzebre/eyelang/issues/64) |
@@ -706,6 +706,17 @@ What each task is, until its issue holds it:
   **Done when:** `eye test --live ai testdata/lab` runs the digest's model test against a real
   model when its key is set and skips it otherwise; `--record` writes a recording that the next
   `eye test` replays and passes.
+  Done on 2026-10-12: `eye test --live ai,notify` sends the named modules' calls, inside a
+  `with fakes(…)`, where `eye run` sends them, with the address and secret from the environment
+  (`interp/live.go`); `--live` takes `ai`, `http` and modules that declare one contract. A test
+  whose service, provider key or `@http` is missing prints `skip` and what to set, and doesn't
+  change the exit code. `--record` writes the answers of the tests that passed in the format the
+  fakes read: a contract's file merged by operation and key, `ai.json` as one test's replies in
+  order, and every secret the test read written as `<secret name>` (SPECS §20 and its decision
+  log row). No real model is reachable here, so stand-ins show it: `interp/live_test.go` and
+  `cmd/eye/live_test.go` (`TestTestLive`) skip, call a stand-in Notify and model gateway, record
+  without the secrets they echo, and replay with the stand-ins gone. Not yet tried against a real
+  model on `testdata/lab`.
 - **6.10 `extern type` replaces `Handle` (open question 21).** `Handle(name)` leaves
   `ir/builtin.eye`, the checker and SPECS; a program's `extern type` has no `Save`, `Show`, `Eq`,
   `Hash` or `Schema` (`unsaveable` in `check/effects.go`, `check/traits.go`), while the built-in

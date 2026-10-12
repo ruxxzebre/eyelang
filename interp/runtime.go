@@ -36,6 +36,9 @@ type runtime struct {
 	aiReplies []recordedReply
 	// httpFakes answer http.get, when a test applies fakes(http, …).
 	httpFakes *httpFakes
+	// live, in a test run with eye test --live, says which modules the
+	// real services answer for, and keeps what --record writes (live.go).
+	live *liveTest
 	// fastRetries makes retries of unreachable services immediate, in tests.
 	fastRetries bool
 	// scheduled holds the jobs started by schedules, once computed.

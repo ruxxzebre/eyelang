@@ -62,7 +62,7 @@ type SecretVal struct {
 }
 
 func (in *Interp) secret(name string, at ir.Pos) *SecretVal {
-	v, ok := lookupSecret(name)
+	v, ok := in.lookupSecret(name)
 	if !ok {
 		in.faultf(at, "secret %q isn't set: set %s, or put a file %s in $EYE_SECRETS", name, envName(name), name)
 	}
@@ -424,6 +424,13 @@ func hostHTTPGet(in *Interp, params map[string]Value, at ir.Pos) Value {
 		return v
 	}
 	target, _ := params["url"].(string)
+	v := in.httpGet(target, params, at)
+	in.rt.recordGet(target, v)
+	return v
+}
+
+// httpGet reads target over HTTP, for http.get.
+func (in *Interp) httpGet(target string, params map[string]Value, at ir.Pos) Value {
 	headers := http.Header{}
 	if m, ok := params["headers"].(*Map); ok {
 		for i, k := range m.Keys {

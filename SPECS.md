@@ -136,6 +136,7 @@ Words this document uses in one sense, and names that mean different things in d
 | What a fake received | **`fakes(…)` is a value; `fake.calls(op)` lists the calls it answered**, each a record of the call's arguments with defaults filled in, and the key (section 17) | A test checks what a program sent to a service without the program keeping a record only tests read, such as the digest's `Day.sent`; a record of the arguments compares whole, and shows what differs when a test fails |
 | Callbacks and stored functions | **A parameter's function type without `uses` takes a callback; every other function type states its effects.** A callback may do anything, and its effects count where it is given. A lambda or named function kept in a field, a collection or a result does no more than that type states, and a callback can't be kept in data without its parameter's type stating its effects (section 12) | Higher-order functions stay generic over effects without effect variables, and a stored function can't do behind its caller's back what the caller's signature doesn't show |
 | Writing effects | **`eye fmt` writes public functions' `uses` clauses.** Formatting a program's directory checks the program and writes each public function's inferred effects into its signature: it adds what is missing and drops what the body no longer does. A file formatted alone, and a program with other errors, keep their clauses as written (section 12) | Effects in a signature are there for the reviewer, who reads them in the diff; working them out and keeping them current is the compiler's job, not the author's, and a permission the code stopped using doesn't linger |
+| Live tests | **`eye test --live ai,notify` sends the named modules' calls to the real services, and a test that can't reach one is skipped, not failed; `--record` writes their answers where the fakes read them**, merged by operation and key, only from tests that passed, and never with a secret in them (section 20) | The same tests check the program against the recordings every day and against the real services when asked, with no second set of tests; a missing key on a laptop or in CI is a skip with a reason, and a re-recorded file is reviewed in the diff like code |
 | Tests and the machine | **A test works in an empty directory of its own, and draws random numbers from a fixed seed.** `fs` and `process` resolve relative paths there, and it is removed when the test ends | A test that touches files or runs programs gives the same result on every run and every machine, and can't change the repository it runs in |
 | Concurrency | **Structured**, without `async`/`await`: `parallelMap`, `both`, `race` start tasks that finish before the call returns, and a waiting task parks without blocking others. Tasks share only immutable values. From v0.2, task groups with `spawn` and bounded channels, also scoped | Parallelism without coloured functions or data races; back-pressure keeps memory bounded |
 | Dynamic dispatch | Static by default; **`dyn Trait`** from v0.2 for values whose type is known only at run time (`fn notifier(config) -> dyn Notifier`, `List(dyn Handler)`): a value converts to it where one is expected, and has only the trait's methods | The cost of a run-time lookup is visible in the type; libraries can accept implementations they don't know |
@@ -2115,7 +2116,8 @@ job summarise(items: List(Item)) -> Result(Digest, ai.AiError) {
   the model again nor pays twice, and it sees the same answer.
 - **Tests replay recordings.** `with fakes(ai, from: "recordings/")` makes model-backed tests
   deterministic and free, and a recording that no longer matches the schema fails its test.
-  `eye test --live` runs them against the real models.
+  `eye test --live ai` runs them against the real models, and `--record` writes their replies
+  as the recordings (section 20).
 - **Budgets.** `@budget(usd: 5, tokens: 2_000_000)` on a job or function works like `@memory`: a call
   that would go over it isn't sent, and the run ends as `Failed(OverBudget)`. A job's budget is for
   its run, a function's for each call of it, and a call counts against every budget it runs
@@ -2310,6 +2312,48 @@ text contains it, and fails the test when none or several do.
 fake with no recorded answer) fails the test too; one that ends as an outcome the program
 declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
 by joining the run.
+
+**Live tests.** `eye test --live ai,notify` runs the tests against the real services and models of
+the modules named, instead of their recordings. A `with fakes(…)` leaves those modules out, and
+their calls go where `eye run` sends them: to the address and with the secret the environment
+gives, such as `NOTIFY_URL` and `NOTIFY_TOKEN` for a contract, and `AI_URL`, `ANTHROPIC_API_KEY`
+or `OPENAI_API_KEY` for a model (sections 17 and 19). `calls(op)` still lists the calls the live
+service answered, and the fakes of the other modules keep replaying. `--live` takes `ai`, `http`
+and modules that declare one contract, by path or by name.
+
+A test that needs a live service it can't reach is skipped, not failed: when the `with` names a
+contract module whose address or `@auth` secret isn't set, or `ai` while no provider is, and when
+a model call's provider has no key, or a call's operation has no `@http`. `eye test` prints `skip`
+and why, and a skipped test doesn't change the exit code, which is 1 only when a test failed:
+
+```text
+ok    a reminder is due once, inside its lead (2ms)
+skip  the morning reads its sources, has the briefing written, and sends it
+      --live ai: no model provider is set: set AI_URL, ANTHROPIC_API_KEY or OPENAI_API_KEY
+11 tests passed, 1 skipped (40ms)
+```
+
+`--record`, with `--live`, writes what the live services answered as recordings, in the file the
+`with fakes(…)` would have read, so the next plain `eye test` replays them. `eye test` names each
+file it writes:
+
+- **Only a test that passed writes.** A failed or skipped test writes nothing.
+- **A contract's file keeps one exchange per operation and key,** the last answer the service gave
+  (for a lost reply, the answer to the send that settled it, not `Uncertain`). `http.json` keeps
+  one per URL. Exchanges already in the file for other operations, keys or URLs stay, so
+  re-recording one test with `--run` doesn't lose what the others replay. A file is updated in
+  place, so `--record` overwrites; review the change with the rest of the diff.
+- **`ai.json` holds one test's replies, in order,** with what each spent and the tools it called,
+  since replies are replayed in order. It replaces the file; when several tests record into one
+  file, the first that passes writes it. A provider's failure or refusal isn't written.
+- **Keys and times are written as they were.** A call's key is the one it was sent with, which
+  comes from the test's clock and data, so the replay sends the same. A result keeps the times the
+  service answered with, and nothing says when it was recorded, so recording an unchanged answer
+  again leaves the file as it was.
+- **A secret is never written.** A recording holds results, never the requests or headers sent,
+  and the value of every secret the test read (an `@auth` secret, a `secret(…)`, a provider's key)
+  is replaced by `<secret name>` wherever it appears in an answer, such as a service's error that
+  repeats the token.
 
 ## 21. What happens to Eyelang 1
 

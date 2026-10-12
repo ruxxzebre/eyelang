@@ -188,8 +188,10 @@ model:
 - A call with no reply left stops the run, and its test fails.
 - Keep each scenario in its own directory, such as `recordings/garbled/`.
 
-The tests are free, fast, and the same on every run. To make a recording, save a real reply from
-the model, or write the value you want to test against.
+The tests are free, fast, and the same on every run. `eye test --live ai` runs them against the
+real model instead, and skips them when no provider's address or key is set; `--live ai --record`
+also writes the model's replies as `ai.json`, without the key, for the next `eye test` to replay.
+You can also write the value you want to test against by hand.
 
 ::: warning
 A test without `fakes(ai, …)` calls the real provider if its address or key is set in the environment.
@@ -293,7 +295,6 @@ job dedupe(id: TicketId, text: String) -> Result(Triage, ai.AiError) {
 
 - **Agents.** Running coding agents with the `agents` module is designed (see
   [AI models and agents](/reference/language/ai-models-and-agents)) but not built.
-- **`eye test --live`**, which runs model-backed tests against real models.
 
 ## See also
 
