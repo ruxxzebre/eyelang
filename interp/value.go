@@ -667,7 +667,8 @@ func equal(a, b Value) bool {
 		}
 	case float64:
 		if y, ok := b.(float64); ok {
-			// As their keys: NaN equals NaN, and 0.0 doesn't equal -0.0.
+			// As their keys, the one exception to IEEE 754 (SPECS.md
+			// section 10): NaN equals NaN, and 0.0 doesn't equal -0.0.
 			if x == y {
 				return math.Signbit(x) == math.Signbit(y)
 			}
@@ -923,8 +924,10 @@ func writeShowIn(b *strings.Builder, v Value, nested bool, custom func(Value) (s
 	case *big.Int:
 		b.WriteString(x.String())
 	case float64:
+		// NaN, +Inf and -Inf are written as they are; any other Float
+		// that would look like an Int gets ".0".
 		s := strconv.FormatFloat(x, 'g', -1, 64)
-		if !strings.ContainsAny(s, ".eEn") {
+		if !strings.ContainsAny(s, ".eEnN") {
 			s += ".0"
 		}
 		b.WriteString(s)

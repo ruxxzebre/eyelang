@@ -30,7 +30,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   | Kind | Examples |
   |---|---|
   | Int (arbitrary precision) | `0`, `42`, `1_000_000`, `0xC2`, `0b1010_0101` |
-  | Float (64-bit IEEE) | `1.5`, `0.25`, `6.02e23` |
+  | Float (64-bit IEEE 754, but NaN equals itself: [section 10](/reference/language/errors-result-only)) | `1.5`, `0.25`, `6.02e23` |
   | String, with interpolation | `"hello"`, `"ireland-{day}"`, `"\{literal brace}"` |
   | Bool | `true`, `false` |
   | Char | `'a'`, `'\n'`, `'\u{1F600}'` |

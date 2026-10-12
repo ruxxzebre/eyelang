@@ -519,7 +519,7 @@ func builtinTable() map[string]*BuiltinFn {
 		in.need(args, 1, "toJson", at)
 		out, err := json.Marshal(in.toWire(args[0], false))
 		if err != nil {
-			in.faultf(at, "toJson: %v", err)
+			in.faultf(at, "toJson: %s", jsonError(err))
 		}
 		return string(out)
 	})

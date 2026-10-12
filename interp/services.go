@@ -226,7 +226,11 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 			if !ok {
 				in.faultf(at, "%s's path needs %s, which has no value", op.Name, name)
 			}
-			segments[i] = url.PathEscape(fmt.Sprint(in.toWire(v, shared.Snake)))
+			x := in.toWire(v, shared.Snake)
+			if s, ok := finiteParam(x); !ok {
+				in.faultf(at, "%s's %s is %s, which can't be sent: a request holds what JSON can, and JSON has no NaN or infinities", op.Name, name, s)
+			}
+			segments[i] = url.PathEscape(fmt.Sprint(x))
 			delete(given, name)
 		}
 	}
@@ -240,7 +244,11 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 			if !ok {
 				continue
 			}
-			switch x := in.toWire(v, shared.Snake).(type) {
+			wv := in.toWire(v, shared.Snake)
+			if s, ok := finiteParam(wv); !ok {
+				in.faultf(at, "%s's %s is %s, which can't be sent: a request holds what JSON can, and JSON has no NaN or infinities", op.Name, name, s)
+			}
+			switch x := wv.(type) {
 			case []any:
 				for _, e := range x {
 					q.Add(wireName(name, shared.Snake), fmt.Sprint(e))
@@ -263,7 +271,10 @@ func (rt *runtime) callHTTP(op *ir.Op, args []Value, named map[string]Value, at 
 		if key != nil && op.KeyField != "" {
 			obj[op.KeyField] = in.toWire(key, false)
 		}
-		body, _ = json.Marshal(obj)
+		var err error
+		if body, err = json.Marshal(obj); err != nil {
+			in.faultf(at, "%s's request can't be sent: %s", op.Name, jsonError(err))
+		}
 	}
 
 	headers := http.Header{}

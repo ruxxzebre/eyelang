@@ -247,7 +247,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   Every other fault the runtime meets ends the run as `Unreachable`, with a message that says
   what happened: a request the service refused (a 4xx reply that `status:` doesn't name, section
   17), a replayed step whose call differs from the recorded one, a call a test's fakes have no
-  exchange for, a dollar `@budget` on a model whose price isn't known ([section 19](/reference/language/ai-models-and-agents)), and recursion
+  exchange for, a dollar `@budget` on a model whose price isn't known ([section 19](/reference/language/ai-models-and-agents)), a NaN or
+  infinity written as JSON ([section 17](/reference/language/contracts-talking-to-other-services)), and recursion
   deeper than the runtime allows (100,000 unfinished calls in a task, in the reference
   interpreter), which would otherwise overflow the stack and stop every run. These are
   bugs in the program or its configuration, so like `unreachable` they fail the test they happen

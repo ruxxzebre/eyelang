@@ -246,6 +246,52 @@ func TestBuiltinsAreImplemented(t *testing.T) {
 	}
 }
 
+// TestNaNEqualsItself checks the one exception to IEEE 754 (SPECS.md
+// section 10), how NaN and the infinities are shown, and that toJson
+// refuses them. It is here rather than in testdata/programs/core until the
+// native runtime shows NaN as NaN too (ROADMAP 7.9), since that program
+// joins the native cross-check.
+func TestNaNEqualsItself(t *testing.T) {
+	prog := load(t, `
+type Reading = { at: Int, value: Float }
+
+test "NaN equals itself, and 0.0 doesn't equal -0.0" {
+  let zero = 0.0
+  let nan = zero / zero
+  expect(nan == nan && !(nan != nan))
+  expect([nan] == [nan] && [nan].contains(nan) && Some(nan) == Some(nan))
+  let a: Reading = { at: 1, value: nan }
+  let b: Reading = { at: 1, value: nan }
+  expect(a == b)
+  let seen: Map(Float, Int) = {}
+  expect((seen |> insert(nan, 1))[nan] == Some(1))
+  expect([nan, nan].toSet() |> size == 1)
+  expect(!(zero == -zero) && zero != -zero)
+}
+
+test "NaN and the infinities are shown as NaN, +Inf and -Inf" {
+  let zero = 0.0
+  let nan = zero / zero
+  expect("{nan} {1.0 / zero} {-1.0 / zero}" == "NaN +Inf -Inf")
+  expect("{[nan]} {Some(nan)} {2.0} {-zero} {6.02e23}" == "[NaN] Some(NaN) 2.0 -0.0 6.02e+23")
+}
+
+test "toJson refuses NaN" {
+  let zero = 0.0
+  print(toJson([1.5, zero / zero]))
+}
+`)
+	results := RunTests(prog, "")
+	for _, r := range results[:2] {
+		if r.Failure != "" {
+			t.Errorf("%s: %s\n%s", r.Name, r.Failure, r.Log)
+		}
+	}
+	if want := "toJson: NaN can't be written as JSON, which has no NaN or infinities"; !strings.Contains(results[2].Failure, want) {
+		t.Errorf("toJson of NaN: failure %q, want %q", results[2].Failure, want)
+	}
+}
+
 // TestDocsPrograms runs the tests of every program on the docs site: each
 // directory under docs/ that has an eye.toml. The site's pages show code from
 // these programs, so a change that breaks a page fails here.

@@ -51,7 +51,7 @@ session), the digest in the homelab, and findings that have no issue yet.
 language, its tools and its bugs still change; once it is, every session works on compiling and
 the native port, and nothing else starts. It is reached when all of these hold:
 
-- [ ] #131: `NaN == NaN` stays true, written into SPECS as the one exception to IEEE 754, and
+- [x] #131: `NaN == NaN` stays true, written into SPECS as the one exception to IEEE 754, and
   `Show` writes `NaN`, `+Inf` and `-Inf` (owner's choice b).
 - [ ] #134: `with memory(…)` in tests is specified and built: a test sets the memory runs are
   admitted against, so it can show a run waiting for memory or failing with `OutOfMemory`.
@@ -1051,7 +1051,11 @@ whole-program specialisation, and jobs resuming from saved frames.
   what it must match. Also two the interpreter fixed on 2026-10-12 and native code still has: a
   type's own `impl Show` used inside lists, Options and records (#127: the C runtime's
   `ey_show_to` walks descriptors with no Show slot), and recursion too deep as a fault rather
-  than a crash (#128: the interpreter's `maxDepth`).
+  than a crash (#128: the interpreter's `maxDepth`). And #131's: `Show` of a NaN is `NaN`, not
+  `NaN.0` (in `cgen/runtime/value.c`, the `EY_FLOAT` case of showing adds `.0` unless it finds
+  one of `".eEn"`; the interpreter's check is `".eEnN"`), and `toJson` of a NaN or an infinity
+  is a fault, as SPECS §17 says; then `TestNaNEqualsItself` in `interp/interp_test.go` moves
+  into `testdata/programs/core`, where the cross-check holds native code to it.
   **Done when:** the lab's six core-blocked functions compile and `testdata/programs/limits`
   gets past `Instant.date`.
   Part A done on 2026-10-13, the time and runtime half: the time methods (`Instant.unix`,

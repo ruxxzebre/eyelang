@@ -237,6 +237,11 @@ type Delivery =
   - A type that wraps one value, such as `| ReceiptId(String)`, is that value.
   - `Some(x)` is `x`, and `None` is `null`; a missing field of an `Option` type is `None`.
   - Lists, sets and tuples are arrays, and a map with string keys is an object.
+  - A `Float` is a number. NaN and the infinities have no JSON form, so writing a value that holds
+    one is a fault at the call that writes it (`toJson`, a request, a reply, a tool's result),
+    which ends the run as `Unreachable` ([section 15](/reference/language/jobs-and-waiting)) with a message that names the value: `toJson:
+    NaN can't be written as JSON, which has no NaN or infinities`. It isn't `null`, as some
+    encoders write, because `null` is `None`: `Some(nan)` would read back as `None`.
   - An `Instant` is an RFC 3339 string, a `Date` `"2026-10-12"`, a `Duration` a number of
     milliseconds, and a `Size` a number of bytes.
   - A `Version` is a number or a string, as the service gave it; a snapshot's is a number. An

@@ -365,6 +365,66 @@ job put() -> store.Saved {
 	}
 }
 
+// TestNaNIsNeverSent checks that a NaN or an infinity in a request's body,
+// path or query ends the run as Unreachable before anything is sent: JSON
+// has no number for it (SPECS.md section 17).
+func TestNaNIsNeverSent(t *testing.T) {
+	sent := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sent++
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+	t.Setenv("METER_URL", srv.URL)
+	in := New(loadFiles(t, map[string]string{
+		"meter/meter.eye": `
+pub type Saved = | Saved
+
+contract Meter {
+  @http("POST /readings", status: {201: Saved})
+  command record(value: Float) -> Saved
+
+  @http("GET /readings/:value")
+  query at(value: Float) -> Int
+
+  @http("GET /readings")
+  query near(value: Float) -> Int
+}
+`,
+		"main.eye": `
+import meter
+
+fn nan() -> Float {
+  let zero = 0.0
+  zero / zero
+}
+
+job body() -> meter.Saved {
+  match meter.record!(nan()) {
+    Saved => Saved
+    Uncertain(_) => unreachable("never sent")
+  }
+}
+
+job path() -> Int { meter.at!(1.0 / 0.0) }
+
+job query() -> Int { meter.near!(-1.0 / 0.0) }
+`,
+	}), io.Discard, io.Discard)
+	for job, want := range map[string]string{
+		"body":  "record's request can't be sent: NaN can't be written as JSON, which has no NaN or infinities",
+		"path":  "at's value is +Inf, which can't be sent",
+		"query": "near's value is -Inf, which can't be sent",
+	} {
+		if got := runJob(t, in, job); !strings.HasPrefix(got, "Failed(Unreachable(") || !strings.Contains(got, want) {
+			t.Errorf("%s = %s, want Unreachable with %q", job, got, want)
+		}
+	}
+	if sent != 0 {
+		t.Errorf("%d requests were sent", sent)
+	}
+}
+
 func moduleByPath(t *testing.T, prog *ir.Program, path string) *ir.Module {
 	t.Helper()
 	for _, m := range prog.Modules {

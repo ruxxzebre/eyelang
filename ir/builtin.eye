@@ -504,7 +504,8 @@ pub extern fn code(c: Char) -> Int
 ## The character with that Unicode code point, or `None` if there is none.
 pub extern fn fromCode(n: Int) -> Option(Char)
 
-## v as JSON, in the shape its type's schema describes (SPECS.md §19).
+## v as JSON, in the shape its type's schema describes (SPECS.md §17). A
+## NaN or an infinity, which JSON has no number for, is a fault.
 pub extern fn toJson(v: a) -> String where a: Schema
 
 ## Whether r is `Ok`.

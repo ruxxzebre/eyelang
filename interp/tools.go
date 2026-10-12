@@ -237,7 +237,7 @@ func (in *Interp) runTool(run *jobRun, byName map[string]*Closure, approve Value
 	}
 	data, err := json.Marshal(in.toWire(v, false))
 	if err != nil {
-		in.faultf(at, "what %s returned can't go back to the model as JSON: %v", call.Name, err)
+		in.faultf(at, "what %s returned can't go back to the model: %s", call.Name, jsonError(err))
 	}
 	return toolResult{ID: call.ID, Content: string(data)}
 }

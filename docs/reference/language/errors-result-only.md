@@ -72,7 +72,8 @@ title: "Errors: Result only"
 - **Arithmetic is total.** `Int` has arbitrary precision, so it can't overflow. Small values stay
   unboxed at run time. `/` and `%` take a `NonZero(Int)` divisor. Literals other than `0` qualify
   automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows
-  IEEE 754, so dividing by zero gives an infinity rather than a failure.
+  IEEE 754, with one exception for equality (below), so dividing by zero gives an infinity rather
+  than a failure.
 
   ```eye
   let avg = total / 3
@@ -98,6 +99,25 @@ title: "Errors: Result only"
   ```
 
   For an `Int` mean that rounds as `/` does, write `xs.sum().div(xs.size())`.
+
+  `0.0 / 0.0` gives NaN, "not a number". `Show` writes the infinities and NaN as `+Inf`, `-Inf`
+  and `NaN`; any other `Float` with the fewest digits that read back as it, and `.0` when it would
+  otherwise look like an `Int`: `2.0`, `0.25`, `6.02e+23`, `-0.0`. JSON has no NaN or
+  infinities, so a value that holds one can't be written as JSON ([section 17](/reference/language/contracts-talking-to-other-services)).
+
+  **Equality is the one exception to IEEE 754.** `==` on `Float`s asks whether two values are the
+  same, so `NaN == NaN` is true and `0.0 == -0.0` is false, where IEEE 754 says the opposite.
+  Every value then equals itself: a NaN is found in a list, a set or a map's keys, two records
+  that hold one are equal, and a test can `expect` one. `x == nan` tests whether `x` is NaN.
+
+  ```eye
+  test "NaN equals itself" {
+    let zero = 0.0
+    let nan = zero / zero
+    expect(nan == nan && [nan].contains(nan) && !(zero == -zero))
+    expect("{nan} {1.0 / zero} {-1.0 / zero}" == "NaN +Inf -Inf")
+  }
+  ```
 - **Runtime faults** (out of memory, over budget, killed, deadline passed, `unreachable`) are not
   errors that code can throw or catch. They end the run, and whoever started it sees `Failed(fault)` as the run's
   outcome.

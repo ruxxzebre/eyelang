@@ -2,8 +2,10 @@ package interp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"regexp"
 	"sort"
@@ -25,7 +27,9 @@ import (
 //   - lists, sets and tuples are arrays, and a map with string keys is an
 //     object;
 //   - an Instant is an RFC 3339 string, a Date "2026-10-12", a time of day
-//     "07:40", a Duration a number of milliseconds and a Size of bytes.
+//     "07:40", a Duration a number of milliseconds and a Size of bytes;
+//   - a Float is a number, and NaN and the infinities, which JSON has no
+//     numbers for, can't be written: writing one is a fault (jsonError).
 //
 // Providers' strict schemas name every property of an object and have no
 // fixed-length arrays, so a model is asked for a map as a list of
@@ -47,6 +51,37 @@ func isEnum(t *ir.Type) bool { return wire.IsEnum(t) }
 
 func (in *Interp) isOption(t *ir.Type) bool {
 	return t != nil && in.pre.some != nil && t == in.pre.some.Type
+}
+
+// jsonError says why a value's JSON shape couldn't be written. The one
+// value with no shape is a Float that is NaN or infinite: JSON has no number
+// for it, and null, which other encoders write, is None's shape, so
+// Some(NaN) would read back as None.
+func jsonError(err error) string {
+	var u *json.UnsupportedValueError
+	if errors.As(err, &u) {
+		return u.Str + " can't be written as JSON, which has no NaN or infinities"
+	}
+	return err.Error()
+}
+
+// finiteParam reports whether x, an argument in its JSON shape that goes in
+// a request's path or query, holds no NaN or infinity, and names the first
+// it finds: the parameter is text, but holds what JSON would.
+func finiteParam(x any) (string, bool) {
+	switch v := x.(type) {
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return show(v), false
+		}
+	case []any:
+		for _, e := range v {
+			if s, ok := finiteParam(e); !ok {
+				return s, false
+			}
+		}
+	}
+	return "", true
 }
 
 // toWire converts a value to its JSON shape.

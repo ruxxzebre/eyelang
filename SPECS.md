@@ -263,6 +263,7 @@ and `mut` marked at the call.
 | What recordings witness | **The recordings that count are those the tests replay with `fakes(m, from: "…")`; a read is a field access or a pattern that looks inside a field; a variant matched without reading its fields needs no recording** (section 17). Decided by the owner on 2026-10-12 | The tests' recordings are the ones checked against the contract and kept current, so they are the record of what the service sends; a stray JSON file isn't. Exhaustive matches must name every variant, so naming one can't need a witness, but using what it holds does. A contract with no recordings, or one the program serves, has no recordings to hold its reads to |
 | Promises and principles | **Two lists, both in section 1: five promises say what a user gets, and the principles say how we decide.** The README and the docs site are written from the promises; CLAUDE.md points to the principles instead of keeping its own list, and its five pillars became promises (waiting, state, outside calls) or principles (values, not shared objects; visible where it matters). Decided by the owner on 2026-10-13 | The main idea was written six times (the spec's goals, CLAUDE.md's pillars and its rules for deciding, the README, the site's home and why pages), and the copies had drifted: one said tests "can't flake", one that every call is keyed, one that native compilation comes later. A list for readers and a list for deciding serve different people, and one place for each keeps them true |
 | Tests don't reach the network | **In a test, a call to another service (a contract's operation, `http`, `ai`) is answered by `with fakes(…)` or goes out because `eye test --live` names its module; any other call fails the test at the call, with an error that names the `with fakes(…)` or `--live` to add** (section 20). Decided by the owner on 2026-10-13 | A test without fakes went to the service whenever its address or key was set, so it passed on one machine and failed on another, or sent a real message; "tests replay recorded replies" was a promise only `with fakes(…)` kept. Denying is the safe default; a general permission model for effects is open question 46 |
+| NaN equals itself | **`==` on `Float`s asks whether two values are the same: `NaN == NaN` is true and `0.0 == -0.0` false, the one exception to IEEE 754. `Show` writes `NaN`, `+Inf` and `-Inf`, and JSON, which has none of them, refuses them: writing one is a fault** (sections 10 and 17). Decided by the owner on 2026-10-12 | Every value equals itself, so lists, sets, maps and derived record equality behave, and a test can `expect` a NaN; IEEE's `NaN != NaN` would make `[x] == [x]` false. `null`, which JavaScript writes, is `None`'s shape, so `Some(nan)` would read back as `None`, and a service would read `null` for a number; a fault stops at the call that would send it |
 
 ## 3. A tour
 
@@ -366,7 +367,7 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   | Kind | Examples |
   |---|---|
   | Int (arbitrary precision) | `0`, `42`, `1_000_000`, `0xC2`, `0b1010_0101` |
-  | Float (64-bit IEEE) | `1.5`, `0.25`, `6.02e23` |
+  | Float (64-bit IEEE 754, but NaN equals itself: section 10) | `1.5`, `0.25`, `6.02e23` |
   | String, with interpolation | `"hello"`, `"ireland-{day}"`, `"\{literal brace}"` |
   | Bool | `true`, `false` |
   | Char | `'a'`, `'\n'`, `'\u{1F600}'` |
@@ -1073,7 +1074,8 @@ pattern over bytes counts as the list pattern it is.
 - **Arithmetic is total.** `Int` has arbitrary precision, so it can't overflow. Small values stay
   unboxed at run time. `/` and `%` take a `NonZero(Int)` divisor. Literals other than `0` qualify
   automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows
-  IEEE 754, so dividing by zero gives an infinity rather than a failure.
+  IEEE 754, with one exception for equality (below), so dividing by zero gives an infinity rather
+  than a failure.
 
   ```eye context=division
   let avg = total / 3
@@ -1099,6 +1101,25 @@ pattern over bytes counts as the list pattern it is.
   ```
 
   For an `Int` mean that rounds as `/` does, write `xs.sum().div(xs.size())`.
+
+  `0.0 / 0.0` gives NaN, "not a number". `Show` writes the infinities and NaN as `+Inf`, `-Inf`
+  and `NaN`; any other `Float` with the fewest digits that read back as it, and `.0` when it would
+  otherwise look like an `Int`: `2.0`, `0.25`, `6.02e+23`, `-0.0`. JSON has no NaN or
+  infinities, so a value that holds one can't be written as JSON (section 17).
+
+  **Equality is the one exception to IEEE 754.** `==` on `Float`s asks whether two values are the
+  same, so `NaN == NaN` is true and `0.0 == -0.0` is false, where IEEE 754 says the opposite.
+  Every value then equals itself: a NaN is found in a list, a set or a map's keys, two records
+  that hold one are equal, and a test can `expect` one. `x == nan` tests whether `x` is NaN.
+
+  ```eye
+  test "NaN equals itself" {
+    let zero = 0.0
+    let nan = zero / zero
+    expect(nan == nan && [nan].contains(nan) && !(zero == -zero))
+    expect("{nan} {1.0 / zero} {-1.0 / zero}" == "NaN +Inf -Inf")
+  }
+  ```
 - **Runtime faults** (out of memory, over budget, killed, deadline passed, `unreachable`) are not
   errors that code can throw or catch. They end the run, and whoever started it sees `Failed(fault)` as the run's
   outcome.
@@ -1911,7 +1932,8 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   Every other fault the runtime meets ends the run as `Unreachable`, with a message that says
   what happened: a request the service refused (a 4xx reply that `status:` doesn't name, section
   17), a replayed step whose call differs from the recorded one, a call a test's fakes have no
-  exchange for, a dollar `@budget` on a model whose price isn't known (section 19), and recursion
+  exchange for, a dollar `@budget` on a model whose price isn't known (section 19), a NaN or
+  infinity written as JSON (section 17), and recursion
   deeper than the runtime allows (100,000 unfinished calls in a task, in the reference
   interpreter), which would otherwise overflow the stack and stop every run. These are
   bugs in the program or its configuration, so like `unreachable` they fail the test they happen
@@ -2234,6 +2256,11 @@ type Delivery =
   - A type that wraps one value, such as `| ReceiptId(String)`, is that value.
   - `Some(x)` is `x`, and `None` is `null`; a missing field of an `Option` type is `None`.
   - Lists, sets and tuples are arrays, and a map with string keys is an object.
+  - A `Float` is a number. NaN and the infinities have no JSON form, so writing a value that holds
+    one is a fault at the call that writes it (`toJson`, a request, a reply, a tool's result),
+    which ends the run as `Unreachable` (section 15) with a message that names the value: `toJson:
+    NaN can't be written as JSON, which has no NaN or infinities`. It isn't `null`, as some
+    encoders write, because `null` is `None`: `Some(nan)` would read back as `None`.
   - An `Instant` is an RFC 3339 string, a `Date` `"2026-10-12"`, a `Duration` a number of
     milliseconds, and a `Size` a number of bytes.
   - A `Version` is a number or a string, as the service gave it; a snapshot's is a number. An

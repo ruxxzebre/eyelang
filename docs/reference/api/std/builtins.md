@@ -802,7 +802,8 @@ The character with that Unicode code point, or `None` if there is none.
 fn toJson(v: a) -> String where a: Schema
 ```
 
-v as JSON, in the shape its type's schema describes (SPECS.md §19).
+v as JSON, in the shape its type's schema describes (SPECS.md §17). A
+NaN or an infinity, which JSON has no number for, is a fault.
 
 ### isOk {#isOk}
 
