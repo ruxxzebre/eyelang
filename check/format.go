@@ -59,16 +59,24 @@ func (c *checker) parseFile(path string, src []byte) *ir.File {
 	}
 	s := c.parsed
 	s.mu.Lock()
+	f := s.files[path]
+	s.mu.Unlock()
+	if f != nil && bytes.Equal(f.Src, src) {
+		return f
+	}
+	// Parsed without the lock, so concurrent checks parse at the same time.
+	// When two parse the same file, the first one stored is the one shared.
+	parsed := parseFile(path, src)
+	s.mu.Lock()
 	defer s.mu.Unlock()
 	if f := s.files[path]; f != nil && bytes.Equal(f.Src, src) {
 		return f
 	}
-	f := parseFile(path, src)
 	if s.files == nil {
 		s.files = map[string]*ir.File{}
 	}
-	s.files[path] = f
-	return f
+	s.files[path] = parsed
+	return parsed
 }
 
 // FormatInput records a filesystem input used by a formatting check.
