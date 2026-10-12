@@ -195,7 +195,8 @@ type Delivery =
   in any of its modules ([section 11](/reference/language/traits)): one function per operation, named after it, with its
   parameters in order and `key` last for a
   command with `@key`. Types and defaults come from the contract. Each runs as one transaction, as
-  an entity method does, so it can't wait, and it may start jobs. A key can name an entity, so a
+  an entity method does, so it can't wait or reach outside the program ([section 14](/reference/language/entities)), and it may
+  start jobs and publish events. A key can name an entity, so a
   repeated command finds the work it already did:
 
   ```eye

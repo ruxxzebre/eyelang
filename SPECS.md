@@ -98,6 +98,7 @@ Words this document uses in one sense, and names that mean different things in d
 |---|---|---|
 | Core model | **Entities** hold shared data; **jobs** are durable functions; **views** react to conditions across many entities | Data has a home, waiting has a home, and cross-entity conditions don't need polling |
 | Waiting | **Only jobs wait.** Entity methods are short atomic transactions | No state changes in the middle of a method; every method is all-or-nothing |
+| Transactions | **Entity methods and served operations stay inside the program**: they change state, call pure code and other entities' methods, start jobs and publish events, which happen only when the transaction commits, and they can't use `net`, `fs`, `process`, `clock`, `random`, `env`, `ffi`, `secret` or `wait`. Output (`print`, `log`) is allowed (section 14) | The runtime may run a transaction again after a conflict, so a call to a service or a file write in one would happen twice, which pillar 4's keyed calls exist to prevent; what commits with the transaction happens once. A line of output written twice harms no one. The clock is outside too: a method takes the time from its caller, so a retry sees the same time. From the spec review of 2026-10-12: methods could call services and sleep |
 | Wait marker | A **`!` suffix** on every durable step in a job, which is every call that may pause or has an outside effect: `sleep!(20 min)`, `notify.send!(…)` | Every save point is visible in code review |
 | Checkpoints | Every `!` call in a job is a recorded **step**: its result is saved and it runs once. A **checkpoint** is a run's saved place, its live variables and statement, taken at the statements of the job's body once steps have been taken; a run resumes from its latest and replays only the steps since (section 15) | No separate `step` keyword is needed |
 | Entity lifecycle | **Virtual**: an entity exists on first use. Ending one with protected state needs an `Approval` | No create/exists dance; deletion always involves a human |
@@ -964,8 +965,9 @@ recorded, so a resumed run never repeats it and sees the same values. The steps 
 - starting a child run, `digest.start!(day)`, so a resumed run doesn't start it again.
 
 Calls that only compute are ordinary, and `!` on one is an error. Outside jobs the same functions
-are called without `!`: in `main` (section 13), in tests, and in entity methods and served
-operations, where publishing and starting a job are part of the transaction. **Output is not a
+are called without `!`: in `main` (section 13) and in tests. Entity methods and served operations
+can't make most of these calls at all: they are transactions, which stay inside the program
+(section 14). **Output is not a
 step:** `print` has the effect `stdio`, which public signatures list, but in a job it is written
 without `!` and isn't recorded, and logging (`log.info`) is not an effect at all. Output is for
 people watching a run, not part of what the run computes.
@@ -1225,11 +1227,22 @@ entity Player(id: PlayerId) {
     `players |> filter(fn p: p != owner)`. A closure gets each field's value as it was when the
     closure was made, as it gets a `let`'s, and can't change one: `a closure can't change the
     entity's state`.
-- **Methods never wait.** They can't use `!`, so they can't call other services; those calls
-  belong in jobs. A method can start a job (`wake.start(id)`), and the job begins only if the
-  transaction commits.
-  Because entity methods have no outside side effects, the runtime can safely retry one after a
-  conflict.
+- **Methods stay inside the program.** A method is a transaction, and the runtime may run one
+  again after a conflict, so it does only what can happen twice without anyone outside seeing it:
+  it changes its state, calls pure code and other entities' methods, ends its entity with
+  `end(ok)`, starts jobs (`wake.start(id)`) and publishes events. A job begins, and an event is
+  sent, only if the transaction commits. A method never waits and never reaches outside the
+  program: a call that uses `net`, `fs`, `process`, `clock`, `random`, `env`, `ffi`, `secret` or
+  `wait`, itself or through the functions it calls, is an error that names the effect and says
+  where the call belongs: `now uses clock, which an entity method can't: it runs as a
+  transaction, which may run again after a conflict, so what reaches outside the program or
+  waits belongs in a job, which the method can start`. A method that needs the time takes it as
+  an argument, which a job reads with `now!()`, so a retry sees the same time.
+  - **Output is allowed.** `print` and `log.info` write their line again when a transaction is
+    retried, which is harmless: output is for people watching, not part of what the method
+    computes (section 12).
+  - **A served operation** (`impl Contract`, section 17) is a transaction too, and follows the
+    same rule.
 - **Reading from a job:** `w.read!()` returns a snapshot, whose type is the entity's name
   (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field, a
   `Version` that counts the transactions that changed the entity: 0 when it is new, then one more
@@ -1677,7 +1690,8 @@ type Delivery =
   in any of its modules (section 11): one function per operation, named after it, with its
   parameters in order and `key` last for a
   command with `@key`. Types and defaults come from the contract. Each runs as one transaction, as
-  an entity method does, so it can't wait, and it may start jobs. A key can name an entity, so a
+  an entity method does, so it can't wait or reach outside the program (section 14), and it may
+  start jobs and publish events. A key can name an entity, so a
   repeated command finds the work it already did:
 
   ```eye

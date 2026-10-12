@@ -109,11 +109,22 @@ entity Player(id: PlayerId) {
     `players |> filter(fn p: p != owner)`. A closure gets each field's value as it was when the
     closure was made, as it gets a `let`'s, and can't change one: `a closure can't change the
     entity's state`.
-- **Methods never wait.** They can't use `!`, so they can't call other services; those calls
-  belong in jobs. A method can start a job (`wake.start(id)`), and the job begins only if the
-  transaction commits.
-  Because entity methods have no outside side effects, the runtime can safely retry one after a
-  conflict.
+- **Methods stay inside the program.** A method is a transaction, and the runtime may run one
+  again after a conflict, so it does only what can happen twice without anyone outside seeing it:
+  it changes its state, calls pure code and other entities' methods, ends its entity with
+  `end(ok)`, starts jobs (`wake.start(id)`) and publishes events. A job begins, and an event is
+  sent, only if the transaction commits. A method never waits and never reaches outside the
+  program: a call that uses `net`, `fs`, `process`, `clock`, `random`, `env`, `ffi`, `secret` or
+  `wait`, itself or through the functions it calls, is an error that names the effect and says
+  where the call belongs: `now uses clock, which an entity method can't: it runs as a
+  transaction, which may run again after a conflict, so what reaches outside the program or
+  waits belongs in a job, which the method can start`. A method that needs the time takes it as
+  an argument, which a job reads with `now!()`, so a retry sees the same time.
+  - **Output is allowed.** `print` and `log.info` write their line again when a transaction is
+    retried, which is harmless: output is for people watching, not part of what the method
+    computes ([section 12](/reference/language/effects-and-signatures)).
+  - **A served operation** (`impl Contract`, [section 17](/reference/language/contracts-talking-to-other-services)) is a transaction too, and follows the
+    same rule.
 - **Reading from a job:** `w.read!()` returns a snapshot, whose type is the entity's name
   (`fn due(me: Traveller)` takes one): the entity's state, its identity and a `version` field, a
   `Version` that counts the transactions that changed the entity: 0 when it is new, then one more

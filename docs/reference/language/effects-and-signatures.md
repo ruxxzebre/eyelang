@@ -93,8 +93,9 @@ recorded, so a resumed run never repeats it and sees the same values. The steps 
 - starting a child run, `digest.start!(day)`, so a resumed run doesn't start it again.
 
 Calls that only compute are ordinary, and `!` on one is an error. Outside jobs the same functions
-are called without `!`: in `main` ([section 13](/reference/language/programs-and-concurrency)), in tests, and in entity methods and served
-operations, where publishing and starting a job are part of the transaction. **Output is not a
+are called without `!`: in `main` ([section 13](/reference/language/programs-and-concurrency)) and in tests. Entity methods and served operations
+can't make most of these calls at all: they are transactions, which stay inside the program
+([section 14](/reference/language/entities)). **Output is not a
 step:** `print` has the effect `stdio`, which public signatures list, but in a job it is written
 without `!` and isn't recorded, and logging (`log.info`) is not an effect at all. Output is for
 people watching a run, not part of what the run computes.

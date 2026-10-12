@@ -46,6 +46,7 @@ func (c *checker) checkEffects() {
 		c.checkImplEffects(m, all)
 	}
 	c.checkMigrationEffects(all)
+	c.checkTransactions(all)
 	c.checkFnLimits(all)
 	c.checkTools(all)
 	c.checkStepResults(all)
@@ -411,6 +412,148 @@ func (c *checker) checkWaitingCalls(f *ir.Func, all map[*ir.Func]map[string]bool
 		}
 		return true
 	})
+}
+
+// notInTransaction is true for the effects an entity method or a served
+// operation can't have (SPECS.md §14): each reaches outside the program or
+// waits, and a transaction may run again after a conflict, so it would
+// happen twice. Entity calls, publishing and starting jobs commit with the
+// transaction, and output is for people watching, so those stay allowed.
+var notInTransaction = map[string]bool{
+	"net": true, "fs": true, "process": true, "clock": true, "random": true, "env": true,
+	"ffi": true, "secret": true, "wait": true,
+}
+
+// checkTransactions reports what an entity method or a served operation
+// does that reaches outside the program or waits, at the call that does it.
+func (c *checker) checkTransactions(all map[*ir.Func]map[string]bool) {
+	for _, m := range c.prog.Modules {
+		if m.Dir == "" && m != c.prog.Root {
+			continue
+		}
+		var fns []*ir.Func
+		for _, e := range m.Entities {
+			for _, f := range e.Methods {
+				if f.Body != nil {
+					fns = append(fns, f)
+				}
+			}
+		}
+		for _, ct := range m.Contracts {
+			for _, op := range ct.Ops {
+				if op.Impl != nil && op.Impl.Body != nil {
+					fns = append(fns, op.Impl)
+				}
+			}
+		}
+		sort.Slice(fns, func(i, j int) bool { return fns[i].Pos.Offset < fns[j].Pos.Offset })
+		for _, f := range fns {
+			c.checkTransaction(f, all)
+		}
+	}
+}
+
+// checkTransaction reports the effects of one entity method or served
+// operation that a transaction can't have.
+func (c *checker) checkTransaction(f *ir.Func, all map[*ir.Func]map[string]bool) {
+	what, starts := "an entity method can't", "which the method can start"
+	if f.Entity == nil {
+		what, starts = "serving an operation can't", "which the operation can start"
+	}
+	reported := map[string]bool{}
+	report := func(at ir.Pos, name string, set map[string]bool) {
+		var bad []string
+		for e := range set {
+			kind, _, _ := strings.Cut(e, " ")
+			if notInTransaction[kind] {
+				bad = append(bad, e)
+				reported[e] = true
+			}
+		}
+		if len(bad) == 0 {
+			return
+		}
+		sort.Strings(bad)
+		c.typeErrorf(at, "%s uses %s, which %s: it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, %s", name, strings.Join(bad, ", "), what, starts)
+	}
+	// effects is what calling or naming decl does, and false for a
+	// declaration whose effects are checked elsewhere: an entity's methods
+	// are checked on their own.
+	effects := func(decl any, args []ir.Arg) (string, map[string]bool, bool) {
+		switch d := decl.(type) {
+		case *ir.Func:
+			name := d.Name
+			if d.Module != nil && d.Module != f.Module && d.Receiver == nil {
+				name = d.Module.Name + "." + d.Name // as it is written: fs.writeText
+			}
+			return name, effectsOf(d, all), d.Entity == nil
+		case *ir.Op:
+			return d.Name, map[string]bool{"net " + d.Contract.Name + "." + d.Name: true}, true
+		case ir.Builtin:
+			set := map[string]bool{}
+			for _, u := range c.builtins.uses[d.Name] {
+				set[namedEffect(u, args)] = true
+			}
+			return d.Name, set, true
+		}
+		return "", nil, false
+	}
+	var visit func(e ir.Expr, waiting bool) bool
+	visit = func(e ir.Expr, waiting bool) bool {
+		var decl any
+		var args []ir.Arg
+		switch e := e.(type) {
+		case *ir.Waiting:
+			reported["wait"] = true // the lowerer reports the `!`
+			return true
+		case *ir.Ref:
+			decl = e.Decl // named as a value, it may be called wherever it goes
+		case *ir.Call:
+			r, ok := e.Func.(*ir.Ref)
+			if !ok {
+				return true
+			}
+			decl, args = r.Decl, e.Args
+		case *ir.MethodCall:
+			decl = e.Target
+		}
+		name, set, ok := effects(decl, args)
+		if !ok {
+			return true
+		}
+		if waiting {
+			delete(set, "wait") // reported with the `!`
+		}
+		report(e.Position(), name, set)
+		if call, ok := e.(*ir.Call); ok {
+			// The callee is called here, not named as a value: only its
+			// arguments are visited.
+			for _, a := range call.Args {
+				walk(a.Value, false, visit)
+			}
+			return false
+		}
+		return true
+	}
+	walk(f.Body, false, visit)
+	// What no call above accounts for, as a function value's call, is
+	// reported at the method. Another entity method's effects are reported
+	// in that method.
+	rest := map[string]bool{}
+	add := func(set map[string]bool) {
+		for e := range set {
+			if !reported[e] {
+				rest[e] = true
+			}
+		}
+	}
+	add(c.ts.effects[f])
+	for _, g := range c.ts.callees[f] {
+		if g.Entity == nil {
+			add(effectsOf(g, all))
+		}
+	}
+	report(f.Pos, f.Name, rest)
 }
 
 // taskBuiltins are the built-in functions that run the functions given to

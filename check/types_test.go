@@ -787,6 +787,66 @@ impl svc.Svc {
 			"4:6: raw takes (text), as contract Svc declares it",
 			"5:6: contract Svc has no operation extra",
 		}},
+		{"entity methods and served operations stay inside the program", `import svc
+import fs
+import process
+import random
+extern fn crc(data: String) -> Int
+fn stamp() -> Instant = now()
+fn pause() { sleep(1 s) }
+job later(n: Int) {}
+entity Other(id: String) {
+  state n: Int = 0
+  pub fn bump() { n += 1 }
+}
+entity Box(id: String) {
+  state n: Int = 0
+  fn clock() { let t = now() }
+  fn files() { let r = fs.writeText("a", "b") }
+  fn programs() { let r = process.run("ls") }
+  fn dice() { let r = random.int(1..=6) }
+  fn environment() { let h = env.get("HOME") }
+  fn foreign() { n = crc("x") }
+  fn secrets() { let s = secret("token") }
+  fn service() { let r = svc.raw("x") }
+  fn waits() { sleep(1 s) }
+  fn helper() {
+    let t = stamp()
+    pause()
+  }
+  fn lambda() { let ts = [1] |> map(fn _: stamp()) }
+  fn allowed() {
+    Other(id).bump()
+    svc.pings.publish({ id: 1, text: "a" })
+    let r = later.start(1)
+    print("bumped")
+    log.info("bumped")
+  }
+}
+impl svc.Svc {
+  fn send(text, key) {
+    let t = now()
+    Sent(1)
+  }
+  fn raw(text) {
+    let r = later.start(1)
+    Done
+  }
+  fn sent(key) = None
+}`, []string{
+			"15:24: now uses clock, which an entity method can't: it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, which the method can start",
+			"16:24: fs.writeText uses fs, which an entity method can't",
+			"17:27: process.run uses process, which an entity method can't",
+			"18:23: random.int uses random, which an entity method can't",
+			"19:30: env.get uses env, which an entity method can't",
+			"20:22: crc uses ffi, which an entity method can't",
+			`21:26: secret uses secret "token", which an entity method can't`,
+			"22:26: raw uses net Svc.raw, which an entity method can't",
+			"23:16: sleep uses wait, which an entity method can't",
+			"25:13: stamp uses clock, which an entity method can't",
+			"28:43: stamp uses clock, which an entity method can't",
+			"39:13: now uses clock, which serving an operation can't: it runs as a transaction, which may run again after a conflict, so what reaches outside the program or waits belongs in a job, which the operation can start",
+		}},
 		{"a trigger names a contract's event", `import svc
 @on(event(svc.missing))
 job j(p: svc.Ping) {}`, []string{"2:11: event(…) takes a contract's event, such as telegram.updates"}},
