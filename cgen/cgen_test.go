@@ -160,6 +160,7 @@ func compilable(t *testing.T) map[string]*ir.Program {
 		"../testdata/programs/lexer",
 		"testdata/failures",
 		"testdata/hello",
+		"testdata/hosts",
 		"testdata/inplace",
 		"testdata/numbers",
 		"testdata/times",

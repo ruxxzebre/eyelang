@@ -612,6 +612,7 @@ static int run_tests(const ey_program *p, int argc, char **argv) {
 		int64_t start = now_ns();
 		uint64_t live = ey_allocs - ey_frees;
 		volatile bool ok = true;
+		ey_random_test(); /* each test draws the same numbers, as under eye test */
 		if (setjmp(test_fault) == 0)
 			t->run();
 		else

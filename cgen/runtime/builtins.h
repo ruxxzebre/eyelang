@@ -179,6 +179,14 @@ bool eyb_fs_exists(ey_v p);
 void eyb_fs_list(ey_v p, void *out, const ey_type *res);
 void eyb_fs_make_dir(ey_v p, void *out, const ey_type *res);
 void eyb_fs_remove(ey_v p, void *out, const ey_type *res);
+/* random (random.c): a test starts from a fixed seed, ey_random_test */
+void ey_random_seed(uint64_t hi, uint64_t lo);
+void ey_random_test(void);
+void eyb_random_int(const char *at, ey_v range, void *out, const ey_type *opt);
+double eyb_random_float(void);
+void eyb_random_pick(ey_v xs, void *out, const ey_type *opt);
+ey_v eyb_random_shuffle(ey_v xs);
+
 void eyb_process_run(ey_v program, ey_v args, ey_v input, const void *dir, const ey_type *dirt, void *out, const ey_type *res);
 
 #endif

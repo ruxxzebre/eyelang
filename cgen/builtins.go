@@ -739,6 +739,10 @@ func (e *fn) host(x *lir.Runtime, f *ir.Func) {
 	v := func(name string) string { return e.v(args[name]) }
 	rt := e.g.desc(x.Dst.Ty)
 	out := "&" + e.v(x.Dst)
+	// random and fs.lines (hosts.go)
+	if e.moreHosts(x, f, args) {
+		return
+	}
 	switch f.Host {
 	case "fs.readText":
 		e.printf("eyb_fs_read_text(%s, %s, %s);", v("path"), out, rt)
