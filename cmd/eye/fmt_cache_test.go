@@ -158,6 +158,7 @@ func TestFmtCheckCacheProgram(t *testing.T) {
 // changes nothing but speed.
 func TestFmtCheckUnwritableCache(t *testing.T) {
 	isolateCache(t)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(t.TempDir(), "cache")) // not made yet, as on macOS
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		t.Skip(err)
