@@ -114,6 +114,9 @@ A schedule starts a run on a clock in a named time zone:
 
 - `daily(at, in: zone)` fires every day at that time on the zone's clock, and `weekdays(at, in:
   zone)` Monday to Friday.
+- `cron("15 8-18/2 * * mon-fri", in: zone)` fires when a crontab line says, on the zone's clock:
+  the five standard fields (minute, hour, day of month, month, day of week) with values, names,
+  ranges, lists and steps. A line that is wrong, or never fires, is an error at the string.
 - `every(15 min)` fires at each multiple of the interval since midnight UTC: :00, :15, :30, :45.
 - A job that takes a `Date` gets the date of the firing in the schedule's zone, which makes a good
   key for anything the run sends.
@@ -127,7 +130,11 @@ main.eye:105:22: unknown time zone "Europe/Dubln": a zone is named as in the tz 
 A schedule follows its zone through daylight saving. A time that a change skips fires as far after
 the change as it was meant to be: on the night Dublin's clock jumps from 01:00 to 02:00, `01:30`
 fires at 02:30. A time that a change repeats fires the first time it comes. So there are never two
-UTC crons and an hour check:
+UTC crons and an hour check. Those are the defaults, and `onGap:` and `onOverlap:` choose others:
+`onGap: Skip` doesn't fire a skipped time that day, `onOverlap: Second` fires a repeated time the
+second time, and `onOverlap: Both` fires it both times, for a job that should run every hour:
+
+<<< ./code/views-events-schedules/main.eye#rotate
 
 <<< ./code/views-events-schedules/main.eye#test-schedules
 
@@ -150,8 +157,7 @@ reached is skipped, not queued (see [Limits](/guide/jobs-and-waiting#limits)).
 ::: info Not yet
 A view can only be used in `@on(enters(...))` and `@on(leaves(...))` for now: reading one as a
 collection, such as `nearlyFull |> map(...)`, passes the checker but fails at run time, so
-`morning` filters `Disk.all` with the same function instead. `cron("…", in: zone)` is designed but
-not built, and so are the `onGap:` and `onOverlap:` policies. In `eye run`, nothing outside the
+`morning` filters `Disk.all` with the same function instead. In `eye run`, nothing outside the
 program can publish an event into it yet. Views over entities run in memory; compiling them to SQL
 comes with the Postgres store in v0.2. See [What runs today](/reference/status).
 :::

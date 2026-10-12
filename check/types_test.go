@@ -63,6 +63,24 @@ func TestTypeDiagnostics(t *testing.T) {
 		{"a schedule's time", `@on(daily("07:40", in: "Europe/Dublin"))
 job morning(day: Date) { log.info("{day}") }`,
 			[]string{"1:11: expected Time, found String"}},
+		{"a cron line is read where it is written", `@on(cron("0 7 * *", in: "Europe/Dublin"))
+job morning(day: Date) { log.info("{day}") }
+
+@on(cron("30 25 * * mon", in: "Europe/Dublin"))
+job evening() { log.info("evening") }`,
+			[]string{
+				`1:10: a cron line has five fields (minute, hour, day of month, month and day of week), and "0 7 * *" has 4`,
+				"4:10: hour 25 is out of range: it goes from 0 to 23",
+			}},
+		{"a schedule's policies have their own types", `@on(daily(01:30, in: "Europe/Dublin", onGap: First, onOverlap: Skip))
+job early() { log.info("early") }
+
+@on(cron("0 * * * *", in: "Europe/Dublin", onGap: Skip, onOverlap: Both))
+job hourly() { log.info("hourly") }`,
+			[]string{
+				"1:46: expected GapPolicy, found OverlapPolicy",
+				"1:64: expected OverlapPolicy, found GapPolicy",
+			}},
 		{"an argument of the wrong type", `fn f(n: Int) = n
 fn g() = f("three")`,
 			[]string{"2:12: expected Int, found String"}},

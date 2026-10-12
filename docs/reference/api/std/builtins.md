@@ -171,20 +171,33 @@ as a proxy's address.
 ### daily {#daily}
 
 ```eye
-fn daily(at: Time, in: Zone) -> Schedule
+fn daily(at: Time, in: Zone, onGap: GapPolicy = Shift, onOverlap: OverlapPolicy = First) -> Schedule
 ```
 
-Every day at that time on the zone's clock: `@on(daily(07:40, in: dublin))`. A time a
-daylight-saving change skips fires as far after the change as it was meant to be; a time it
-repeats fires the first time. A job that takes a Date gets the firing's date in the zone.
+Every day at that time on the zone's clock: `@on(daily(07:40, in: dublin))`. A job that takes
+a Date gets the firing's date in the zone. A time a daylight-saving change skips fires as far
+after the change as it was meant to be, unless `onGap: Skip`; a time it repeats fires the
+first time, unless `onOverlap: Second` or `Both`.
 
 ### weekdays {#weekdays}
 
 ```eye
-fn weekdays(at: Time, in: Zone) -> Schedule
+fn weekdays(at: Time, in: Zone, onGap: GapPolicy = Shift, onOverlap: OverlapPolicy = First) -> Schedule
 ```
 
 Like daily, Monday to Friday.
+
+### cron {#cron}
+
+```eye
+fn cron(fields: String, in: Zone, onGap: GapPolicy = Shift, onOverlap: OverlapPolicy = First) -> Schedule
+```
+
+When the five fields of a crontab line say, on the zone's clock:
+`@on(cron("*/20 7-9 * * mon-fri", in: dublin))`. The fields are minute, hour, day of month,
+month (or `jan` to `dec`) and day of week (0 to 7, 0 and 7 being Sunday, or `sun` to `sat`),
+each `*`, a value, a range, a list or a step. When both day fields are given, a day matches if
+either does. Daylight-saving changes are handled as daily's are.
 
 ### every {#every}
 

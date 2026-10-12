@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"eyelang/internal/cron"
 	"eyelang/ir"
 	"eyelang/syntax"
 )
@@ -1165,8 +1166,11 @@ func (c *checker) triggers(m *module, f *ir.File, d *syntax.Node, job *ir.Job) {
 			}
 		}
 		if call.Kind == syntax.CallExpression {
-			switch text(f, call.ChildByField(syntax.FieldFunction)) {
-			case "daily", "weekdays", "every":
+			switch name := text(f, call.ChildByField(syntax.FieldFunction)); name {
+			case "daily", "weekdays", "every", "cron":
+				if name == "cron" && !c.cronLine(f, call) {
+					continue
+				}
 				// A schedule is computed once, when the program starts.
 				l := c.newFunc(m, f, "schedule of "+job.Name, pos(f, call), ctxGlobal)
 				l.fn.Body = l.expr(call)
@@ -1176,6 +1180,21 @@ func (c *checker) triggers(m *module, f *ir.File, d *syntax.Node, job *ir.Job) {
 		}
 		c.errorf(pos(f, call), "@on takes a schedule, such as daily(07:40, in: zone), or enters(view), leaves(view) or event(contract.event)")
 	}
+}
+
+// cronLine reads the line of `cron("…", in: zone)` when it is written out,
+// so that its errors show at the string rather than when the program
+// starts. It reports whether the line is good, or isn't written out.
+func (c *checker) cronLine(f *ir.File, call *syntax.Node) bool {
+	args := call.ChildByField(syntax.FieldArguments).NamedChildren()
+	if len(args) == 0 || args[0].Kind != syntax.String || len(args[0].NamedChildren()) > 1 {
+		return true
+	}
+	if _, err := cron.Parse(unescape(strings.Trim(text(f, args[0]), `"`))); err != nil {
+		c.errorf(pos(f, args[0]), "%v", err)
+		return false
+	}
+	return true
 }
 
 // eventNamed resolves `module.event` to a contract's event.

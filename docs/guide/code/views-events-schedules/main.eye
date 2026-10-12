@@ -109,6 +109,15 @@ job compact(day: Date) {
 }
 # endregion compact
 
+# region rotate
+## Rotates the logs on the hour, every hour: on the night the clock goes back,
+## the hour it repeats is rotated twice.
+@on(cron("0 * * * *", in: dublin, onOverlap: Both))
+job rotate() {
+  Pager("logs").add!("{now!()}")
+}
+# endregion rotate
+
 # region test-schedules
 test "the summary comes on weekday mornings only" {
   with clock(2026-10-16 08:00 in dublin)  # a Friday
@@ -123,6 +132,17 @@ test "a time the clock skips runs as far after the change" {
   expect(Pager("night").lines == [
     "2027-03-28 at 2027-03-28 02:30 in \"Europe/Dublin\"",
     "2027-03-29 at 2027-03-29 01:30 in \"Europe/Dublin\"",
+  ])
+}
+
+test "a time the clock repeats runs twice with onOverlap: Both" {
+  # 00:30 in Dublin; at 02:00 on summer time, 01:00 UTC, the clock goes back to 01:00
+  with clock(2026-10-24 23:30 in "UTC")
+  advance(3 h)
+  expect(Pager("logs").lines == [
+    "2026-10-25 00:00 in \"UTC\"",  # 01:00 on summer time
+    "2026-10-25 01:00 in \"UTC\"",  # 01:00 again, on winter time
+    "2026-10-25 02:00 in \"UTC\"",
   ])
 }
 # endregion test-schedules

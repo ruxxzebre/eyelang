@@ -116,3 +116,36 @@ acted, and resending could do it twice. Every command can return it
 besides the variants its contract declares; `.reconcile!()` resolves it
 when the contract names a query for it.
 
+### GapPolicy {#GapPolicy}
+
+```eye
+pub type GapPolicy =
+  | Shift
+  | Skip
+```
+
+What a schedule does with a time that a daylight-saving change skips, such
+as 01:30 on the night the clock jumps from 01:00 to 02:00:
+`daily(01:30, in: dublin, onGap: Skip)`.
+
+- <span id="GapPolicy-Shift"></span>`Shift`: Fire as far after the change as the time was meant to be: at 02:30.
+  The default.
+- <span id="GapPolicy-Skip"></span>`Skip`: Don't fire for that time on that day.
+
+### OverlapPolicy {#OverlapPolicy}
+
+```eye
+pub type OverlapPolicy =
+  | First
+  | Second
+  | Both
+```
+
+What a schedule does with a time that a daylight-saving change repeats,
+such as 01:30 on the night the clock goes back from 02:00 to 01:00:
+`cron("0 * * * *", in: dublin, onOverlap: Both)`.
+
+- <span id="OverlapPolicy-First"></span>`First`: Fire the first time the clock shows it. The default.
+- <span id="OverlapPolicy-Second"></span>`Second`: Fire the second time.
+- <span id="OverlapPolicy-Both"></span>`Both`: Fire both times, an hour apart: for a job that should run every hour.
+

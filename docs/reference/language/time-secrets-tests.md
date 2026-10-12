@@ -7,14 +7,42 @@ title: "Time, secrets, tests"
 # Time, secrets, tests
 
 **Time.** Schedules carry their zone: `daily(07:40, in: "Europe/Dublin")`, and `weekdays(…)` is the
-same from Monday to Friday. `every(15 min)` fires at each multiple of its interval since midnight
-UTC: :00, :15, :30, :45. A time that a daylight-saving change skips fires as far after the change
-as it was meant to be (`01:30` on the night the clock jumps from 01:00 to 02:00 fires at 02:30),
-and a time a change repeats fires the first time it comes, so there are never two UTC crons and
-an hour check. (The policies are to be choosable, as `onGap:` and `onOverlap:`; these two are the
-defaults and the only ones so far.) A schedule counts from when the program first starts; each
-firing is saved with the run it starts, so a restart neither repeats nor skips one. Dates in
-another zone are asked for by name, never taken from the host's clock:
+same from Monday to Friday. `cron("*/20 7-9 * * mon-fri", in: dublin)` fires when the five fields
+of a crontab line say, on the zone's clock. `every(15 min)` fires at each multiple of its interval
+since midnight UTC: :00, :15, :30, :45.
+
+`cron` takes the fields every cron takes, and nothing more:
+
+- **Five fields:** minute (0–59), hour (0–23), day of month (1–31), month (1–12, or `jan` to
+  `dec`) and day of week (0–7, where 0 and 7 are Sunday, or `sun` to `sat`). Names are in any case.
+- **Each field** is `*`, a value, a range (`mon-fri`), a list (`1,15`) or a step over `*` or a
+  range (`*/15`, `8-18/2`).
+- **When both day fields are given, a day matches if either does,** as in every cron:
+  `0 9 1 * mon` fires on the 1st and on every Monday. A day field that starts with `*`, such as
+  `*/2`, narrows the other instead.
+- **Not taken:** a seconds or year field, the macros (`@daily` is `daily(00:00, in: zone)`), and
+  `L`, `W`, `#` and `?`. A line that is wrong, or that never fires (`0 0 30 2 *`), is an error at
+  the string.
+
+A daylight-saving change skips an hour or repeats one, and the schedules on a zone's clock
+(`daily`, `weekdays` and `cron`) say what they do then with `onGap:` and `onOverlap:`. The
+defaults mean there are never two UTC crons and an hour check:
+
+| Policy | At a time the change skips or repeats, the schedule… |
+|---|---|
+| `onGap: Shift` (default) | fires as far after the change as it was meant to be: `01:30`, on the night the clock jumps from 01:00 to 02:00, fires at 02:30 |
+| `onGap: Skip` | doesn't fire for that time that day |
+| `onOverlap: First` (default) | fires the first time the clock shows it |
+| `onOverlap: Second` | fires the second time |
+| `onOverlap: Both` | fires both times, an hour apart: for a job that should run every hour, `cron("0 * * * *", in: dublin, onOverlap: Both)` |
+
+A time shifted onto another firing of the same schedule fires once: with `Shift`, an hourly cron
+fires every hour across the jump. The policies are the prelude's `GapPolicy` and `OverlapPolicy`.
+
+A schedule counts from when the program first starts; each firing is saved with the run it
+starts, so a restart neither repeats nor skips one; firings missed while the program was stopped
+run once, for the latest, when it starts again. Dates in another zone are asked for by name, never
+taken from the host's clock:
 
 | Call | Gives |
 |---|---|

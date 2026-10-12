@@ -268,6 +268,27 @@ func TestAmbiguousVariants(t *testing.T) {
 	}
 }
 
+// TestPreludeVariantsComeFirst checks that a variant name the prelude and an
+// imported module both declare, such as GapPolicy's Skip, is the prelude's,
+// and that the imported one is reached through its module: `a.Skip`.
+func TestPreludeVariantsComeFirst(t *testing.T) {
+	dir := t.TempDir()
+	write := func(path, src string) {
+		p := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("main.eye", "import a\nfn f(s: a.Step) -> Int = 1\nfn g() = f(a.Skip)\nfn h() -> GapPolicy = Skip\nfn i() = f(Skip)\n")
+	write("a/a.eye", "pub type Step = Skip | Take\n")
+	if _, diags := Program(dir); len(diags) != 1 || !strings.HasSuffix(diags[0].Pos.String(), "main.eye:5:12") || diags[0].Message != "expected Step, found GapPolicy" {
+		t.Errorf("diagnostics: %v", diags)
+	}
+}
+
 // TestContractCallThroughModule checks that a contract operation called
 // through its module, as notify.send is, is a durable step in a job.
 func TestContractCallThroughModule(t *testing.T) {

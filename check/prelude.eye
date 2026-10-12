@@ -78,6 +78,27 @@ pub type Decision = Approved(Approval) | Declined | Expired
 ## when the contract names a query for it.
 pub type Unconfirmed = | Uncertain(key: Key)
 
+## What a schedule does with a time that a daylight-saving change skips, such
+## as 01:30 on the night the clock jumps from 01:00 to 02:00:
+## `daily(01:30, in: dublin, onGap: Skip)`.
+pub type GapPolicy =
+  ## Fire as far after the change as the time was meant to be: at 02:30.
+  ## The default.
+  | Shift
+  ## Don't fire for that time on that day.
+  | Skip
+
+## What a schedule does with a time that a daylight-saving change repeats,
+## such as 01:30 on the night the clock goes back from 02:00 to 01:00:
+## `cron("0 * * * *", in: dublin, onOverlap: Both)`.
+pub type OverlapPolicy =
+  ## Fire the first time the clock shows it. The default.
+  | First
+  ## Fire the second time.
+  | Second
+  ## Fire both times, an hour apart: for a job that should run every hour.
+  | Both
+
 ## `==` and `!=`. Derived for every type whose parts have it.
 pub trait Eq {}
 

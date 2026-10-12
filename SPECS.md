@@ -134,6 +134,7 @@ construct that also works outside that domain.
 | Module roots | **`eye.toml` may list `modules`, more directories to find imports in**, searched after the program's own directory, in order (section 13) | A program deployed alone, such as the lab's digest, names the lab's modules in its `eye.toml` instead of reaching them through symbolic links that break and must list every module imported. From the lab: `deploy/digest` |
 | Native code | **Compiled programs are C, built by the `zig cc` that `eye` ships**, with Perceus reference counting, whole-program specialisation and jobs resuming from saved frames ([docs/internals/compilation.md](docs/internals/compilation.md)). `eye` itself stays free of cgo: the interpreter loads C libraries at run time without it | The workload needs memory and resume time more than the best code, and C at `-O2` gives both; the bootstrap seed is C anyway; Koka and Lean 4 compile reference-counted functional code to C. Shipping `zig cc` cross-compiles to all five release targets from any host, with the same compiler everywhere |
 | Generic private functions | **A private function that leaves its types out is generic**: its body is checked on its own, and each call decides afresh what the body leaves open, so `fn twice(n) = n + n` works on `Int`s and `Float`s alike. A call that gives types without the operators or traits the body uses is an error at the call. Functions that call each other share one type while they are checked (section 6) | One type for the whole program made a helper's first caller decide it for every other, and the error appeared at the second caller, far from the cause. Let-polymorphism is what ML and Haskell do for the same reason, and compiled code specialises each use (section 22) |
+| Schedules | **`cron("…", in: zone)` takes the five standard fields** (values, names, ranges, lists and steps; either day field matches when both are given), and no extensions. **Daylight-saving changes are policies, `onGap: Shift \| Skip` and `onOverlap: First \| Second \| Both`**, prelude variants, defaulting to `Shift` and `First` (section 20) | A crontab line copied from elsewhere means what it meant there, and its errors show at the string; the extensions (`L`, `W`, `#`, seconds) are rare and differ between crons. The defaults are what `daily` did before the policies could be chosen, and they need no hour check; `Both` is for jobs that should run every hour of real time. Variants, not strings, so a misspelt policy fails to compile |
 
 ## 3. A tour
 
@@ -900,7 +901,10 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
 - **Modules.** A module is a directory: its `.eye` files share one namespace and one set of
   imports. A program is the module in its directory and the modules it imports. `import lab.notify`
   names the directory `lab/notify` below the program's directory; its public names are then used as
-  `notify.Delivery`, or brought in by name with `import lab.notify.{Delivery}`.
+  `notify.Delivery`, or brought in by name with `import lab.notify.{Delivery}`. A variant of an
+  imported type may be written alone, `Accepted(…)`, when no other imported module has a variant
+  of that name and the prelude has none (its `Skip` is a `GapPolicy`); otherwise it is written
+  with its module, `notify.Accepted(…)`.
 - **A program's root is marked by `eye.toml`.** A file belongs to the program of the nearest
   directory, from the file upward, that holds an `eye.toml`; without one, it belongs to the
   program in its own directory. So `lab/digest/digest.eye` belongs to the program in `lab/` when
@@ -1605,14 +1609,42 @@ job review(pr: PullRequest) -> Result(Review, AgentError) {
 ## 20. Time, secrets, tests
 
 **Time.** Schedules carry their zone: `daily(07:40, in: "Europe/Dublin")`, and `weekdays(…)` is the
-same from Monday to Friday. `every(15 min)` fires at each multiple of its interval since midnight
-UTC: :00, :15, :30, :45. A time that a daylight-saving change skips fires as far after the change
-as it was meant to be (`01:30` on the night the clock jumps from 01:00 to 02:00 fires at 02:30),
-and a time a change repeats fires the first time it comes, so there are never two UTC crons and
-an hour check. (The policies are to be choosable, as `onGap:` and `onOverlap:`; these two are the
-defaults and the only ones so far.) A schedule counts from when the program first starts; each
-firing is saved with the run it starts, so a restart neither repeats nor skips one. Dates in
-another zone are asked for by name, never taken from the host's clock:
+same from Monday to Friday. `cron("*/20 7-9 * * mon-fri", in: dublin)` fires when the five fields
+of a crontab line say, on the zone's clock. `every(15 min)` fires at each multiple of its interval
+since midnight UTC: :00, :15, :30, :45.
+
+`cron` takes the fields every cron takes, and nothing more:
+
+- **Five fields:** minute (0–59), hour (0–23), day of month (1–31), month (1–12, or `jan` to
+  `dec`) and day of week (0–7, where 0 and 7 are Sunday, or `sun` to `sat`). Names are in any case.
+- **Each field** is `*`, a value, a range (`mon-fri`), a list (`1,15`) or a step over `*` or a
+  range (`*/15`, `8-18/2`).
+- **When both day fields are given, a day matches if either does,** as in every cron:
+  `0 9 1 * mon` fires on the 1st and on every Monday. A day field that starts with `*`, such as
+  `*/2`, narrows the other instead.
+- **Not taken:** a seconds or year field, the macros (`@daily` is `daily(00:00, in: zone)`), and
+  `L`, `W`, `#` and `?`. A line that is wrong, or that never fires (`0 0 30 2 *`), is an error at
+  the string.
+
+A daylight-saving change skips an hour or repeats one, and the schedules on a zone's clock
+(`daily`, `weekdays` and `cron`) say what they do then with `onGap:` and `onOverlap:`. The
+defaults mean there are never two UTC crons and an hour check:
+
+| Policy | At a time the change skips or repeats, the schedule… |
+|---|---|
+| `onGap: Shift` (default) | fires as far after the change as it was meant to be: `01:30`, on the night the clock jumps from 01:00 to 02:00, fires at 02:30 |
+| `onGap: Skip` | doesn't fire for that time that day |
+| `onOverlap: First` (default) | fires the first time the clock shows it |
+| `onOverlap: Second` | fires the second time |
+| `onOverlap: Both` | fires both times, an hour apart: for a job that should run every hour, `cron("0 * * * *", in: dublin, onOverlap: Both)` |
+
+A time shifted onto another firing of the same schedule fires once: with `Shift`, an hourly cron
+fires every hour across the jump. The policies are the prelude's `GapPolicy` and `OverlapPolicy`.
+
+A schedule counts from when the program first starts; each firing is saved with the run it
+starts, so a restart neither repeats nor skips one; firings missed while the program was stopped
+run once, for the latest, when it starts again. Dates in another zone are asked for by name, never
+taken from the host's clock:
 
 | Call | Gives |
 |---|---|

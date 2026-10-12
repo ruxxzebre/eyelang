@@ -3,7 +3,7 @@ import notify
 
 let owner = UserId("operator")
 
-@on(daily(07:40, in: "Europe/Dublin", onGap: shift, onOverlap: first))
+@on(daily(07:40, in: "Europe/Dublin", onGap: Shift, onOverlap: First))
 @priority(background)
 @memory(64 MiB)
 @deadline(13:40, in: "Europe/Dublin")

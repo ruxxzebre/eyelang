@@ -3,26 +3,36 @@ package interp
 import (
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
+	"eyelang/internal/cron"
 	"eyelang/ir"
 )
 
 // ScheduleVal is a Schedule: when a job with @on(…) starts.
 //
-//	daily(07:40, in: dublin)     every day at 07:40 on that zone's clock
-//	weekdays(07:40, in: dublin)  the same, Monday to Friday
-//	every(15 min)                at every multiple of 15 minutes since midnight UTC
+//	daily(07:40, in: dublin)             every day at 07:40 on that zone's clock
+//	weekdays(07:40, in: dublin)          the same, Monday to Friday
+//	cron("*/20 7-9 * * *", in: dublin)   when the crontab line says, on that zone's clock
+//	every(15 min)                        at every multiple of 15 minutes since midnight UTC
 //
-// A time that a daylight-saving change skips fires as far after the change
-// as it was meant to be after midnight (onGap: shift); a time that a change
-// repeats fires the first time it comes (onOverlap: first).
+// The schedules on a zone's clock take two policies (SPECS.md §20). A time
+// that a daylight-saving change skips fires as far after the change as it
+// was meant to be (onGap: Shift, the default) or not at all (Skip). A time
+// that a change repeats fires the first time it comes (onOverlap: First, the
+// default), the second time (Second), or both times (Both).
 type ScheduleVal struct {
-	Kind  string // daily, weekdays, every
-	At    ir.TimeOfDay
-	Zone  string
-	Every ir.Duration
-	loc   *time.Location
+	Kind    string // daily, weekdays, cron, every
+	At      ir.TimeOfDay
+	Cron    string
+	Zone    string
+	Every   ir.Duration
+	Gap     string // Shift or Skip
+	Overlap string // First, Second or Both
+	spec    *cron.Spec
+	times   []ir.TimeOfDay // the times of day it fires at, earliest first
+	loc     *time.Location
 }
 
 // location is the schedule's zone; every runs on UTC.
@@ -37,11 +47,40 @@ func (s *ScheduleVal) location() *time.Location {
 }
 
 func (s *ScheduleVal) String() string {
-	if s.Kind == "every" {
+	var b strings.Builder
+	switch s.Kind {
+	case "every":
 		return "every(" + showDuration(s.Every) + ")"
+	case "cron":
+		b.WriteString("cron(" + strconv.Quote(s.Cron))
+	default:
+		b.WriteString(s.Kind + "(" + show(s.At))
 	}
-	return s.Kind + "(" + show(s.At) + ", in: " + strconv.Quote(s.Zone) + ")"
+	b.WriteString(", in: " + strconv.Quote(s.Zone))
+	if s.Gap != "Shift" {
+		b.WriteString(", onGap: " + s.Gap)
+	}
+	if s.Overlap != "First" {
+		b.WriteString(", onOverlap: " + s.Overlap)
+	}
+	return b.String() + ")"
 }
+
+// onDay reports whether the schedule fires on a date of its zone's calendar.
+func (s *ScheduleVal) onDay(y int, m time.Month, d int) bool {
+	switch s.Kind {
+	case "weekdays":
+		wd := time.Date(y, m, d, 12, 0, 0, 0, time.UTC).Weekday()
+		return wd != time.Saturday && wd != time.Sunday
+	case "cron":
+		return s.spec.Day(y, m, d)
+	}
+	return true
+}
+
+// maxShift is more than any daylight-saving change moves a clock. A time of
+// day further than this before the time searched from can't fire after it.
+const maxShift = 3 * time.Hour
 
 // next returns the first firing after t.
 func (s *ScheduleVal) next(t time.Time) time.Time {
@@ -50,20 +89,48 @@ func (s *ScheduleVal) next(t time.Time) time.Time {
 		return t.Truncate(d).Add(d)
 	}
 	loc := s.location()
-	day := t.In(loc)
-	for i := 0; i < 8; i++ {
-		y, m, d := day.AddDate(0, 0, i).Date()
-		at := wallClock(y, m, d, s.At, loc)
-		if s.Kind == "weekdays" {
-			if wd := at.In(loc).Weekday(); wd == time.Saturday || wd == time.Sunday {
+	from := wallOf(t, loc)
+	// A cron line can name a day that comes once in eight years: 29
+	// February, when the year 2100 isn't a leap year.
+	days := 8
+	if s.Kind == "cron" {
+		days = 8*366 + 2
+	}
+	var best, bestWall time.Time
+	bestDay := 0
+	first := time.Date(from.Year(), from.Month(), from.Day()-1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < days; i++ {
+		// A time shifted past midnight can come after the next day's
+		// first, so the day after the first one that fires is looked at too.
+		if !best.IsZero() && i > bestDay+1 {
+			break
+		}
+		y, m, d := first.AddDate(0, 0, i).Date()
+		if !s.onDay(y, m, d) {
+			continue
+		}
+		for _, tod := range s.times {
+			wall := time.Date(y, m, d, tod.Hour, tod.Minute, tod.Second, 0, time.UTC)
+			if wall.Before(from.Add(-maxShift)) {
 				continue
 			}
-		}
-		if at.After(t) {
-			return at
+			if !best.IsZero() && wall.After(bestWall.Add(maxShift)) {
+				break
+			}
+			for _, at := range s.instants(wall, loc) {
+				if at.After(t) && (best.IsZero() || at.Before(best)) {
+					if best.IsZero() {
+						bestDay = i
+					}
+					best, bestWall = at, wall
+				}
+			}
 		}
 	}
-	return t.Add(24 * time.Hour) // unreachable: a week always has a weekday
+	if best.IsZero() {
+		return t.Add(24 * time.Hour) // unreachable: cron.Parse refuses a line that never fires
+	}
+	return best
 }
 
 // date is the day a firing belongs to, on the schedule's clock: what a
@@ -73,30 +140,49 @@ func (s *ScheduleVal) date(at time.Time) ir.Date {
 	return ir.Date{Year: y, Month: int(m), Day: d}
 }
 
-// wallClock returns the instant the clock in loc shows t on that day. A time
-// a daylight-saving change skips is shifted forward by the change; a time it
-// repeats is the first of the two.
-func wallClock(y int, m time.Month, d int, t ir.TimeOfDay, loc *time.Location) time.Time {
-	wall := time.Date(y, m, d, t.Hour, t.Minute, t.Second, 0, time.UTC)
+// wallOf is what the clock in loc shows at t, written as a UTC time so that
+// wall times compare and add without a zone.
+func wallOf(t time.Time, loc *time.Location) time.Time {
+	l := t.In(loc)
+	return time.Date(l.Year(), l.Month(), l.Day(), l.Hour(), l.Minute(), l.Second(), l.Nanosecond(), time.UTC)
+}
+
+// instants returns when the clock in loc shows wall, as the schedule's
+// policies pick: usually one instant; none for a time a daylight-saving
+// change skips, with onGap: Skip; two for a time a change repeats, with
+// onOverlap: Both.
+func (s *ScheduleVal) instants(wall time.Time, loc *time.Location) []time.Time {
 	var found []time.Time
 	for _, probe := range []time.Duration{-12 * time.Hour, 12 * time.Hour} {
 		_, offset := wall.Add(probe).In(loc).Zone()
 		at := wall.Add(-time.Duration(offset) * time.Second)
-		local := at.In(loc)
-		if local.Hour() == t.Hour && local.Minute() == t.Minute && local.Day() == d {
+		if wallOf(at, loc).Equal(wall) && (len(found) == 0 || !found[0].Equal(at)) {
 			found = append(found, at)
 		}
 	}
-	if len(found) == 0 {
-		// Skipped: read the time with the offset from before the change.
+	switch len(found) {
+	case 0:
+		if s.Gap == "Skip" {
+			return nil
+		}
+		// Shift: read the time with the offset from before the change.
 		_, offset := wall.Add(-12 * time.Hour).In(loc).Zone()
-		return wall.Add(-time.Duration(offset) * time.Second)
+		return []time.Time{wall.Add(-time.Duration(offset) * time.Second)}
+	case 2:
+		sort.Slice(found, func(i, j int) bool { return found[i].Before(found[j]) })
+		switch s.Overlap {
+		case "Second":
+			return found[1:]
+		case "Both":
+			return found
+		}
+		return found[:1]
 	}
-	sort.Slice(found, func(i, j int) bool { return found[i].Before(found[j]) })
-	return found[0]
+	return found
 }
 
-// scheduleBuiltins are daily, weekdays and every, which make Schedules.
+// scheduleBuiltins are daily, weekdays, cron and every, which make
+// Schedules.
 func scheduleBuiltins(add func(string, builtinFunc)) {
 	clock := func(kind string) {
 		add(kind, func(in *Interp, args []Value, named map[string]Value, at ir.Pos) Value {
@@ -108,14 +194,30 @@ func scheduleBuiltins(add func(string, builtinFunc)) {
 			if !ok1 || !ok2 {
 				in.faultf(at, "%s takes a time of day and a zone: %s(07:40, in: \"Europe/Dublin\")", kind, kind)
 			}
-			if _, err := loadLocation(zone); err != nil {
-				in.faultf(at, "unknown time zone %q", zone)
-			}
-			return &ScheduleVal{Kind: kind, At: t, Zone: zone}
+			return zoned(in, &ScheduleVal{Kind: kind, At: t, Zone: zone, times: []ir.TimeOfDay{t}}, named, at)
 		})
 	}
 	clock("daily")
 	clock("weekdays")
+	add("cron", func(in *Interp, args []Value, named map[string]Value, at ir.Pos) Value {
+		line, ok1 := "", false
+		if len(args) == 1 {
+			line, ok1 = args[0].(string)
+		}
+		zone, ok2 := named["in"].(string)
+		if !ok1 || !ok2 {
+			in.faultf(at, "cron takes the five fields of a crontab line and a zone: cron(\"30 7 * * mon-fri\", in: \"Europe/Dublin\")")
+		}
+		spec, err := cron.Parse(line)
+		if err != nil {
+			in.faultf(at, "%v", err)
+		}
+		s := &ScheduleVal{Kind: "cron", Cron: line, Zone: zone, spec: spec}
+		for _, t := range spec.Times() {
+			s.times = append(s.times, ir.TimeOfDay{Hour: t.Hour, Minute: t.Minute})
+		}
+		return zoned(in, s, named, at)
+	})
 	add("every", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		d, ok := ir.Duration(0), false
 		if len(args) == 1 {
@@ -126,6 +228,22 @@ func scheduleBuiltins(add func(string, builtinFunc)) {
 		}
 		return &ScheduleVal{Kind: "every", Every: d}
 	})
+}
+
+// zoned checks a schedule's zone and sets its policies for daylight-saving
+// changes: Shift and First, unless onGap: and onOverlap: say otherwise.
+func zoned(in *Interp, s *ScheduleVal, named map[string]Value, at ir.Pos) *ScheduleVal {
+	if _, err := loadLocation(s.Zone); err != nil {
+		in.faultf(at, "unknown time zone %q", s.Zone)
+	}
+	s.Gap, s.Overlap = "Shift", "First"
+	if v, ok := named["onGap"].(*Variant); ok {
+		s.Gap = v.V.Name
+	}
+	if v, ok := named["onOverlap"].(*Variant); ok {
+		s.Overlap = v.V.Name
+	}
+	return s
 }
 
 // schedule is a job started by a schedule, and when it last fired.

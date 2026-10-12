@@ -240,9 +240,9 @@ Runs column says whether the runtime does what the attribute says.
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
 | `@on(daily(…))`, `weekdays(…)`, `every(…)` | ✓ | ✓ | ✓ | [programs/schedules](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/schedules/schedules.eye#L29) |
-| `@on(cron("…", in: zone))` | ✓ | — (rejected: not a schedule) | — | |
+| `@on(cron("…", in: zone))` | ✓ | ✓: a wrong cron line, or one that never fires, is an error at the string | ✓ | [programs/schedules](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/schedules/schedules.eye#L75), [cron_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/internal/cron/cron_test.go), [types_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/types_test.go#L66) |
 | `@on(enters(view))` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L54) |
-| `@on(leaves(view))` | ✓ | ✓ | partial: built, but no test yet | |
+| `@on(leaves(view))` | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/views.eye#L49) |
 | `@on(event(contract.event))` | ✓ | ✓ | ✓ | [programs/events](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/events/events.eye#L37) |
 | `@concurrency(n, by: param)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L73) |
 | `@limit(n, per: duration, by: param)` | ✓ | ✓ | ✓ | [programs/limits](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/limits/limits.eye#L92) |
@@ -263,7 +263,7 @@ Runs column says whether the runtime does what the attribute says.
 |---|---|---|---|---|
 | A view is a pipeline over an entity set, kept up to date | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L24), [read by name](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/views.eye#L15) |
 | A view must start from an entity set | ✓ | ✓ | n/a | [check_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/check/check_test.go#L110) |
-| `enters(view)` and `leaves(view)` | ✓ | ✓ | partial: `leaves` has no test yet | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L54) |
+| `enters(view)` and `leaves(view)`, each time an entity enters or leaves | ✓ | ✓ | ✓ | [programs/jobs](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/jobs.eye#L54), [enters, leaves, enters again](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/jobs/views.eye#L61) |
 | Pipelines over entities compiled to SQL (v0.2) | n/a | n/a | — | |
 
 ## [Contracts: talking to other services](/reference/language/contracts-talking-to-other-services)
@@ -316,8 +316,8 @@ Runs column says whether the runtime does what the attribute says.
 | Feature | Parses | Checks | Runs | Shown by |
 |---|---|---|---|---|
 | Schedules in a zone; skipped and repeated times at daylight-saving changes | ✓ | ✓ | ✓ | [programs/schedules](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/schedules/schedules.eye#L42) |
-| `onGap:` and `onOverlap:` policies | n/a | — | — | |
-| A missed firing runs once on restart | n/a | n/a | ✓ | [store_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L269) |
+| `onGap: Shift \| Skip` and `onOverlap: First \| Second \| Both` | ✓ | ✓ | ✓ | [programs/schedules](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/programs/schedules/schedules.eye#L96) |
+| A missed firing runs once on restart | n/a | n/a | ✓ | [store_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L355), [a cron across restarts](https://github.com/ruxxzebre/eyelang/blob/dev/interp/store_test.go#L391) |
 | `at.date(in:)`, `at.time(in:)`, `time.next(…)`, `day.at(…)`, `day.format(…)`, `at.unix()` | ✓ | ✓ | ✓ | [lab digest](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/digest/digest.eye#L337) |
 | `secret(name)` from the environment or `$EYE_SECRETS` | ✓ | ✓ | partial: the environment is tested; `$EYE_SECRETS` works but has no test | [services_test.go](https://github.com/ruxxzebre/eyelang/blob/dev/interp/services_test.go#L24) |
 | `env.get(name)` | ✓ | ✓ | ✓ | [lab web](https://github.com/ruxxzebre/eyelang/blob/dev/testdata/lab/web/web.eye#L16) |

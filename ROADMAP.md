@@ -323,7 +323,7 @@ each names the closed issue it continues.
 |---|---|
 | C.1 Entities: `end(ok)`, and tests of rollback and the single writer (from 4.1) | [#65](https://github.com/ruxxzebre/eyelang/issues/65) |
 | C.2 Waiting: `lock!`, `all!` and `first!` (from 4.4) | [#66](https://github.com/ruxxzebre/eyelang/issues/66) |
-| C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
+| C.3 Schedules: `cron`, `onGap:` and `onOverlap:`, and `leaves` tested (from 4.5) (done) | [#67](https://github.com/ruxxzebre/eyelang/issues/67) |
 | C.4 `NonZero` divisors checked (from 2.4) (done) | [#68](https://github.com/ruxxzebre/eyelang/issues/68) |
 | C.5 `eye fmt` writes public functions' `uses` clauses (from 2.6) (done) | [#69](https://github.com/ruxxzebre/eyelang/issues/69) |
 | C.6 10,000 waiting tasks within a memory budget (from 3.5) | [#70](https://github.com/ruxxzebre/eyelang/issues/70) |
@@ -360,6 +360,14 @@ What each task is, until its issue holds it:
   **Done when:** `cron` schedules fire in their zone; `onGap:` and `onOverlap:` choose the
   policy, each with a test across a change; `leaves` and an entity that enters, leaves and
   enters again have tests in `testdata/programs`.
+  Done on 2026-10-12: SPECS §20 settles the cron dialect (five standard fields, no extensions)
+  and the policies, `onGap: Shift | Skip` and `onOverlap: First | Second | Both`, prelude variants
+  defaulting to what `daily` did (decision-log row "Schedules"). `internal/cron` reads a line,
+  and `check` reports a wrong one at the string; `interp/schedule.go` fires `daily`, `weekdays`
+  and `cron` by one rule. Tests: `testdata/programs/schedules` (cron in New York and Dublin, each
+  policy across a change), `testdata/programs/jobs/views.eye` (`leaves`, and enters, leaves and
+  enters again), `interp/store_test.go` (`TestCronFiresEachTimeAcrossRestarts`),
+  `internal/cron/cron_test.go`, and `check/types_test.go`.
 - **C.4 `NonZero` (#24, 2.4).** `pub fn div(a: Int, b: Int) -> Int = a / b` checks:
   `NonZero(Int)` is treated as `Int`, so dividing by a plain `Int` variable is not an error.
   **Done when:** dividing by an `Int` that isn't a nonzero literal or a `NonZero(Int)` is an error

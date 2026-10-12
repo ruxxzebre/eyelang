@@ -51,7 +51,10 @@ pub fn main(args: List(String)) -> Result((), FsError) uses {fs, stdio} {
 - **Modules.** A module is a directory: its `.eye` files share one namespace and one set of
   imports. A program is the module in its directory and the modules it imports. `import lab.notify`
   names the directory `lab/notify` below the program's directory; its public names are then used as
-  `notify.Delivery`, or brought in by name with `import lab.notify.{Delivery}`.
+  `notify.Delivery`, or brought in by name with `import lab.notify.{Delivery}`. A variant of an
+  imported type may be written alone, `Accepted(…)`, when no other imported module has a variant
+  of that name and the prelude has none (its `Skip` is a `GapPolicy`); otherwise it is written
+  with its module, `notify.Accepted(…)`.
 - **A program's root is marked by `eye.toml`.** A file belongs to the program of the nearest
   directory, from the file upward, that holds an `eye.toml`; without one, it belongs to the
   program in its own directory. So `lab/digest/digest.eye` belongs to the program in `lab/` when

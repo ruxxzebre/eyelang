@@ -384,4 +384,61 @@ job morning(day: Date) {
 	}
 }
 
+// TestCronFiresEachTimeAcrossRestarts stops and starts a runner in the hour
+// that Dublin's clock repeats, with a cron schedule that fires a repeated
+// time both times. The firing that came while it was stopped runs on start,
+// once, and no firing runs twice.
+func TestCronFiresEachTimeAcrossRestarts(t *testing.T) {
+	prog := load(t, `
+entity Seen(name: String) {
+  state times: List(Instant) = []
+  pub fn add(at: Instant) { times += [at] }
+}
+
+@on(cron("0 * * * *", in: "Europe/Dublin", onOverlap: Both))
+job hourly() {
+  Seen("x").add!(now!())
+}
+`)
+	store := newMemStore()
+	start := func(at time.Time) *Interp {
+		in := New(prog, &strings.Builder{}, &strings.Builder{})
+		in.rt.useStore(store)
+		in.rt.now = at
+		in.rt.restore()
+		in.rt.catchUp()
+		return in
+	}
+	times := func(in *Interp) string {
+		state, _, _ := in.rt.load(&EntityRef{Entity: prog.Root.Entities["Seen"], ID: "x"}, ir.Pos{})
+		v, _ := state.get("times")
+		return show(v)
+	}
+	utc := func(h, m int) time.Time { return time.Date(2026, 10, 25, h, m, 0, 0, time.UTC) }
+
+	// Started at 00:30 in Dublin on summer time; 01:00 comes at 00:00 UTC.
+	in := start(utc(-1, 30))
+	in.rt.advance(ir.Duration(time.Hour))
+	if got := times(in); got != `[2026-10-25 00:00 in "UTC"]` {
+		t.Fatalf("before the stop: %s", got)
+	}
+	// Stopped over 01:00 on winter time, which is 01:00 UTC: its run starts
+	// when the runner does, at 01:30, and the firing is saved as 01:00.
+	in = start(utc(1, 30))
+	if got := times(in); got != `[2026-10-25 00:00 in "UTC", 2026-10-25 01:30 in "UTC"]` {
+		t.Fatalf("after the first restart: %s, want the repeated 01:00 run once, on start", got)
+	}
+	if data, _ := store.Meta("fired/.hourly"); string(data) != itoa(utc(1, 0).UnixNano()) {
+		t.Errorf("the last firing saved is %s, want 01:00 UTC", data)
+	}
+	in.rt.advance(ir.Duration(time.Hour))
+	in = start(utc(2, 30))
+	if got := times(in); got != `[2026-10-25 00:00 in "UTC", 2026-10-25 01:30 in "UTC", 2026-10-25 02:00 in "UTC"]` {
+		t.Errorf("after the second restart: %s, want nothing run twice", got)
+	}
+	if _, when := in.rt.nextFiring(); !when.Equal(utc(3, 0)) {
+		t.Errorf("next firing %v, want 03:00 UTC", when)
+	}
+}
+
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
