@@ -196,7 +196,7 @@ The message is clear, and G.13 (decided) fixes exactly this.
 **A record built in a lambda.** When the result flows straight to a return type it already
 works, which surprised me pleasantly:
 
-```eye
+```text
 pub fn report(orders: List(Order), country: String) -> List(Row) {
   …
   customers |> map(fn c {
@@ -217,12 +217,13 @@ ls |> filter(fn l: l.cents > 0)
 
 Writing the type where `l` is declared, `fn (l: Line): l.cents > 0`, gives the same error,
 because lambda parameter annotations are ignored: `xs |> map(fn (s: String): s)` on a
-`List(Int)` passes the checker. G.14 fixes the first half; the second is a bug with no task yet.
+`List(Int)` passes the checker. G.14 fixes the first half; the second was a bug, fixed later the same day with C.7 (a lambda's
+stated parameter type is now checked).
 
 **Leaving out `->`.** A function with a block body and no `->` returns `()`. Leaving the return
 type off a helper, as one does in a script, gives errors far from the cause:
 
-```eye
+```text
 fn parseLine(line: String) {          # meant: -> Option(Entry)
   let [at, level, ..rest] = line |> split(" ") else { return None }
   …
