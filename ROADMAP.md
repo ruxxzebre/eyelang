@@ -515,7 +515,7 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.11 One sweep of SPECS.md: stale text, unrecorded rules, contradictions, open questions, glossary (done) | [#94](https://github.com/ruxxzebre/eyelang/issues/94) |
 | G.12 A `Result` or a command's outcome can't be dropped silently (done) | [#95](https://github.com/ruxxzebre/eyelang/issues/95) |
 | G.13 A callback may read a `var` (done) | [#96](https://github.com/ruxxzebre/eyelang/issues/96) |
-| G.14 A lambda's record literal takes its type from where the result goes | [#97](https://github.com/ruxxzebre/eyelang/issues/97) |
+| G.14 A lambda's record literal takes its type from where the result goes (done) | [#97](https://github.com/ruxxzebre/eyelang/issues/97) |
 | G.15 Any function can be called as a method on its first argument | [#98](https://github.com/ruxxzebre/eyelang/issues/98) |
 | G.16 `average` and `div`, so `NonZero` division rarely needs a `match` (done) | [#99](https://github.com/ruxxzebre/eyelang/issues/99) |
 | G.17 `?` on an `Option` outside a function that returns an `Option` is an error (done) | [#100](https://github.com/ruxxzebre/eyelang/issues/100) |

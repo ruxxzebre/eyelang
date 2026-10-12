@@ -31,6 +31,16 @@ type builtinArgs struct {
 	ntypes  map[string]typ
 	first   typ // the receiver's type, already checked, for `x.f(…)`
 	hasRecv bool
+	// lambdasLast keeps the lambdas a rule gives a function type for
+	// checkLambdas, which checks them once the call's type is known.
+	lambdasLast bool
+	lambdas     []lambdaArg
+}
+
+// lambdaArg is a lambda argument waiting to be checked against want.
+type lambdaArg struct {
+	i    int
+	want typ
 }
 
 func (x *fnCheck) newBuiltinArgs(args []ir.Arg, first typ) *builtinArgs {
@@ -50,10 +60,18 @@ func (x *fnCheck) newBuiltinArgs(args []ir.Arg, first typ) *builtinArgs {
 }
 
 // arg checks positional argument i against want, and returns its type, or
-// nil if there is no such argument.
+// nil if there is no such argument. With lambdasLast, a lambda given a
+// function type waits for checkLambdas, and its type is want until then.
 func (b *builtinArgs) arg(i int, want typ) typ {
 	if i >= len(b.pos) {
 		return nil
+	}
+	if _, isLambda := b.pos[i].Value.(*ir.Lambda); isLambda && b.lambdasLast && want != nil {
+		if _, ok := b.types[i]; !ok {
+			b.types[i] = want
+			b.lambdas = append(b.lambdas, lambdaArg{i, want})
+			return want
+		}
 	}
 	if t, ok := b.types[i]; ok {
 		if want != nil {
@@ -79,6 +97,15 @@ func (b *builtinArgs) name(n string, want typ) typ {
 	b.x.giving(func() { t = b.x.check(a.Value, want) })
 	b.ntypes[n] = t
 	return t
+}
+
+// checkLambdas checks the lambdas arg kept for later, against the function
+// types the rule gave them.
+func (b *builtinArgs) checkLambdas() {
+	for _, l := range b.lambdas {
+		b.x.giving(func() { b.types[l.i] = b.x.check(b.pos[l.i].Value, l.want) })
+	}
+	b.lambdas = nil
 }
 
 // rest checks the arguments no rule looked at.
@@ -122,10 +149,24 @@ func (x *fnCheck) builtinWith(name string, args []ir.Arg, first typ, want typ, a
 		return c.funcType(fn, nil).ret
 	}
 	if fn := c.builtins.funcs[name]; fn != nil {
-		return x.declaredBuiltin(fn, args, first, at)
+		return x.declaredBuiltin(fn, args, first, want, at)
 	}
+	// The lambdas are checked after the rule has given the call's type, and
+	// that type has met what the call is expected to give, so that a
+	// lambda's body knows what it returns (settleEarly).
 	b := x.newBuiltinArgs(args, first)
-	defer b.rest()
+	b.lambdasLast = true
+	t := x.ruleType(name, b, at)
+	x.settleEarly(t, want)
+	b.checkLambdas()
+	b.rest()
+	return t
+}
+
+// ruleType gives the type of a call of a goRules built-in, by its rule,
+// checking the arguments the rule looks at.
+func (x *fnCheck) ruleType(name string, b *builtinArgs, at ir.Pos) typ {
+	c := x.c
 	option := func(t typ) typ { return &tcon{name: "Option", decl: c.ts.option, args: []typ{t}} }
 	result := func(t, e typ) typ { return &tcon{name: "Result", decl: c.ts.result, args: []typ{t, e}} }
 	fn := func(ret typ, params ...typ) typ {

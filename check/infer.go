@@ -574,23 +574,36 @@ func (x *fnCheck) body(ret typ) {
 // type came from later code, exhaustiveness, and the types calls returned.
 func (x *fnCheck) finish() {
 	c := x.c
-	for _, r := range x.records {
-		rec, ok := isRecord(r.t)
-		if !ok {
+	// A record settled here gives its fields their types, which may settle
+	// a record literal inside it, as `{ name: u.name, home: { city } }`,
+	// so the literals are settled until none is left whose type is known.
+	pending := x.records
+	for settled := true; settled; {
+		settled = false
+		var open []pendingRecord
+		for _, r := range pending {
 			if _, isVar := prune(r.t).(*tvar); isVar {
-				c.typeErrorf(r.at, "which record type is this? Nothing here says; write it where the value is bound, as `let x: T = …`")
-			} else {
-				c.typeErrorf(r.at, "expected %s, found a record", show(r.t))
+				open = append(open, r)
+				continue
 			}
-			continue
+			settled = true
+			rec, ok := isRecord(r.t)
+			if !ok {
+				c.typeErrorf(r.at, "expected %s, found a record", show(r.t))
+				continue
+			}
+			if d, ok := c.opaqueTo(x.fn.Module, rec); ok {
+				c.typeErrorf(r.at, "%s", c.opaqueMessage(d, "fields"))
+			}
+			x.recordFields(rec, r.names, r.values, r.pos, r.at)
+			if r.e != nil {
+				r.e.Type = rec.decl
+			}
 		}
-		if d, ok := c.opaqueTo(x.fn.Module, rec); ok {
-			c.typeErrorf(r.at, "%s", c.opaqueMessage(d, "fields"))
-		}
-		x.recordFields(rec, r.names, r.values, r.pos, r.at)
-		if r.e != nil {
-			r.e.Type = rec.decl
-		}
+		pending = open
+	}
+	for _, r := range pending {
+		c.typeErrorf(r.at, "which record type is this? Nothing here says; write it where the value is bound, as `let x: T = …`")
 	}
 	for _, m := range x.matches {
 		c.checkExhaustive(m.m, m.t)
@@ -1317,7 +1330,7 @@ func (x *fnCheck) apply(callee typ, args []ir.Arg, want typ, name string, at ir.
 		for _, u := range f.uses {
 			x.effect(u) // what the function's type says it may do
 		}
-		x.args(f, args, name, at)
+		x.argsWant(f, args, name, at, want)
 		return f.ret
 	case *tvar:
 		if f.rigid {
@@ -1350,6 +1363,13 @@ func (x *fnCheck) inferArgs(args []ir.Arg) {
 // in order, and checks each. Lambdas are checked last, so that the other
 // arguments can give their parameters types.
 func (x *fnCheck) args(f *tfun, args []ir.Arg, name string, at ir.Pos) {
+	x.argsWant(f, args, name, at, nil)
+}
+
+// argsWant is args for a call expected to give want: before the lambdas are
+// checked, the call's result meets want, so that a lambda's body knows the
+// type it returns (settleEarly).
+func (x *fnCheck) argsWant(f *tfun, args []ir.Arg, name string, at ir.Pos, want typ) {
 	assigned := make([]bool, len(f.params))
 	target := make([]int, len(args))
 	next := 0
@@ -1381,6 +1401,9 @@ func (x *fnCheck) args(f *tfun, args []ir.Arg, name string, at ir.Pos) {
 		assigned[target[i]] = true
 	}
 	for pass := 0; pass < 2; pass++ {
+		if pass == 1 {
+			x.settleEarly(f.ret, want)
+		}
 		for i, a := range args {
 			_, isLambda := a.Value.(*ir.Lambda)
 			if isLambda != (pass == 1) {
@@ -2666,6 +2689,74 @@ func (x *fnCheck) lambda(e *ir.Lambda, want typ) typ {
 		inner.check(e.Func.Body, ret)
 	}
 	return f
+}
+
+// settleEarly makes a call's result what the call is expected to give, before
+// its lambdas are checked, so that a lambda's body knows the type it returns:
+// where a List(Row) is expected, `users |> map(fn u: { name: u.name })`
+// builds Rows, and a later stage's lambda reads their fields (SPECS.md §5).
+// It only binds the result's open type variables to the parts of want they
+// stand at, and binds nothing unless the two have one shape, so the call is
+// still checked against want afterwards and a mismatch is reported there.
+func (x *fnCheck) settleEarly(result, want typ) {
+	if want == nil || want == discard || result == nil {
+		return
+	}
+	type binding struct {
+		v *tvar
+		t typ
+	}
+	var binds []binding
+	var fits func(r, w typ) bool
+	fits = func(r, w typ) bool {
+		r, w = prune(r), prune(w)
+		if _, open := w.(*tvar); open {
+			return true
+		}
+		if _, unknown := w.(tunknown); unknown {
+			return true
+		}
+		switch rt := r.(type) {
+		case *tvar:
+			if rt.rigid || rt.lit != litNone || rt.never || occurs(rt, w) {
+				return true
+			}
+			switch w.(type) {
+			case *tcon, *ttuple:
+				binds = append(binds, binding{rt, w})
+			}
+			return true
+		case *tcon:
+			wt, ok := w.(*tcon)
+			if !ok || !sameCon(rt, wt) || len(rt.args) != len(wt.args) {
+				return false
+			}
+			for i := range rt.args {
+				if !fits(rt.args[i], wt.args[i]) {
+					return false
+				}
+			}
+			return true
+		case *ttuple:
+			wt, ok := w.(*ttuple)
+			if !ok || len(rt.elems) != len(wt.elems) {
+				return false
+			}
+			for i := range rt.elems {
+				if !fits(rt.elems[i], wt.elems[i]) {
+					return false
+				}
+			}
+			return true
+		}
+		return true
+	}
+	if !fits(result, want) {
+		return
+	}
+	for _, b := range binds {
+		x.c.unify(b.t, b.v)
+	}
 }
 
 // changingCaptures reports what a lambda that isn't a callback captures and

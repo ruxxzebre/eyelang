@@ -107,6 +107,7 @@ Words this document uses in one sense, and names that mean different things in d
 | Types | **Static.** Public items carry full signatures, including effects; everything inside bodies is inferred | Changes to types and permissions show up in the diff |
 | Errors | **Result only**: no exceptions. `?` wraps an error into the caller's error type when exactly one of its variants holds it; otherwise `.mapErr(…)`. Runtime faults and `unreachable` become outcomes of the run | Every failure is visible in a type, and wrapping needs no boilerplate |
 | Records | **Nominal**: a record type is its name, and a literal takes the type its context expects | Same-shaped types can't be mixed up, and methods, operators, schemas and error messages have a name to use |
+| Record literals in lambdas | **A lambda's record literal takes its type from where the call's result goes**, with no syntax at the literal: a call takes the type expected of it before its lambdas are checked, so `let rows: List(Row) = users \|> map(fn u: { … })` builds `Row`s, a later stage's lambda reads their fields, and a literal nested in one takes its field's type (section 5, open question 25). Decided by the owner on 2026-10-12 | Mapping records into other records is the commonest data program there is, and it failed with "which record type?" though the type was written on the `let`. Literals already take the type their context expects; a lambda's body is one more context, so nothing new is learned, and a type named at each literal would repeat what the `let` says |
 | Results | **A function without `->` returns `()` when its body is a block**, and its last value is dropped; one written `= expr` returns the expression's type, inferred. `while true` without `break` has any type, since only `return` leaves it | Entity methods, jobs and helpers that do something need no `-> ()`, and a loop that serves until it returns needs no `unreachable` after it. From the type checker: Notify's delivery loop |
 | Effects | **Inferred inside, stated at the boundary**: public functions list their effects with `uses` (none means pure); a callback's effects pass to the call that gives it; a function type kept in data states its effects | Permissions show up in the diff without annotating every helper, and higher-order functions work with any callback |
 | Operators | **Traits**: `+ - * / %` call `Add`, `Sub`, `Mul`, `Div` and `Rem`, which any type can implement once per right-hand type; no implicit conversions | Money, vectors and units get real operators, and the result type is always known from the operands |
@@ -438,6 +439,23 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   let u: User = { name: "Bo", age: 4 }
   let x = { name: "Cy", age: 5 }                 # error: which record type? write `let x: User = …`
   ```
+
+  A lambda's result goes where the call's result goes, so a record literal in a lambda's body
+  takes its type from there: from an annotation, a return type, a parameter or a field, through
+  any stages of a pipeline, and into the branches of an `if` or a `match` in the body. The call
+  takes that type before its lambdas are checked, so a later stage's lambda can read the fields:
+
+  ```eye context=records
+  let rows: List(Row) = users |> map(fn u: { name: u.name, age: u.age })   # each a Row
+
+  fn adults(users: List(User)) -> List(Row) =
+    users |> map(fn u: { name: u.name, age: u.age }) |> filter(fn r: r.age >= 18)   # r is a Row
+
+  let names = users |> map(fn u: { name: u.name }) |> map(fn r: r.name)   # error: which record type?
+  ```
+
+  Where nothing says, it is still an error, as `names` shows; write the type on the `let`, or on
+  the lambda's parameter, `fn (r: Row): r.name`.
 - **Variants:** `type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)`,
   built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(a)`). A
   variant list needs at least one `|`, so a type with a single variant starts with one:
@@ -2767,7 +2785,8 @@ operator. All binary operators associate to the left except `??`, which associat
 25. **Naming a record's type at its literal.** **Decided** (2026-10-12): no syntax at the
     literal; a lambda's record literal takes its type from where the result goes, as other
     literals do, so `users |> map(fn u: { name: u.name })` builds the record type the result is
-    used as. Built by ROADMAP task G.14. Still open: where the context is a `dyn Trait`, nothing
+    used as (section 5, and the decision log, row "Record literals in lambdas"). Still open:
+    where the context is a `dyn Trait`, nothing
     says which type a literal is, so each implementation needs a constructor (`Square.new(2)`)
     or a `let s: Square = { side: 2 }` first. Is that enough?
 26. **What `@memory` measures.** A compiled job would count its process's memory. The reference

@@ -36,6 +36,7 @@ var errorClasses = []struct{ section, class, test string }{
 	{"§5", "an argument of the wrong type", "an argument of the wrong type"},
 	{"§6", "too many, missing or unknown arguments", "arguments: too many, missing, unknown"},
 	{"§5", "a record literal without a type, a missing or unknown field", "a record literal takes the type expected"},
+	{"§5", "a record literal in a lambda whose call's result nothing gives a type", "a lambda's record literal with nothing to say its type"},
 	{"§5", "a field or method a type doesn't have", "fields and methods"},
 	{"§5", "a String where a Key or Zone is needed, an unknown zone", "strings become keys and zones where those are expected"},
 	{"§5", "an integer literal too large or too small for the fixed-width type it becomes", "a literal too large for its type"},

@@ -76,7 +76,7 @@ job parent() {
 			"7:11: to wait for every run in a list, write allDone!(…); all is the collection function, which takes a test",
 			"8:23: expected Run(a), found Int",
 			"8:26: expected Run(a), found Int",
-			"9:19: expected String, found Int",
+			"9:48: expected String, found Int",
 			"10:11: all! isn't a wait: to wait for every run in a list, write allDone!(…); all is the collection function, written without !",
 			"11:11: first! isn't a wait: to wait until the first of several runs finishes, write firstDone!(…); first is the collection function, written without !",
 		}},
@@ -164,6 +164,45 @@ fn f() {
 			"3:17: this User has no age: every field needs a value",
 			"4:47: User has no field height",
 			"5:11: which record type is this?",
+		}},
+		{"a lambda's record literal takes its type from where the result goes", `type User = { name: String, age: Int }
+type Place = { city: String }
+type Row = { name: String, age: Int, home: Place, id: Key }
+type Page = { rows: List(Row) }
+fn row(u: User) -> Row = { name: u.name, age: u.age, home: { city: "Cork" }, id: "row-{u.name}" }
+fn typedLet(users: List(User)) -> List(Row) {
+  let rows: List(Row) = users |> map(fn u: { name: u.name, age: u.age, home: { city: "Cork" }, id: "k" })
+  rows
+}
+fn returned(users: List(User)) -> List(Row) = users |> map(fn u: { name: u.name, age: u.age, home: { city: "x" }, id: "k" })
+fn takes(rows: List(Row)) -> Int = rows |> size
+fn argument(users: List(User)) -> Int = takes(users |> map(fn u: { name: u.name, age: u.age, home: { city: "x" }, id: "k" }))
+fn field(users: List(User)) -> Page = { rows: users |> map(fn u: { name: u.name, age: u.age, home: { city: "x" }, id: "k" }) }
+fn laterStage(users: List(User)) -> List(Row) =
+  users |> map(fn u: { name: u.name, age: u.age, home: { city: "x" }, id: "k" }) |> filter(fn r: r.home.city == "x")
+fn methods(users: List(User)) -> List(Place) = users.map(fn u: { city: u.name }).filter(fn p: p.city != "")
+fn found(users: List(User)) -> Option(Place) = users |> map(fn u: { city: u.name }) |> find(fn p: p.city == "Cork")
+fn folded(users: List(User)) -> Place = users |> reduce({ city: "" }, fn (acc, u): { city: acc.city + u.name })
+fn mapAll(xs: List(a), f: fn(a) -> b) -> List(b) = xs |> map(f)
+fn generic(users: List(User)) -> List(Place) = mapAll(users, fn u: { city: u.name }) |> filter(fn p: p.city != "")
+fn arms(users: List(User)) -> List(Place) = users |> map(fn u: match u.age {
+  0 => { city: "new" }
+  _ => if u.age > 60 then { city: "old" } else { city: u.name }
+})
+fn later(users: List(User)) -> Int {
+  let places = users |> map(fn u: { city: u.name })
+  let page: List(Place) = places
+  page |> size
+}`, nil},
+		{"a lambda's record literal with nothing to say its type", `type User = { name: String }
+type Place = { city: String }
+fn f(users: List(User)) -> Int = users |> map(fn u: { city: u.name }) |> size
+fn g(users: List(User)) -> List(String) = users |> map(fn u: { city: u.name }) |> map(fn p: p.city)
+fn h(users: List(User)) -> List(Place) = users |> map(fn u: { city: 1 })`, []string{
+			"3:53: which record type is this?",
+			"4:62: which record type is this?",
+			"4:93: the type of p isn't known here, so its field city can't be found",
+			"5:69: expected String, found Int",
 		}},
 		{"fields and methods", `type User = { name: String }
 fn f(u: User) {
@@ -1177,8 +1216,8 @@ fn b() -> (Int, Int) = both(fn { 1 }, fn { "two" })`, []string{
 			"2:50: expected Bool, found Int",
 			"3:42: poll has no parameter inside",
 			"5:46: expected Option(Int), found Option(String)",
-			"6:52: expected Result(Int, Int), found Result(Int, String)",
-			"7:24: expected (Int, Int), found (Int, String)",
+			"6:67: expected Int, found String",
+			"7:44: expected Int, found String",
 		}},
 		{"a function has none of the derived traits", `fn show(f: fn() -> Int) = print(f)
 fn same(f: fn() -> Int, g: fn() -> Int) -> Bool = f == g

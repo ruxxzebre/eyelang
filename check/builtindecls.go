@@ -125,14 +125,14 @@ func eventOf(e ir.Expr) *ir.Event {
 // declaredBuiltin checks a call of a built-in against its declaration.
 // first, when set, is the type of the first argument, already checked: the
 // receiver of `x.f(…)`.
-func (x *fnCheck) declaredBuiltin(fn *ir.Func, args []ir.Arg, first typ, at ir.Pos) typ {
+func (x *fnCheck) declaredBuiltin(fn *ir.Func, args []ir.Arg, first, want typ, at ir.Pos) typ {
 	f := x.c.funcType(fn, nil)
 	if first != nil && len(f.params) > 0 && len(args) > 0 {
 		x.expect(args[0].Value.Position(), f.params[0].t, first)
 		f = &tfun{params: f.params[1:], ret: f.ret, bounds: f.bounds}
 		args = args[1:]
 	}
-	x.args(f, args, fn.Name, at)
+	x.argsWant(f, args, fn.Name, at, want)
 	return f.ret
 }
 

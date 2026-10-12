@@ -99,7 +99,8 @@ title: "Open questions"
 25. **Naming a record's type at its literal.** **Decided** (2026-10-12): no syntax at the
     literal; a lambda's record literal takes its type from where the result goes, as other
     literals do, so `users |> map(fn u: { name: u.name })` builds the record type the result is
-    used as. Built by ROADMAP task G.14. Still open: where the context is a `dyn Trait`, nothing
+    used as ([section 5](/reference/language/values-and-types), and the decision log, row "Record literals in lambdas"). Still open:
+    where the context is a `dyn Trait`, nothing
     says which type a literal is, so each implementation needs a constructor (`Square.new(2)`)
     or a `let s: Square = { side: 2 }` first. Is that enough?
 26. **What `@memory` measures.** A compiled job would count its process's memory. The reference

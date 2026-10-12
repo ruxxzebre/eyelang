@@ -71,6 +71,23 @@ title: "Values and types"
   let u: User = { name: "Bo", age: 4 }
   let x = { name: "Cy", age: 5 }                 # error: which record type? write `let x: User = …`
   ```
+
+  A lambda's result goes where the call's result goes, so a record literal in a lambda's body
+  takes its type from there: from an annotation, a return type, a parameter or a field, through
+  any stages of a pipeline, and into the branches of an `if` or a `match` in the body. The call
+  takes that type before its lambdas are checked, so a later stage's lambda can read the fields:
+
+  ```eye
+  let rows: List(Row) = users |> map(fn u: { name: u.name, age: u.age })   # each a Row
+
+  fn adults(users: List(User)) -> List(Row) =
+    users |> map(fn u: { name: u.name, age: u.age }) |> filter(fn r: r.age >= 18)   # r is a Row
+
+  let names = users |> map(fn u: { name: u.name }) |> map(fn r: r.name)   # error: which record type?
+  ```
+
+  Where nothing says, it is still an error, as `names` shows; write the type on the `let`, or on
+  the lambda's parameter, `fn (r: Row): r.name`.
 - **Variants:** `type Grant = Admitted(revision: Revision) | Pending(receipt: ReceiptId) | Refused(reason: Reason)`,
   built with `Pending(receipt: id)`. Payload fields may be named or positional (`Some(a)`). A
   variant list needs at least one `|`, so a type with a single variant starts with one:
