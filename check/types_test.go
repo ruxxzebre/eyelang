@@ -293,6 +293,15 @@ fn read(t: String) -> Int uses {net Store.create} = create(t, key: "k").id`, []s
 			"14:55: this match doesn't handle Uncertain(_): add an arm for it, or `_ => …`",
 			"17:53: this command's reply may have been lost, so it may be Uncertain(key): match it with an Uncertain(_) arm, or reconcile it with .reconcile!(), before reading its id",
 		}},
+		{"a job started by an event consumes it", `import svc
+@on(event(svc.pings))
+pub job heard(p: svc.Ping) {
+  log.info("{p.id}")
+}
+@on(event(svc.pings))
+job quiet(p: svc.Ping) {
+  log.info("{p.id}")
+}`, []string{"2:1: heard uses consume Svc.pings, which its signature doesn't list: run eye fmt, or add uses {consume Svc.pings}"}},
 		{"reconcile needs a @reconcile query", `import svc
 job j(text: String) {
   let r = svc.raw!(text).reconcile!()
