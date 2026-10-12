@@ -458,8 +458,14 @@ status.md against the code on 2026-10-12. Like the carry-overs, they have no pha
 | G.4 `Type.f()` called through another module (`lex.Lexer.new`) (done) | [#87](https://github.com/ruxxzebre/eyelang/issues/87) |
 | G.5 A type alias that names itself is an error, with a hint for a one-variant type (done) | [#88](https://github.com/ruxxzebre/eyelang/issues/88) |
 | G.6 `impl Trait` for an entity or `Ref(Entity)` is refused, not ignored (done) | [#89](https://github.com/ruxxzebre/eyelang/issues/89) |
+| G.7 Entity methods and served operations can't reach outside the program | [#90](https://github.com/ruxxzebre/eyelang/issues/90) |
+| G.8 A job reads entities and views only through recorded steps | [#91](https://github.com/ruxxzebre/eyelang/issues/91) |
+| G.9 A call tree that comes back to an entity shares its transaction's state | [#92](https://github.com/ruxxzebre/eyelang/issues/92) |
+| G.10 Effects at the boundary: entity methods, jobs, starting jobs, and calls that wait | [#93](https://github.com/ruxxzebre/eyelang/issues/93) |
+| G.11 One sweep of SPECS.md: stale text, unrecorded rules, contradictions, open questions, glossary | [#94](https://github.com/ruxxzebre/eyelang/issues/94) |
 
-Each issue says what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
+G.7 to G.11 come from the spec review of 2026-10-12 (docs/internals/reviews). Each issue says
+what it is and when it is done. G.1, G.2 and G.4 come before S.1, the
 self-hosted lexer; G.1 before 7.4 too.
 
 ### Phase 6: Contracts — [#7](https://github.com/ruxxzebre/eyelang/issues/7) · v0.3
