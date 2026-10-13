@@ -162,8 +162,9 @@ again.
   functions.
 - **`!` outside a job or a waiting function is an error.** In `main`, call `sleep(1 s)`.
 - **Only values that can be saved live across a `!`.** A `Secret`, an `Iter`, a `dyn` value, a
-  channel or an `extern type` value can't be held across one: get it again after the `!`, or use
-  it inside a function called as one step.
+  channel or an `extern type` value can't be held across one: make an `Iter` or a `dyn` value
+  again after the `!`, or use it inside a function called as one step. A `Secret` can only be
+  used that way, since reading one in a job is itself a step.
 - `f!(x)` is written with no space before `!` or `(`.
 
 ### `mut`: a change the caller can see
@@ -589,7 +590,7 @@ Each message is copied as `eye check` prints it, for the code named in the secon
 | `Option(Int) + Int isn't defined: Option(Int) doesn't implement Add(Int, …)` | Indexing gives an `Option`: `(xs[0] ?? 0) + 1`. |
 | `? on an Option returns its None from next, but next returns Int: give a default with ?? value, match the None, or return an Option` | `(x ?? 0) + 1`, or make the function return an `Option`. |
 | `a test can't wait for a run: read where it got to with run.outcome(), which is None while the run is still going (only a job waits, with join!())` | `advance(…)`, then `expect(run.outcome() == Some(Completed(…)))`. |
-| `` token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!` `` | Read and use the secret inside one function that the job calls with `!`. |
+| `` token is a Secret, which can't be saved, and it is still needed after a waiting call: read the secret in a function that uses it and returns what can be saved, and call that with ! `` | Read and use the secret inside one function that the job calls with `!`. |
 | `undefined name fs` | `import fs`. |
 | `expected an expression, found 'let'` | There is no `if let`: use `match` or `let … else`. |
 | `return inside a lambda would leave only the lambda; give the lambda's value instead` | `fn x: if x < 0 then 0 else x`. |

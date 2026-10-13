@@ -96,7 +96,7 @@ calls, where a parameter counts as well. A function is saved as its code and wha
 so a lambda that captures only what can be saved may be held across a wait:
 
 ```text
-main.eye:4:14: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`
+main.eye:4:14: token is a Secret, which can't be saved, and it is still needed after a waiting call: read the secret in a function that uses it and returns what can be saved, and call that with !
 ```
 
 ## Ways to wait

@@ -209,7 +209,7 @@ same goes for a waiting function, whose variables, parameters included, are part
 state:
 
 ```text
-main.eye:95:11: token is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`
+main.eye:95:11: token is a Secret, which can't be saved, and it is still needed after a waiting call: read the secret in a function that uses it and returns what can be saved, and call that with !
 ```
 
 A function is saved as its code and what it captured, so a lambda written in the job, or a

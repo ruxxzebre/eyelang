@@ -18,7 +18,6 @@ compiling and the native port, and new features wait for v0.4.
 
 - **#143** `eye fix`'s help text names every call it rewrites.
 - **#150** Small `eye` fixes: "1 tests passed", `eye help build`, a noisy memory line on `eye run`.
-- **#151** A `Secret` kept across a `!` gets advice that is itself an error.
 - **#117** The rest of 7.13: maps specialised per key type (1.62× Go's time today), and `String`
   and `Bytes` as views whose slices share their buffer.
 

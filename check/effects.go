@@ -1450,13 +1450,24 @@ func (c *checker) checkSave(fn *ir.Func, waiting bool) *saveFrame {
 			continue
 		}
 		reported[u.slot] = true
-		if afterWait {
+		if holdsSecret(c.unsaveable(slots[u.slot])) {
+			// A Secret can't be read again after the `!` either: in a job
+			// reading one is a step, whose result is saved.
+			c.typeErrorf(u.pos, "%s, and it is still needed after a waiting call: read the secret in a function that uses it and returns what can be saved, and call that with !", why(u.slot, u.name))
+		} else if afterWait {
 			c.typeErrorf(u.pos, "%s, and it is still needed after a waiting call: get it again after the `!`", why(u.slot, u.name))
 		} else {
 			c.typeErrorf(u.pos, "%s, and the loop it is read in waits, so its next turn needs it after a waiting call: make it inside the loop", why(u.slot, u.name))
 		}
 	}
 	return f
+}
+
+// holdsSecret reports whether what unsaveable says can't be saved is a
+// Secret, or a value with one inside: "Secret", or "Login (its field token
+// is a Secret)".
+func holdsSecret(what string) bool {
+	return what == "Secret" || strings.HasSuffix(strings.TrimRight(what, ")"), "a Secret")
 }
 
 // fnPasses lists the function values a `!` call gives a function's

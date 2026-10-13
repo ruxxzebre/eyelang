@@ -800,7 +800,7 @@ fn callers(t: Secret(String)) -> Int uses {wait} {
   first + retry!(3, fn: n) + again!(one) + again!(make())
 }
 fn leaks(t: Secret(String)) -> Int uses {wait} = retry!(3, fn: send(t))`, []string{
-			"4:8: t is a Secret, which can't be saved, and it is still needed after a waiting call: get it again after the `!`",
+			"4:8: t is a Secret, which can't be saved, and it is still needed after a waiting call: read the secret in a function that uses it and returns what can be saved, and call that with !",
 			"20:28: this loop walks an Iter, which can't be saved, and its body waits, so a resumed run couldn't find its place: collect it with toList before the loop",
 			"41:60: retry keeps call across a waiting call, so the function given for it is saved with the run, and this one can't be, since it captures t, which is a Secret: give it a function that captures only what can be saved",
 			"39:51: again keeps call across a waiting call, so the function given for it is saved with the run, and this one can't be, since only a lambda written here or a function declared with fn can be",
