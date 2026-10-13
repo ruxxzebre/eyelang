@@ -41,7 +41,7 @@ against. Everything below is a means to them.
 | **v0.1.0** | Write, check, format, run and test programs with entities, jobs and views, on an in-memory store with a controllable clock | Released 2026-10-10 |
 | **v0.2.0** | Durable runs on a journal or Postgres, typed model calls, `dyn Trait`, task groups and channels, `@memory`, `@priority` and `@budget` enforced, approvals that reach people | Released 2026-10-11 |
 | **v0.3** | Contracts with other services, network policy and Go/TypeScript code generated from them, model tools, coding agents | 11 of 13 tasks done. Left: 6.6 and 6.8, its exit tests |
-| **v0.4** | Native code through C with reference counting; jobs as state machines; the runner hosting compiled code | 10 of 14 tasks done, 7.9 and most of 7.13 included. Its exit test, the digest running natively (7.6), is the next piece of work |
+| **v0.4** | Native code through C with reference counting; jobs as state machines; the runner hosting compiled code | 9 of 14 tasks done; 7.9's work is merged and closes with 7.6. Its exit test, the digest running natively (7.6), is the next piece of work |
 | **v1.0** | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation | Planned |
 
 Nearly every feature [What runs today](/reference/status) lists is done; that page names each
