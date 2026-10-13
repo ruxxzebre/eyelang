@@ -49,6 +49,7 @@ const learn: DefaultTheme.SidebarItem[] = [
       { text: 'A tour of the language', link: '/reference/language/a-tour' },
       { text: 'Writing Eyelang', link: '/writing-eyelang' },
       { text: 'Glossary', link: '/reference/language/#glossary' },
+      { text: 'The future of Eyelang', link: '/future-of-eyelang' },
     ],
   },
   {
