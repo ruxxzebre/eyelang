@@ -228,16 +228,28 @@ a program its own schema. One eye run at a time writes a journal or a schema.
 
 ```text
 usage: eye runs [--store url | --journal file] [--json | --show-replies] [program-directory] [run-id [step]]
+       eye runs [--store url | --journal file] --retry ID | --retry-failed [program-directory]
 
 Lists the job runs in a program's journal, or its Postgres store: each run's
 status, what it waits for and until when, and with a run's id, its steps, with
 what each model call spent. With a step's number too, it shows that step's
-whole result, such as a model's reply. It reads without changing anything, so
-it works while eye run is running.
+whole result, such as a model's reply. Without --retry, it reads without
+changing anything, so it works while eye run is running.
+
+--retry ID starts a failed run again once its cause is fixed, and --retry-failed
+every failed run a retry can cure: those that ended as Unavailable (a service
+out of reach) or DeadlinePassed. A retried run keeps its id and key, and replays
+the steps it recorded, so a call that went through isn't made again. While
+eye run holds the store, the retry goes to its inbox and the run starts within
+a second; otherwise the next eye run carries it on.
   -journal string
     	the journal to read (default program-directory/.eye/journal)
   -json
     	print the runs as JSON, with every value whole
+  -retry value
+    	start the failed run with this id again, replaying the steps it recorded
+  -retry-failed
+    	start every failed run a retry can cure again
   -show-replies
     	with a run's id, show each model call's whole reply below its step
   -store string

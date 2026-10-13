@@ -209,6 +209,10 @@ func (in *Interp) join(run *jobRun, target *RunVal, at ir.Pos) Value {
 		}
 	}
 	s := in.waitStep(run, runEvent(target.ID), in.call, ir.Duration(100*365*24*time.Hour))
+	// The target hasn't ended, so its outcome comes after this: an older
+	// run/<id> is the outcome of an attempt that failed and was retried
+	// (retry.go), which this join mustn't see.
+	s.Since = max(s.Since, in.rt.seq())
 	return in.resolveWait(run, s, match, nil, at)
 }
 

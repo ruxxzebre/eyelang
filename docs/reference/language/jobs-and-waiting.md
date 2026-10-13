@@ -254,6 +254,35 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   bugs in the program or its configuration, so like `unreachable` they fail the test they happen
   in, while the other five faults come from a limit or a service, not a bug, and don't (section
   20).
+- **Retrying a failed run.** A run that failed stays failed: starting `eye run` again doesn't
+  start it, and a keyed start finds it. Once the cause is fixed, such as a service that is back,
+  `eye runs --retry ID` starts it again, and `eye runs --retry-failed` starts every failed run a
+  retry can cure. A retried run:
+  - **replays the steps it recorded before the fault**, as a run that resumes after a restart
+    does, and goes on from where it stopped. A call that went through returns its recorded result
+    and isn't made again, so a charge isn't sent twice, and a command whose reply was lost is
+    reconciled as always ([section 17](/reference/language/contracts-talking-to-other-services));
+  - **keeps its id, its arguments and its key**, so `start(…, key:)` returns it, and a parent
+    that joins it with `run.join!()` gets the outcome of the retry. A parent that already got the
+    failure keeps it, since that is a step it recorded;
+  - counts its `@deadline` from when it runs again, as from a start, and waits for its place
+    under `@concurrency` and `@limit` again.
+
+  Only faults that come from outside the program, and pass, are retried: `Unavailable`, a service
+  out of reach, and `DeadlinePassed`, a run out of time. Any other is refused with the reason:
+  `Killed` stopped the run on purpose; `Unreachable`, from `unreachable(…)`, a refused request or
+  another bug, recursion too deep included, would fail again the same way; `OverBudget`,
+  `OutOfMemory` and `LockExpired` would stop it again. A run that failed inside `lock!` or
+  `reserve!`, which gave the lock or the memory back as it ended, or that ended so long ago that
+  only its summary is kept, can't be replayed, so it isn't retried either.
+
+  ```text
+  $ eye runs --retry 1 .
+  run 1 (collect) is ready again: eye run . carries it on, replaying its 2 recorded steps
+  ```
+
+  While `eye run` holds the store, the retry goes to its inbox, as `eye approve`'s answers do, and
+  the runner starts the run within a second; otherwise the next `eye run` carries it on.
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
   is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't

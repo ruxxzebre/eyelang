@@ -294,10 +294,18 @@ func (p *Postgres) lock(ctx context.Context, conn *pgx.Conn) error {
 	return nil
 }
 
-// storeHeld is the failure to take a store's lock: another eye run holds it.
+// storeHeld is the failure to take a store's lock, a journal's or a
+// Postgres store's: another eye run holds it.
 type storeHeld struct{ name string }
 
 func (e *storeHeld) Error() string { return e.name + " is in use by another eye run" }
+
+// StoreHeld reports whether opening a store failed because another eye run
+// holds it.
+func StoreHeld(err error) bool {
+	var held *storeHeld
+	return errors.As(err, &held)
+}
 
 // pgOpen opens a store for WaitForPostgres; tests replace it.
 var pgOpen = openPostgresCtx

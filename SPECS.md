@@ -265,6 +265,7 @@ and `mut` marked at the call.
 | Tests don't reach the network | **In a test, a call to another service (a contract's operation, `http`, `ai`) is answered by `with fakes(…)` or goes out because `eye test --live` names its module; any other call fails the test at the call, with an error that names the `with fakes(…)` or `--live` to add** (section 20). Decided by the owner on 2026-10-13 | A test without fakes went to the service whenever its address or key was set, so it passed on one machine and failed on another, or sent a real message; "tests replay recorded replies" was a promise only `with fakes(…)` kept. Denying is the safe default; a general permission model for effects is open question 46 |
 | NaN equals itself | **`==` on `Float`s asks whether two values are the same: `NaN == NaN` is true and `0.0 == -0.0` false, the one exception to IEEE 754. `Show` writes `NaN`, `+Inf` and `-Inf`, and JSON, which has none of them, refuses them: writing one is a fault** (sections 10 and 17). Decided by the owner on 2026-10-12 | Every value equals itself, so lists, sets, maps and derived record equality behave, and a test can `expect` a NaN; IEEE's `NaN != NaN` would make `[x] == [x]` false. `null`, which JavaScript writes, is `None`'s shape, so `Some(nan)` would read back as `None`, and a service would read `null` for a number; a fault stops at the call that would send it |
 | Memory in tests | **`with memory(size)` in a test sets the memory its runner has, which `@memory` and `reserve!` are admitted against, for the rest of the test** (section 20). Decided by the owner on 2026-10-12 | Waiting for memory and `OutOfMemory` are outcomes a program plans for, so a test should show them deterministically, on any machine; a handler, as `clock(…)` is for time, rather than a flag to `eye test` that every test would share |
+| Retrying a failed run | **`eye runs --retry ID` starts a failed run again: it replays the steps it recorded and keeps its id, arguments and key; only `Unavailable` and `DeadlinePassed` are retried, and `--retry-failed` retries every run that ended so** (section 15). Accepted by the owner on 2026-10-12 | A service that was down longer than its retries, or a run out of time, left a run failed for good, and only `eye run --fresh`, which throws away every entity and run, or a new key got past it. Replaying is what makes a retry safe: recorded calls aren't made again, and keyed and reconciled calls cover the one in flight. Keeping the id and key keeps `join!` and keyed starts pointing at the run. `Killed` was on purpose, and `Unreachable` is a bug that a retry would meet again |
 
 ## 3. A tour
 
@@ -1940,6 +1941,35 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
   bugs in the program or its configuration, so like `unreachable` they fail the test they happen
   in, while the other five faults come from a limit or a service, not a bug, and don't (section
   20).
+- **Retrying a failed run.** A run that failed stays failed: starting `eye run` again doesn't
+  start it, and a keyed start finds it. Once the cause is fixed, such as a service that is back,
+  `eye runs --retry ID` starts it again, and `eye runs --retry-failed` starts every failed run a
+  retry can cure. A retried run:
+  - **replays the steps it recorded before the fault**, as a run that resumes after a restart
+    does, and goes on from where it stopped. A call that went through returns its recorded result
+    and isn't made again, so a charge isn't sent twice, and a command whose reply was lost is
+    reconciled as always (section 17);
+  - **keeps its id, its arguments and its key**, so `start(…, key:)` returns it, and a parent
+    that joins it with `run.join!()` gets the outcome of the retry. A parent that already got the
+    failure keeps it, since that is a step it recorded;
+  - counts its `@deadline` from when it runs again, as from a start, and waits for its place
+    under `@concurrency` and `@limit` again.
+
+  Only faults that come from outside the program, and pass, are retried: `Unavailable`, a service
+  out of reach, and `DeadlinePassed`, a run out of time. Any other is refused with the reason:
+  `Killed` stopped the run on purpose; `Unreachable`, from `unreachable(…)`, a refused request or
+  another bug, recursion too deep included, would fail again the same way; `OverBudget`,
+  `OutOfMemory` and `LockExpired` would stop it again. A run that failed inside `lock!` or
+  `reserve!`, which gave the lock or the memory back as it ended, or that ended so long ago that
+  only its summary is kept, can't be replayed, so it isn't retried either.
+
+  ```text
+  $ eye runs --retry 1 .
+  run 1 (collect) is ready again: eye run . carries it on, replaying its 2 recorded steps
+  ```
+
+  While `eye run` holds the store, the retry goes to its inbox, as `eye approve`'s answers do, and
+  the runner starts the run within a second; otherwise the next `eye run` carries it on.
 - **Starting jobs:** `irelandDigest.start(day)` returns a `Run(a)`. It works from entity methods (as
   part of the transaction), from `main` and tests, and from jobs, where it starts a child run and
   is written `irelandDigest.start!(day)`: the start is a recorded step, so a resumed run doesn't

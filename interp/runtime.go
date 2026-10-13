@@ -698,6 +698,10 @@ type jobRun struct {
 	// DeadlineAt is when the run ends as Failed(DeadlinePassed), from the
 	// job's @deadline.
 	DeadlineAt int64 `json:",omitempty"`
+	// Retries is how many times a retry started the run again after it
+	// failed (retry.go). A retried run's DeadlineAt is worked out again
+	// when it runs.
+	Retries int `json:",omitempty"`
 	// Locks are the locks the run holds inside lock!, which end it as
 	// Failed(LockExpired) if it is still waiting there when they run out.
 	Locks []heldLock `json:",omitempty"`
@@ -813,15 +817,23 @@ func (rt *runtime) newRun(job *ir.Job, args []Value, named map[string]Value, at 
 	if l := job.Limit; l != nil {
 		run.RateGroup = group(l.By)
 	}
-	if job.Deadline != nil {
-		switch d := rt.in.evalGlobalFunc(job.Deadline).(type) {
-		case ir.Duration:
-			run.DeadlineAt = rt.now.Add(time.Duration(d)).UnixNano()
-		case time.Time:
-			run.DeadlineAt = d.UnixNano()
-		}
-	}
+	run.DeadlineAt = rt.deadlineAt(job)
 	return run
+}
+
+// deadlineAt is when a run of job that starts now must have finished, from
+// the job's @deadline, in Unix nanoseconds; 0 without one.
+func (rt *runtime) deadlineAt(job *ir.Job) int64 {
+	if job.Deadline == nil {
+		return 0
+	}
+	switch d := rt.in.evalGlobalFunc(job.Deadline).(type) {
+	case ir.Duration:
+		return rt.now.Add(time.Duration(d)).UnixNano()
+	case time.Time:
+		return d.UnixNano()
+	}
+	return 0
 }
 
 // keyed returns the run a job was already started with under a key, if
@@ -953,6 +965,9 @@ func (rt *runtime) step(id int64) {
 				}
 			}
 		}()
+		if run.Retries > 0 && run.DeadlineAt == 0 {
+			run.DeadlineAt = rt.deadlineAt(job) // counted from the retry
+		}
 		if run.DeadlineAt > 0 && rt.now.UnixNano() >= run.DeadlineAt {
 			runFault(job.Pos, "DeadlinePassed", "%s passed its @deadline", job.Name)
 		}

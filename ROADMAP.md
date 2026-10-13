@@ -57,7 +57,7 @@ the native port, and nothing else starts. It is reached when all of these hold:
   admitted against, so it can show a run waiting for memory or failing with `OutOfMemory`.
 - [ ] #135: an event of another service's contract reaches `eye run` as a `POST` to the program's
   port, under the contract's `@auth`, as served operations already do (owner's choice a).
-- [ ] #136: `eye runs --retry ID` starts a failed run again, replaying the steps it recorded,
+- [x] #136: `eye runs --retry ID` starts a failed run again, replaying the steps it recorded,
   keeping its id and key, for faults a retry can cure (unreachable services, timeouts), not for
   `Killed` or `unreachable`.
 - [ ] No open issue of the audit's kind: a program `eye check` accepts that fails at run time.

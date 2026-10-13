@@ -10,11 +10,13 @@ import (
 	"time"
 )
 
-// The inbox is a directory a running `eye run` reads answers from: each file
-// is one answer to an approval, written by `eye approve` or `eye decline`.
-// The runner publishes it as approvals.answered, which wakes the run waiting
-// for it, and then removes the file. A file is written under a temporary
-// name and renamed, so the runner never reads half of one.
+// The inbox is a directory a running `eye run` reads requests from. Each
+// file is one answer to an approval, written by `eye approve` or `eye
+// decline`, which the runner publishes as approvals.answered, waking the run
+// waiting for it; or a retry, written by `eye runs --retry` while the runner
+// holds the store, which the runner carries out (retry.go). The runner then
+// removes the file. A file is written under a temporary name and renamed, so
+// the runner never reads half of one.
 
 // inboxEvery is how often the runner looks in its inbox.
 const inboxEvery = time.Second
@@ -29,15 +31,43 @@ type InboxAnswer struct {
 	By       string `json:"by,omitempty"`
 }
 
+// InboxRetry asks the runner to start failed runs again: those with the ids
+// in Retry, or with All, every failed run a retry can cure.
+type InboxRetry struct {
+	Retry []int64 `json:"retry,omitempty"`
+	All   bool    `json:"retryFailed,omitempty"`
+}
+
+// inboxFile is what a file in the inbox holds: an answer or a retry.
+type inboxFile struct {
+	InboxAnswer
+	InboxRetry
+}
+
+func (f *inboxFile) isRetry() bool { return len(f.Retry) > 0 || f.All }
+
 // SendAnswer puts an answer in the inbox at dir, for the runner to publish.
 func SendAnswer(dir string, a InboxAnswer) error {
 	if a.ID == "" && strings.TrimSpace(a.What) == "" {
 		return fmt.Errorf("an answer needs the id of the approval it answers, or text from what was asked")
 	}
+	return sendInbox(dir, a)
+}
+
+// SendRetry puts a retry in the inbox at dir, for the runner to carry out.
+func SendRetry(dir string, r InboxRetry) error {
+	if len(r.Retry) == 0 && !r.All {
+		return fmt.Errorf("a retry needs the ids of the runs to start again, or all of them")
+	}
+	return sendInbox(dir, r)
+}
+
+// sendInbox writes a request to the inbox at dir.
+func sendInbox(dir string, request any) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	data, err := json.Marshal(a)
+	data, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
@@ -49,11 +79,11 @@ func SendAnswer(dir string, a InboxAnswer) error {
 	return os.Rename(tmp, filepath.Join(dir, name))
 }
 
-// readInbox publishes the answers waiting in the inbox, oldest first, and
-// removes each once it is published. A file that can't be read as an answer
-// is renamed to .bad and reported, so it isn't read again. An answer that
-// names no waiting approval, or whose text several contain, is reported and
-// removed.
+// readInbox publishes the answers waiting in the inbox and carries out the
+// retries, oldest first, and removes each once it is done. A file that can't
+// be read as either is renamed to .bad and reported, so it isn't read again.
+// An answer that names no waiting approval, or whose text several contain,
+// and a retry of a run that a retry can't cure, are reported and removed.
 func (rt *runtime) readInbox(dir string, report func(string)) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -72,9 +102,15 @@ func (rt *runtime) readInbox(dir string, report func(string)) {
 		if err != nil {
 			continue
 		}
-		var a InboxAnswer
-		if err := json.Unmarshal(data, &a); err != nil || (a.ID == "" && strings.TrimSpace(a.What) == "") {
-			report(fmt.Sprintf("the inbox file %s isn't an answer; it is kept as %s.bad", path, name))
+		var f inboxFile
+		err = json.Unmarshal(data, &f)
+		a := f.InboxAnswer
+		switch {
+		case err == nil && f.isRetry():
+			rt.inboxRetry(f.InboxRetry, path, report)
+			continue
+		case err != nil || (a.ID == "" && strings.TrimSpace(a.What) == ""):
+			report(fmt.Sprintf("the inbox file %s isn't an answer or a retry; it is kept as %s.bad", path, name))
 			_ = os.Rename(path, path+".bad")
 			continue
 		}

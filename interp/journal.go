@@ -157,7 +157,7 @@ func openJournal(path string, fresh bool) (*Journal, error) {
 	}
 	if err := lockFile(lock); err != nil {
 		lock.Close()
-		return nil, fmt.Errorf("%s is in use by another eye run", path)
+		return nil, &storeHeld{path}
 	}
 	if fresh {
 		if err := os.Rename(path, path+".old"); err != nil && !os.IsNotExist(err) {

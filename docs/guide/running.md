@@ -107,7 +107,8 @@ $ eye runs --json .
 ```
 
 `eye runs` reads the journal without changing it, so it works while `eye run` is running. It takes
-`--journal` too.
+`--journal` too. Only `--retry` and `--retry-failed` change anything (see
+[Retrying a failed run](#retrying-a-failed-run)).
 
 ## Restarts
 
@@ -227,10 +228,32 @@ Fixing the setting and starting again doesn't start that run again: `main` runs,
 already exists, and nothing new happens. So check the configuration before the first start, for
 example by running once with `--memory` against the real services.
 
-::: info Not yet
-There is no command to start a failed run again
-([#136](https://github.com/ruxxzebre/eyelang/issues/136)).
-:::
+### Retrying a failed run
+
+A run that failed because something outside the program wasn't there can be started again once
+it is: a service that stayed out of reach for longer than its retries (`Unavailable`), or a run
+that ran out of time (`DeadlinePassed`). `eye runs --retry` takes the run's id:
+
+```text
+$ eye runs --retry 1 .
+run 1 (collect) is ready again: eye run . carries it on, replaying its 2 recorded steps
+```
+
+The run keeps its id and key, so `main`'s keyed start and a parent's `join!` find it, and it
+replays the steps it recorded before the fault: a charge that went through isn't sent again. Its
+`@deadline` counts from when it runs again. `eye runs --retry-failed` retries every failed run
+that ended so. While `eye run` holds the journal, the retry goes to its inbox, and the runner
+starts the run within a second:
+
+```text
+$ eye runs --retry 1 .
+retrying run 1 (collect): eye run, which holds the store, starts it within a second, replaying its 2 recorded steps
+```
+
+Any other failure is refused, with the reason. A refused request like the one above, `unreachable`
+and other bugs end as `Unreachable` and would fail the same way again; `Killed` was on purpose. A
+run that failed inside `lock!` or `reserve!` can't be retried either, since it gave the lock or
+the memory back as it ended.
 
 ## The journal
 
