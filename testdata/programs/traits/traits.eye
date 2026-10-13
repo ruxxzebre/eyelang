@@ -150,6 +150,24 @@ test "dyn Named holds values of different types, and calls their own methods" {
   expect(roll([p]) == "<ann>")  # a List(Player) is a List(dyn Named)
 }
 
+## A player's stand-in: the same fields as Player, but a type of its own.
+type Stand = { nick: String, level: Int }
+
+impl Named for Stand {
+  fn name(self) = "{self.nick}'s stand-in"
+
+  fn label(self) -> String = "({self.name()})"
+}
+
+test "dyn Named calls the impl of the value's own type, not another with the same fields" {
+  let p: Player = { nick: "ann", level: 3 }
+  let s: Stand = { nick: "bo", level: 3 }
+  expect(roll([p, s]) == "<ann> (bo's stand-in)")
+  expect(roll([s, p]) == "(bo's stand-in) <ann>")
+  expect(s.label() == "(bo's stand-in)")
+  expect(p.label() == "<ann>")
+}
+
 ## How someone new is let in: a choice that arrives as a pressed button.
 type Admission = Guest | Member | Refuse
 

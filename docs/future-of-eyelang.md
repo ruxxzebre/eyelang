@@ -207,9 +207,8 @@ gaps in C (7.9) are done.
    **Done when** the morning digest runs as a native job on the journal and on Postgres, with its
    idle memory and resume time recorded beside the interpreter's. Then v0.4 is released.
 2. **Before the checkpoint closes:**
-   - no program `eye check` accepts may fail at run time: #142 (a `dyn` call picks the wrong
-     impl for records of the same shape) and #141 (tests deny the network unless faked or
-     `--live`);
+   - no program `eye check` accepts may fail at run time: #141 (tests deny the network
+     unless faked or `--live`);
    - the rest of 7.13 (#117): maps specialised per key type, and strings and `Bytes` as views,
      so slicing them stops copying.
 3. **7.11, faster than Go (#114).** Native code beats Go on time on every benchmark, and on

@@ -1132,9 +1132,15 @@ func (in *Interp) callMethodFunc(fn *ir.Func, recv Value, args []argVal, at ir.P
 	return r, nil
 }
 
-// recordMethod finds the impl method for a record by the record types whose
-// fields it has. With type checking (phase 2) the static type will decide.
+// recordMethod finds the method a record's type has, or an impl gives it.
+// Records are nominal: the type the record was made as picks the method,
+// even when another type has the same fields. Only a record without a type
+// (a saved value whose type the program no longer declares, say) is matched
+// by the types whose fields it has.
 func (in *Interp) recordMethod(r *Record, name string) *ir.Func {
+	if r.Type != nil {
+		return r.Type.Methods[name]
+	}
 	for _, m := range in.prog.Modules {
 		for _, t := range m.Types {
 			if len(t.Fields) != len(r.Names) {
