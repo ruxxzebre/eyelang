@@ -822,6 +822,20 @@ fn h() -> NonZero(Int) = 7`, []string{
 			"8:33: dividing by Int fails when it is 0",
 			"10:10: in half, dividing by 0 has no answer",
 		}},
+		{"a Secret in a job is read in a function called with !", `fn send(t: Secret(String)) -> Int = 1
+fn sent() -> Int uses {secret "tok"} = send(secret("tok"))
+job a() {
+  let t = secret("tok")
+  sleep!(1 min)
+  let _ = send(t)
+}
+job b() {
+  sleep!(1 min)
+  let _ = sent!()
+}`, []string{
+			"4:11: in a job, reading a secret is a step, and a Secret can't be a step's result: read it in a function that uses it and returns what can be saved, and call that with !",
+			"6:16: t is a Secret, which can't be saved, and it is still needed after a waiting call: read the secret in a function that uses it and returns what can be saved, and call that with !",
+		}},
 		{"a Duration divides by a NonZero(Int), or by a Duration as a Float", `fn a(d: Duration, n: Int) -> Duration = d / n
 fn b(d: Duration) -> Duration = d / 0
 fn c(d: Duration, n: NonZero(Int)) -> Duration = d / n + d / 4

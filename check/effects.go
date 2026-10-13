@@ -852,10 +852,11 @@ func (c *checker) checkSteps(fn *ir.Func, where string, all map[*ir.Func]map[str
 			return false
 		}
 		var name, effect string
-		step, misnamedWait := false, false
+		step, misnamedWait, readsSecret := false, false, false
 		switch d := r.Decl.(type) {
 		case ir.Builtin:
 			name = d.Name
+			readsSecret = d.Name == "secret"
 			// all! and first! are reported as they are type-checked, with
 			// the wait to write instead.
 			_, misnamedWait = collectionWaits[d.Name]
@@ -900,6 +901,10 @@ func (c *checker) checkSteps(fn *ir.Func, where string, all map[*ir.Func]map[str
 		switch {
 		case task && step:
 			c.typeErrorf(call.Pos, "a task %s can only compute, and %s uses %s: start a child run for this step instead", where, name, effect)
+		case !waiting && step && readsSecret:
+			// secret!(…) would be an error too: a step's result is saved,
+			// and a Secret can't be.
+			c.typeErrorf(call.Pos, "%s, reading a secret is a step, and a Secret can't be a step's result: read it in a function that uses it and returns what can be saved, and call that with !", where)
 		case !waiting && step && effect != "wait":
 			c.typeErrorf(call.Pos, "%s, %s uses %s, so calling it is a durable step: write %s!(…)", where, name, effect, name)
 		case waiting && !step && !misnamedWait:

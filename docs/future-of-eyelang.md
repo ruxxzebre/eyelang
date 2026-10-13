@@ -228,8 +228,6 @@ gaps in C (7.9) are done.
 - **Library gaps:**
   - a secure random token, and JSON decoded into typed values (#153);
   - HTTP beyond `get`, and contracts with more than one base URL, for webhooks (#144).
-- **Diagnostics and CLI polish:**
-  - `eye fix`'s help should name every call it rewrites (#143);
 - **Docs and the playground:**
   - the whole reference as one `llms-full.txt` for agents (#152);
   - homelab-specific teaching examples replaced (#148);

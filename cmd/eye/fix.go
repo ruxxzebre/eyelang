@@ -24,10 +24,17 @@ func runFix(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Rewrites a program's code where the language changed under it, then formats")
 		fmt.Fprintln(stderr, "the files it changed. Today it adds the ! that a durable step needs in a job or")
-		fmt.Fprintln(stderr, "a waiting function: publish!(…), start!(…), an entity call, a contract's")
-		fmt.Fprintln(stderr, "operation. It prints each change as file:line:column, and exits 1 if errors")
-		fmt.Fprintln(stderr, "it can't fix are left; eye check lists them. With no paths, fixes the program")
-		fmt.Fprintln(stderr, "in the current directory.")
+		fmt.Fprintln(stderr, "a waiting function, wherever eye check says \"durable step: write f!(…)\":")
+		fmt.Fprintln(stderr, "  - calls that wait: sleep, approval, lock and the other waiting built-ins,")
+		fmt.Fprintln(stderr, "    and functions that wait")
+		fmt.Fprintln(stderr, "  - calls that reach outside the program: now, env.get, http.get, fs, process")
+		fmt.Fprintln(stderr, "    and random, and functions that use them")
+		fmt.Fprintln(stderr, "  - a contract's operation, and reconcile")
+		fmt.Fprintln(stderr, "  - an entity call, and read on an entity, a view or E.all")
+		fmt.Fprintln(stderr, "  - publish and start")
+		fmt.Fprintln(stderr, "It prints each change as file:line:column, and exits 1 if errors it can't fix")
+		fmt.Fprintln(stderr, "are left; eye check lists them. With no paths, fixes the program in the")
+		fmt.Fprintln(stderr, "current directory.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -102,7 +109,7 @@ func fixProgram(dir string, checkOnly bool, stdout, stderr io.Writer) bool {
 
 // stepMessage matches the checker's message for a durable step written
 // without its `!`, which ends by naming the call to write.
-var stepMessage = regexp.MustCompile(`durable step: write ([\pL_][\pL\pN_]*)!\(…\)$`)
+var stepMessage = regexp.MustCompile(`durable step: write ([\pL_][\pL\pN_]*(?:\.[\pL_][\pL\pN_]*)*)!\(…\)$`)
 
 // stepFix finds where a durable step's missing `!` goes: before the
 // arguments of the call the diagnostic is at, whose function is named name.

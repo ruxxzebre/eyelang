@@ -69,10 +69,17 @@ usage: eye fix [--check] [program-directory | file.eye]...
 
 Rewrites a program's code where the language changed under it, then formats
 the files it changed. Today it adds the ! that a durable step needs in a job or
-a waiting function: publish!(…), start!(…), an entity call, a contract's
-operation. It prints each change as file:line:column, and exits 1 if errors
-it can't fix are left; eye check lists them. With no paths, fixes the program
-in the current directory.
+a waiting function, wherever eye check says "durable step: write f!(…)":
+  - calls that wait: sleep, approval, lock and the other waiting built-ins,
+    and functions that wait
+  - calls that reach outside the program: now, env.get, http.get, fs, process
+    and random, and functions that use them
+  - a contract's operation, and reconcile
+  - an entity call, and read on an entity, a view or E.all
+  - publish and start
+It prints each change as file:line:column, and exits 1 if errors it can't fix
+are left; eye check lists them. With no paths, fixes the program in the
+current directory.
   -check
     	list what would change and exit 1 if anything would, without changing files
 ```

@@ -16,7 +16,6 @@ same commit.
 ROADMAP's "What's next" opens with the checkpoint: when it is reached, every session works on
 compiling and the native port, and new features wait for v0.4.
 
-- **#143** `eye fix`'s help text names every call it rewrites.
 - **#117** The rest of 7.13: maps specialised per key type (1.62× Go's time today), and `String`
   and `Bytes` as views whose slices share their buffer.
 

@@ -83,6 +83,22 @@ job close(n: Int) { later!(n) }
 `,
 		},
 		{
+			"the clock and the environment, by their module's name too",
+			`
+job close(n: Int) {
+  let at = now()
+  let proxy = env.get("PROXY") ?? ""
+  log.info("{at} {proxy}")
+}
+`, `
+job close(n: Int) {
+  let at = now!()
+  let proxy = env.get!("PROXY") ?? ""
+  log.info("{at} {proxy}")
+}
+`,
+		},
+		{
 			"outside jobs nothing changes",
 			`
 test "a start and a publish" {
