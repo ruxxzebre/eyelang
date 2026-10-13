@@ -103,5 +103,6 @@ each promise.
 The reference interpreter runs nearly all of the language, entities, jobs and contracts included.
 `eye build` compiles the core language to a native binary; programs with jobs run in the
 interpreter until native code covers them. The language changes whenever real programs show a
-better way, until v1.0. [What runs today](/reference/status) lists each feature.
+better way, until v1.0. [What runs today](/reference/status) lists each feature, and
+[The future of Eyelang](/future-of-eyelang) says what is built and what comes next.
 :::
