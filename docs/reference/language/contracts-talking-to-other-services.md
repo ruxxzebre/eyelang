@@ -399,7 +399,18 @@ type Delivery =
                     "result": { "kind": "Accepted", "receipt": "r-41", "at": "2026-10-10T07:40:02Z" } }] }
   ```
 
-  A command's lost reply is recorded as `{ "kind": "Uncertain", "key": "…" }`. Recordings written
+  A command's lost reply is recorded as `{ "kind": "Uncertain", "key": "…" }`. Several exchanges
+  for the same operation and key answer its calls in turn, and the last one answers every call
+  after: a lost send followed by `Accepted` for the same key is how a test shows `.reconcile!()`
+  sending again and settling:
+
+  ```json
+  { "contract": "Notify",
+    "exchanges": [{ "op": "send", "key": "ireland-2026-10-10", "result": { "kind": "Uncertain", "key": "ireland-2026-10-10" } },
+                  { "op": "send", "key": "ireland-2026-10-10", "result": { "kind": "Accepted", "receipt": "r-41", "at": "2026-10-10T07:40:02Z" } }] }
+  ```
+
+  Recordings written
   before this shape was settled, with a variant as its name's only key (`{ "Accepted": {…} }`), are
   still read.
 - **A test sees what a fake received.** `fakes(…)` is a value of the type `Fakes`: a test that

@@ -50,8 +50,10 @@ function, and each `sleep!` in it is a saved step.
 
 <<< ./webhook-delivery/main.eye#deliver
 
-The tests swap the partner's recorded replies in the middle of a test, from "down" to "up", to
-check that the delivery gets through at 09:36 and not before.
+The partner's recordings list several replies for one key, which answer the tries in turn: three
+503s and then an `Ok` check that the delivery gets through at 09:36 and not before, and a lost
+reply, a receipt query that says it never arrived and an `Ok` check that `.reconcile!()` sends it
+again with the same key.
 [Open it in the playground](/playground#example=examples/webhook-delivery).
 
 ## Uptime monitor: probe every minute, alert once

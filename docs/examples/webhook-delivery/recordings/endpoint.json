@@ -8,6 +8,25 @@
       "op": "deliver",
       "key": "evt-3",
       "result": { "kind": "Err", "value": { "kind": "BadStatus", "code": 410, "body": "unsubscribed" } }
-    }
+    },
+    {
+      "op": "deliver",
+      "key": "evt-4",
+      "result": { "kind": "Err", "value": { "kind": "BadStatus", "code": 503, "body": "down for maintenance" } }
+    },
+    {
+      "op": "deliver",
+      "key": "evt-4",
+      "result": { "kind": "Err", "value": { "kind": "BadStatus", "code": 503, "body": "down for maintenance" } }
+    },
+    {
+      "op": "deliver",
+      "key": "evt-4",
+      "result": { "kind": "Err", "value": { "kind": "BadStatus", "code": 503, "body": "down for maintenance" } }
+    },
+    { "op": "deliver", "key": "evt-4", "result": { "kind": "Ok", "value": { "id": "wh-4" } } },
+    { "op": "deliver", "key": "evt-5", "result": { "kind": "Uncertain", "key": "evt-5" } },
+    { "op": "receipt", "key": "evt-5", "result": null },
+    { "op": "deliver", "key": "evt-5", "result": { "kind": "Ok", "value": { "id": "wh-5" } } }
   ]
 }

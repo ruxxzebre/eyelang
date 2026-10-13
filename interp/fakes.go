@@ -36,6 +36,9 @@ type fakeSet struct {
 	// answered are the calls the fakes answered, in order, for
 	// fakes.calls(op).
 	answered []fakeCall
+	// turns counts the calls answered for each operation and key, so that
+	// several exchanges for one answer in turn.
+	turns map[string]int
 	// live says the real service answers instead, under eye test --live,
 	// and file is where --record keeps its answers (live.go).
 	live bool
@@ -301,30 +304,63 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 		return rt.callLive(fs, op, args, named, at)
 	}
 	key, _ := named["key"].(string)
-	for _, e := range fs.exchanges {
-		if e.op == op.Name && (key == "" || e.key == key) {
-			fs.answered = append(fs.answered, fakeCall{op, rt.callArgs(op, args, named)})
-			if v, ok := e.result.(*Variant); ok && v.V.Name == "Uncertain" && len(v.Vals) == 1 {
-				rt.lost(keyOf(v.Vals[0]), sentCommand{op, args, named})
-			}
-			if w := rt.replayLog; w != nil {
-				// A run that replays recordings (RunOptions.Replay) says
-				// what each call got, as a service it calls would show.
-				with := ""
-				if key != "" {
-					with = fmt.Sprintf(" with key %q", key)
-				}
-				fmt.Fprintf(w, "%s.%s%s at %s → %s, from %s\n", mod, op.Name, with,
-					rt.now.Format("2006-01-02 15:04"), show(e.result), filepath.Base(fs.path))
-			}
-			return e.result
+	if e := fs.answer(op.Name, key); e != nil {
+		fs.answered = append(fs.answered, fakeCall{op, rt.callArgs(op, args, named)})
+		if v, ok := e.result.(*Variant); ok && v.V.Name == "Uncertain" && len(v.Vals) == 1 {
+			rt.lost(keyOf(v.Vals[0]), sentCommand{op, args, named})
 		}
+		if w := rt.replayLog; w != nil {
+			// A run that replays recordings (RunOptions.Replay) says
+			// what each call got, as a service it calls would show.
+			with := ""
+			if key != "" {
+				with = fmt.Sprintf(" with key %q", key)
+			}
+			fmt.Fprintf(w, "%s.%s%s at %s → %s, from %s\n", mod, op.Name, with,
+				rt.now.Format("2006-01-02 15:04"), show(e.result), filepath.Base(fs.path))
+		}
+		return e.result
 	}
 	if key != "" {
 		rt.in.faultf(at, "%s has no exchange for %s.%s with key %q", fs.path, mod, op.Name, key)
 	}
 	rt.in.faultf(at, "%s has no exchange for %s.%s", fs.path, mod, op.Name)
 	return nil
+}
+
+// answer picks the exchange that answers a call of op with key. Several
+// exchanges for the same operation and key answer its calls in turn, and
+// the last answers every call after (SPECS.md §17), so a lost reply can be
+// followed by the answer to the send that settles it. A call without a key
+// that no keyless exchange answers takes the operation's first exchange.
+func (fs *fakeSet) answer(op, key string) *exchange {
+	var same []*exchange
+	var first *exchange
+	for i := range fs.exchanges {
+		e := &fs.exchanges[i]
+		if e.op != op {
+			continue
+		}
+		if first == nil {
+			first = e
+		}
+		if e.key == key {
+			same = append(same, e)
+		}
+	}
+	if len(same) == 0 {
+		if key == "" {
+			return first
+		}
+		return nil
+	}
+	if fs.turns == nil {
+		fs.turns = map[string]int{}
+	}
+	turn := op + "\x00" + key
+	n := fs.turns[turn]
+	fs.turns[turn] = n + 1
+	return same[min(n, len(same)-1)]
 }
 
 // callArgs is a call's arguments as a record: one field per parameter, in
