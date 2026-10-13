@@ -88,12 +88,23 @@ from another, so a refund that is delivered twice starts one run:
 
 <<< ./code/contracts/main.eye#test-refund
 
-::: info Not yet
-Under `eye run`, another service can't deliver an event into the program yet
-([#135](https://github.com/ruxxzebre/eyelang/issues/135)). Tests publish them with
-`payments.refunded.publish(…)`, and a program publishes its own, from an entity method, a job, or
-an operation of a contract it serves.
-:::
+Under `eye run`, the payments service delivers the event as an HTTP request, with the event as
+JSON and the contract's `@auth` secret:
+
+```text
+POST /events/payments.refunds
+Authorization: Bearer <secret("payments-token")>
+
+{ "charge": "ch-1", "amount_cents": 4250 }
+```
+
+This program serves Invoices on port 8080, so it takes the event there too, and says so when it
+starts (`eye run: taking payments.refunded on :8080`); a program that serves nothing takes events
+on `EYE_EVENTS_PORT`. It answers 202 once the event is in its journal, 401 without the secret, and
+400 for a body that isn't a `Refunded`. Tests publish events with `payments.refunded.publish(…)`.
+A program publishes the events of a contract it serves from an entity method, a job, or an
+operation, and `eye run` sends them to the programs `PAYMENTS_EVENTS_URL` lists; see
+[Running in production](/guide/running#events-between-programs).
 
 ## Keys make repeats safe
 

@@ -174,7 +174,9 @@ title: "Open questions"
     its handlers (`interp.RunOptions.Services`), as the HTTP requests two `eye run`s would
     exchange; each request shows with its status as it crosses, the secrets the contracts' `@auth`
     names are made up for both sides, a call moves the service's clock to the caller's, and a retry
-    moves the clock instead of waiting (`docs/examples/shop-and-bank`). Still open: model calls
+    moves the clock instead of waiting (`docs/examples/shop-and-bank`). A service's events go to
+    the root program's handler in memory (`RunOptions.Subscribers` and `Accept`), as `eye run`
+    would send them, and show as they cross too. Still open: model calls
     with a key the visitor brings, which today only replay recordings.
 35. **Who may publish an event.** `@allow` names the modules that may call a contract's
     commands and queries, but any module may publish any of its events. For
@@ -259,3 +261,9 @@ title: "Open questions"
     builds, with C for release builds, as Go and Zig do; a checker that runs in parallel and
     holds less (a million lines take 2.7 GB to check)? And does the 1-second target mean a
     build from nothing, or a build after an edit, which caching brings within reach sooner?
+48. **Events in the network policy.** A publisher posts its events to its subscribers' ports
+    ([section 17](/reference/language/contracts-talking-to-other-services)), but `eye gen policy` writes no rule for them: `EYE_EVENTS_PORT` is
+    configuration, not code, so the policy can't name the port, and which programs subscribe is
+    known only from `NOTIFY_EVENTS_URL`. Should a program say in its code where it takes events,
+    such as `@port` in `eye.toml` or on the program's root module, so that the policy can let the
+    serving module's pods in on that port from each subscriber's `consume`?

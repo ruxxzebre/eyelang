@@ -65,8 +65,11 @@ Here is the chat service:
 
 <<< ./code/approvals/notify/notify.eye#contract
 
-Three things in it matter for the rest of the program:
+Four things in it matter for the rest of the program:
 
+- `@auth(bearer: "notify-token")` means every request to Notify carries a secret, and Notify
+  sends the same secret with the `answered` events it sends the program, so nobody else can
+  answer for the approver.
 - `@key(required)` means every call carries a key. The service remembers what it did with each
   key, so asking again with the same key can't send a second message.
 - `@reconcile(send)` says how to find out what happened when a reply is lost: send again with the
@@ -276,12 +279,13 @@ on every run, on any machine, in any time zone.
 
 `eye run` runs `main`, then keeps the program's jobs going and saves everything to a journal in
 `.eye/journal`. It reads each service's address from the environment: `NOTIFY_URL`, `ACCESS_URL`,
-and `AI_URL` for an OpenAI-compatible model gateway. The run below used small local stand-ins for
-the three services.
+and `AI_URL` for an OpenAI-compatible model gateway; Notify's secret from `NOTIFY_TOKEN`; and the
+port Notify sends its answers to from `EYE_EVENTS_PORT` (more on that below). The run below used
+small local stand-ins for the three services.
 
 ```sh
 cd docs/tutorial/code/approvals
-eye run . -- r-1 ann prod-db 2 "fix the stuck migration"
+NOTIFY_TOKEN=… EYE_EVENTS_PORT=8080 eye run . -- r-1 ann prod-db 2 "fix the stuck migration"
 ```
 
 The program calls the model, sends the question, and then waits for an answer. Stop it with
@@ -315,12 +319,42 @@ POST /v1/chat/completions
 POST /v1/ask key=review-r-1
 ```
 
-::: info Not yet
-In `eye run`, another service can't deliver an event into the program yet
-([#135](https://github.com/ruxxzebre/eyelang/issues/135)), so Notify's `answered` event has no way
-in, and the review waits out its three days. The tests above publish answers directly.
+### The answer comes in as an event
+
+When the approver presses a button, Notify sends the program its `answered` event, as an HTTP
+`POST` to `/events/notify.answers` with the event as JSON and Notify's secret. The program takes
+events on the port `EYE_EVENTS_PORT` names, and says so when it starts:
+
+```text
+eye run: taking notify.answered on :8080
+```
+
+Without `EYE_EVENTS_PORT`, it says that `notify.answered has no way in`, and the review would
+wait out its three days. Here `curl` plays Notify's part:
+
+```text
+$ curl -i -X POST http://127.0.0.1:8080/events/notify.answers \
+    -H "Authorization: Bearer $NOTIFY_TOKEN" \
+    -d '{"question": "q-1", "choice": "allow", "by": "paul", "at": "2026-10-12T09:15:00Z"}'
+HTTP/1.1 202 Accepted
+```
+
+The 202 comes once the event is in the journal. The waiting review wakes, grants the access and
+tells Ann, and the access job sleeps until the two hours are up:
+
+```text
+$ eye runs .
+#1 review("r-1", { person: "ann", group: "prod-db", reason: "fix the stuck migration", lasting: 2 h })  done: Ok(Active(grant: { id: "g-1", person: "ann", group: "prod-db" }, until: …  [11 steps, 3.5 KiB, 120 tokens in, 30 out, $0.0005]
+#2 expire(Request("r-1"))  sleeping until 2026-10-13 02:14:37 (in 1h59m58s)  [2 steps, 1.2 KiB]
+```
+
+A request without the secret gets 401 and reaches no code, so nobody but Notify can answer for the
+approver. Notify may send an event again if its reply was lost; the event's `@key(question)` makes
+the second one start nothing. A Notify written in Eyelang sends its events itself (see
+[Running in production](/guide/running#events-between-programs)), and one written in Go or
+TypeScript calls the sender `eye gen` writes for it.
+
 `eye approve` answers only `approval!`, which this program doesn't use.
-:::
 
 ## What you used
 

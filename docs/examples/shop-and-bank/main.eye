@@ -25,6 +25,13 @@ job checkout(customer: CustomerId, order: String, cents: Int) uses {entity Order
 }
 # endregion checkout
 
+## Runs for each charge the bank tells the shop about: its event crosses
+## between the programs as a POST, as it would between two `eye run`s.
+@on(event(payments.charged))
+job receipt(r: payments.Receipt) {
+  print("receipt for {r.charge}: {r.amountCents} cents")
+}
+
 ## Says what a customer has left.
 job report(customer: CustomerId) uses {net Payments.balance, stdio, wait} {
   print("{customer} has {payments.balance!(customer)} cents")

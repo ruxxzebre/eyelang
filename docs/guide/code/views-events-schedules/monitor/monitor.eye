@@ -8,6 +8,7 @@ pub type Reading = { id: Int, host: String, used: Int }
 pub type Ack = { host: String, by: String }
 
 # region contract
+@auth(bearer: "monitor-token")
 contract Monitor {
   ## One reading of one disk. A reading sent twice has the same id.
   @key(id)

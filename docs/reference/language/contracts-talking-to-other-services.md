@@ -82,8 +82,9 @@ type Delivery =
     the checker refuses get no rule. Tests, a fake's `calls(op)` and the serving module itself
     don't count. With no caller, as under `@allow(nobody)`, it lets in no pod of the program;
     callers outside the program need a policy of their own, which Kubernetes adds to this one.
-  - Contracts without `@port` get no policy, events go through the bus rather than the port, and
-    egress isn't written: a service outside the network is reached as the cluster allows.
+  - Contracts without `@port` get no policy, and egress isn't written: a service outside the
+    network is reached as the cluster allows. Events, which the publisher posts to its
+    subscribers' ports (below), get no rule yet (open question 48).
   - `--namespace homelab` puts the policies in that namespace; without it they name none, and
     `kubectl apply -n` decides. Each is named after the program and the contract (`lab-notify`
     for Notify in `testdata/lab`), so the policies of two programs that call one service add up
@@ -316,6 +317,64 @@ type Delivery =
     names, as Notify's `Message(key)` does.
   - Requests are answered one at a time, between the program's steps and while its runs wait for
     a timer or another service.
+- **Events between programs.** A contract's events go from the program that serves the contract
+  to the programs that wait for them, as HTTP requests that follow the contract's attributes, the
+  way its operations do. Notify's `answered`, `on "notify.answers"`, reaches a program as:
+
+  ```text
+  POST /events/notify.answers
+  Authorization: Bearer <secret("notify-token")>
+
+  { "question": "q-1", "choice": "Approve", "by": "paul", "at": "2026-10-12T09:15:00Z" }
+
+  → 202 Accepted
+  ```
+
+  - **Taking events.** `eye run` takes each event the program consumes (an `@on(event(…))` job
+    or a `next!` on it, the `consume` effect) of a contract it doesn't serve, as
+    `POST /events/<topic>`. The body is the event's value in the shape above, with the contract's
+    `@http(names:)`.
+  - Only the events of a contract with `@auth` are taken, and a request without the contract's
+    secret gets 401 and reaches no code: the publisher sends the secret its callers send it. A
+    contract without `@auth` would let anyone who reaches the port publish its events, such as
+    a button press that grants an approval, so `eye run` says when it starts that they have no
+    way in: `eye run: telegram.updates has no way in: contract Telegram has no @auth, so anyone
+    could publish it`.
+  - A body that isn't of the event's type gets 400, a topic the program doesn't take 404, and
+    another method 405, each with `{ "error": "…" }`.
+  - An event taken is published in the program as one of its own would be: it starts each
+    `@on(event(…))` job and wakes the runs waiting in `next!` for one like it. The answer, 202
+    with no body, comes once the event is in the journal, so a publisher that has it may forget
+    it. A repeat of an event with `@key` gets 202 too, and starts nothing.
+  - The events of a contract the program serves aren't taken, since only its `impl` publishes
+    them, nor those of the standard library's contracts: `eye approve` answers approvals.
+  - **Where.** Events are taken on each port the program serves a contract on, and on
+    `EYE_EVENTS_PORT` when it is set, `0` for any free one, which a program that serves nothing
+    needs. `eye run` names each port when it starts: `eye run: taking notify.answered on :8080`.
+    A program that consumes another service's events with neither says so when it starts, since
+    nothing can reach it: `eye run: notify.answered has no way in: set EYE_EVENTS_PORT to the port
+    its publisher sends it to`. A program that takes events keeps running until it is stopped, as
+    one that serves a contract does. An operation served on the same port at the same
+    `POST /events/<topic>` stops `eye run` before it listens.
+  - **Sending events.** A program that publishes an event of a contract it serves sends it to
+    each subscriber that `NOTIFY_EVENTS_URL` lists, named after the module as `NOTIFY_URL` is:
+    base URLs separated by commas or spaces, such as `http://approving:8080,http://trains:8080`.
+    Each gets `POST <url>/events/<topic>` with the event's value and the contract's `@auth`.
+    Without the variable, the events stay in the program.
+  - The event and a delivery for each subscriber are saved in the commit that publishes it, and
+    sent after it. A delivery is done when the subscriber answers with a success. With no answer,
+    or a 5xx, it is sent again, by the one rule for a failure the program didn't ask to see: after
+    half a second, doubling to every 30 seconds, across restarts, since the journal keeps it. A
+    4xx other than 408 and 429 is a refusal, such as a wrong URL or secret: a bug in the
+    configuration, so the delivery is dropped with a line in the log that names the subscriber
+    and its reply. A delivery not taken within 30 days, as long as a subscriber remembers an
+    event's key, is dropped the same way.
+  - Each subscriber gets the events in the order they were published: a delivery waits until the
+    one before it to the same subscriber is done or dropped.
+  - So an event arrives at least once, and one with `@key` starts its jobs once: a delivery whose
+    answer was lost is sent again, and the subscriber knows the key. An event without `@key` that
+    is sent again starts its jobs again, so give an event that starts work a key.
+  - `eye test` sends and takes nothing: a test publishes events with `c.e.publish(…)`.
 - **Fakes come from recordings.** `with fakes(notify, from: "receipts/")` replays real recorded
   exchanges, checked against the contract. Reading a field that no recording contains is a compile
   error, unless it is marked `@unwitnessed("why")`:
@@ -430,6 +489,12 @@ type Delivery =
     as `Uncertain`; returning `ErrStale` or `ErrExpired` in Go, or `Stale` or `Expired` in
     TypeScript, gives those outcomes. A Go client implements its service interface, so a server
     can pass calls on.
+  - Each event gets a sender, for a service in that language that publishes it: Go's
+    `SendAnswered(ctx, client, baseURL, secret, ev)` and TypeScript's
+    `sendAnswered(options, event)` send it to one program that takes it, as `eye run` sends it
+    (`POST /events/<topic>` with `@auth`). They return once the program has it, and give an
+    error otherwise, an `HttpError` for a refusal; keeping the event and sending it again until
+    it is taken, as `eye run` does, is the service's part.
   - Operations without `@http` have no client method and no route, as `eye run` gives them none.
   - A type these languages' JSON can't say the same way, a tuple, a map whose keys aren't strings
     on the wire, an unnamed record or an `extern type`, is an error that names it.

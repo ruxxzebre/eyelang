@@ -95,6 +95,15 @@ type contract struct {
 	internal []*ir.Op     // the others, reached only from inside the program
 	client   string       // NotifyClient
 	service  string       // NotifyService
+	events   []*event     // by name
+}
+
+// event is a contract's event, which a service in another language sends to
+// the programs that take it, as eye run does (SPECS.md §17, "Events between
+// programs").
+type event struct {
+	ev     *ir.Event
+	sender string // SendAnswered
 }
 
 type operation struct {
@@ -191,13 +200,9 @@ func build(prog *ir.Program, mod *ir.Module) (*unit, error) {
 				u.use(op.Return)
 			}
 		}
-		evs := make([]*ir.Event, 0, len(ct.Events))
-		for _, ev := range ct.Events {
-			evs = append(evs, ev)
-		}
-		sort.Slice(evs, func(i, j int) bool { return evs[i].Name < evs[j].Name })
-		for _, ev := range evs {
+		for _, ev := range wire.SortedEvents(ct) {
 			u.use(ev.Type)
+			c.events = append(c.events, &event{ev: ev})
 		}
 		for _, op := range routed {
 			c.ops = append(c.ops, u.operation(op))
@@ -540,6 +545,9 @@ func (u *unit) allocate() {
 				add(func(s string) { o.args = s }, upperFirst(o.op.Name)+"Args", c.ct.Name+upperFirst(o.op.Name)+"Args")
 			}
 		}
+		for _, e := range c.events {
+			add(func(s string) { e.sender = s }, "Send"+upperFirst(e.ev.Name), "Send"+c.ct.Name+upperFirst(e.ev.Name))
+		}
 	}
 	for round := 0; ; round++ {
 		count := map[string]int{}
@@ -664,6 +672,16 @@ func bearerNote(ct *ir.Contract) string {
 		return ", as Bearer <secret>,"
 	}
 	return ""
+}
+
+// secretGoesIn says where a request carries the contract's secret: "which
+// goes in the Authorization header as Bearer <secret>".
+func secretGoesIn(ct *ir.Contract) string {
+	s := "which goes in the " + ct.HTTP.AuthHeader + " header"
+	if ct.HTTP.AuthBearer {
+		s += " as Bearer <secret>"
+	}
+	return s
 }
 
 // internalOps says which of a contract's operations have no @http, if any.

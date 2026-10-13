@@ -218,6 +218,29 @@ export function notifyHandler(service: NotifyService, secret: string): (request:
   ]);
 }
 
+/**
+ * sendAnswered sends Notify's event answered to a program that takes it, at
+ * options.baseUrl, such as http://approving:8080, as eye run sends it: POST
+ * /events/notify.answers with event as the body. options.secret is the secret
+ * notify-token, which goes in the Authorization header as Bearer <secret>.
+ *
+ * It resolves once the program has the event. Anything it throws means the
+ * event wasn't taken: send it again later, unless it is an HttpError with a
+ * 4xx status other than 408 and 429, a refusal that sending again won't
+ * change.
+ *
+ * The event's question tells it from others, so sending it twice starts one
+ * run of each job that takes it.
+ */
+export async function sendAnswered(options: ClientOptions, event: Answered): Promise<void> {
+  const call = newCall("notify.answered", "POST", "/events/notify.answers");
+  call.whole = event;
+  const reply = await send(options, { header: "Authorization", bearer: true }, call);
+  if (reply.status < 200 || reply.status >= 300) {
+    throw new HttpError("notify.answered", reply.status, reply.text);
+  }
+}
+
 // ---------------------------------------------------------------- the wire
 
 /**
@@ -289,6 +312,8 @@ interface Call {
   path: string[];
   query: URLSearchParams;
   body: Record<string, unknown>;
+  /** The body, in place of body's fields: an event's value. */
+  whole?: unknown;
   headers: Record<string, string>;
 }
 
@@ -346,7 +371,7 @@ async function send(options: ClientOptions, auth: Auth | null, call: Call): Prom
   const headers: Record<string, string> = { ...call.headers, Accept: "application/json" };
   let body: string | undefined;
   if (call.method !== "GET" && call.method !== "DELETE") {
-    body = JSON.stringify(call.body);
+    body = JSON.stringify(call.whole !== undefined ? call.whole : call.body);
     headers["Content-Type"] = "application/json";
   }
   if (auth !== null) {

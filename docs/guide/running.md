@@ -41,12 +41,13 @@ Here the approvals program takes a request from the command line:
 ```sh
 cd docs/tutorial/code/approvals
 NOTIFY_URL=http://127.0.0.1:18473 ACCESS_URL=http://127.0.0.1:18473 AI_URL=http://127.0.0.1:18473/v1 \
-  eye run . -- r-1 ann prod-db 2 "fix the stuck migration"
+  NOTIFY_TOKEN=… EYE_EVENTS_PORT=8080 eye run . -- r-1 ann prod-db 2 "fix the stuck migration"
 ```
 
 `main` submits the request, which starts the `review` job. The job asks the model for a summary,
-sends the approver a question, and then waits up to three days for an answer. The program prints
-nothing while it waits. Stop it with Ctrl-C; it exits with status 0.
+sends the approver a question, and then waits up to three days for an answer, which Notify sends
+to port 8080 (see [Events between programs](#events-between-programs)). The program prints
+nothing more while it waits. Stop it with Ctrl-C; it exits with status 0.
 
 ## Looking at the journal: eye runs
 
@@ -151,6 +152,8 @@ nothing yet.)
 |---|---|---|
 | `<MODULE>_URL` | The base URL of the service behind a contract module: `NOTIFY_URL` for `notify`, `SHOP_PAYMENTS_URL` for `shop.payments` | Every call to that contract |
 | `<MODULE>_PORT` | The port a contract the program serves listens on instead of its `@port`: `NOTIFY_PORT=8081`; `0` takes any free port | `eye run`, when it starts |
+| `EYE_EVENTS_PORT` | The port the program takes other services' events on, besides the ports of the contracts it serves; `0` takes any free port | `eye run`, when it starts |
+| `<MODULE>_EVENTS_URL` | Where the events of a contract the program serves go: the base URLs of the programs that take them, separated by commas or spaces, such as `NOTIFY_EVENTS_URL=http://approving:8080,http://trains:8080` | Each event published |
 | `AI_URL` | The model gateway's base URL, such as `http://gateway:8317/v1`; when set, it answers every model | `ai.generate` |
 | `ANTHROPIC_URL`, `OPENAI_URL` | Where Anthropic's and OpenAI's APIs are, if not at their usual addresses | `ai.generate` |
 | `AI_PRICES` | Prices of models for `@budget(usd:)`, in dollars per million tokens in and out: `gpt-5.5=1.25/10,…` | `@budget` |
@@ -208,6 +211,51 @@ start without it; a request without it gets 401. See
 `NOTIFY_PORT` (the module's name, as for `NOTIFY_URL`) moves the service to another port, and
 `NOTIFY_PORT=0` to any free one, which the line above names. Tests use it to run a server and its
 callers side by side.
+
+## Events between programs
+
+A contract's events go from the program that serves the contract to the programs that wait for
+them, as HTTP requests. Notify's `answered` (`event answered: Answered on "notify.answers"`)
+reaches a program as `POST /events/notify.answers`, with the event as JSON in the contract's shape
+and the contract's `@auth` secret, the same one its callers send.
+
+**Taking events.** A program takes each event it consumes, with `@on(event(…))` or `next!`, of a
+contract it doesn't serve. It takes them on the ports of the contracts it serves, and on
+`EYE_EVENTS_PORT`, which a program that serves nothing needs:
+
+```text
+eye run: taking notify.answered on :8080
+```
+
+- An event is answered 202 once it is in the journal. It then starts its `@on` jobs and wakes the
+  runs waiting for it in `next!`, as an event the program published itself would.
+- An event with `@key` that comes again is answered 202 and starts nothing, so a sender may
+  always send again when it isn't sure.
+- A request without the contract's secret gets 401; a body that isn't the event's type, 400.
+- Only events of contracts with `@auth` are taken: without one, anyone who reaches the port could
+  publish them. `eye run` names such events when it starts (`telegram.updates has no way in:
+  contract Telegram has no @auth, so anyone could publish it`), and also those it has no port for.
+
+**Sending events.** A program that serves a contract sends the contract's events to each URL in
+`<MODULE>_EVENTS_URL`:
+
+```sh
+NOTIFY_EVENTS_URL=http://approving:8080,http://trains:8080 eye run .
+```
+
+- Each event, and a delivery for each subscriber, is saved in the journal with the commit that
+  publishes it, then sent. Nothing published is lost by a crash: after a restart, what wasn't
+  delivered is sent.
+- A subscriber that doesn't answer, or answers with a 5xx, gets the event again after half a
+  second, then a second, doubling to every 30 seconds, until it takes it. Each subscriber gets
+  events in the order they were published.
+- A 4xx answer, such as 401 for a wrong secret or 404 for a wrong URL, is a mistake in the
+  configuration: the delivery is dropped, with a line that names the subscriber and its answer. So
+  is one not taken within 30 days.
+- So an event arrives at least once, and one with `@key` starts its jobs once.
+
+A service written in Go or TypeScript sends events with the sender `eye gen go` or `eye gen ts`
+writes for each one, such as `SendAnswered`, and keeps them until they are taken.
 
 ## When a run fails
 
@@ -339,6 +387,8 @@ WantedBy=multi-user.target
 - Every service the program calls has its `<MODULE>_URL`, and every secret is set or in
   `$EYE_SECRETS`.
 - Every contract the program serves has its port free, and its callers can reach it.
+- Every event the program waits for from another service is taken (`eye run: taking …`), and the
+  service that sends it lists the program in its `<MODULE>_EVENTS_URL`.
 - `main` is safe to run on every start, and jobs it starts have keys.
 - Commands that change something have `@key`, so a step that runs again does nothing twice.
 - The journal is on a disk that survives a redeploy, and it is backed up.

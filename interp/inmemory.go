@@ -107,6 +107,11 @@ func StartService(prog *ir.Program, opts RunOptions) (*Service, error) {
 		in.rt.now = opts.Virtual.Start
 	}
 	in.rt.memLimit = opts.MemoryLimit
+	in.rt.relay = newRelay(prog, opts.Subscribers)
+	// Each event sent is written as a line, as each call answered is.
+	in.rt.relay.sent = func(event, path string, status int) {
+		fmt.Fprintf(opts.Stderr, "%s POST %s → %d %s\n", event, path, status, http.StatusText(status))
+	}
 	s := &Service{in: in, opts: opts, handlers: map[string]http.Handler{}}
 	if missing := in.linkExterns(); len(missing) > 0 {
 		return nil, errors.New(strings.Join(missing, "\n"))
@@ -149,7 +154,10 @@ func (s *Service) Handlers() map[string]http.Handler { return s.handlers }
 func (s *Service) Finish() {
 	s.in.g.mu.Lock()
 	defer s.in.g.mu.Unlock()
-	if err := s.run(func() { s.in.rt.runVirtual(*s.opts.Virtual, s.report, s.opts.Stderr) }); err != nil {
+	if err := s.run(func() {
+		s.in.rt.runVirtual(*s.opts.Virtual, s.report, s.opts.Stderr)
+		s.in.sendEvents()
+	}); err != nil {
 		fmt.Fprintln(s.opts.Stderr, err)
 	}
 }
@@ -179,6 +187,7 @@ func (s *Service) wrap(l *listener, h http.Handler) http.Handler {
 		w.WriteHeader(rec.status)
 		_, _ = w.Write(rec.body.Bytes())
 		s.locked(in.rt.drain)
+		s.locked(in.sendEvents) // to the subscribers in this process
 	})
 }
 

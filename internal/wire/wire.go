@@ -8,6 +8,7 @@ package wire
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"unicode"
@@ -171,4 +172,21 @@ func SortedOps(ct *ir.Contract) []*ir.Op {
 		return ops[i].Name < ops[j].Name
 	})
 	return ops
+}
+
+// EventPath is the path a program takes an event of another service's
+// contract at, and its publisher sends it to (SPECS.md §17, "Events between
+// programs"): /events/ and the event's topic as one path segment, so Notify's
+// `answered on "notify.answers"` is /events/notify.answers. An event goes as
+// a POST, with its value as the body and the contract's @auth.
+func EventPath(ev *ir.Event) string { return "/events/" + url.PathEscape(ev.Topic) }
+
+// SortedEvents are a contract's events by name.
+func SortedEvents(ct *ir.Contract) []*ir.Event {
+	evs := make([]*ir.Event, 0, len(ct.Events))
+	for _, ev := range ct.Events {
+		evs = append(evs, ev)
+	}
+	sort.Slice(evs, func(i, j int) bool { return evs[i].Name < evs[j].Name })
+	return evs
 }

@@ -90,6 +90,9 @@ type runtime struct {
 	// crossings, when set, counts what would cross between compiled code
 	// and the runner (crossings.go).
 	crossings *Crossings
+	// relay, under eye run, sends the events of the contracts the program
+	// serves to other programs and takes theirs (relay.go); nil in tests.
+	relay *relay
 }
 
 // event is a published event, saved as bytes.
@@ -522,7 +525,12 @@ func (rt *runtime) deliver(e *ir.Event, v Value) {
 			}
 		}
 	}
+	// So is a delivery to each program that subscribes to it (relay.go).
+	sends := rt.addDeliveries(c, e, v)
 	rt.record(c, name, rt.in.encode(v, ir.Pos{}))
+	if len(sends) > 0 {
+		rt.relay.outbox = append(rt.relay.outbox, sends...)
+	}
 	if seen != "" {
 		rt.seen[seen] = true
 	}
@@ -892,7 +900,11 @@ func (rt *runtime) drain() {
 	}
 	rt.draining = true
 	defer func() { rt.draining = false }()
-	for len(rt.queue) > 0 {
+	for {
+		rt.takeArrived() // events another program sent in this process
+		if len(rt.queue) == 0 {
+			break
+		}
 		id := rt.queue[0]
 		rt.queue = rt.queue[1:]
 		rt.step(id)

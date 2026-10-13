@@ -27,6 +27,9 @@ func TypeScript(prog *ir.Program, mod *ir.Module, opts Options) ([]byte, error) 
 	for _, c := range u.contracts {
 		g.client(c)
 		g.service(c)
+		for _, e := range c.events {
+			g.sender(c, e)
+		}
 	}
 	g.b.WriteString(tsHelpers)
 	if len(u.errs) > 0 {
@@ -439,6 +442,36 @@ func (g *tsGen) statusCase(o *operation, name string) {
 	default:
 		g.p("        return { ...fieldsOf(call, reply), kind: %q } as unknown as %s;", v.tag, v.name)
 	}
+}
+
+// sender writes the function that sends one of a contract's events to a
+// program that takes it, as eye run sends it.
+func (g *tsGen) sender(c *contract, e *event) {
+	ct, ev := c.ct, e.ev
+	name := ct.Module.Name + "." + ev.Name
+	path := wire.EventPath(ev)
+	paras := []string{fmt.Sprintf("%s sends %s's event %s to a program that takes it, at options.baseUrl, such as http://approving:8080, as eye run sends it: POST %s with event as the body.", lowerFirst(e.sender), ct.Name, ev.Name, path)}
+	if ct.HTTP.AuthSecret != "" {
+		paras[0] += fmt.Sprintf(" options.secret is the secret %s, %s.", ct.HTTP.AuthSecret, secretGoesIn(ct))
+	}
+	paras = append(paras, "", "It resolves once the program has the event. Anything it throws means the event wasn't taken: send it again later, unless it is an HttpError with a 4xx status other than 408 and 429, a refusal that sending again won't change.")
+	if ev.Key != "" {
+		paras = append(paras, "", fmt.Sprintf("The event's %s tells it from others, so sending it twice starts one run of each job that takes it.", wire.Name(ev.Key, g.snake)))
+	}
+	g.doc("", "", paras...)
+	g.p("export async function %s(options: ClientOptions, event: %s): Promise<void> {", lowerFirst(e.sender), g.typ(ev.Type))
+	g.p("  const call = newCall(%q, \"POST\", %q);", name, path)
+	g.p("  call.whole = event;")
+	auth := "null"
+	if ct.HTTP.AuthSecret != "" {
+		auth = fmt.Sprintf("{ header: %q, bearer: %v }", ct.HTTP.AuthHeader, ct.HTTP.AuthBearer)
+	}
+	g.p("  const reply = await send(options, %s, call);", auth)
+	g.p("  if (reply.status < 200 || reply.status >= 300) {")
+	g.p("    throw new HttpError(%q, reply.status, reply.text);", name)
+	g.p("  }")
+	g.p("}")
+	g.p("")
 }
 
 func (g *tsGen) service(c *contract) {

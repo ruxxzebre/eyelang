@@ -86,7 +86,8 @@ func TestRunWaits(t *testing.T) {
 
 // TestServices runs the shop and the bank of docs/examples/shop-and-bank in
 // one playground: the shop's Payments calls reach the bank's impl, an order
-// charged twice is paid once, and the bank's side shows each call.
+// charged twice is paid once, the bank's event of the charge reaches the
+// shop's @on job, and the bank's side shows each call and event.
 func TestServices(t *testing.T) {
 	p := New()
 	p.SetFiles(readDir(t, "../../docs/examples/shop-and-bank"))
@@ -96,6 +97,7 @@ func TestServices(t *testing.T) {
 	var out, errs, services bytes.Buffer
 	rep := p.Run(RunOptions{Start: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}, &out, &errs, &services)
 	want := "order 1: paid 2500 cents, 7500 left\n" +
+		"receipt for order-1: 2500 cents\n" +
 		"order 1: paid 2500 cents, 7500 left\n" +
 		"order 2: declined: only 7500 cents left\n" +
 		"ann has 7500 cents\n"
@@ -106,6 +108,7 @@ func TestServices(t *testing.T) {
 		"bank │ payments.Payments POST /v1/charges → 201 Created\n",
 		"bank │ payments.Payments POST /v1/charges → 402 Payment Required\n",
 		"bank │ payments.Payments GET /v1/customers/ann/balance → 200 OK\n",
+		"bank │ payments.charged POST /events/payments.charged → 202 Accepted\n",
 	} {
 		if !strings.Contains(services.String(), line) {
 			t.Errorf("the services' output has no %q:\n%s", line, services.String())

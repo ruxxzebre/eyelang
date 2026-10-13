@@ -185,6 +185,8 @@ try {
       'order 2: declined: only 7500 cents left',
       'bank │ payments.Payments POST /v1/charges → 201 Created',
       'bank │ payments.Payments POST /v1/charges → 402 Payment Required',
+      'bank │ payments.charged POST /events/payments.charged → 202 Accepted',
+      'receipt for order-1: 2500 cents',
       'ann has 7500 cents',
       'exit 0',
     ]) {

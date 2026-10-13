@@ -485,6 +485,36 @@ func NewNotifyHandler(s NotifyService, secret string) http.Handler {
 	}
 }
 
+// SendAnswered sends Notify's event answered to a program that takes it, at
+// baseURL, such as http://approving:8080, as eye run sends it: POST
+// /events/notify.answers with ev as the body. secret is the secret
+// notify-token, which goes in the Authorization header as Bearer <secret>.
+//
+// It returns nil once the program has the event. Any error means it wasn't
+// taken: send it again later, unless it is an *HTTPError with a 4xx status
+// other than 408 and 429, a refusal that sending again won't change. client
+// makes the request; http.DefaultClient when nil.
+//
+// The event's question tells it from others, so sending it twice starts one
+// run of each job that takes it.
+func SendAnswered(ctx context.Context, client *http.Client, baseURL string, secret string, ev Answered) error {
+	r := newCall("notify.answered", "POST", "/events/notify.answers")
+	data, err := json.Marshal(ev)
+	if err != nil {
+		return fmt.Errorf("notify.answered's value: %w", err)
+	}
+	r.whole = data
+	t := transport{baseURL: baseURL, client: client, authHeader: "Authorization", authValue: "Bearer " + secret}
+	status, reply, err := t.send(ctx, r)
+	if err != nil {
+		return err
+	}
+	if status >= 200 && status < 300 {
+		return nil
+	}
+	return &HTTPError{Op: "notify.answered", Status: status, Body: string(reply)}
+}
+
 // ---------------------------------------------------------------- the wire
 
 // Duration is an Eyelang Duration, which goes over the wire as a whole
@@ -744,6 +774,7 @@ type call struct {
 	path   []string // its segments, with the arguments put in
 	query  url.Values
 	body   map[string]json.RawMessage
+	whole  json.RawMessage // the body, in place of body's fields: an event's value
 	header http.Header
 }
 
@@ -810,6 +841,9 @@ func (t transport) send(ctx context.Context, c *call) (int, []byte, error) {
 		data, err := json.Marshal(c.body)
 		if err != nil {
 			return 0, nil, err
+		}
+		if c.whole != nil {
+			data = c.whole
 		}
 		body = bytes.NewReader(data)
 		c.header.Set("Content-Type", "application/json")

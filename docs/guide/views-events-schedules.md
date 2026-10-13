@@ -106,6 +106,38 @@ It returns `Some(event)`, or `None` when the hour runs out, and the `match` afte
 an answer that arrives while the run is still sending its question, or while it sleeps, is found.
 Code that subscribes only after it has asked can't lose a fast reply.
 
+### Events from other programs
+
+Under `eye run`, the monitoring service sends each event as an HTTP request to the program, with
+the event as JSON and the secret the contract's `@auth` names:
+
+```text
+POST /events/monitor.readings
+Authorization: Bearer <secret("monitor-token")>
+
+{ "id": 7, "host": "nas", "used": 93 }
+```
+
+The program takes the events it waits for, with `@on(event(…))` or `next!`, on the port
+`EYE_EVENTS_PORT` names (and on the ports of the contracts it serves, if any), and says so when
+it starts:
+
+```sh
+MONITOR_TOKEN=… EYE_EVENTS_PORT=8080 eye run .
+```
+
+```text
+eye run: taking monitor.acks, monitor.readings on :8080
+```
+
+Each event is answered 202 once it is in the journal, then starts its runs and wakes the runs
+waiting for it. A reading sent again is answered 202 too, and its key starts nothing, so the
+service may send again whenever it isn't sure. A request without the secret gets 401, and a body
+that isn't the event's type gets 400. Only the events of a contract with `@auth` are taken, since
+without one anyone could publish them. A program that serves a contract sends that contract's
+events to the programs that take them; see
+[Running in production](/guide/running#events-between-programs).
+
 ## Schedules
 
 A schedule starts a run on a clock in a named time zone:
@@ -161,11 +193,8 @@ reached is skipped, not queued (see [Limits](/guide/jobs-and-waiting#limits)).
 | A firing is lost, or repeated, by a restart | Each firing is saved with its run |
 
 ::: info Not yet
-In `eye run`, another service can't deliver an event into the program yet
-([#135](https://github.com/ruxxzebre/eyelang/issues/135)); tests publish them, and a program
-publishes its own. Views over entities run in memory, over the entities the store holds;
-compiling them to SQL waits for several runners on one database. See
-[What runs today](/reference/status).
+Views over entities run in memory, over the entities the store holds; compiling them to SQL
+waits for several runners on one database. See [What runs today](/reference/status).
 :::
 
 ## See also

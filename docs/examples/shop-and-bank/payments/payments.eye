@@ -10,6 +10,9 @@ pub type Charge =
   ## Nothing was taken.
   | Declined(reason: String)
 
+## A charge that took money, which the bank tells its subscribers.
+pub type Receipt = { charge: String, customer: CustomerId, amountCents: Int }
+
 @port(8090)
 @http(names: snake)
 @auth(bearer: "payments-token")
@@ -28,4 +31,10 @@ contract Payments {
   ## A customer's balance in cents.
   @http("GET /v1/customers/:customer/balance")
   query balance(customer: CustomerId) -> Int
+
+  ## Published when a charge takes money. A program that waits for it gets
+  ## it as `POST /events/payments.charged`; the key makes a repeat start
+  ## nothing.
+  @key(charge)
+  event charged: Receipt on "payments.charged"
 }

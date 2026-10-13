@@ -267,11 +267,19 @@ func (p *Playground) Run(opts RunOptions, stdout, stderr, services io.Writer) Ru
 		return &interp.VirtualClock{Start: opts.Start, Until: opts.Until, Wakes: opts.Wakes}
 	}
 	handlers := map[string]http.Handler{}
+	// The events the root program takes go to it from each service that
+	// publishes them, through a handler the root's Run fills in.
+	root := &laterHandler{}
+	subscribers := map[string][]http.Handler{}
+	for module := range interp.TakesEvents(progs[0].prog) {
+		subscribers[module] = []http.Handler{root}
+	}
 	var started []*interp.Service
 	for _, pr := range progs[1:] {
 		w := &prefixWriter{prefix: pr.dir + " │ ", w: services}
 		svc, err := interp.StartService(pr.prog, interp.RunOptions{
 			Stdout: w, Stderr: w, MemoryLimit: 1 << 30, Files: p.files(), Secrets: secrets, Virtual: clock(),
+			Subscribers: subscribers,
 		})
 		if err != nil {
 			fmt.Fprintf(w, "%v\n", err)
@@ -293,11 +301,24 @@ func (p *Playground) Run(opts RunOptions, stdout, stderr, services io.Writer) Ru
 		Services:    handlers,
 		Secrets:     secrets,
 		Virtual:     clock(),
+		Accept:      func(h http.Handler) { root.h = h },
 	})
 	for _, svc := range started {
 		svc.Finish()
 	}
 	return RunReport{Diagnostics: []Diagnostic{}, Exit: code}
+}
+
+// laterHandler passes requests to a handler set once it exists, and answers
+// 503 until then, which the sender takes as a reason to try again.
+type laterHandler struct{ h http.Handler }
+
+func (l *laterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if l.h == nil {
+		http.Error(w, "not started yet", http.StatusServiceUnavailable)
+		return
+	}
+	l.h.ServeHTTP(w, r)
 }
 
 // prefixWriter writes each line after a prefix.

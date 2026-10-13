@@ -206,6 +206,10 @@ A program that serves a contract with impl answers it over HTTP on the
 contract's @port until it is stopped. NOTIFY_PORT, named after the contract's
 module, serves it on another port; 0 picks a free one, which eye run names.
 
+Events of another service's contract that the program waits for come in as
+POST /events/<topic>, on those ports and on EYE_EVENTS_PORT. The events of a
+contract the program serves go to the base URLs in NOTIFY_EVENTS_URL.
+
 State is kept in the program's journal, or with --store in a Postgres database,
 in the first schema of its search_path: postgres://…/db?search_path=lab gives
 a program its own schema. One eye run at a time writes a journal or a schema.

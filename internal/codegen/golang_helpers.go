@@ -262,6 +262,7 @@ type call struct {
 	path   []string // its segments, with the arguments put in
 	query  url.Values
 	body   map[string]json.RawMessage
+	whole  json.RawMessage // the body, in place of body's fields: an event's value
 	header http.Header
 }
 
@@ -328,6 +329,9 @@ func (t transport) send(ctx context.Context, c *call) (int, []byte, error) {
 		data, err := json.Marshal(c.body)
 		if err != nil {
 			return 0, nil, err
+		}
+		if c.whole != nil {
+			data = c.whole
 		}
 		body = bytes.NewReader(data)
 		c.header.Set("Content-Type", "application/json")

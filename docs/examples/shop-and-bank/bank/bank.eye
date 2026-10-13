@@ -29,6 +29,11 @@ impl payments.Payments {
       None => {
         let c = Account(customer).take(amountCents)
         Ledger(key).record(c)
+        match c {
+          # Sent to the shop when this transaction commits.
+          Charged(_) => payments.charged.publish({ charge: "{key}", customer, amountCents })
+          Declined(_) => ()
+        }
         c
       }
     }

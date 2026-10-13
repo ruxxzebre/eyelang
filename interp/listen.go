@@ -96,22 +96,48 @@ func servePort(ct *ir.Contract) (int, error) {
 }
 
 // listen starts serving the contracts on their ports and says where on w.
-// From here on, the code that runs Eyelang holds the interpreter's lock, and
-// gives it up while it waits, so that requests can be answered. The stop it
-// returns closes the ports and lets go of the lock; requests still waiting
-// for it are answered 503.
-func (in *Interp) listen(served []*ir.Contract, w io.Writer) (stop func(), err error) {
+// The events the program takes from other services (relay.go) are taken on
+// each of those ports, and on eventsPort too unless it is negative. From here
+// on, the code that runs Eyelang holds the interpreter's lock, and gives it
+// up while it waits, so that requests can be answered. The stop it returns
+// closes the ports and lets go of the lock; requests still waiting for it are
+// answered 503.
+func (in *Interp) listen(served []*ir.Contract, taken []*ir.Event, eventsPort int, w io.Writer) (stop func(), err error) {
 	rt := in.rt
 	ls, err := in.listeners(served)
 	if err != nil {
 		return nil, err
 	}
+	routes, err := in.eventRoutes(taken)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range ls {
+		for _, r := range l.routes {
+			if t := routes[r.op.HTTP.Path]; t != nil && r.method == http.MethodPost {
+				return nil, fmt.Errorf("%s.%s is served at POST %s, where %s's events are taken: give it another @http path", contractName(l.ct), r.op.Name, r.op.HTTP.Path, eventName(t.ev))
+			}
+		}
+	}
 	var ports []net.Listener
+	var servers []*http.Server
+	var lines []string
 	closeAll := func() {
 		for _, ln := range ports {
 			_ = ln.Close()
 		}
 	}
+	take := func(port int, h http.Handler, what string) error {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err != nil {
+			closeAll()
+			return fmt.Errorf("can't %s on port %d: %v", what, port, err)
+		}
+		ports = append(ports, ln)
+		servers = append(servers, &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second})
+		return nil
+	}
+	addr := func() string { return fmt.Sprintf(":%d", ports[len(ports)-1].Addr().(*net.TCPAddr).Port) }
 	// Every port is taken before any request is let in, so a program that
 	// can't serve one of its contracts stops before it has answered anyone.
 	for _, l := range ls {
@@ -120,28 +146,37 @@ func (in *Interp) listen(served []*ir.Contract, w io.Writer) (stop func(), err e
 			closeAll()
 			return nil, err
 		}
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-		if err != nil {
-			closeAll()
-			return nil, fmt.Errorf("can't serve %s on port %d: %v", contractName(l.ct), port, err)
+		if err := take(port, in.eventsHandler(routes, in.handler(l)), "serve "+contractName(l.ct)); err != nil {
+			return nil, err
 		}
-		l.addr = fmt.Sprintf(":%d", ln.Addr().(*net.TCPAddr).Port)
-		l.srv = &http.Server{Handler: in.handler(l), ReadHeaderTimeout: 10 * time.Second}
-		ports = append(ports, ln)
+		l.addr = addr()
+		l.srv = servers[len(servers)-1]
+		lines = append(lines, fmt.Sprintf("eye run: serving %s on %s", contractName(l.ct), l.addr))
+		if len(taken) > 0 {
+			lines = append(lines, fmt.Sprintf("eye run: taking %s on %s", eventNames(taken), l.addr))
+		}
+	}
+	if eventsPort >= 0 && len(taken) > 0 {
+		if err := take(eventsPort, in.eventsHandler(routes, noEvent(routes)), "take "+eventNames(taken)); err != nil {
+			return nil, err
+		}
+		lines = append(lines, fmt.Sprintf("eye run: taking %s on %s", eventNames(taken), addr()))
 	}
 	if in.g == nil {
 		in.g = &gil{}
 		in.g.mu.Lock() // the code running now holds it from here on
 	}
 	rt.kick = make(chan struct{}, 1)
-	for i, l := range ls {
-		go func() { _ = l.srv.Serve(ports[i]) }()
-		fmt.Fprintf(w, "eye run: serving %s on %s\n", contractName(l.ct), l.addr)
+	for i, srv := range servers {
+		go func() { _ = srv.Serve(ports[i]) }()
+	}
+	for _, line := range lines {
+		fmt.Fprintln(w, line)
 	}
 	return func() {
 		rt.stopped = true
-		for _, l := range ls {
-			_ = l.srv.Close()
+		for _, srv := range servers {
+			_ = srv.Close()
 		}
 		in.g.mu.Unlock()
 	}, nil

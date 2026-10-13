@@ -55,7 +55,7 @@ the native port, and nothing else starts. It is reached when all of these hold:
   `Show` writes `NaN`, `+Inf` and `-Inf` (owner's choice b).
 - [x] #134: `with memory(…)` in tests is specified and built: a test sets the memory runs are
   admitted against, so it can show a run waiting for memory or failing with `OutOfMemory`.
-- [ ] #135: an event of another service's contract reaches `eye run` as a `POST` to the program's
+- [x] #135: an event of another service's contract reaches `eye run` as a `POST` to the program's
   port, under the contract's `@auth`, as served operations already do (owner's choice a).
 - [x] #136: `eye runs --retry ID` starts a failed run again, replaying the steps it recorded,
   keeping its id and key, for faults a retry can cure (unreachable services, timeouts), not for

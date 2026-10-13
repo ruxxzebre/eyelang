@@ -32,6 +32,9 @@ func Go(prog *ir.Program, mod *ir.Module, opts Options) ([]byte, error) {
 	for _, c := range u.contracts {
 		g.client(c)
 		g.service(c)
+		for _, e := range c.events {
+			g.sender(c, e)
+		}
 	}
 	g.raw(goHelpers)
 	if len(u.errs) > 0 {
@@ -91,6 +94,9 @@ func (g *goGen) goNames() {
 			if o.args != "" {
 				rename(&o.args)
 			}
+		}
+		for _, e := range c.events {
+			rename(&e.sender)
 		}
 	}
 }
@@ -764,6 +770,50 @@ func (g *goGen) service(c *contract) {
 	}
 	g.p("\t\t},")
 	g.p("\t}")
+	g.p("}")
+	g.p("")
+}
+
+// sender writes the function that sends one of a contract's events to a
+// program that takes it, as eye run sends it.
+func (g *goGen) sender(c *contract, e *event) {
+	ct, ev := c.ct, e.ev
+	name := ct.Module.Name + "." + ev.Name
+	path := wire.EventPath(ev)
+	sig := "ctx context.Context, client *http.Client, baseURL string"
+	paras := []string{fmt.Sprintf("%s sends %s's event %s to a program that takes it, at baseURL, such as http://approving:8080, as eye run sends it: POST %s with ev as the body.", e.sender, ct.Name, ev.Name, path)}
+	if ct.HTTP.AuthSecret != "" {
+		paras[0] += fmt.Sprintf(" secret is the secret %s, %s.", ct.HTTP.AuthSecret, secretGoesIn(ct))
+		sig += ", secret string"
+	}
+	paras = append(paras, "", "It returns nil once the program has the event. Any error means it wasn't taken: send it again later, unless it is an *HTTPError with a 4xx status other than 408 and 429, a refusal that sending again won't change. client makes the request; http.DefaultClient when nil.")
+	if ev.Key != "" {
+		paras = append(paras, "", fmt.Sprintf("The event's %s tells it from others, so sending it twice starts one run of each job that takes it.", wire.Name(ev.Key, g.snake)))
+	}
+	g.comment("", paras...)
+	g.p("func %s(%s, ev %s) error {", e.sender, sig, g.typ(ev.Type))
+	g.p("\tr := newCall(%q, \"POST\", %q)", name, path)
+	g.p("\tdata, err := json.Marshal(ev)")
+	g.p("\tif err != nil {")
+	g.p("\t\treturn fmt.Errorf(\"%s's value: %%w\", err)", name)
+	g.p("\t}")
+	g.p("\tr.whole = data")
+	switch {
+	case ct.HTTP.AuthSecret == "":
+		g.p("\tt := transport{baseURL: baseURL, client: client}")
+	case ct.HTTP.AuthBearer:
+		g.p("\tt := transport{baseURL: baseURL, client: client, authHeader: %q, authValue: \"Bearer \" + secret}", ct.HTTP.AuthHeader)
+	default:
+		g.p("\tt := transport{baseURL: baseURL, client: client, authHeader: %q, authValue: secret}", ct.HTTP.AuthHeader)
+	}
+	g.p("\tstatus, reply, err := t.send(ctx, r)")
+	g.p("\tif err != nil {")
+	g.p("\t\treturn err")
+	g.p("\t}")
+	g.p("\tif status >= 200 && status < 300 {")
+	g.p("\t\treturn nil")
+	g.p("\t}")
+	g.p("\treturn &HTTPError{Op: %q, Status: status, Body: string(reply)}", name)
 	g.p("}")
 	g.p("")
 }

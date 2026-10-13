@@ -46,6 +46,15 @@ type RunOptions struct {
 	// environment's.
 	Services map[string]http.Handler
 	Secrets  map[string]string
+	// Subscribers take the events of the contracts the program serves in
+	// this process, by the path of the module that declares the contract
+	// (another program's Accept handler), in place of the subscribers
+	// <MODULE>_EVENTS_URL lists.
+	Subscribers map[string][]http.Handler
+	// Accept, when set on a run on a virtual clock, is given the handler
+	// that takes the events of other services' contracts, before main
+	// runs, in place of a port: what another program's Subscribers take.
+	Accept func(events http.Handler)
 	// Virtual, when set, runs the program on a clock that skips ahead
 	// instead of waiting, as the online playground does: nothing listens on
 	// a port, and once main has run, sleeping runs wake and schedules fire
@@ -114,6 +123,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		in.rt.now = v.Start
 	}
 	in.rt.memLimit = opts.MemoryLimit
+	in.rt.relay = newRelay(prog, opts.Subscribers)
 	memory := memoryText(in.rt.memLimit)
 	if in.rt.memLimit == 0 {
 		var from string
@@ -166,13 +176,43 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in.rt.restore()
 	runsBefore := in.rt.nextRun
 	served := servedContracts(prog)
-	if opts.Virtual != nil && len(served) > 0 {
+	taken, unguarded := takenEvents(prog)
+	if opts.Virtual == nil {
+		for _, ev := range unguarded {
+			fmt.Fprintf(stderr, "eye run: %s has no way in: contract %s has no @auth, so anyone could publish it\n", eventName(ev), ev.Contract.Name)
+		}
+	}
+	if opts.Virtual != nil {
 		for _, s := range served {
 			fmt.Fprintf(stderr, "eye run: %s isn't served: a run on a virtual clock listens on no port\n", contractName(s))
 		}
 		served = nil
+		if len(taken) > 0 && opts.Accept != nil {
+			routes, err := in.eventRoutes(taken)
+			if err != nil {
+				fmt.Fprintf(stderr, "eye run: %v\n", err)
+				return 1
+			}
+			opts.Accept(in.eventsHandler(routes, noEvent(routes)))
+		}
+		taken = nil
 	}
-	keepGoing := hasJobs(prog) || len(served) > 0
+	port, onPort, err := eventsPort()
+	if err != nil {
+		fmt.Fprintf(stderr, "eye run: %v\n", err)
+		return 1
+	}
+	if len(taken) > 0 && len(served) == 0 && !onPort {
+		for _, ev := range taken {
+			fmt.Fprintf(stderr, "eye run: %s has no way in: set EYE_EVENTS_PORT to the port its publisher sends it to\n", eventName(ev))
+		}
+		taken = nil
+	}
+	if len(served) == 0 && len(taken) == 0 {
+		onPort = false
+	}
+	listening := len(served) > 0 || onPort
+	keepGoing := hasJobs(prog) || listening
 	if keepGoing {
 		program := ""
 		if len(opts.Args) > 0 {
@@ -180,8 +220,12 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		}
 		fmt.Fprintln(stderr, in.rt.startLine(program, opts.Store, memory))
 	}
-	if len(served) > 0 {
-		stop, err := in.listen(served, stderr)
+	if listening {
+		eventsAt := -1
+		if onPort {
+			eventsAt = port
+		}
+		stop, err := in.listen(served, taken, eventsAt, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "eye run: %v\n", err)
 			return 1
@@ -227,14 +271,14 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		reported = len(in.rt.failures)
 	}
 	report()
-	if hasJobs(prog) && len(served) == 0 && in.rt.nextRun == runsBefore {
+	if hasJobs(prog) && !listening && in.rt.nextRun == runsBefore {
 		in.rt.nothingToDo(stderr, opts.Store)
 	}
 	switch {
 	case keepGoing && opts.Virtual != nil:
 		in.rt.runVirtual(*opts.Virtual, report, stderr)
 	case keepGoing:
-		if err := in.serve(ctx, report, stderr, opts.Inbox, len(served) > 0); err != nil {
+		if err := in.serve(ctx, report, stderr, opts.Inbox, listening); err != nil {
 			code = 1
 		}
 	}
@@ -319,6 +363,7 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, in
 				report()
 				rt.now = time.Now()
 			}
+			in.sendEvents()
 		})
 		if err == nil && rt.commitErr != nil {
 			err = rt.commitErr
@@ -353,6 +398,9 @@ func (in *Interp) serve(ctx context.Context, report func(), stderr io.Writer, in
 				wait = time.Until(firing)
 			}
 			wait = min(wait, time.Until(pruned.Add(time.Hour)))
+			if at, ok := rt.relay.nextDelivery(); ok {
+				wait = min(wait, time.Until(at))
+			}
 			if inbox != "" {
 				wait = min(wait, inboxEvery)
 			}
@@ -403,6 +451,7 @@ func (rt *runtime) restore() {
 			rt.uncertain[strings.TrimPrefix(k, "uncertain/")] = cmd
 		}
 	}
+	rt.restoreOutbox()
 	// From the runs' handles: no record is read but those of the runs that
 	// are ready, when they run.
 	rt.index.each(func(id int64, h *runHandle) {

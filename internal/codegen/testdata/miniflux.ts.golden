@@ -454,6 +454,8 @@ interface Call {
   path: string[];
   query: URLSearchParams;
   body: Record<string, unknown>;
+  /** The body, in place of body's fields: an event's value. */
+  whole?: unknown;
   headers: Record<string, string>;
 }
 
@@ -511,7 +513,7 @@ async function send(options: ClientOptions, auth: Auth | null, call: Call): Prom
   const headers: Record<string, string> = { ...call.headers, Accept: "application/json" };
   let body: string | undefined;
   if (call.method !== "GET" && call.method !== "DELETE") {
-    body = JSON.stringify(call.body);
+    body = JSON.stringify(call.whole !== undefined ? call.whole : call.body);
     headers["Content-Type"] = "application/json";
   }
   if (auth !== null) {

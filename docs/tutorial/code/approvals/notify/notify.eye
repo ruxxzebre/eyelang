@@ -25,6 +25,7 @@ pub type Asked =
 pub type Answered = { question: QuestionId, choice: String, by: UserId, at: Instant }
 
 # region contract
+@auth(bearer: "notify-token")
 contract Notify {
   ## Sends a message to one person. Notify keeps what each key did, so sending
   ## again with the same key is how a lost reply is settled.
