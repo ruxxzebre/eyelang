@@ -46,7 +46,10 @@ marked done.
    unique. Do the layout first or in the same piece of work: which values are counted depends on
    it. Needs 7.14 merged (it changes the same files).
 2. **7.9 (#112) core gaps in C:** time methods, `toJson`, the `Schema`/`Save` derivations,
-   `random.*`, `http.get`. What the lab needs beyond entities and jobs.
+   `random.*`, `http.get`. What the lab needs beyond entities and jobs. A test of native `Save`
+   should decode what compiled code saved with the interpreter and compare with `interp.Equal`,
+   which is the language's `==`, not the bytes re-encoded: a set's or map's order, and so its
+   bytes, may differ while its value is the same.
 3. **7.10 (#113) crossings: done.** `eye run --crossings` and `eye test --crossings` count them; a
    digest morning makes 214 (about 7.5 µs under B′), and none is in a hot loop, so nothing needs
    batching.
