@@ -263,6 +263,9 @@ called through `void code(ey_fn *self, void *out, void *const *args)`, whatever 
 | `sys.c` | the `fs`, `process` and `stdio` primitives; in a test binary, relative paths are inside a directory of the test's own |
 | `random.c` | the `random` module, drawing the interpreter's numbers: Go's PCG source and `math/rand/v2`'s algorithms, from the interpreter's seed in each test |
 | `stack.c` | the program's thread, with a 256 MB stack, and the fault when a recursive function finds it full: recursion too deep, as in the interpreter, not a crash |
+| `json.c` | `toJson`, by the value's descriptor, byte for byte as the interpreter and `encoding/json` write it (7.9) |
+| `save.c` | what the generated encoders and decoders of saved values share, the runner's entry points `ey_save` and `ey_load`, and the main of a binary that checks saving (7.9) |
+| `host.c` | calls of host functions the Go runner answers, `http.get` and the `regex` module's (7.9) |
 
 **Counting.** Counts are not atomic, since a program runs on one thread. Since 7.5 the back end
 prints the low IR's counting (section 2, "Reference counting in the low IR"): `lir.Count` runs
@@ -290,16 +293,19 @@ map insert through a `let`, `p = { p with items: p.items.add(i) }`) take 8 ms fo
 7 ms for 100k inserts and 12 ms for 1M updates, and grow linearly.
 
 **Not compiled yet.** Entities, jobs, views and contracts (the runner hosts them, 7.6),
-durable `!` steps, `with` in tests, foreign code (`@library`), and the clock and fakes of tests.
+durable `!` steps, `with` in tests, foreign code (`@library`), the clock and fakes of tests, and
+host functions other than `fs.*`, `process.run`, `random.*`, `env.get`, `log.*`, `http.get` and
+the `regex` module's (`ai.generate` is a step the runner takes).
 A program that declares one gets an error that names what it declares and says `eye run` and
 `eye test` run it. `parallelMap` runs its function on one thread, in order.
 
 **Tests.** `cgen/cgen_test.go` builds the tests of every program in `testdata/programs` and
 `cgen/testdata` that `eye build` compiles (today core, traits, the lexer, a program of failing
 tests, one of in-place updates, one of slow updates, numbers, `layouts`, which makes, takes
-apart, compares, shows, collects and updates a value of each layout, and `times`, `hosts`,
+apart, compares, shows, collects and updates a value of each layout, `times`, `hosts`,
 `shows` and `recursion` for 7.9's time methods, `random` and `fs.lines`, impls of `Show` inside
-other values and recursion too deep), at both `-O0 -g` and `-O2`, runs them,
+other values and recursion too deep, and `json`, `saved`, `hostcalls` and `regex` for its
+data and boundary half), at both `-O0 -g` and `-O2`, runs them,
 and checks the output is `eye test`'s line for line (durations aside); a program joins as soon
 as it compiles. It also builds core for all five targets and runs a `main`. `cgen/updates_test.go`
 times the update loops that copied natively until 7.5 (an append through a helper, a map insert
@@ -308,6 +314,8 @@ copied until 7.13, at two sizes, and fails if one grows quadratically again. Val
 leaks, since it doesn't see the heap of a static musl binary; instead `cgen/alloc_test.go` runs
 the test binaries of core, traits, the lexer and cgen's programs, and a `main`, with `EYE_ALLOCS`,
 and checks that every object is freed by exit except those a failing test left.
+`cgen/save_test.go` checks saved values both ways (below), and the test binaries' host calls are
+answered by the interpreter's host functions (`cgen/host_test.go`).
 
 ### Where the runtime lives
 
@@ -505,6 +513,81 @@ The test runs it on the journal, and on Postgres when `EYE_TEST_POSTGRES` is set
 process while the job sleeps and starts it again: the job resumes, takes its steps and
 finishes. The store holds the same bytes, states and events, the interpreter would write. Its
 tests run with `--test`, a failing `expect` included.
+
+### Values at the boundary (7.9)
+
+What crosses between compiled code and the rest of the world as data: JSON, saved values, and
+calls of host functions the runner answers. Each matches the interpreter byte for byte, since a
+journal, a Postgres store, a recording or a reply may be written by one and read by the other.
+
+**`toJson`** (`runtime/json.c`) walks a value by its type's descriptor and writes the shape SPECS
+§17 gives, as `interp/json.go` and Go's `encoding/json` do: an object's keys in byte order, a
+variant with fields tagged with `"kind"`, `Some(x)` as `x`, a map with string keys as an object
+and any other as `[key, value]` pairs, an `Instant` in RFC 3339 in its zone, strings escaped as
+`encoding/json` escapes them (`<`, `>`, `&`, U+2028 and U+2029 too), floats in its shortest form,
+and NaN a fault with the interpreter's message. `cgen/testdata/json` checks it. The interpreter's
+`{}` of a known `Map` or `Set` type is now an empty map or set, not an undecided `Empty`, so both
+write `{}` for an empty map. Decoding JSON (a model's reply, a contract's) stays in the runner,
+which has the types and the interpreter's decoder, and hands the value to compiled code saved;
+no core function decodes JSON, so compiled code has no decoder. `Schema`'s other half, the JSON
+Schema a model is asked with, is the runner's too.
+
+**Saved values** (`cgen/save.go`, `runtime/save.c`). For each type that crosses, the back end
+writes an encoder `eys_eN(ey_buf *, const void *value)` and a decoder `eys_dN(ey_rd *, void
+*out)` from the low IR's monomorphic type, as it writes dup and drop. They follow the type, not
+the layout: a newtype, held as its field, is saved as its variant with one value, and a record
+by its declared type's name (`N`) and each field's name, in the order the type declares them, as
+the interpreter keeps them. A decoder reads `N` or `R` (a record of no declared type), finds
+fields by name, and fails with a reason on bytes of another type; it reads `E`, `{}` saved
+before its type was known, as an empty map or set. `program.c` lists the types the runner may ask
+for in `ey_saved_types`, by `cgen.SavedName` (`lir.TypeKey`'s name, unique in the program, such
+as `List(main.Point)`), with each one's descriptor, encoder and decoder; `ey_save` and `ey_load`
+are the entry points, and `Options.Saved` names the types. They plug into the hosting interface
+above: `eye_encode(rt, type, v, out)` is `ey_save(&ey_saved_types[type], handle's value, …)`
+and `eye_decode` is `ey_load`, once `eye_program_info.types` lists the same types in the same
+order. Two things are for the next step of 7.6: an entity's state is saved as a record of no
+type (`R`, its identity first, then its fields), which needs an encoder written from the
+entity's fields rather than a declared type (decoders already read `R`); and
+`eye_program_info.types` names types as `eye check --ir` prints them, which doesn't say a type's
+module, so `lir.TypeKey`'s names are the safer key. `TestSavedValuesRoundTrip` builds
+`cgen/testdata/saved` with `Options.SaveCheck`, a binary that saves each module-level let or
+reads saved bytes as one, and checks at `-O0` and `-O2`, with every object freed, that compiled
+code writes the interpreter's bytes for each of its 51 values, that the interpreter reads them as
+equal values (`interp.Equal`), and that compiled code reads the interpreter's bytes as an equal
+value and saves it again unchanged.
+
+**Host functions the runner answers** (`runtime/host.c`). `http.get` needs an HTTP client with
+TLS, which the C runtime doesn't have, and the `regex` module RE2's matching. Both are host calls:
+compiled code sends the function's name and the saved record of the arguments the call gives, by
+parameter name (`R`), and decodes the saved answer with the result type's decoder. The runner
+binds the record as the interpreter binds a call, defaults included, and runs the interpreter's
+host function (`interp.(*Interp).HostCall`), so the answer is the interpreter's by construction;
+embedders' `@host` functions are served the same way. A fault in the function is a fault at the
+call. Under B′ the runner sets the hook (`ey_set_host`) when it links the program in; until then
+a binary without it faults with "`http.get` needs the Go runner to answer it". A test binary can
+be answered over two file descriptors instead (`EYE_HOST_FDS`), as cgen's tests answer it, so
+`cgen/testdata/hostcalls` (pages of a local server) and `testdata/programs/regex` pass natively.
+This is the hosting interface's `eye_go_host` with the arguments already saved: one crossing
+per call instead of one per argument for `eye_encode`. Either `eye_go_host` takes the saved
+record, or the runner's C side sets `ey_set_host` to a function that calls it; that is for the
+next step of 7.6 to settle. When tests stop reaching the network (#141), `hostcalls` will need
+`--live http`, or the test binaries' server will deny as the interpreter does.
+
+**Why `regex` is a host call.** The interpreter's regex is Go's `regexp`, which is RE2:
+linear time, its syntax, its leftmost-first matching, its Unicode classes and case folding, and
+its error messages, which `regex.parse` returns as they are. The ways to match it natively:
+
+| | What it takes | Matches the interpreter |
+|---|---|---|
+| A C library | RE2 is C++; its C wrappers (cre2) need a C++ toolchain and runtime in every build. TRE and PCRE2 are C, with POSIX or Perl semantics: backtracking, other leftmost rules, other syntax and messages | No |
+| An engine of our own | A parser of RE2's syntax with Go's messages, a Pike VM with groups, Unicode classes and case folding tables: two or three thousand lines of C to write and keep equal to Go's | Only as far as tests reach |
+| The runner's `regexp` | A host call; nothing new to build | Yes, by construction |
+
+**Decided for now (needs the owner's confirmation): a host call.** A crossing costs about 35 ns
+under B′ plus saving the arguments and the matches, small beside the matching for the lab's
+use, the digest's `hrefOf`. The cost is that a binary built with zig alone can't match a
+pattern. When the runner moves into Eyelang (S.2), a regex engine is needed anyway, and it can
+then be written in Eyelang against `testdata/programs/regex` and the host functions' answers.
 
 ## 2. Values and memory
 

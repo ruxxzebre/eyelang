@@ -1065,8 +1065,20 @@ whole-program specialisation, and jobs resuming from saved frames.
   cost fib 40%, so natively the stack's size is the limit). `cgen/testdata/times`, `hosts`,
   `shows` and `recursion` check them on both engines. `digest.irishTime`,
   `notifier.quietUntil` and `trains.hasArrived` generate with the gate on entities lifted, and
-  `limits` stops only at its entities, jobs and `advance`. Part B (`toJson`, `Schema`/`Save`,
-  `http.get`, `regex`) is open.
+  `limits` stops only at its entities, jobs and `advance`.
+  Part B (the data and boundary half) done on 2026-10-13: `toJson` (`runtime/json.c`, byte for
+  byte as the interpreter writes it: `cgen/testdata/json`); `Save` as an encoder and a decoder
+  per saved type, generated from the low IR into the interpreter's bytes, listed for the runner
+  in `ey_saved_types` (`cgen/save.go`, `runtime/save.c`; `TestSavedValuesRoundTrip` checks both
+  directions for 51 values of every kind); `Schema`'s JSON is `toJson`, and decoding JSON (for
+  model replies and contracts) stays in the runner, which hands the value over saved. `http.get`
+  and the `regex` module are host calls the Go runner answers (`runtime/host.c`; the choice for
+  `regex` is in compilation.md, "Values at the boundary"); until `eye build --runner` sets the
+  hook a binary faults saying so, and cgen's tests answer test binaries over two pipes with the
+  interpreter's host functions, so `cgen/testdata/hostcalls` and `testdata/programs/regex` pass
+  natively. In the lab, `hrefOf`, `plain` and their tests now compile, and `digest.write` and
+  `web.page` need only what 7.6 hosts. With part A, every core gap this task names is closed;
+  what the six functions still need is what 7.6 hosts (entities, contracts, `!` steps).
 - **7.10 Crossings.** The interpreter counts the operations that would cross from compiled code
   into the runner (entity calls, steps, encodes, decodes, store reads, host calls).
   **Done when:** the digest's counts for one morning are recorded under 7.6.

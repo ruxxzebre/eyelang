@@ -109,7 +109,7 @@ void ey_host_call(const char *at, const char *name, ey_buf *args, ey_decoder dec
 	else if (host_fds())
 		ok = host_pipe(name, args->b ? args->b : "", args->len, &answer, &err);
 	else
-		ey_faultf(at, "%s needs the Go runner, which answers it, and this binary was built without it (ROADMAP 7.6 links it in); `eye run` and `eye test` run this program", name);
+		ey_faultf(at, "%s needs the Go runner to answer it, and this binary has none: `eye run` and `eye test` run this program, and `eye build --runner` will once its runner answers host calls (ROADMAP 7.6)", name);
 	free(args->b);
 	args->b = NULL;
 	if (!ok) ey_fault(at, err.b ? err.b : "the host function failed"); /* err is left to the fault */
