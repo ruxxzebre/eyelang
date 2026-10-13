@@ -46,6 +46,9 @@ type Interp struct {
 	// runs (externs.go).
 	hosts   *Hosts
 	externs map[*ir.Func]hostFunc
+	// native runs the entity methods and jobs a compiled program hosts;
+	// nil runs everything in the interpreter (native.go).
+	native Native
 	// funcs is what the interpreter works out once per function, as what
 	// it does with return, break and continue (control.go); units are the
 	// values of the variants without fields, made once.

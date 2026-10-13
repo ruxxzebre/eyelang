@@ -3,6 +3,7 @@ package cgen
 import (
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -62,22 +63,13 @@ func buildRunner(files []File, opts BuildOptions) error {
 	if target == "" {
 		target = HostTarget()
 	}
-	rt, ok := runnerTargets[target]
-	if !ok {
+	if _, ok := runnerTargets[target]; !ok {
 		var names []string
 		for n := range runnerTargets {
 			names = append(names, n)
 		}
 		sort.Strings(names)
 		return fmt.Errorf("eye build --runner doesn't build for %q yet: it builds for %s", target, strings.Join(names, ", "))
-	}
-	goExe, err := gotool.Path(opts.Progress)
-	if err != nil {
-		return err
-	}
-	zigExe, err := zig.Path(opts.Progress)
-	if err != nil {
-		return err
 	}
 	work, err := os.MkdirTemp("", "eye-runner-")
 	if err != nil {
@@ -96,8 +88,23 @@ func buildRunner(files []File, opts BuildOptions) error {
 		data, _ := hostedFS.ReadFile(name)
 		mod["eyelang/cgen/"+name] = string(data)
 	}
-	for name, text := range mod {
-		p := filepath.Join(work, filepath.FromSlash(name))
+	if err := writeTree(work, mod); err != nil {
+		return err
+	}
+	// The program's C, as a static library the runner links.
+	lib := opts
+	lib.Target, lib.Archive, lib.Runner = target, true, false
+	lib.Out = filepath.Join(work, "libeyeprogram.a")
+	if err := Compile(files, lib); err != nil {
+		return err
+	}
+	return goLink(work, opts.Out, target, "eyehosted", []string{lib.Out, "-lm"}, nil, opts.Progress)
+}
+
+// writeTree writes files, by their paths below dir.
+func writeTree(dir string, files map[string]string) error {
+	for name, text := range files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return err
 		}
@@ -105,36 +112,44 @@ func buildRunner(files []File, opts BuildOptions) error {
 			return err
 		}
 	}
-	// The program's C, as the static library the package hosted links.
-	lib := opts
-	lib.Target, lib.Archive, lib.Runner = target, true, false
-	lib.Out = filepath.Join(work, "eyelang", "cgen", "hosted", "libeyeprogram.a")
-	if err := Compile(files, lib); err != nil {
+	return nil
+}
+
+// goLink builds the Go module in dir into the binary out for target, with
+// cgo, zig as the C compiler and the pinned Go: the step every runner build
+// ends with. ldflags go to zig as it links, the program's archive among
+// them, and env is added to the build's environment.
+func goLink(dir, out, target, tags string, ldflags, env []string, progress io.Writer) error {
+	rt := runnerTargets[target]
+	goExe, err := gotool.Path(progress)
+	if err != nil {
 		return err
 	}
-
-	goos, goarch, _ := strings.Cut(target, "/")
-	ldflags := "-s -w -linkmode external"
-	if rt.static {
-		ldflags += " -extldflags -static"
+	zigExe, err := zig.Path(progress)
+	if err != nil {
+		return err
 	}
-	cgoLDFlags := ""
+	goos, goarch, _ := strings.Cut(target, "/")
+	link := "-s -w -linkmode external"
+	if rt.static {
+		link += " -extldflags -static"
+	}
 	if goos == "darwin" {
-		sdk := filepath.Join(work, "sdk")
+		sdk := filepath.Join(dir, "sdk")
 		if err := os.MkdirAll(sdk, 0o755); err != nil {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(sdk, "libresolv.tbd"), []byte(libresolv), 0o644); err != nil {
 			return err
 		}
-		cgoLDFlags = "-L" + sdk
+		ldflags = append(ldflags, "-L"+sdk)
 	}
-	out, err := filepath.Abs(opts.Out)
+	abs, err := filepath.Abs(out)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(goExe, "build", "-trimpath", "-tags", "eyehosted", "-ldflags", ldflags, "-o", out, ".")
-	cmd.Dir = work
+	cmd := exec.Command(goExe, "build", "-trimpath", "-tags", tags, "-ldflags", link, "-o", abs, ".")
+	cmd.Dir = dir
 	root, _ := gotool.Root(nil)
 	cmd.Env = append(os.Environ(),
 		"GOROOT="+root,
@@ -142,7 +157,7 @@ func buildRunner(files []File, opts BuildOptions) error {
 		"GOARCH="+goarch,
 		"CGO_ENABLED=1",
 		"CC="+zigExe+" cc -target "+Targets[target],
-		"CGO_LDFLAGS="+cgoLDFlags,
+		"CGO_LDFLAGS="+strings.Join(ldflags, " "),
 		// Only what the module holds: no toolchain switch, no proxy, no
 		// workspace, and none of the user's go env settings.
 		"GOTOOLCHAIN=local",
@@ -151,8 +166,9 @@ func buildRunner(files []File, opts BuildOptions) error {
 		"GOWORK=off",
 		"GOENV=off",
 	)
+	cmd.Env = append(cmd.Env, env...)
 	if outb, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("linking %s into the runner: %v\n%s", opts.Out, err, outb)
+		return fmt.Errorf("linking %s into the runner: %v\n%s", out, err, outb)
 	}
 	return nil
 }

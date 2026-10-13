@@ -397,66 +397,36 @@ a proxy instead would make a build depend on the network and on a published vers
 `eye`'s. Embedding ties the runner a program links to the `eye` that compiled it, which is what
 the interface below needs.
 
-**The interface.** The interface is between the runner (Go) and a compiled program (C).
-Values cross it as opaque handles, so 7.13's layouts can change what a handle is without
-changing a signature. The declarations will live in `cgen/hosted/eye_host.h`. None of them is
-implemented yet: entity and job hosting needs 7.13's layouts and 7.9's core gaps.
+**The interface** is between the runner (Go) and a compiled program (C), declared in
+[`cgen/hosted/eye_host.h`](https://github.com/ruxxzebre/eyelang/blob/dev/cgen/hosted/eye_host.h).
+Values cross it as opaque handles, `eye_val`, so 7.13's layouts can change what a handle is
+without changing a signature.
 
-```c
-typedef struct eye_rt eye_rt;       // the runner's side of one call: its run, transaction
-                                    // and frame; C passes it back in every callback
-typedef uint64_t eye_val;           // a program value; what it holds is 7.13's (a tagged
-                                    // word or a pointer to a counted cell)
-typedef struct { const uint8_t *p; size_t n; } eye_bytes;  // bytes the caller owns
-typedef struct { uint8_t *p; size_t n; } eye_buf;          // bytes the callee allocated with
-                                                           // malloc; the caller frees them
-typedef enum { EYE_OK, EYE_FAULT, EYE_WAITING } eye_status;
-
-// What the program declares, by index: entities (their methods, identity and
-// state types), jobs, tests, saved types and host functions. The runner
-// matches them to the IR it already has by name.
-const struct eye_program *eye_program(void);
-
-// ---- entry points: compiled code, called by the runner
-int        eye_main(int argc, char **argv);   // built: main, or the tests of a --test build
-eye_status eye_run_main(eye_rt *, eye_val args);
-eye_status eye_run_test(eye_rt *, int32_t test);
-// Runs an entity method on a state in a transaction. *state is replaced by
-// the new state: in place when the runner held the only reference (7.5).
-eye_status eye_call_method(eye_rt *, int32_t entity, int32_t method, eye_val *state,
-                           const eye_val *args, int32_t nargs, eye_val *result);
-// Runs a job from its frame to its next `!` (EYE_WAITING, with the step to take
-// in *step and the new frame in *frame) or to its end (EYE_OK, with *result).
-// The first call has a frame of its arguments, and a later one has the
-// result of the step it waited for in `resumed`.
-eye_status eye_step_job(eye_rt *, int32_t job, eye_val *frame, eye_val resumed,
-                        struct eye_step *step, eye_val *result);
-// A saved type's encoding is the one the interpreter writes, so a journal
-// or a Postgres store moves between interpreted and native code.
-eye_status eye_encode(eye_rt *, int32_t type, eye_val, eye_buf *out);
-eye_status eye_decode(eye_rt *, int32_t type, eye_bytes in, eye_val *out);
-void       eye_retain(eye_val);
-void       eye_release(eye_val);
-const char *eye_fault(eye_rt *);           // the message of the last EYE_FAULT
-
-// ---- callbacks: the runner, called by compiled code (exported from Go with //export)
-eye_status eye_go_entity_call(eye_rt *, int32_t entity, eye_val id, int32_t method,
-                              const eye_val *args, int32_t nargs, eye_val *result);
-eye_status eye_go_entity_read(eye_rt *, int32_t entity, eye_val id, eye_val *snapshot);
-eye_status eye_go_start(eye_rt *, int32_t job, const eye_val *args, int32_t nargs,
-                        eye_val key, eye_val *run);
-eye_status eye_go_publish(eye_rt *, int32_t event, eye_val value);
-// A host function that doesn't wait (env.get, the clock, random, log): it
-// runs at once. One that waits is a `!` step, which eye_step_job returns instead.
-eye_status eye_go_host(eye_rt *, int32_t fn, const eye_val *args, int32_t nargs,
-                       eye_val *result);
-```
+- **What the program declares:** `eye_program()` gives the tables the runner needs, by index:
+  each entity with its identity's type, its state's type and its methods' parameter and result
+  types; each job with its parameters' types, its frame's type and its result's type; the
+  tests, the saved types and the host functions. A declaration is named as the runner names
+  it: one of the program's own module by its name (`Counter`), one of an imported module with
+  the module's path in front (`lab.notify.Message`). `EYE_HOST_VERSION` changes with the
+  interface, and the runner refuses a program compiled for another version.
+- **Entry points**, compiled code the runner calls:
+  - `eye_main`, built since the groundwork;
+  - `eye_run_main` and `eye_run_test`;
+  - `eye_call_method`, which runs a method on a state, given and replaced through a pointer;
+  - `eye_job_frame`, which makes a job's first frame from its arguments;
+  - `eye_step_job`, which runs a job from its frame to its next `!` and returns `EYE_WAITING`
+    with an `eye_step` (sleep, an entity call, or a host function, with the step's arguments
+    and the type of what it gives back), or to its end with `EYE_OK`;
+  - `eye_encode`, `eye_decode`, `eye_retain`, `eye_release` and `eye_fault`.
+- **Callbacks**, the runner exported from Go: `eye_go_entity_call`, `eye_go_entity_read`,
+  `eye_go_start`, `eye_go_publish` and `eye_go_host`, for what finishes inside a transaction.
 
 The rules that go with it:
 
 - **Ownership.** Arguments are borrowed for the call. Results and replaced states are owned by
-  the receiver, which releases them with `eye_release`. A handle the runner keeps between calls
-  (an entity's state, a job's frame) is one it owns.
+  the receiver, which releases them with `eye_release`. A step's arguments belong to the frame
+  until the next call on it. On `EYE_FAULT`, a state or frame passed by pointer is the one
+  given. The runner keeps no handle between calls: it keeps encodings.
 - **The Go side works with encodings.** The runner never looks inside a handle. To read one, as
   a contract operation's arguments or a store write, it calls `eye_encode`, in the shape the
   interpreter uses. To make one, it calls `eye_decode`. 7.10 counted those crossings for a
@@ -469,6 +439,35 @@ The rules that go with it:
 - **Faults.** A fault in compiled code returns `EYE_FAULT` up through every frame. The runner
   rolls the transaction back, as it does for an interpreted fault. A fault inside a callback
   returns `EYE_FAULT` to the compiled caller, which returns it on.
+
+**The runner's side (built).** The interpreter's runtime is the runner, unchanged: the store
+(journal or Postgres), the scheduler, the R.7 handles, steps and their replay. A compiled
+program plugs in through one seam, `interp.Native` (`interp/native.go`), set with
+`RunOptions.Native`:
+
+- `HostsMethod` and `HostsJob` say what the compiled program runs. What it doesn't, the
+  interpreter runs, so a program can be part compiled.
+- **An entity method** runs where the interpreter would run it, inside the transaction
+  (`callIn`). Its arguments are ordered by the method's parameters, with defaults filled in, and
+  encoded. The row's state goes in encoded, and the new state comes back encoded.
+- **A job** runs step by step (`runNativeJob`). Each time it stops at a `!`, the run's record
+  keeps the step with its frame (`jobRun.Native`) as its checkpoint, and its log of steps
+  starts over. The step is then taken by the interpreter's own code (`sleep`, `entityStep`), or
+  replayed after a restart, and what it gave resumes the job. The step's commit saves the new
+  checkpoint, so a crash before it leaves the run where it was, and running the job again from
+  there gives the same step.
+- With no compiled program, the interpreter's path is unchanged: one nil check per method call
+  and per job turn.
+
+`cgen/hosted/runner` (behind the tag `eyehosted`, with cgo) implements `interp.Native` over
+the entry points, and its `Main` runs a program as `eye run` does. It reads the program's
+declarations from its source, which it checks at start-up. A compiled program will carry its
+IR instead, once `eye build --runner` hosts entities and jobs. `go test ./cgen -run
+TestHostedProgram` builds a hand-written C stand-in (`cgen/hosted/testdata/counter`) into the
+runner through `eye build --runner`'s link step. It runs it on the journal, and on Postgres
+when `EYE_TEST_POSTGRES` is set: it kills the process while the job sleeps and starts it
+again, and the job resumes, calls the C method and finishes. The store holds the same bytes the
+interpreter would write.
 
 ## 2. Values and memory
 

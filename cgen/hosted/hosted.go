@@ -12,7 +12,6 @@
 package hosted
 
 /*
-#cgo LDFLAGS: ${SRCDIR}/libeyeprogram.a -lm
 #include <stdlib.h>
 
 // eye_main is the program's C main, renamed when it is compiled for the

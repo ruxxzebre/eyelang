@@ -72,6 +72,9 @@ type checkpointing struct {
 // runJob runs a job's body for a run: from the start, or from its
 // checkpoint.
 func (in *Interp) runJob(run *jobRun, job *ir.Job, args []argVal) Value {
+	if in.native != nil && in.native.HostsJob(nativeName(job.Module, job.Name)) {
+		return in.runNativeJob(run, job, args)
+	}
 	fn := job.Func
 	fr := &frame{fn: fn, slots: make([]Value, fn.Slots), ck: &checkpointing{run: run}}
 	ck := run.Checkpoint

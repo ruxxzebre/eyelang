@@ -972,7 +972,14 @@ whole-program specialisation, and jobs resuming from saved frames.
   that Go, static on Linux and cross-built for linux/arm64 and macOS; its `main` and tests run
   (`cgen/runner_test.go`). The runner's Go source travels inside `eye`. The interface's
   C signatures, with opaque value handles for 7.13's layouts, are in compilation.md, "Hosting
-  compiled programs". Hosting entities and jobs waits for the rest of 7.13 and for 7.9.
+  compiled programs".
+  **Progress (2026-10-13):** the runner's side works. `cgen/hosted/eye_host.h` declares the
+  interface. `interp.Native` is the seam through which the interpreter's runtime (stores,
+  scheduler, steps, replay) runs a compiled program's entity methods and jobs. `cgen/hosted/runner`
+  implements it over the C entry points. A hand-written C stand-in runs on the journal and on
+  Postgres, survives being killed mid-sleep, and finishes its job (`cgen/hosted_test.go`). Left:
+  cgen writing the entry points (with 7.9's encoders), the callbacks, host-function steps,
+  compiled `main` and tests in the runner, the IR carried in the binary, and then the digest.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
   Crossings (7.10, counted by the interpreter with `eye run --crossings` on the journal, against

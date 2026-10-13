@@ -15,23 +15,23 @@ import (
 // runtime holds what a running program keeps beyond its values: entities,
 // job runs, views, the clock and the fakes of other services.
 type runtime struct {
-	in       *Interp
-	store    Store
-	now      time.Time
-	real     bool // the clock is the system's (eye run), not a test's
+	in    *Interp
+	store Store
+	now   time.Time
+	real  bool // the clock is the system's (eye run), not a test's
 	// signalled, while main runs under eye run, ends with Ctrl-C or SIGTERM:
 	// what main waits for, its tasks included, stops waiting then.
 	signalled context.Context
-	queue    []int64
-	draining bool
-	tx       *txn
-	selves   []*txRow // the entities whose methods are running, innermost last
-	nextRun  int64
-	members  map[*ir.View]map[string]bool
-	fakes    map[*ir.Contract]*fakeSet
-	failures []*Fault // job runs that faulted
-	events   []event  // every event published, in order; an event's sequence number is its index + 1
-	seen     map[string]bool
+	queue     []int64
+	draining  bool
+	tx        *txn
+	selves    []*txRow // the entities whose methods are running, innermost last
+	nextRun   int64
+	members   map[*ir.View]map[string]bool
+	fakes     map[*ir.Contract]*fakeSet
+	failures  []*Fault // job runs that faulted
+	events    []event  // every event published, in order; an event's sequence number is its index + 1
+	seen      map[string]bool
 	// rate holds, for each job and @limit group, when its recent runs
 	// began, oldest first.
 	rate map[string][]int64
@@ -363,6 +363,9 @@ func (rt *runtime) callIn(tx *txn, ref *EntityRef, m *ir.Func, args []argVal, at
 		rt.in.run = prevRun
 		rt.selves = rt.selves[:len(rt.selves)-1]
 	}()
+	if n := rt.in.native; n != nil && n.HostsMethod(nativeName(ref.Entity.Module, ref.Entity.Name), m.Name) {
+		return rt.in.nativeMethod(m, row, args, at)
+	}
 	// The method changes row.state as it goes, so a call that comes back to
 	// the entity before it returns starts from its changes, and it goes on
 	// from the changes that call made (SPECS.md §14).
@@ -657,9 +660,12 @@ type jobRun struct {
 	Job        string
 	Args       [][]byte
 	Checkpoint *checkpoint `json:",omitempty"`
-	Log        []step      // the steps since the checkpoint
-	Status     string      // ready, sleeping, done, failed
-	WakeAt     int64       `json:",omitempty"` // Unix nanoseconds, while sleeping
+	// Native is a native job run's checkpoint: its frame and the step it
+	// takes from there (native.go).
+	Native *NativeStep `json:",omitempty"`
+	Log    []step      // the steps since the checkpoint
+	Status string      // ready, sleeping, done, failed
+	WakeAt int64       `json:",omitempty"` // Unix nanoseconds, while sleeping
 	// WaitEvent is the event a sleeping run waits for in next!; one wakes it.
 	WaitEvent string `json:",omitempty"`
 	// Since is the sequence number of the last event published before the

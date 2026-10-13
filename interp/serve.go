@@ -51,6 +51,9 @@ type RunOptions struct {
 	// a port, and once main has run, sleeping runs wake and schedules fire
 	// at once, in time order, until nothing is left or a limit is reached.
 	Virtual *VirtualClock
+	// Native, when set, runs the entity methods and jobs it hosts as
+	// compiled code, in place of the interpreter (native.go).
+	Native Native
 }
 
 // VirtualClock is the clock of a run that doesn't wait for real time.
@@ -150,6 +153,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		return 1
 	}
 	in.hosts = opts.Hosts
+	in.native = opts.Native
 	if missing := in.linkExterns(); len(missing) > 0 {
 		for _, m := range missing {
 			fmt.Fprintln(stderr, m)
