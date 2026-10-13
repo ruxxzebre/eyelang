@@ -89,6 +89,14 @@ func builtinTable() map[string]*BuiltinFn {
 		}
 		return &clockHandler{when}
 	})
+	add("memory", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
+		in.need(args, 1, "memory", at)
+		limit, ok := args[0].(ir.Size)
+		if !ok || limit <= 0 {
+			in.faultf(at, "memory(…) takes a Size more than 0, such as 64 MiB")
+		}
+		return &memoryHandler{limit}
+	})
 	add("sleep", func(in *Interp, args []Value, _ map[string]Value, at ir.Pos) Value {
 		in.need(args, 1, "sleep", at)
 		d, ok := args[0].(ir.Duration)
@@ -747,6 +755,20 @@ func (in *Interp) replaying() bool {
 type clockHandler struct{ when time.Time }
 
 func (h *clockHandler) apply(in *Interp, _ ir.Pos) { in.rt.now = h.when }
+
+// memoryHandler is the value of `memory(…)`: it sets the memory a test's
+// runner has (admission.go). What runs hold stays held; runs that wait for
+// memory ask again, and those that now fit run before the next statement.
+type memoryHandler struct{ limit ir.Size }
+
+func (h *memoryHandler) apply(in *Interp, at ir.Pos) {
+	if in.rt.real {
+		in.faultf(at, "memory(…) sets a test's memory; a runner's comes from eye run --memory-limit")
+	}
+	in.rt.memLimit = int64(h.limit)
+	in.rt.wakeMemory()
+	in.rt.drain()
+}
 
 func (in *Interp) need(args []Value, n int, name string, at ir.Pos) {
 	if len(args) != n {

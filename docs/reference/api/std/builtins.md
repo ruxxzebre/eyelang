@@ -96,6 +96,15 @@ fn clock(at: Instant) -> Handler
 Used as `with clock(2026-10-10 12:00 in "Europe/Dublin")`: sets the test's clock. Without it, a
 test's clock starts at 2026-01-01 00:00 UTC.
 
+### memory {#memory}
+
+```eye
+fn memory(limit: Size) -> Handler
+```
+
+Used as `with memory(64 MiB)`: sets the memory the test's runner has, which `@memory` and
+`reserve!` are admitted against, for the rest of the test. Without it, a test's runner has 1 GiB.
+
 ### approve {#approve}
 
 ```eye

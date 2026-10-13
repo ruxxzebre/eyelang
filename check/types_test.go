@@ -371,9 +371,14 @@ test "t" {
   expect(sent.calls(svc.send) == [])
   let _ = c.calls(svc.send)
   with 3
+  with memory(64 MiB)
+  let m = memory(1 GiB)
+  with m
+  with memory(64)
 }`, []string{
 			"8:11: this Handler, such as clock(…), keeps no calls: only fakes(…) lists the calls it answered",
 			"9:8: expected Handler, found Int",
+			"13:15: expected Size, found Int",
 		}},
 		{"reconcile needs a @reconcile query", `import svc
 job j(text: String) {

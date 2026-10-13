@@ -305,7 +305,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
   All of them are enforced by the runtime (`@budget` in [section 19](/reference/language/ai-models-and-agents)).
 - **Memory.** A runner has a memory limit (`eye run --memory-limit 512MiB`, the host's memory
-  without one, 1 GiB in tests). A run holds its `@memory` only while it executes, and
+  without one, 1 GiB in tests unless `with memory(…)` says otherwise, [section 20](/reference/language/time-secrets-tests)). A run holds its `@memory` only while it executes, and
   `reserve!(size, fn { … })` holds `size` until `fn` returns, across `fn`'s own waits. A run executes,
   and a `reserve!` is granted, only when the memory fits beside what is held and no run of a
   higher `@priority` waits for memory; otherwise it waits at the checkpoint it reached, so under

@@ -53,7 +53,7 @@ the native port, and nothing else starts. It is reached when all of these hold:
 
 - [x] #131: `NaN == NaN` stays true, written into SPECS as the one exception to IEEE 754, and
   `Show` writes `NaN`, `+Inf` and `-Inf` (owner's choice b).
-- [ ] #134: `with memory(…)` in tests is specified and built: a test sets the memory runs are
+- [x] #134: `with memory(…)` in tests is specified and built: a test sets the memory runs are
   admitted against, so it can show a run waiting for memory or failing with `OutOfMemory`.
 - [ ] #135: an event of another service's contract reaches `eye run` as a `POST` to the program's
   port, under the contract's `@auth`, as served operations already do (owner's choice a).

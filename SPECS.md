@@ -264,6 +264,7 @@ and `mut` marked at the call.
 | Promises and principles | **Two lists, both in section 1: five promises say what a user gets, and the principles say how we decide.** The README and the docs site are written from the promises; CLAUDE.md points to the principles instead of keeping its own list, and its five pillars became promises (waiting, state, outside calls) or principles (values, not shared objects; visible where it matters). Decided by the owner on 2026-10-13 | The main idea was written six times (the spec's goals, CLAUDE.md's pillars and its rules for deciding, the README, the site's home and why pages), and the copies had drifted: one said tests "can't flake", one that every call is keyed, one that native compilation comes later. A list for readers and a list for deciding serve different people, and one place for each keeps them true |
 | Tests don't reach the network | **In a test, a call to another service (a contract's operation, `http`, `ai`) is answered by `with fakes(…)` or goes out because `eye test --live` names its module; any other call fails the test at the call, with an error that names the `with fakes(…)` or `--live` to add** (section 20). Decided by the owner on 2026-10-13 | A test without fakes went to the service whenever its address or key was set, so it passed on one machine and failed on another, or sent a real message; "tests replay recorded replies" was a promise only `with fakes(…)` kept. Denying is the safe default; a general permission model for effects is open question 46 |
 | NaN equals itself | **`==` on `Float`s asks whether two values are the same: `NaN == NaN` is true and `0.0 == -0.0` false, the one exception to IEEE 754. `Show` writes `NaN`, `+Inf` and `-Inf`, and JSON, which has none of them, refuses them: writing one is a fault** (sections 10 and 17). Decided by the owner on 2026-10-12 | Every value equals itself, so lists, sets, maps and derived record equality behave, and a test can `expect` a NaN; IEEE's `NaN != NaN` would make `[x] == [x]` false. `null`, which JavaScript writes, is `None`'s shape, so `Some(nan)` would read back as `None`, and a service would read `null` for a number; a fault stops at the call that would send it |
+| Memory in tests | **`with memory(size)` in a test sets the memory its runner has, which `@memory` and `reserve!` are admitted against, for the rest of the test** (section 20). Decided by the owner on 2026-10-12 | Waiting for memory and `OutOfMemory` are outcomes a program plans for, so a test should show them deterministically, on any machine; a handler, as `clock(…)` is for time, rather than a flag to `eye test` that every test would share |
 
 ## 3. A tour
 
@@ -1990,7 +1991,7 @@ job irelandDigest(day: Date) -> Result(Delivery, DigestError) {
 
   All of them are enforced by the runtime (`@budget` in section 19).
 - **Memory.** A runner has a memory limit (`eye run --memory-limit 512MiB`, the host's memory
-  without one, 1 GiB in tests). A run holds its `@memory` only while it executes, and
+  without one, 1 GiB in tests unless `with memory(…)` says otherwise, section 20). A run holds its `@memory` only while it executes, and
   `reserve!(size, fn { … })` holds `size` until `fn` returns, across `fn`'s own waits. A run executes,
   and a `reserve!` is granted, only when the memory fits beside what is held and no run of a
   higher `@priority` waits for memory; otherwise it waits at the checkpoint it reached, so under
@@ -2837,6 +2838,25 @@ text contains it, and fails the test when none or several do.
 fake with no recorded answer) fails the test too; one that ends as an outcome the program
 declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
 with the run's `outcome()`: `expect(run.outcome() == Some(Failed(DeadlinePassed)))` (section 15).
+
+**Memory in tests.** A test's runner has 1 GiB of memory, whatever the machine (section 15).
+`with memory(64 MiB)` gives it that much instead, for the rest of the test, so a test can show a
+run waiting for memory, or ending as `Failed(OutOfMemory)`, without a machine of that size. It
+changes the limit that `@memory` and `reserve!` are admitted against, and nothing else: what runs
+already hold stays held, and runs that wait for memory and now fit run before the next statement.
+A size of `0 B` is a fault; under `eye run` the limit comes from `--memory-limit`, so `memory(…)`
+works only in tests.
+
+```eye
+@memory(128 MiB)
+job thumbnails() {}
+
+test "thumbnails don't fit on a small runner" {
+  with memory(64 MiB)
+  let run = thumbnails.start()
+  expect(run.outcome() == Some(Failed(OutOfMemory)))
+}
+```
 
 **Programs a test runs.** `with fakes(process, from: "recordings/")` answers `process.run` from
 `recordings/process.json` instead of running anything, so a test of a program that runs `git` or

@@ -198,6 +198,10 @@ pub extern fn advance(by: Duration)
 ## test's clock starts at 2026-01-01 00:00 UTC.
 pub extern fn clock(at: Instant) -> Handler
 
+## Used as `with memory(64 MiB)`: sets the memory the test's runner has, which `@memory` and
+## `reserve!` are admitted against, for the rest of the test. Without it, a test's runner has 1 GiB.
+pub extern fn memory(limit: Size) -> Handler
+
 ## In a test, approves the one request a job is waiting for in `approval!(…)` whose text contains
 ## what, and fails the test when none or several do. The answer comes from by, or without it from
 ## the person asked; an answer from anyone else is refused, and the run keeps waiting.

@@ -1,5 +1,5 @@
 # Memory: @memory, @priority and reserve! (SPECS.md §15). In tests the runner
-# has 1 GiB.
+# has 1 GiB, or what `with memory(…)` gives it.
 
 ## What happened, in order.
 entity Log(id: String) {
@@ -86,4 +86,29 @@ job watch() {
 test "a run that holds more than its @memory ends as OutOfMemory" {
   watch.start()
   expect(Log("watch").lines == ["OutOfMemory", "OutOfMemory"])
+}
+
+test "with memory(…) gives the runner more, so both runs hold their memory at once" {
+  with memory(2 GiB)
+  pair.start("a")
+  pair.start("b")
+  expect(Log("pair").lines == ["a in", "b in"])
+}
+
+test "with memory(…) gives the runner less, so a run waits, and runs once there is more" {
+  with memory(700 MiB)
+  pair.start("a")
+  pair.start("b")
+  expect(Log("pair").lines == ["a in"])
+  with memory(2 GiB)
+  expect(Log("pair").lines == ["a in", "b in"])
+}
+
+test "with memory(…) smaller than a run's @memory ends it as OutOfMemory" {
+  with memory(256 MiB)
+  let big = answer.start()
+  expect(big.outcome() == Some(Failed(OutOfMemory)))
+  let asks = pair.start("a")
+  expect(asks.outcome() == Some(Failed(OutOfMemory)))
+  expect(Log("pair").lines == [])
 }

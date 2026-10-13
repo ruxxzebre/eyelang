@@ -90,6 +90,25 @@ fake with no recorded answer) fails the test too; one that ends as an outcome th
 declared, such as `Failed(DeadlinePassed)` from its `@deadline`, doesn't, and the test checks it
 with the run's `outcome()`: `expect(run.outcome() == Some(Failed(DeadlinePassed)))` ([section 15](/reference/language/jobs-and-waiting)).
 
+**Memory in tests.** A test's runner has 1 GiB of memory, whatever the machine ([section 15](/reference/language/jobs-and-waiting)).
+`with memory(64 MiB)` gives it that much instead, for the rest of the test, so a test can show a
+run waiting for memory, or ending as `Failed(OutOfMemory)`, without a machine of that size. It
+changes the limit that `@memory` and `reserve!` are admitted against, and nothing else: what runs
+already hold stays held, and runs that wait for memory and now fit run before the next statement.
+A size of `0 B` is a fault; under `eye run` the limit comes from `--memory-limit`, so `memory(…)`
+works only in tests.
+
+```eye
+@memory(128 MiB)
+job thumbnails() {}
+
+test "thumbnails don't fit on a small runner" {
+  with memory(64 MiB)
+  let run = thumbnails.start()
+  expect(run.outcome() == Some(Failed(OutOfMemory)))
+}
+```
+
 **Programs a test runs.** `with fakes(process, from: "recordings/")` answers `process.run` from
 `recordings/process.json` instead of running anything, so a test of a program that runs `git` or
 a deploy script gives the same result on every machine. Each exchange's `"key"` is a command line,

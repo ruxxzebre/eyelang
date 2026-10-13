@@ -246,7 +246,7 @@ end:
 
 <<< ./code/testing/main.eye#test-deadline
 
-Two more things stand in for the world outside:
+Three more things stand in for the world outside:
 
 - **People:** `approve(text)` and `decline(text)` answer the one `approval!` whose text contains
   the given text, as the person it asks; `by:` answers as someone else, whose answer is refused.
@@ -255,6 +255,11 @@ Two more things stand in for the world outside:
 - **Events:** `contract.event.publish(...)` stands in for another service sending an event, and
   the runs it starts or wakes go before it returns. See
   [Views, events and schedules](/guide/views-events-schedules#events).
+- **The machine's memory:** a test's runner has 1 GiB, and `with memory(64 MiB)` gives it that
+  much instead, for the rest of the test. `@memory` and `reserve!` are admitted against it, so a
+  test shows a run waiting for memory, or ending as `Failed(OutOfMemory)`, on any machine. Runs
+  that wait for memory and fit under a larger limit run before the next line. See
+  [Time, secrets, tests](/reference/language/time-secrets-tests).
 
 ## Why tests can't flake
 
@@ -282,12 +287,6 @@ The same test gives the same result on every run, on any machine.
 | Test-only switches left in the program | `with` works only in tests: `with applies a test handler, such as clock(…) or fakes(…), and works only in tests` |
 | Tests that pass alone and fail together | Each test has its own store |
 
-::: info Not yet
-`with memory(...)` is in the reference's list of test handlers, but isn't defined yet
-([#134](https://github.com/ruxxzebre/eyelang/issues/134)). See
-[What runs today](/reference/status#time-secrets-tests).
-:::
-
 ## See also
 
 - [Time, secrets, tests](/reference/language/time-secrets-tests) in the reference: the rules for
@@ -296,5 +295,5 @@ The same test gives the same result on every run, on any machine.
 - [Talking to other services](/guide/contracts): contracts, keys and `Uncertain`.
 - [Jobs and waiting](/guide/jobs-and-waiting) and [Entities](/guide/entities): what the tests
   above exercise.
-- [Built-in functions](/reference/api/std/builtins#tests): `expect`, `advance`, `clock`, `approve`,
-  `decline` and `fakes`.
+- [Built-in functions](/reference/api/std/builtins#tests): `expect`, `advance`, `clock`, `memory`,
+  `approve`, `decline` and `fakes`.
