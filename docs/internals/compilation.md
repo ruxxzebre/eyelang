@@ -259,8 +259,10 @@ called through `void code(ey_fn *self, void *out, void *const *args)`, whatever 
 | `iter.c` | lazy `Iter` values (a source and its steps), cursors that pull one element at a time through them, and the walks `for` loops use |
 | `value.c` | equality, order, hashing and `Show`, exactly as the interpreter prints values |
 | `fixed.c` | the fixed-width integers' methods: wrapping, checked, bits and shifts |
-| `time.c` | instants, dates and zones; the zone tables come from Go's zone database, written into `program.c` for the zones the program names |
+| `time.c` | instants, dates and zones, and the time methods with one `strftime` formatter; the zone tables come from Go's zone database, written into `program.c` for the zones the program names |
 | `sys.c` | the `fs`, `process` and `stdio` primitives; in a test binary, relative paths are inside a directory of the test's own |
+| `random.c` | the `random` module, drawing the interpreter's numbers: Go's PCG source and `math/rand/v2`'s algorithms, from the interpreter's seed in each test |
+| `stack.c` | the program's thread, with a 256 MB stack, and the fault when a recursive function finds it full: recursion too deep, as in the interpreter, not a crash |
 
 **Counting.** Counts are not atomic, since a program runs on one thread. Since 7.5 the back end
 prints the low IR's counting (section 2, "Reference counting in the low IR"): `lir.Count` runs
@@ -294,8 +296,10 @@ A program that declares one gets an error that names what it declares and says `
 
 **Tests.** `cgen/cgen_test.go` builds the tests of every program in `testdata/programs` and
 `cgen/testdata` that `eye build` compiles (today core, traits, the lexer, a program of failing
-tests, one of in-place updates, one of slow updates, numbers, and `layouts`, which makes, takes
-apart, compares, shows, collects and updates a value of each layout), at both `-O0 -g` and `-O2`, runs them,
+tests, one of in-place updates, one of slow updates, numbers, `layouts`, which makes, takes
+apart, compares, shows, collects and updates a value of each layout, and `times`, `hosts`,
+`shows` and `recursion` for 7.9's time methods, `random` and `fs.lines`, impls of `Show` inside
+other values and recursion too deep), at both `-O0 -g` and `-O2`, runs them,
 and checks the output is `eye test`'s line for line (durations aside); a program joins as soon
 as it compiles. It also builds core for all five targets and runs a `main`. `cgen/updates_test.go`
 times the update loops that copied natively until 7.5 (an append through a helper, a map insert

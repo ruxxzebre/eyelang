@@ -1045,6 +1045,19 @@ whole-program specialisation, and jobs resuming from saved frames.
   than a crash (#128: the interpreter's `maxDepth`).
   **Done when:** the lab's six core-blocked functions compile and `testdata/programs/limits`
   gets past `Instant.date`.
+  Part A done on 2026-10-13, the time and runtime half: the time methods (`Instant.unix`,
+  `date(in:)`, `time(in:)`, `Time.next`, `Date.at`, `Date.format` and `Time.format` with one
+  formatter, `contains` on a range of times with the wrap-around rule, a range's `start` and
+  `end`; `Date.at` no longer falls into list patterns' `at`), `random.*` drawing the
+  interpreter's numbers (Go's PCG and algorithms in `cgen/runtime/random.c`, the same seed in
+  each test), `fs.lines`, a type's own `impl Show` inside other values (#127: descriptors have a
+  show entry, from the impls `lir.Program.Shows` names), and recursion too deep as a fault
+  (#128: a 256 MB stack, and a stack check in each recursive function; counting calls exactly
+  cost fib 40%, so natively the stack's size is the limit). `cgen/testdata/times`, `hosts`,
+  `shows` and `recursion` check them on both engines. `digest.irishTime`,
+  `notifier.quietUntil` and `trains.hasArrived` generate with the gate on entities lifted, and
+  `limits` stops only at its entities, jobs and `advance`. Part B (`toJson`, `Schema`/`Save`,
+  `http.get`, `regex`) is open.
 - **7.10 Crossings.** The interpreter counts the operations that would cross from compiled code
   into the runner (entity calls, steps, encodes, decodes, store reads, host calls).
   **Done when:** the digest's counts for one morning are recorded under 7.6.
