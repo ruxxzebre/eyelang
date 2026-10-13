@@ -31,7 +31,8 @@ when to do it. Section 5.1 changes no syntax and can be done now.
 | 7 | Can `?` take an argument, as `mapErr` does? | Yes, after a space: `? NotANumber(t)` or `? BadNumber`. `?(…)` is taken: it calls the unwrapped value. | 5.2 |
 | 8 | Why do we need braces around `return`? | We don't: the Blocks rule already drops them for one statement, except in `let … else`. Allow `else return …`, and make the `then` form the one-line `if`. | 4.2, 5.3 |
 | 9 | Could we write `task.send "joko", 24 h`, without `()`? | Only at the start of a statement, with the arguments running to the end of the line. Elsewhere it collides with indexing, minus, tuples, records and unit literals. Decide after P1. | 5.7 |
-| 10 | Could a leading dot mean return, with `.NewErr` for errors? | Feasible after `then`, `else` and `=>`, where it can't be read as a continued method chain. `.x` is `return x`; returning `Err` by type is possible but less clear. It competes with a `fail` keyword: pick one. | 5.8 |
+| 10 | Could a leading dot mean return, with `.NewErr` for errors? | Yes. `.x` returns `x`, a bare `.` returns nothing, and a value of the error type fails (`.Empty` is `return Err(Empty)`). The leading-dot line continuation goes, at a cost of 3 lines. | 5.8 |
+| 11 | Can we get rid of `return`? What do other languages do? | Yes, with the dot, Smalltalk's `^` in another spelling. Languages with no early exit at all (Elm, Haskell) or with callbacks (Gleam) would cost Eyelang's flat code. | 5.8 |
 
 ## 1. The short version
 
@@ -62,7 +63,8 @@ Recommended, in order:
 1. Fix the tutorial now.
 2. Decide open question 13 (one form of `if`) and one form per call.
 3. Then `?` with an argument, and `let … else` without braces.
-4. Then the pipe changes.
+4. Then return with a dot (`.x`, `.Empty`, a bare `.`), and drop the `return` keyword.
+5. Then the pipe changes.
 
 Section 6 has the plan.
 
@@ -292,6 +294,8 @@ several statements, and `eye fmt` rewrites `if c { return x }` into `if c then r
 
 ### 5.4 `fail`: say "fail" instead of `return Err(…)`
 
+**Superseded by 5.8** if the dot is accepted; kept here as the alternative in words.
+
 A contextual keyword:
 - `fail x` is `return Err(x)` in a function that returns a `Result`;
 - bare `fail` is `return None` in one that returns an `Option`.
@@ -433,55 +437,127 @@ condition. An argument that is itself a call keeps them: `log.info format(x)`.
   P1 (5.6), which removes the commonest `()` (calls without arguments) with none of these
   conflicts.
 
-### 5.8 A dot for return: `.value` and `.NewErr`
+### 5.8 Return with a dot, and no `return` keyword
 
-The owner asked for a leading dot that means "return": `.x` returns `x`, and `.NewErr` returns an
-error. The closest precedent is Smalltalk's `^x`, a one-character return. Swift's `.failure(…)`
-looks the same but only names a case; the `return` is still written.
+The owner likes a leading dot that means "return" (`.x` returns `x`; `.NewErr` fails with an
+error), and asked whether `return` could go altogether, and what other languages do.
 
-```text
-fn parseQuantity(text: String) -> Result(Int, ParseError) {
-  let t = text.trim
-  if t == "" then .Empty
-  let n = parseInt(t) ? NotANumber(t)
-  if n > 99 then .TooMany(n)
-  Ok(n)
-}
-```
+#### How Eyelang returns today
 
-**Where it can go.** A line that starts with `.` continues the line before (§4), so that a method
-chain can break before each `.`. A `.x` at the start of a line would therefore join the previous
-line. Two ways out:
+There are 155 `return`s in the repository's code (not counting `testdata/syntax` and
+`testdata/fmt`). Nearly all of them are early exits; a function's last value already needs none.
 
-- **Only in branch positions:** after `then`, `else`, `=>`, and a `let`'s `else`. Statement-level
-  returns keep `return`. This covers every guard, the place it matters, and changes no other rule.
-- **Anywhere, by dropping the leading-dot continuation.** Long chains would then break before
-  `|>`, or with the `.` at the end of the line. That costs little: only 3 lines in the repository
-  start with `.` (`docs/guide/code/contracts/main.eye:52`, and two in
-  `testdata/syntax/valid/newlines.eye`).
+| Kind | Count |
+|---|---|
+| inside one-line braces: `if c { return … }`, `let … else { return … }` | 98 |
+| at the start of a line in a block | 31 |
+| in a `match` arm, `Pat => return …` | 11 |
+| `if c then return …` | 7 |
+| `?? return …` | 1 |
 
-**What `.NewErr` returns.** Two rules are possible:
+| What is returned | Count |
+|---|---|
+| nothing (`return` in a job or a function that returns `()`) | 45 |
+| `Err(…)` | 36 |
+| `unreachable(…)`, which leaves by itself | 12 |
+| `Some(…)` / `None` | 10 / 5 |
+| `Ok(…)` | 7 |
+| another variant (`Refused`, `Stale`, `Expired`, …) | 9 |
+| a number / string / `Bool` | 3 / 3 / 2 |
 
-1. **Literal:** `.x` is `return x`, so an error is `.Err(NewErr)`. Predictable, and it saves
-   `return ` (7 characters).
-2. **By type:** in a function that returns `Result(a, e)`, `.x` is `return Err(x)` when `x` is an
-   `e` and not an `a`, and `return x` otherwise. This gives `.Empty` and `.TooMany(n)`, but a
-   reader must know the types to know whether a line fails. It is also ambiguous when `a` and
-   `e` are the same type, as in `Result(String, String)`, where the checker would have to ask
-   for `.Err(x)`.
+So a replacement must make three things short: returning nothing, failing, and returning a
+variant.
 
-**Costs.**
-- It is a symbol where principle 4 prefers a word, and it isn't universal: a Swift reader sees a
-  case name, a JS reader a property.
-- It would be a second way to write `return`, so `eye fmt` must pick one form per position.
-- One symbol would have two meanings if P6 (`users.map(.name)`) is also accepted. The positions
-  don't overlap, since a return can't appear in a lambda (G.17) and P6 is only an argument, but
-  a reader still sees the same mark.
-- `if c then .x` against `if c then fail x` (5.4) is the real choice. The dot is shorter; `fail`
-  reads as what it does, and works on `Option` (`fail` alone is `return None`).
+#### What other languages do
 
-**Verdict:** feasible, in branch positions with the literal rule. Choose between it and `fail`
-(5.4), not both. Decide on the lab rewritten with 5.2 and 5.3, writing a few handlers each way.
+| Language | How a function returns early | Fit for Eyelang |
+|---|---|---|
+| Haskell, Elm, OCaml, F# | No `return`. The value is the last expression; early exits are nested `if`/`case`, or monads (`do`, `Result.andThen`) | Too strict: 155 early exits would become nesting. Jobs wait and then leave; they need a flat early exit. |
+| Rust | Last expression, plus `return`, `?` and `let … else { return … }` | Eyelang today. This is where the ceremony comes from. |
+| Scala 3 | Last expression; `return` is discouraged, and non-local returns are deprecated | The same as Rust, with a style rule. |
+| Kotlin | `return`, plus `?: return x` on a null | Eyelang already has `?? return x`, used once. |
+| Swift | `return`, `guard c else { return }`, and implicit `return` in a one-expression body | `guard` is 5.3 and 5.5 in words, with braces kept. `.failure(…)` names a case; it doesn't return. |
+| Zig | `return`, `try` (which is Eyelang's `?`), `x catch return y`, `x orelse return y` | The early exit attaches to the expression, as 5.2 does. |
+| Odin | `or_return` after a call passes its error on; `or_else` gives a default | `?` and `??`. |
+| Ruby, Perl | Last expression, plus `return x if c` and `x or return` | A postfix guard reads backwards: the exit comes before its condition. |
+| Gleam | No `return`. Early exit comes from `use` with callbacks: `use <- bool.guard(when: n > 99, return: Error(TooMany(n)))`, `use n <- result.try(parse(t))` | It removes the keyword, but the price is continuation-passing that every reader must learn. It wouldn't sit well with jobs that wait between steps. |
+| Elixir | No `return`. `with {:ok, n} <- parse(t), true <- n <= 99 do … else … end` chains matches and conditions | The closest to "fold the checks into the bindings" (question 2), but it gives up flat, line-per-step code. |
+| Erlang | No `return`. The value is the last expression, and `.` ends a function (with `,` between expressions and `;` between clauses) | This is likely where "a dot ends with the value" comes from. The dot is a terminator, not an early exit, and Eyelang ends statements with newlines. |
+| Smalltalk | `^x` returns `x`, from anywhere in a method | **The precedent for the owner's idea:** one character, a symbol, and an early exit anywhere. |
+
+Two families fit Eyelang's flat, newline-ended style:
+- **attaching the exit to the expression** (Zig, Odin, Kotlin): 5.2's `? x`;
+- **a one-character return** (Smalltalk's `^`): the dot.
+
+They do different jobs. `? x` covers "this call failed". The dot covers "this check failed" and
+"done early", which `?` can't. The other families either nest (ML, Elixir) or thread callbacks
+(Gleam).
+
+#### The design
+
+1. **`.x` returns `x`** from the function it is written in. **A bare `.` returns `()`**: that is the
+   45 bare `return`s, mostly in jobs.
+   ```text
+   let Some(chat) = prefs.chat else .NoChat
+   if !update.private then .
+   None => .Some(fallback)
+   let n = m["a"] ?? .0
+   ```
+2. **A value of the error type fails.** In a function that returns `Result(a, e)`, `.x` where `x` is
+   an `e` returns `Err(x)`; anything else is returned as it is. So `.Empty` is `return Err(Empty)`,
+   and `.Ok(n)` and `.Err(e)` still work. When `a` and `e` are the same type, as in
+   `Result(String, String)`, the checker asks for `.Ok(x)` or `.Err(x)`. Successes are not
+   wrapped: an early success is rare (7 `return Ok`), and an unwrapped value read as `Ok` would
+   hide which way a line goes.
+3. **Where it may stand:**
+   - at the start of a statement;
+   - after `then` and `else`, including a `let`'s `else`;
+   - after `=>`;
+   - on the right of `??`.
+
+   Anywhere else, `.name` keeps or gets another meaning: a field lambda if P6 is accepted.
+4. **Not in a lambda**, as `return` today (G.17). `?` still leaves a lambda.
+5. **The leading-dot line continuation goes.** Today a line that starts with `.` continues the
+   line before, so a chain can break before each `.`. With a dot at the start of a statement
+   meaning return, that rule can't stay. It costs little: only 3 lines in the repository use it.
+   Long chains break before `|>` instead, which P2 keeps. `eye fix` rewrites the 3 lines.
+6. **`return` goes**, through `eye fix`. The 12 `return unreachable(…)` lose the `return`, since
+   `unreachable` already leaves.
+
+#### Risks
+
+- **A small mark with a big effect.** A dot can be missed in review: `if done then .` leaves the
+  function. Three mitigations:
+  - `eye fmt` puts a space before the dot;
+  - the editor colours a return-dot as a keyword;
+  - the checker already refuses code after a branch that always leaves.
+- **Readers from other languages.**
+  - A Swift reader sees `.Empty` as a case name, not an exit.
+  - A JS reader sees a property.
+  - `.0` reads like `0.0` (3 numeric returns), so `eye fmt` should write `. 0`, or the checker
+    should ask for it.
+- **Principle 4 prefers words to symbols**, unless the symbol is universal, and this one isn't.
+  The case for it is that early exits are the most frequent ceremony in the code (155 of them),
+  and `^` in Smalltalk shows a symbol works. Accepting it means writing the exception into
+  principle 4's decision row.
+- **Two meanings of `.`:** call (`x.f`), and return at the start of a statement or branch, plus
+  a third with P6. Position always tells them apart, but a reader must learn the positions.
+
+#### Against a `fail` keyword (5.4)
+
+| | dot | `fail` |
+|---|---|---|
+| `if n > 99 then …` | `.TooMany(n)` | `fail TooMany(n)` |
+| `let Some(c) = x else …` | `.NoChat` | `fail NoChat` |
+| early return of a value | `.Some(x)` | still needs `return` |
+| return nothing | `.` | still needs `return` |
+| reads as | a mark to learn | what it does |
+
+The dot covers every early exit, and so can replace `return`; `fail` covers only failures, and
+`return` would stay. If the goal is to get rid of `return`, the dot is the better fit.
+
+**Verdict: accept the dot as the one way to return early.** Do it after 5.2 (`? x`) and 5.3, with
+an `eye fix` that rewrites every `return`. Drop 5.4.
 
 ## 6. Recommendation and plan
 
@@ -495,7 +571,7 @@ line. Two ways out:
 1. Open question 13: the `then` form for one-line `if`s, with `eye fmt` rewriting.
 2. A new open question: one form per call (P1 and P3), replacing G.15's "write whichever reads
    better".
-3. A new open question: the failure path (5.2, 5.3, and later 5.4 and 5.5).
+3. A new open question: the failure path (5.2, 5.3, 5.8, and later 5.5).
 
 **Phase 2, after v0.4 or whenever the owner says, one change at a time.** Each follows CLAUDE.md:
 - `grammar.js`, `syntax/`, the corpus, valid and invalid `testdata/syntax`;
@@ -506,33 +582,42 @@ line. Two ways out:
 
 | Order | Change | Size | Why in this order |
 |---|---|---|---|
-| 1 | `let … else` without braces (5.3) | small | consistent with the Blocks rule; nothing else depends on it |
+| 1 | `let … else` without braces (5.3) | small | consistent with the Blocks rule; `else .x` needs it |
 | 2 | `eye fmt`: one form of `if` (OQ13) | small | removes the mixed guards before new forms arrive |
 | 3 | `?` with an argument (5.2) | medium | the largest gain; fills the `Option`-to-`Result` gap |
-| 4 | `()` only with arguments (P1) | medium | needed before P3 can rewrite pipes |
-| 5 | `\|>` into expressions, and `match` without a subject (P2) | medium | gives `\|>` its own job |
-| 6 | `eye fmt`: one form per call (P3) | small, but touches every file | only after 4 and 5 |
-| 7 | `counts[w] = …` (P4) | medium | separate; the ergonomics review already wants it |
-| 8 | `fail` or `.x`, `ensure`, `.field` (5.4, 5.8, 5.5, P6) | each small to medium | decide on the lab rewritten with 1 to 6 |
-| 9 | statement calls without parentheses (5.7) | medium | a change of look; decide last |
+| 4 | return with a dot; `return` and the leading-dot continuation go (5.8) | medium; `eye fix` rewrites 155 returns and 3 chains | after 1 and 3, so the rewrite lands on the shortest forms |
+| 5 | `()` only with arguments (P1) | medium | needed before P3 can rewrite pipes |
+| 6 | `\|>` into expressions, and `match` without a subject (P2) | medium | gives `\|>` its own job, multi-line chains included |
+| 7 | `eye fmt`: one form per call (P3) | small, but touches every file | only after 5 and 6 |
+| 8 | `counts[w] = …` (P4) | medium | separate; the ergonomics review already wants it |
+| 9 | `ensure`, `.field` (5.5, P6) | each small to medium | decide on the lab rewritten with 1 to 7 |
+| 10 | statement calls without parentheses (5.7) | medium | a change of look; decide last |
 
-After steps 1 to 6, `parseQuantity` reads:
+After steps 1 to 7, `parseQuantity` reads:
 
 ```text
 fn parseQuantity(text: String) -> Result(Int, ParseError) {
   let t = text.trim
-  if t == "" then return Err(Empty)
+  if t == "" then .Empty
   let n = parseInt(t) ? NotANumber(t)
-  if n > 99 then Err(TooMany(n)) else Ok(n)
+  if n > 99 then .TooMany(n)
+  Ok(n)
 }
 ```
 
-If 5.4 and 5.5 are accepted later as well, it reads:
+and a job's guards read:
+
+```text
+let Some(chat) = prefs.chat else .NoChat
+if !update.private then .
+```
+
+If `ensure` (5.5) is accepted later as well:
 
 ```text
 fn parseQuantity(text: String) -> Result(Int, ParseError) {
-  let t = text.trim ensure t != "" else Empty
-  let n = parseInt(t) ? NotANumber(t) ensure n <= 99 else TooMany(n)
+  let t = text.trim ensure t != "" else .Empty
+  let n = parseInt(t) ? NotANumber(t) ensure n <= 99 else .TooMany(n)
   Ok(n)
 }
 ```
