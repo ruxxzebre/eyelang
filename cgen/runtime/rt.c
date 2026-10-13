@@ -650,14 +650,22 @@ static int run_tests(const ey_program *p, int argc, char **argv) {
 	return failed > 0 ? 1 : 0;
 }
 
+static const ey_program *g_prog;
+
+static int run_program(void *arg) {
+	(void)arg;
+	if (!g_prog->main) return run_tests(g_prog, g_argc, g_argv);
+	g_prog->main();
+	fflush(stdout);
+	return 0;
+}
+
 int ey_start(const ey_program *p, int argc, char **argv) {
 	g_argc = argc;
 	g_argv = argv;
+	g_prog = p;
 	ey_zones(p->zones, p->nzones);
 	const char *count = getenv("EYE_ALLOCS");
 	if (count && *count) atexit(report_allocs);
-	if (!p->main) return run_tests(p, argc, argv);
-	p->main();
-	fflush(stdout);
-	return 0;
+	return ey_on_big_stack(run_program, NULL);
 }

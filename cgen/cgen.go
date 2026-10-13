@@ -81,6 +81,8 @@ type gen struct {
 	structList []*cstruct
 	// the impls of Show the derived Show calls, by lir.TypeKey (shows.go)
 	shown map[string]*lir.Func
+	// the functions that can call themselves, which count their calls (depth.go)
+	recursive map[*lir.Func]bool
 }
 
 type testRoot struct {
@@ -126,6 +128,7 @@ func Generate(prog *ir.Program, low *lir.Program, opts Options) ([]File, error) 
 		return nil, joinErrors(g.errs)
 	}
 	g.walk()
+	g.findRecursive()
 	for i, f := range g.funcs {
 		g.names[f] = fmt.Sprintf("ey_f%d_%s", i, ident(f.Name, 40))
 	}

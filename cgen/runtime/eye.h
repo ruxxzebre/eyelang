@@ -334,6 +334,16 @@ _Noreturn void ey_fault(const char *at, const char *msg);
 _Noreturn void ey_faultf(const char *at, const char *fmt, ...);
 _Noreturn void ey_unsupported(const char *at, const char *what);
 
+/* Recursion too deep (stack.c): the program runs on a large stack
+ * (ey_on_big_stack), and a function that can call itself checks at its
+ * start that the stack has room left; a call that finds none is a fault
+ * with the interpreter's message, not a crash. */
+extern char *ey_stack_floor;
+_Noreturn void ey_too_deep(const char *at, const char *name);
+int ey_on_big_stack(int (*run)(void *), void *arg);
+#define EY_STACK_CHECK(at, name) \
+	if (__builtin_expect((char *)__builtin_frame_address(0) < ey_stack_floor, 0)) ey_too_deep(at, name)
+
 /* ---------------------------------------------------------------- scalars */
 
 static inline ey_v ey_f2v(double d) {

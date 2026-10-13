@@ -84,6 +84,7 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 	if hasDefaults(f) {
 		e.b.WriteString("\t(void)absent;\n")
 	}
+	e.checkDepth()
 	for _, b := range f.Blocks {
 		fmt.Fprintf(&e.b, "b%d:;\n", b.ID)
 		for _, in := range b.Instrs {
