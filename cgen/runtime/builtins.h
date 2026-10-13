@@ -8,6 +8,7 @@
 #define EYE_BUILTINS_H
 
 #include "eye.h"
+#include "data.h"
 
 /* strings */
 ey_v eyb_str_size(ey_v s);

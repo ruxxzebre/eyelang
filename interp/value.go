@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"eyelang/ir"
+	"eyelang/lir"
 )
 
 // growth is how much of a backing array the lists that share it use.
@@ -212,6 +213,21 @@ func newShelf(old *shelf, keys []Value) *shelf {
 		}
 	}
 	return sh
+}
+
+// emptyOf is `{}` of type t: an empty map or set when the checker knows it
+// is one, so that it is saved and written as JSON as one (an object, not an
+// array), as compiled code does; Empty when the type isn't settled.
+func emptyOf(t ir.Ty) Value {
+	if c, ok := lir.Resolve(t).(*ir.TCon); ok && c.Decl == nil {
+		switch c.Name {
+		case "Map":
+			return &Map{}
+		case "Set":
+			return &Set{}
+		}
+	}
+	return Empty{}
 }
 
 func newSet(elems []Value) *Set {

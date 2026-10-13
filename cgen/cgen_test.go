@@ -162,6 +162,7 @@ func compilable(t *testing.T) map[string]*ir.Program {
 		"testdata/hello",
 		"testdata/hosts",
 		"testdata/inplace",
+		"testdata/json",
 		"testdata/numbers",
 		"testdata/recursion",
 		"testdata/shows",

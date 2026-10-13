@@ -590,7 +590,7 @@ func (in *Interp) evalMore(f *frame, e ir.Expr) Value {
 	case *ir.InZone:
 		return in.inZone(f, x)
 	case *ir.EmptyBraces:
-		return Empty{}
+		return emptyOf(x.Ty())
 	case *ir.Index:
 		return in.index(in.eval(f, x.Value), in.eval(f, x.Index), x.Pos)
 	case *ir.Unary:

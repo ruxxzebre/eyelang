@@ -154,6 +154,12 @@ func (e *fn) builtin(in *lir.Builtin) {
 	if e.timeBuiltin(in) {
 		return
 	}
+	// Values at the boundary (7.9): JSON (runtime/json.c).
+	switch name {
+	case "toJson":
+		set(fmt.Sprintf("ey_to_json(%s, %s, %s)", e.at, e.g.desc(arg(0).Ty), p(0)))
+		return
+	}
 	switch name {
 	case "expect":
 		switch len(in.Args) {
