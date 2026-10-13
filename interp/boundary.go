@@ -1,6 +1,7 @@
 package interp
 
 import (
+	"errors"
 	"fmt"
 
 	"eyelang/ir"
@@ -36,4 +37,46 @@ func (in *Interp) Global(name string) (v Value, err error) {
 		return in.global(g, ir.Pos{}), nil
 	}
 	return nil, fmt.Errorf("the program has no let %s", name)
+}
+
+
+// HostCall answers host function name for compiled code (cgen's
+// runtime/host.c): args is the saved record of the arguments the call
+// gives, by parameter name, and the answer is the saved result. Arguments
+// left out take their defaults, as in a call the interpreter makes. A fault
+// in the function is an error with the fault's message.
+func (in *Interp) HostCall(name string, args []byte) (result []byte, err error) {
+	var fn *ir.Func
+	for _, m := range in.prog.Modules {
+		for _, f := range m.Funcs {
+			if f.Host == name {
+				fn = f
+			}
+		}
+	}
+	if fn == nil {
+		return nil, fmt.Errorf("the program declares no host function %s", name)
+	}
+	v, err := in.Decode(args)
+	if err != nil {
+		return nil, err
+	}
+	rec, ok := v.(*Record)
+	if !ok {
+		return nil, fmt.Errorf("the arguments of %s aren't a record", name)
+	}
+	vals := make([]argVal, len(rec.Names))
+	for i, n := range rec.Names {
+		vals[i] = argVal{name: n, v: rec.Vals[i]}
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			f, ok := r.(*Fault)
+			if !ok {
+				panic(r)
+			}
+			result, err = nil, errors.New(f.Msg)
+		}
+	}()
+	return in.encode(in.callHost(fn, vals, fn.Pos), fn.Pos), nil
 }

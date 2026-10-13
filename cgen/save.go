@@ -71,7 +71,9 @@ func (g *gen) savedC() string {
 	if len(table) == 0 {
 		b.WriteString("\t{NULL, NULL, NULL, NULL},\n")
 	}
-	fmt.Fprintf(&b, "};\nconst int ey_nsaved = %d;\n\n", len(table))
+	fmt.Fprintf(&b, "};\nconst int ey_nsaved = %d;\n", len(table))
+	// A test binary may be answered over EYE_HOST_FDS (runtime/host.c).
+	fmt.Fprintf(&b, "const bool ey_host_fds = %v;\n\n", g.opts.Tests)
 	return b.String()
 }
 

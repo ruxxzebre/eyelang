@@ -21,7 +21,10 @@ func counts(t *testing.T, exe string, args ...string) (allocs, frees, faulted ui
 	cmd.Env = append(os.Environ(), "EYE_ALLOCS=1")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
+	hosts := serveHosts(t, cmd, exe)
+	err := cmd.Run()
+	hosts()
+	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
 			t.Fatal(err)

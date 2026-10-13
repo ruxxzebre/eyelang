@@ -95,4 +95,20 @@ typedef struct ey_probe {
 } ey_probe;
 void ey_save_check(const ey_probe *ps, int n);
 
+/* ---------------------------------------------------------------- host calls (host.c) */
+
+/* What answers a host function compiled code doesn't run itself: given its
+ * name and the saved record of the arguments the call gives, it appends the
+ * saved result to answer and gives true, or appends why it faulted to err
+ * and gives false. The Go runner sets it (7.6). */
+typedef bool (*ey_host_fn)(const char *name, const char *args, int64_t n, ey_buf *answer, ey_buf *err);
+void ey_set_host(ey_host_fn f);
+/* ey_host_call calls host function name with args, the saved record of the
+ * arguments the call gives, which it frees, and reads its result into out
+ * with dec. A fault in the function, an answer of another type, or no
+ * runner to answer, is a fault at at. */
+void ey_host_call(const char *at, const char *name, ey_buf *args, ey_decoder dec, void *out);
+/* whether this binary may be answered over EYE_HOST_FDS: a test binary */
+extern const bool ey_host_fds;
+
 #endif

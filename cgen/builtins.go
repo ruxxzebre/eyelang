@@ -788,8 +788,38 @@ func (e *fn) host(x *lir.Runtime, f *ir.Func) {
 		e.printf(" eyb_process_run(%s, %s, %s, %s, %s, %s, %s);", v("program"), list, input, dir, optStr, out, rt)
 		e.printf(" ey_drop(l_); ey_drop_at(%s, &d_); }", optStr)
 	default:
+		if runnerHosts[f.Host] {
+			e.runnerHost(x, f)
+			return
+		}
 		e.unsupported("the host function " + f.Host)
 	}
+}
+
+// runnerHosts are the host functions the Go runner answers for compiled
+// code (runtime/host.c): those that need what the C runtime hasn't, an
+// HTTP client with TLS.
+var runnerHosts = map[string]bool{"http.get": true}
+
+// runnerHost calls a host function the runner answers: the arguments the
+// call gives go as the saved record of them by parameter name, and the
+// runner fills in the rest, as the interpreter binds a call; the answer is
+// the saved result.
+func (e *fn) runnerHost(x *lir.Runtime, f *ir.Func) {
+	e.printf("{ ey_buf q_ = {0}; ey_buf_char(&q_, 'R'); eys_uvarint(&q_, %d);", len(x.Args))
+	next := 0
+	for i, a := range x.Args {
+		name := ""
+		if i < len(x.Names) {
+			name = x.Names[i]
+		}
+		if name == "" && next < len(f.Params) {
+			name = f.Params[next].Name
+			next++
+		}
+		e.printf(" eys_text(&q_, %s, %d); %s(&q_, &%s);", cstring(name), len(name), e.g.saver(a.Ty).enc(), e.v(a))
+	}
+	e.printf(" ey_host_call(%s, %s, &q_, %s, &%s); }", e.at, cstring(f.Host), e.g.saver(x.Dst.Ty).dec(), e.v(x.Dst))
 }
 
 // wrapper adds a closure's code, which calls what body writes with the

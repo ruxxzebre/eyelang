@@ -50,6 +50,7 @@ func build(t *testing.T, prog *ir.Program, target string, tests, debug bool) str
 	if strings.HasPrefix(target, "windows/") {
 		out += ".exe"
 	}
+	served.Store(out, prog)
 	return out
 }
 
@@ -98,10 +99,15 @@ func native(t *testing.T, exe string) string {
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	done := make(chan error, 1)
+	hosts := serveHosts(t, cmd, exe)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	go func() { done <- cmd.Wait() }()
+	go func() {
+		err := cmd.Wait()
+		hosts()
+		done <- err
+	}()
 	select {
 	case err := <-done:
 		var exit *exec.ExitError
@@ -161,6 +167,7 @@ func compilable(t *testing.T) map[string]*ir.Program {
 		"testdata/failures",
 		"testdata/hello",
 		"testdata/hosts",
+		"testdata/hostcalls",
 		"testdata/inplace",
 		"testdata/json",
 		"testdata/numbers",
