@@ -1,0 +1,60 @@
+name: Docs site
+
+# Builds the docs site, with the playground's engine, on each push to dev and
+# publishes it as the only commit of the docs-site branch, with the commit it
+# was built from in .source. eye.chaiky.dev polls that branch and switches to
+# each new build; no secret of the lab's is needed here.
+
+on:
+  push:
+    branches: ["dev"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# A newer push replaces a build still running: only the latest one is served.
+concurrency:
+  group: docs-site
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: github.repository == 'ruxxzebre/eyelang'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Build
+        run: task docs
+
+      # One commit with no parent, pushed over the last: the branch never
+      # grows a history of builds.
+      - name: Publish to docs-site
+        working-directory: docs/.vitepress/dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -f index.html
+          echo "$GITHUB_SHA" > .source
+          git init -q -b docs-site
+          git add -A
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "Docs site built from $GITHUB_SHA"
+          git push -fq "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" docs-site
