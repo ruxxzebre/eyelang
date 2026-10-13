@@ -30,6 +30,15 @@ type Options struct {
 	// Tests makes a binary that runs the program's own test blocks, as
 	// `eye test` does, instead of its main.
 	Tests bool
+	// Saved are the types the runner may hand to compiled code or take
+	// from it as saved bytes (ROADMAP 7.6): program.c lists each in
+	// ey_saved_types, by SavedName, with its encoder and decoder.
+	Saved []ir.Ty
+	// SaveCheck makes a binary that checks saving instead of running main
+	// or the tests: it saves each module-level let of the program's root
+	// module, or reads saved bytes as one (runtime/save.c,
+	// ey_save_check). cgen's tests compare it with the interpreter.
+	SaveCheck bool
 }
 
 // File is one generated C file.
@@ -83,6 +92,11 @@ type gen struct {
 	shown map[string]*lir.Func
 	// the functions that can call themselves, which count their calls (depth.go)
 	recursive map[*lir.Func]bool
+	// saved values' encoders and decoders, by lir.TypeKey (save.go), and
+	// the lets a binary that checks saving saves
+	savers   map[string]*saver
+	saveList []*saver
+	probes   []probeRoot
 }
 
 type testRoot struct {
@@ -108,7 +122,7 @@ func Generate(prog *ir.Program, low *lir.Program, opts Options) ([]File, error) 
 		reach: map[*lir.Func]bool{}, names: map[*lir.Func]string{},
 		descs: map[string]*desc{}, closDesc: map[*lir.Func]string{}, dynTab: map[*lir.DynTable]string{},
 		tramps: map[*lir.Func]bool{}, methods: map[*lir.Func]bool{}, wrapKeys: map[string]string{},
-		zones: map[string]bool{}, structs: map[string]*cstruct{},
+		zones: map[string]bool{}, structs: map[string]*cstruct{}, savers: map[string]*saver{},
 	}
 	g.unsupportedDecls()
 	if len(g.errs) > 0 {
@@ -221,6 +235,16 @@ func (g *gen) roots() {
 			bySrc[f.Src] = f
 		}
 	}
+	if g.opts.SaveCheck {
+		for _, f := range g.low.Funcs {
+			for _, gl := range g.prog.Root.Globals {
+				if f.Kind == lir.KindGlobal && f.Src == gl.Init {
+					g.probes = append(g.probes, probeRoot{gl.Name, f})
+				}
+			}
+		}
+		return
+	}
 	if g.opts.Tests {
 		for _, m := range g.prog.Modules {
 			if !g.own(m) {
@@ -268,6 +292,9 @@ func (g *gen) walk() {
 	add(g.low.MainErrShow)
 	if c, ok := rep(resultOf(g.main)).(*ir.TCon); ok && g.low.MainErrShow == nil && c.Name == "Result" && len(c.Args) == 2 {
 		g.addShows(c.Args[1], add)
+	}
+	for _, p := range g.probes {
+		add(p.fn)
 	}
 	for len(queue) > 0 {
 		f := queue[0]
@@ -625,6 +652,7 @@ func (g *gen) programH() string {
 	for _, p := range g.wrapProtos {
 		b.WriteString(p)
 	}
+	b.WriteString(g.saveProtos())
 	b.WriteString("#endif\n")
 	return b.String()
 }
@@ -650,6 +678,7 @@ func (g *gen) programC() string {
 	// name more.
 	zones := g.zoneTables()
 	entry := g.entry()
+	saved := g.savedC()
 	for _, f := range g.closures() {
 		n := captures(f)
 		cl := g.closureStruct(f)
@@ -701,6 +730,7 @@ func (g *gen) programC() string {
 	}
 	b.WriteString(defs.String())
 	b.WriteString("\n")
+	b.WriteString(saved)
 	for _, w := range g.wrappers {
 		b.WriteString(w)
 	}
@@ -712,7 +742,9 @@ func (g *gen) programC() string {
 // entry writes the tests' table or main's wrapper, and main itself.
 func (g *gen) entry() string {
 	var b strings.Builder
-	if g.opts.Tests {
+	if g.opts.SaveCheck {
+		b.WriteString(g.probeEntry())
+	} else if g.opts.Tests {
 		for i, t := range g.tests {
 			fmt.Fprintf(&b, "static void ey_test%d(void) { (void)%s(); }\n", i, g.names[t.fn])
 		}

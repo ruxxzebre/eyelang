@@ -167,6 +167,7 @@ func compilable(t *testing.T) map[string]*ir.Program {
 		"testdata/recursion",
 		"testdata/shows",
 		"testdata/times",
+		"testdata/saved",
 		"testdata/updates",
 	} {
 		if out[must] == nil {
