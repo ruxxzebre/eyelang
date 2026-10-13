@@ -51,13 +51,13 @@ session), the digest in the homelab, and findings that have no issue yet.
 language, its tools and its bugs still change; once it is, every session works on compiling and
 the native port, and nothing else starts. It is reached when all of these hold:
 
-- [x] #131: `NaN == NaN` stays true, written into SPECS as the one exception to IEEE 754, and
+- [x] NaN: `NaN == NaN` stays true, written into SPECS as the one exception to IEEE 754, and
   `Show` writes `NaN`, `+Inf` and `-Inf` (owner's choice b).
-- [x] #134: `with memory(…)` in tests is specified and built: a test sets the memory runs are
+- [x] Memory in tests: `with memory(…)` in tests is specified and built: a test sets the memory runs are
   admitted against, so it can show a run waiting for memory or failing with `OutOfMemory`.
-- [x] #135: an event of another service's contract reaches `eye run` as a `POST` to the program's
+- [x] Events between programs: an event of another service's contract reaches `eye run` as a `POST` to the program's
   port, under the contract's `@auth`, as served operations already do (owner's choice a).
-- [x] #136: `eye runs --retry ID` starts a failed run again, replaying the steps it recorded,
+- [x] Retrying a failed run: `eye runs --retry ID` starts a failed run again, replaying the steps it recorded,
   keeping its id and key, for faults a retry can cure (unreachable services, timeouts), not for
   `Killed` or `unreachable`.
 - [ ] No open issue of the audit's kind: a program `eye check` accepts that fails at run time.
@@ -65,8 +65,10 @@ the native port, and nothing else starts. It is reached when all of these hold:
   #141 (tests deny the network, decided as open question 45).
 - [ ] The rest of 7.13: maps specialised per key type (1.62× Go's time today) and strings and
   `Bytes` as views. It starts once 7.9 is merged, since both change the C runtime's strings.
-- [ ] 7.9 (core gaps in C) and 7.6's groundwork (the pinned Go toolchain and the B′ link path)
-  are merged, so the native work that follows has the runtime and the build it needs.
+- [x] 7.9's core gaps in C (time, `Time.format`, random, `fs.lines`, `Show` inside values,
+  recursion depth, `toJson`, saved types, `http.get` and regex as host calls) and 7.6's
+  groundwork (the pinned Go toolchain, the B′ link path, the runner's side of hosting) are
+  merged.
 
 Parked until v0.4 is out, so they don't compete with it: the package manager (P0), open
 question 41 (runs pinned to the code they started on), the rest of Phase 6 that needs the homelab
