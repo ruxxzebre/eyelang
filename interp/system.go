@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -26,26 +25,25 @@ func init() {
 	hostFuncs["fs.readBytes"] = hostReadBytes
 	hostFuncs["fs.lines"] = hostLines
 	hostFuncs["fs.writeBytes"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
-		return in.fsWrite(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, at)
+		return in.fsWrite(p, false, at)
 	}
 	hostFuncs["fs.writeText"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
-		return in.fsWrite(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, at)
+		return in.fsWrite(p, false, at)
 	}
 	hostFuncs["fs.appendText"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
-		return in.fsWrite(p, os.O_WRONLY|os.O_CREATE|os.O_APPEND, at)
+		return in.fsWrite(p, true, at)
 	}
 	hostFuncs["fs.exists"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
-		_, err := os.Stat(in.path(p["path"], at))
-		return err == nil
+		return in.pathExists(p["path"], at)
 	}
 	hostFuncs["fs.list"] = hostList
 	hostFuncs["fs.makeDir"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
 		path := show(p["path"])
-		return in.fsResult(path, os.MkdirAll(in.path(p["path"], at), 0o755), ir.Unit{}, at)
+		return in.fsResult(path, in.makeDirPath(p["path"], at), ir.Unit{}, at)
 	}
 	hostFuncs["fs.remove"] = func(in *Interp, p map[string]Value, at ir.Pos) Value {
 		path := show(p["path"])
-		return in.fsResult(path, os.Remove(in.path(p["path"], at)), ir.Unit{}, at)
+		return in.fsResult(path, in.removePath(p["path"], at), ir.Unit{}, at)
 	}
 	hostFuncs["process.run"] = hostRun
 	hostFuncs["random.int"] = hostRandomInt
@@ -83,11 +81,18 @@ func (in *Interp) workDir(at ir.Pos) string {
 	return rt.dir
 }
 
-// path resolves a path the program gave.
+// path resolves a path the program gave. With a file system held in memory,
+// a relative path is below its directory.
 func (in *Interp) path(v Value, at ir.Pos) string {
 	p, ok := v.(string)
 	if !ok {
 		in.faultf(at, "a path is a String, and this is %s", kindName(v))
+	}
+	if m := in.rt.memfs; m != nil {
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(m.dir, p)
+		}
+		return filepath.Clean(p)
 	}
 	if dir := in.workDir(at); dir != "" && !filepath.IsAbs(p) {
 		return filepath.Join(dir, p)
@@ -133,9 +138,7 @@ func (in *Interp) fsResult(path string, err error, ok Value, at ir.Pos) Value {
 
 func hostReadBytes(in *Interp, p map[string]Value, at ir.Pos) Value {
 	path := show(p["path"])
-	var data []byte
-	var err error
-	in.blocking(func(context.Context) { data, err = os.ReadFile(in.path(p["path"], at)) })
+	data, err := in.readPath(p["path"], at)
 	if err != nil {
 		return in.errV(in.fsError(path, err, at))
 	}
@@ -163,9 +166,7 @@ func hostLines(in *Interp, p map[string]Value, at ir.Pos) Value {
 // to return instead.
 func (in *Interp) readText(p map[string]Value, at ir.Pos) (string, Value) {
 	path := show(p["path"])
-	var data []byte
-	var err error
-	in.blocking(func(context.Context) { data, err = os.ReadFile(in.path(p["path"], at)) })
+	data, err := in.readPath(p["path"], at)
 	if err != nil {
 		return "", in.errV(in.fsError(path, err, at))
 	}
@@ -175,38 +176,22 @@ func (in *Interp) readText(p map[string]Value, at ir.Pos) (string, Value) {
 	return string(data), nil
 }
 
-func (in *Interp) fsWrite(p map[string]Value, flags int, at ir.Pos) Value {
+func (in *Interp) fsWrite(p map[string]Value, appending bool, at ir.Pos) Value {
 	path := show(p["path"])
 	text, _ := p["text"].(string)
 	if b, ok := p["bytes"]; ok {
 		text = string(in.byteSlice(b, at))
 	}
-	var err error
-	in.blocking(func(context.Context) {
-		var f *os.File
-		f, err = os.OpenFile(in.path(p["path"], at), flags, 0o644)
-		if err != nil {
-			return
-		}
-		_, err = f.WriteString(text)
-		if cerr := f.Close(); err == nil {
-			err = cerr
-		}
-	})
+	err := in.writePath(p["path"], []byte(text), appending, at)
 	return in.fsResult(path, err, ir.Unit{}, at)
 }
 
 func hostList(in *Interp, p map[string]Value, at ir.Pos) Value {
 	path := show(p["dir"])
-	entries, err := os.ReadDir(in.path(p["dir"], at))
+	names, err := in.listPath(p["dir"], at)
 	if err != nil {
 		return in.errV(in.fsError(path, err, at))
 	}
-	names := make([]string, len(entries))
-	for i, e := range entries {
-		names[i] = e.Name()
-	}
-	sort.Strings(names)
 	return in.ok(&List{Elems: toValues(names)})
 }
 

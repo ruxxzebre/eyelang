@@ -41,6 +41,9 @@ type TestOptions struct {
 	// place of the disk's: those of a program held in memory, as in the
 	// online playground.
 	Files map[string][]byte
+	// MemoryFS gives each test a file system held in memory, empty, in place
+	// of a directory of its own on disk: where a browser has no disk.
+	MemoryFS bool
 	// Native, when set, runs the tests, entity methods and jobs it hosts as
 	// compiled code (native.go).
 	Native Native

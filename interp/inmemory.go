@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -69,6 +70,30 @@ func (w *replyRecorder) Write(b []byte) (int, error) {
 	return w.body.Write(b)
 }
 
+// replayRecordings answers the calls of the modules in dirs from their recordings
+// (RunOptions.Replay), each said on w, in the order of their paths.
+func (in *Interp) replayRecordings(dirs map[string]string, w io.Writer) {
+	paths := make([]string, 0, len(dirs))
+	for p := range dirs {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		var m *ir.Module
+		for _, mod := range in.prog.Modules {
+			if mod.Path == path {
+				m = mod
+			}
+		}
+		if m == nil {
+			continue // the program doesn't use it
+		}
+		(&fakesHandler{modules: []*ir.Module{m}, dir: dirs[path]}).apply(in, ir.Pos{})
+		fmt.Fprintf(w, "eye run: %s answers from the recordings in %s/, as in a test\n", path, dirs[path])
+		in.rt.replayLog = w
+	}
+}
+
 // skipAhead is tryAgain for a service in this process: waiting on the
 // system clock can't help it, so the clock moves as the wait would have.
 func (rt *runtime) skipAhead(try int) bool {
@@ -101,6 +126,9 @@ func StartService(prog *ir.Program, opts RunOptions) (*Service, error) {
 	in := New(prog, opts.Stdout, opts.Stderr)
 	in.files, in.hosts = opts.Files, opts.Hosts
 	in.rt.services, in.rt.secrets = opts.Services, opts.Secrets
+	if opts.FS != nil {
+		in.rt.memfs = newMemFS(prog.Root.Dir, opts.FS)
+	}
 	in.rt.real = false
 	in.rt.now = time.Now()
 	if !opts.Virtual.Start.IsZero() {

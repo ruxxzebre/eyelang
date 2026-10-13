@@ -3,6 +3,7 @@ package interp
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"math/rand/v2"
 	"net/http"
 	"sort"
@@ -51,6 +52,12 @@ type runtime struct {
 	// the environment's: what RunOptions.Services and Secrets hold.
 	services map[string]http.Handler
 	secrets  map[string]string
+	// memfs, when set, is the file system the fs module reads and writes,
+	// held in memory (memfs.go).
+	memfs *memFS
+	// replayLog, when set, is where a run that replays recordings
+	// (RunOptions.Replay) writes each call a recording answered.
+	replayLog io.Writer
 	// fastRetries makes retries of unreachable services immediate, in tests,
 	// and beforeRetry, when set, is called before each wait.
 	fastRetries bool

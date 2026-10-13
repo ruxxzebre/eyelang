@@ -40,6 +40,11 @@ type RunOptions struct {
 	// Files holds the text of the recordings the fakes read, by path, in
 	// place of the disk's, as TestOptions.Files does.
 	Files map[string][]byte
+	// FS, when set, is the file system the fs module reads and writes, held
+	// in memory: files by absolute path, a relative path being below the
+	// program's directory. What the program writes stays in memory. The
+	// online playground gives it the page's files.
+	FS map[string][]byte
 	// Services answer the calls to contracts in this process, by the path of
 	// the module that declares the contract (Service.Handlers), in place of
 	// the address the environment gives. Secrets are given in place of the
@@ -55,6 +60,12 @@ type RunOptions struct {
 	// that takes the events of other services' contracts, before main
 	// runs, in place of a port: what another program's Subscribers take.
 	Accept func(events http.Handler)
+	// Replay answers the calls of these modules from their recordings, as
+	// `with fakes(m, from: dir)` does in a test: by module path, the
+	// directory, relative to the program's, where m's recordings are. A
+	// contract module, ai, http or process may be replayed. The online
+	// playground replays a contract that no program in the page serves.
+	Replay map[string]string
 	// Virtual, when set, runs the program on a clock that skips ahead
 	// instead of waiting, as the online playground does: nothing listens on
 	// a port, and once main has run, sleeping runs wake and schedules fire
@@ -71,10 +82,17 @@ type VirtualClock struct {
 	Start time.Time
 	// Until is how far the clock may move from Start, and Wakes how many
 	// runs may wake and schedules fire; Run stops at whichever comes first.
-	// Zero means a day and a thousand.
+	// Zero means a year and a thousand. Schedules fire while a run waits,
+	// and for a day past the last run that woke (or past the start), so a
+	// run that waits three days still wakes, and a program whose runs are
+	// done doesn't fire its schedules for the rest of the year.
 	Until time.Duration
 	Wakes int
 }
+
+// scheduleWindow is how long schedules go on firing on a virtual clock once
+// no run waits any more.
+const scheduleWindow = 24 * time.Hour
 
 // runMain calls main, and reports whether ctx ended first: a signal stops
 // what main waits for (a timer, a service, its tasks, a channel), which
@@ -112,6 +130,9 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 	in := New(prog, opts.Stdout, opts.Stderr)
 	in.files = opts.Files
 	in.rt.services, in.rt.secrets = opts.Services, opts.Secrets
+	if opts.FS != nil {
+		in.rt.memfs = newMemFS(prog.Root.Dir, opts.FS)
+	}
 	if c := opts.Crossings; c != nil {
 		c.enter("the runner")
 		in.rt.crossings = c
@@ -174,6 +195,7 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 		return 1
 	}
 	in.rt.restore()
+	in.replayRecordings(opts.Replay, stderr)
 	runsBefore := in.rt.nextRun
 	served := servedContracts(prog)
 	taken, unguarded := takenEvents(prog)
@@ -288,12 +310,13 @@ func Run(ctx context.Context, prog *ir.Program, opts RunOptions) (code int) {
 
 // runVirtual is Run's loop on a virtual clock: it wakes sleeping runs and
 // fires schedules in time order without waiting, until nothing is left, the
-// clock has moved v.Until, or v.Wakes have happened. It says where it stopped
-// when something was still to come.
+// clock has moved v.Until, v.Wakes have happened, or only schedules are left
+// a day past the last run that woke. It says where it stopped when something
+// was still to come.
 func (rt *runtime) runVirtual(v VirtualClock, report func(), stderr io.Writer) {
 	until, wakes := v.Until, v.Wakes
 	if until <= 0 {
-		until = 24 * time.Hour
+		until = 365 * 24 * time.Hour
 	}
 	if wakes <= 0 {
 		wakes = 1000
@@ -303,19 +326,39 @@ func (rt *runtime) runVirtual(v VirtualClock, report func(), stderr io.Writer) {
 	rt.schedules() // schedules count from the clock as it was before it moved
 	rt.drain()
 	report()
+	// Runs that wait carry the clock forward; schedules fire while a run
+	// waits, and for a day past the last one that woke.
+	lastRun := start
 	n := 0
-	for ; n < wakes && rt.wakeNext(target); n++ {
+	why := fmt.Sprintf("%d wakes", wakes)
+loop:
+	for ; n < wakes; n++ {
+		_, wakeAt, sleeping := rt.index.firstToWake()
+		s, firing := rt.nextFiring()
+		wake := time.Unix(0, wakeAt)
+		runDue := sleeping && !wake.After(target)
+		fireDue := s != nil && !firing.After(target) && (sleeping || !firing.After(lastRun.Add(scheduleWindow)))
+		var next time.Time
+		switch {
+		case runDue && (!fireDue || !firing.Before(wake)):
+			next, lastRun = wake, wake
+		case fireDue:
+			next = firing
+		case sleeping || s != nil && firing.After(target):
+			why = "the clock moved " + until.String()
+			rt.now = target
+			break loop
+		default:
+			why = "a day of schedules past the last run"
+			break loop
+		}
+		rt.wakeNext(next)
 		report()
 	}
 	_, wakeAt, sleeping := rt.index.firstToWake()
 	s, _ := rt.nextFiring()
 	if !sleeping && s == nil {
 		return
-	}
-	why := fmt.Sprintf("%d wakes", wakes)
-	if n < wakes {
-		why = "the clock moved " + until.String()
-		rt.now = target
 	}
 	var left []string
 	if sleeping {

@@ -304,6 +304,16 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 			if v, ok := e.result.(*Variant); ok && v.V.Name == "Uncertain" && len(v.Vals) == 1 {
 				rt.lost(keyOf(v.Vals[0]), sentCommand{op, args, named})
 			}
+			if w := rt.replayLog; w != nil {
+				// A run that replays recordings (RunOptions.Replay) says
+				// what each call got, as a service it calls would show.
+				with := ""
+				if key != "" {
+					with = fmt.Sprintf(" with key %q", key)
+				}
+				fmt.Fprintf(w, "%s.%s%s at %s → %s, from %s\n", mod, op.Name, with,
+					rt.now.Format("2006-01-02 15:04"), show(e.result), filepath.Base(fs.path))
+			}
 			return e.result
 		}
 	}
