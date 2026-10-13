@@ -98,7 +98,7 @@ Go on every benchmark: maps per key type, strings and `Bytes` as views, the rest
    pods labelled `eyelang.module`; the homelab names the namespace with `--namespace`. Since 6.13, `eye run` serves a contract over HTTP on its `@port`, which 6.4's round trip
    and the online playground (open question 34) build on. The phase's exit test is 6.6 (Notify,
    with the user, in the homelab repository) and 6.8 (agents, after 6.7).
-5. Self-hosting's early start (#82): S.1 (#83) is done: Eyelang's lexer in Eyelang
+5. Self-hosting's early start (#82): S.1 is done: Eyelang's lexer in Eyelang
    (`testdata/programs/lexer`) gives the same 24,959 tokens as `syntax/`'s on the conformance
    suite and the corpus, compiles natively, and is the suite's real-world benchmark. What it
    found awkward is open question 43.

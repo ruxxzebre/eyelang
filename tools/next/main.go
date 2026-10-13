@@ -175,15 +175,29 @@ func stale(next string) []string {
 			continue
 		}
 		seen[n] = true
-		state, err := exec.Command("gh", "issue", "view", n, "--json", "state", "-q", ".state").Output()
+		state, err := issueState(n)
 		if err != nil {
 			continue // no gh, or no network: nothing to say
 		}
-		if strings.TrimSpace(string(state)) == "CLOSED" {
+		if state == "CLOSED" {
 			out = append(out, fmt.Sprintf("names #%s, which is closed", n))
 		}
 	}
 	return out
+}
+
+// issueState is issue n's state, OPEN or CLOSED. It asks gh's GraphQL API
+// first and falls back to the REST API, which is all some environments (a
+// cloud session's proxy) allow, so the check isn't skipped there.
+func issueState(n string) (string, error) {
+	if out, err := exec.Command("gh", "issue", "view", n, "--json", "state", "-q", ".state").Output(); err == nil {
+		return strings.ToUpper(strings.TrimSpace(string(out))), nil
+	}
+	out, err := exec.Command("gh", "api", "repos/{owner}/{repo}/issues/"+n, "-q", ".state").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.ToUpper(strings.TrimSpace(string(out))), nil
 }
 
 // A task is a row of one of ROADMAP.md's task tables, such as
