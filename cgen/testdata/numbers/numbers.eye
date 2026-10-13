@@ -70,3 +70,11 @@ test "variants without fields" {
   expect(Leaf == Leaf)
   print("{build(1)}")
 }
+
+test "NaN equals itself, and NaN and the infinities show without .0" {
+  let zero = 0.0
+  let nan = zero / zero
+  let inf = 1.0 / zero
+  expect(nan == nan)
+  expect("{nan} {inf} {-inf} {1.5} {2.0}" == "NaN +Inf -Inf 1.5 2.0")
+}

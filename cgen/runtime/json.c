@@ -85,7 +85,7 @@ static void json_string(ey_buf *b, const char *s, int64_t n) {
  * exponent form, without a leading zero in the exponent, outside. */
 static void json_float(ey_buf *b, double d, const char *at) {
 	if (isnan(d) || isinf(d))
-		ey_faultf(at, "toJson: json: unsupported value: %s", isnan(d) ? "NaN" : d > 0 ? "+Inf" : "-Inf");
+		ey_faultf(at, "toJson: %s can't be written as JSON, which has no NaN or infinities", isnan(d) ? "NaN" : d > 0 ? "+Inf" : "-Inf");
 	if (d == 0) {
 		ey_buf_str(b, signbit(d) ? "-0" : "0");
 		return;

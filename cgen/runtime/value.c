@@ -608,7 +608,7 @@ void ey_show_to(ey_buf *b, const ey_type *t, const void *p, bool nested) {
 		ey_float_write(b, DBL(p));
 		bool plain = true;
 		for (int64_t i = start; i < b->len; i++)
-			if (strchr(".eEn", b->b[i])) plain = false;
+			if (strchr(".eEnN", b->b[i])) plain = false; /* NaN and +Inf get no ".0" */
 		if (plain) ey_buf_str(b, ".0");
 		return;
 	}
