@@ -148,6 +148,9 @@ a contract over HTTP (6.13, #81). Open questions 32 to 34 (time-travel debugging
 online playground) are in SPECS.md.
 
 Runtime and tools:
+- Compile speed (open question 47, ROADMAP "What's next" item 7): an optimised `eye build` of
+  100,000 lines takes 4 minutes, nearly all of it zig compiling one C file of 1.2 million lines;
+  `-g` takes 14 s. Measure with `go test ./benchmarks -bench Build` (`benchmarks/README.md`).
 - The docs audit of 2026-10-12 replaced session eyelang-15's lost list with issues #120 to #139 (the restart of a failed run is #136; #132 and #139 were fixed on `dev` the same day).
 
 Checker:

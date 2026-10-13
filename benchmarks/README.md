@@ -13,6 +13,10 @@ large is committed. There are two:
   for `eye check` and `eye build`. It uses only what the C back end compiles,
   and every function is reachable, so a build compiles all of it.
 
+How fast compiled programs run, against Go, is a different suite:
+`testdata/bench`, run by `tools/bench`, with its results in
+[docs/internals/benchmarks.md](../docs/internals/benchmarks.md).
+
 ## What is here
 
 | Benchmark | Measures |

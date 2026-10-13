@@ -123,6 +123,13 @@ Go on every benchmark: maps per key type, strings and `Bytes` as views, the rest
    assignment, hex and binary literals, string patterns over `Bytes`, `fs.readBytes`,
    `v.index()`), is done. The design is
    [docs/internals/compilation.md](docs/internals/compilation.md).
+7. Compile speed: the owner's targets of 2026-10-13 are a program of a million lines built in at
+   most a minute, then in 10 seconds, then in 1 second (open question 47). Today a million lines
+   check in 3.8 s and write their C in 29 s, but an optimised build of 100,000 lines takes
+   4 minutes, nearly all of it compiling one C file of 1.2 million lines. The first step is C
+   in a unit per module, compiled in parallel and cached by hash. `benchmarks/` measures it
+   (`BenchmarkCheck`, `BenchmarkBuild`), and `eye fmt --check` on a million lines already runs
+   its checks in parallel: 5.3 s, from 10.8 s.
 
 The decisions drafted in [docs/internals/proposals.md](docs/internals/proposals.md) were all
 accepted on 2026-10-11, with the C back end and a shipped `zig cc` for phase 7; SPECS.md's

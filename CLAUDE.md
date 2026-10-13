@@ -166,6 +166,7 @@ Everything in the repository is Eyelang 2 or its tooling. Eyelang 1 lives only a
 | `ir/` | The resolved form programs are lowered to |
 | `lir/` | The low IR C is printed from: monomorphic instances in blocks of named values (`eye check --lir`) |
 | `cgen/` | The C back end behind `eye build`: C11 from the low IR, compiled with the pinned zig; `runtime/` is the core runtime in C, and `testdata/` programs whose native tests must match `eye test` |
+| `benchmarks/` | How fast `eye` itself is on large inputs: `eye fmt`, `eye check` and `eye build` over generated programs of any size, its README the results and how to run them. How fast compiled programs run, against Go, is `testdata/bench` with `tools/bench` |
 | `interp/` | Reference interpreter and runtime: entities, views, jobs, events, schedules, clock, fakes; the journal store and the runner behind `eye run` and `eye runs` |
 | `host/` | The embedding API: a Go program loads an Eyelang program, registers its `@host` functions and runs it or its tests; `host/clib` gives the interpreter the C loader for `@library` (on Linux it makes a binary dynamic, so `eye` has it only with `-tags clib`) |
 | `internal/ffi/` | Loads C functions from shared libraries at run time without cgo, on purego: `@library` in the interpreter, and later compiled programs in the Go runner |
