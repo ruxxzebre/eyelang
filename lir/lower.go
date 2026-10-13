@@ -531,6 +531,7 @@ func (x *fnb) show(v *Value) *Value {
 			return s
 		}
 	}
+	x.b.noteShows(v.Ty, x.in, x.in.at)
 	x.emit(&Derived{Dst: s, Method: "show", Args: []*Value{v}})
 	return s
 }
@@ -1297,6 +1298,7 @@ func (x *fnb) expect(cond ir.Expr, t ir.Ty) *Value {
 	if b, ok := cond.(*ir.Binary); ok && (b.Op == "==" || b.Op == "!=") {
 		l, r := x.expr(b.L), x.expr(b.R)
 		c := x.compare(b.Op, l, r)
+		x.b.noteShows(l.Ty, x.in, x.in.at)
 		x.emit(&Builtin{Dst: v, Name: "expect", Args: []*Value{c, src, x.constant(sourceText(b.L), tyStr), l}, Names: make([]string, 4)})
 		return v
 	}

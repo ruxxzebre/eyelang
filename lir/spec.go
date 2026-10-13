@@ -74,6 +74,8 @@ func Lower(prog *ir.Program) (*Program, []error) {
 		if tr := prog.Prelude.Traits["Show"]; tr != nil && !generic(errTy) {
 			if f := b.implMethod(tr, "show", errTy); f != nil && f.Body != nil {
 				b.out.MainErrShow = b.instanceAt(f, &ir.TFun{Params: []ir.Ty{errTy}, Ret: tyStr}, KindFunc, nil, m.Pos)
+			} else {
+				b.noteShows(errTy, nil, m.Pos)
 			}
 		}
 	}

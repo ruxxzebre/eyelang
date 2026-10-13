@@ -129,6 +129,7 @@ struct ey_type {
 	const ey_variant *variants;
 	void (*drop)(void *);         /* a counted struct's: drops what it holds */
 	void (*dup)(void *);          /* a counted struct's: dups what it holds */
+	ey_v (*show)(const void *);   /* a type's own impl of Show, which the derived Show of a value holding one calls */
 };
 
 extern const ey_type ey_t_unit, ey_t_bool, ey_t_float, ey_t_char, ey_t_byte, ey_t_int32,
@@ -477,6 +478,7 @@ bool ey_eq(const ey_type *t, const void *a, const void *b);
 int ey_cmp(const ey_type *t, const void *a, const void *b);
 uint64_t ey_hash(const ey_type *t, const void *p);
 void ey_show_to(ey_buf *b, const ey_type *t, const void *p, bool nested);
+void ey_show_plain_to(ey_buf *b, const ey_type *t, const void *p, bool nested); /* without impls of Show, as join writes */
 ey_v ey_show(const ey_type *t, const void *p);
 ey_v ey_show_int(ey_v v); /* an Int in decimal */
 void ey_float_write(ey_buf *b, double d);

@@ -774,7 +774,7 @@ ey_v eyb_seq_join(ey_v c, ey_v sep) {
 	ey_buf b = {0};
 	for (int64_t i = 0; i < n; i++) {
 		if (i > 0 && sep) ey_buf_add(&b, EY_STR(sep)->b, EY_STR(sep)->len);
-		ey_show_to(&b, et, ITEM(it, i, (int64_t)et->size), false);
+		ey_show_plain_to(&b, et, ITEM(it, i, (int64_t)et->size), false);
 	}
 	return ey_buf_take(&b);
 }

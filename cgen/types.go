@@ -296,6 +296,9 @@ var scalarDescs = map[string]string{
 
 // desc is the C expression of t's descriptor, writing one if needed.
 func (g *gen) desc(t ir.Ty) string {
+	if d, ok := g.newtypeShowDesc(t); ok {
+		return d
+	}
 	t = rep(t)
 	if n := scalarName(t); n != "" {
 		if d, ok := scalarDescs[n]; ok {
@@ -383,9 +386,15 @@ func (g *gen) define(d *desc) string {
 	if l.Repr == lir.ReprBox {
 		f["boxed"] = "1"
 	}
+	if show := g.showOf(d); show != "" {
+		f["show"] = show
+		b.WriteString(g.showWrapper(d, show))
+	}
 	switch t := d.ty.(type) {
 	case *ir.TCon:
 		switch {
+		case t.Decl == nil && scalarKinds[t.Name] != "":
+			f["kind"] = scalarKinds[t.Name]
 		case t.Decl != nil && len(t.Decl.Variants) > 0:
 			f["kind"], f["n"], f["name"] = "EY_VARIANT", fmt.Sprint(len(t.Decl.Variants)), cstring(t.Decl.Name)
 			f["tag"] = map[lir.TagKind]string{lir.TagNone: "EY_TAG_NONE", lir.TagField: "EY_TAG_FIELD", lir.TagNiche: "EY_TAG_NICHE", lir.TagBox: "EY_TAG_BOX"}[l.Tag.Kind]
@@ -457,7 +466,7 @@ func (g *gen) define(d *desc) string {
 // initializer writes a descriptor's designated initializer from its fields.
 func initializer(f map[string]string) string {
 	var parts []string
-	for _, k := range []string{"kind", "n", "size", "align", "repr", "boxed", "tag", "tagsize", "tagoff", "objsize", "name", "args", "names", "offs", "variants", "drop", "dup"} {
+	for _, k := range []string{"kind", "n", "size", "align", "repr", "boxed", "tag", "tagsize", "tagoff", "objsize", "name", "args", "names", "offs", "variants", "drop", "dup", "show"} {
 		if v, ok := f[k]; ok {
 			parts = append(parts, "."+k+" = "+v)
 		}

@@ -579,7 +579,23 @@ static void show_items(ey_buf *b, const ey_type *t, const char *items, int64_t n
 	}
 }
 
+/* above zero while join writes elements: the interpreter's join writes
+ * them in the derived form, without their impls of Show */
+static int show_plain;
+
+void ey_show_plain_to(ey_buf *b, const ey_type *t, const void *p, bool nested) {
+	show_plain++;
+	ey_show_to(b, t, p, nested);
+	show_plain--;
+}
+
 void ey_show_to(ey_buf *b, const ey_type *t, const void *p, bool nested) {
+	if (t->show && !show_plain) {
+		ey_v s = t->show(p);
+		ey_buf_add(b, EY_STR(s)->b, EY_STR(s)->len);
+		ey_drop(s);
+		return;
+	}
 	switch (t->kind) {
 	case EY_UNIT:
 		ey_buf_str(b, "()");
@@ -760,6 +776,7 @@ ey_v ey_show_int(ey_v v) {
 }
 
 ey_v ey_show(const ey_type *t, const void *p) {
+	if (t->show) return t->show(p);
 	switch (t->kind) {
 	case EY_INT:
 		return ey_show_int(WORDOF(p));

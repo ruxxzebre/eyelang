@@ -40,6 +40,10 @@ type Program struct {
 	// main returns a Result whose error type has an impl of Show; without
 	// one, the error is written in its derived form (SPECS.md §13).
 	MainErrShow *Func
+	// Shows holds, by type key (TypeKey), the instance of each impl of
+	// Show that the derived Show calls for a value of that type inside
+	// another, as `"{[money]}"` and expect's messages write it (shows.go).
+	Shows map[string]*Func
 	// Layouts says how each type's values are laid out; Count sets it.
 	Layouts *Layouts
 	// Counted reports that Count has run.

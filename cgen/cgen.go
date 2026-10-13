@@ -79,6 +79,8 @@ type gen struct {
 	lay        *lir.Layouts
 	structs    map[string]*cstruct
 	structList []*cstruct
+	// the impls of Show the derived Show calls, by lir.TypeKey (shows.go)
+	shown map[string]*lir.Func
 }
 
 type testRoot struct {
@@ -91,6 +93,7 @@ type testRoot struct {
 type desc struct {
 	name string
 	ty   ir.Ty
+	show *lir.Func // the impl of Show of a newtype, whose descriptor is its field's with this
 }
 
 // Generate writes the C of a checked program from its low IR: one file per
@@ -260,6 +263,9 @@ func (g *gen) walk() {
 	}
 	add(g.main)
 	add(g.low.MainErrShow)
+	if c, ok := rep(resultOf(g.main)).(*ir.TCon); ok && g.low.MainErrShow == nil && c.Name == "Result" && len(c.Args) == 2 {
+		g.addShows(c.Args[1], add)
+	}
 	for len(queue) > 0 {
 		f := queue[0]
 		queue = queue[1:]
@@ -282,6 +288,14 @@ func (g *gen) walk() {
 				case *lir.Runtime:
 					if fn, ok := x.Target.(*lir.Func); ok {
 						add(fn)
+					}
+				case *lir.Derived:
+					if x.Method == "show" && len(x.Args) == 1 {
+						g.addShows(x.Args[0].Ty, add)
+					}
+				case *lir.Builtin:
+					if x.Name == "expect" && len(x.Args) == 4 {
+						g.addShows(x.Args[3].Ty, add)
 					}
 				}
 			}
