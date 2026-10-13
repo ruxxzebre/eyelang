@@ -3399,21 +3399,25 @@ operator. All binary operators associate to the left except `??`, which associat
     memory is accepted: the checker takes a directory that exists only in `Options.Overlay`, the
     language server answers through `lsp.Workspace` with no connection, and the fakes read
     recordings from memory. `eye run`'s jobs run on a virtual clock (`interp.RunOptions.Virtual`):
-    once `main` has run, sleeping runs wake and schedules fire at once, in time order, up to a day
-    of clock time or a thousand wakes, and nothing listens on a port. A run that doesn't end is
-    stopped after ten seconds, or with Stop. Its examples are the tutorial's and the guide's
-    programs, which the Go tests and the playground's browser test run there, and each of those
-    pages links to its program in the playground. A program can be shared as a link that holds its
-    files. Contracts work between two programs in the page: a directory with an `eye.toml` of its
-    own is a second program, and Run starts each such program that serves a contract as a service
-    in memory (`interp.StartService`), with no port, then sends the root program's `@http` calls to
-    its handlers (`interp.RunOptions.Services`), as the HTTP requests two `eye run`s would
-    exchange; each request shows with its status as it crosses, the secrets the contracts' `@auth`
-    names are made up for both sides, a call moves the service's clock to the caller's, and a retry
-    moves the clock instead of waiting (`docs/examples/shop-and-bank`). A service's events go to
-    the root program's handler in memory (`RunOptions.Subscribers` and `Accept`), as `eye run`
-    would send them, and show as they cross too. Still open: model calls
-    with a key the visitor brings, which today only replay recordings.
+    once `main` has run, sleeping runs wake and schedules fire at once, in time order, while a run
+    waits and for a day past the last one that woke, up to a year of clock time or a thousand
+    wakes, and nothing listens on a port. A contract no program in the page serves answers from the
+    program's `recordings/`, as in a test, each answer shown as it comes, and `fs` reads the page's
+    files and keeps what it writes in memory (`RunOptions.Replay`, `RunOptions.FS`; a test gets an
+    empty directory of its own in memory). A run that doesn't end is stopped after ten seconds, or
+    with Stop. Its examples are the tutorial's and the guide's programs, which the Go tests and the
+    playground's browser test run there, and each of those pages links to its program in the
+    playground. A program can be shared as a link that holds its files. Contracts work between two
+    programs in the page: a directory with an `eye.toml` of its own is a second program, and Run
+    starts each such program that serves a contract as a service in memory (`interp.StartService`),
+    with no port, then sends the root program's `@http` calls to its handlers
+    (`interp.RunOptions.Services`), as the HTTP requests two `eye run`s would exchange; each
+    request shows with its status as it crosses, the secrets the contracts' `@auth` names are made
+    up for both sides, a call moves the service's clock to the caller's, and a retry moves the
+    clock instead of waiting (`docs/examples/shop-and-bank`). A service's events go to the root
+    program's handler in memory (`RunOptions.Subscribers` and `Accept`), as `eye run` would send
+    them, and show as they cross too. Still open: model calls with a key the visitor brings, which
+    today only replay recordings.
 35. **Who may publish an event.** `@allow` names the modules that may call a contract's
     commands and queries, but any module may publish any of its events. For
     `approvals.answered` that matters: the runtime checks that `by` is the request's `from`

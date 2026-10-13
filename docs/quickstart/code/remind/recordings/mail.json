@@ -1,6 +1,7 @@
 {
   "contract": "Mail",
   "exchanges": [
-    { "op": "send", "key": "remind-inv-2", "result": { "kind": "Sent", "id": "m-1" } }
+    { "op": "send", "key": "remind-inv-1", "result": { "kind": "Sent", "id": "m-1" } },
+    { "op": "send", "key": "remind-inv-2", "result": { "kind": "Sent", "id": "m-2" } }
   ]
 }

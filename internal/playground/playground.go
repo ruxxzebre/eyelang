@@ -168,7 +168,7 @@ func (p *Playground) Test(filter string) TestReport {
 	}
 	var results []interp.TestResult
 	for _, pr := range progs {
-		rs, _, _ := interp.RunTestsWith(pr.prog, interp.TestOptions{Filter: filter, Files: p.files()})
+		rs, _, _ := interp.RunTestsWith(pr.prog, interp.TestOptions{Filter: filter, Files: p.files(), MemoryFS: true})
 		for i := range rs {
 			if pr.dir != "" {
 				rs[i].Name = pr.dir + ": " + rs[i].Name
@@ -278,7 +278,7 @@ func (p *Playground) Run(opts RunOptions, stdout, stderr, services io.Writer) Ru
 	for _, pr := range progs[1:] {
 		w := &prefixWriter{prefix: pr.dir + " │ ", w: services}
 		svc, err := interp.StartService(pr.prog, interp.RunOptions{
-			Stdout: w, Stderr: w, MemoryLimit: 1 << 30, Files: p.files(), Secrets: secrets, Virtual: clock(),
+			Stdout: w, Stderr: w, MemoryLimit: 1 << 30, Files: p.files(), FS: p.ws.Overlay(), Secrets: secrets, Virtual: clock(),
 			Subscribers: subscribers,
 		})
 		if err != nil {
@@ -298,8 +298,10 @@ func (p *Playground) Run(opts RunOptions, stdout, stderr, services io.Writer) Ru
 		Stdout: stdout, Stderr: stderr,
 		MemoryLimit: 1 << 30, // no cgroup to read
 		Files:       p.files(),
+		FS:          p.ws.Overlay(),
 		Services:    handlers,
 		Secrets:     secrets,
+		Replay:      p.replayed(progs[0].prog, handlers),
 		Virtual:     clock(),
 		Accept:      func(h http.Handler) { root.h = h },
 	})
@@ -307,6 +309,29 @@ func (p *Playground) Run(opts RunOptions, stdout, stderr, services io.Writer) Ru
 		svc.Finish()
 	}
 	return RunReport{Diagnostics: []Diagnostic{}, Exit: code}
+}
+
+// replayed are the modules whose calls Run answers from the program's
+// recordings, as its tests do: each contract module that no program in the
+// page serves, and ai, http and process, that has a file of recordings
+// named after it in recordings/, beside the program's eye.toml.
+func (p *Playground) replayed(prog *ir.Program, served map[string]http.Handler) map[string]string {
+	out := map[string]string{}
+	files := p.ws.Overlay()
+	for _, m := range prog.Modules {
+		std := m.Dir == "" && (m.Path == "ai" || m.Path == "http" || m.Path == "process")
+		if !std && (m.Dir == "" || len(m.Contracts) != 1 || served[m.Path] != nil) {
+			continue
+		}
+		name := m.Name + ".json"
+		if std {
+			name = m.Path + ".json"
+		}
+		if _, ok := files[filepath.Join(prog.Root.Dir, "recordings", name)]; ok {
+			out[m.Path] = "recordings"
+		}
+	}
+	return out
 }
 
 // laterHandler passes requests to a handler set once it exists, and answers

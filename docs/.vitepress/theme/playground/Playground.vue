@@ -155,10 +155,16 @@ async function run() {
     // A service's lines (another program here that serves a contract) come
     // after its directory, as "bank │ …".
     const kinds: Record<string, Line['kind']> = { stdout: 'stdout', stderr: 'stderr', service: 'service' }
-    const rep = await engine.value.run(splitArgs(args.value), (stream, text) =>
-      // The runner's start line says what runs, not what went wrong.
-      print(stream === 'stderr' && text.startsWith('eye run: started ') ? 'info' : (kinds[stream] ?? 'stderr'), text),
-    )
+    // The runner's own lines (what runs, what replays recordings) aren't
+    // errors, and a call a recording answered reads like a service's line.
+    const runner = /^eye run: (started |\S+ answers from the recordings |the virtual clock stopped )/
+    const replayed = /^\S+\.\S+( with key "[^"]*")? at \d{4}-\d\d-\d\d \d\d:\d\d → .*, from \S+\.json\n$/
+    const rep = await engine.value.run(splitArgs(args.value), (stream, text) => {
+      let kind = kinds[stream] ?? 'stderr'
+      if (stream === 'stderr' && runner.test(text)) kind = 'info'
+      else if (stream === 'stderr' && replayed.test(text)) kind = 'service'
+      print(kind, text)
+    })
     if (rep.diagnostics.length) problems.value = rep.diagnostics
     const ms = Math.round(performance.now() - started)
     print('info', `\n${rep.exit === 0 ? 'exit 0' : `exit ${rep.exit}`} · ${ms} ms\n`)

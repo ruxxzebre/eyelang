@@ -172,7 +172,9 @@ The run survived both stops, and the second start began no second run, because o
 three days have passed, the next `eye run` wakes the run at once and calls the mail service. This
 contract doesn't say how to reach a real one, so outside the tests that call fails;
 [Talking to other services](/guide/contracts#over-http) shows how to point a contract at a
-service with `@http`.
+service with `@http`. In the [playground](/playground#example=quickstart/remind), Run skips the
+three days instead of waiting for them: the reminder wakes at once, and the mail service, which
+nothing there serves, answers from `recordings/mail.json`, as in the tests.
 
 `eye run` keeps all of this in `.eye/` in the program's directory: the journal, plus a
 `journal.reserve` file of 4 MiB kept free so the journal can still be compacted when the disk is

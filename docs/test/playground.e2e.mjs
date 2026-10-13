@@ -165,6 +165,17 @@ try {
     if (!/released order-1's hold on apples/.test(out) || !out.includes('exit 0')) throw new Error(`output:\n${out}`)
   })
 
+  await step("the quickstart's reminder sends after three days, from its recordings", async () => {
+    await page.locator('.pg-select').selectOption('quickstart/remind')
+    await page.locator('.pg-primary').click()
+    await page.waitForFunction(() => /exit \d/.test(document.querySelector('.pg-output')?.textContent ?? ''), null, { timeout: 30_000 })
+    const out = await output()
+    if (!/mail\.send with key "remind-inv-1" at \S+ \S+ → Sent\(id: "m-1"\), from mail\.json/.test(out) || !out.includes('exit 0')) {
+      throw new Error(`output:\n${out}`)
+    }
+    if ((await page.locator('.pg-output .pg-stderr').count()) !== 0) throw new Error('a line of the run shows as an error')
+  })
+
   await step('a program with modules and recordings passes its tests', async () => {
     await page.locator('.pg-select').selectOption('tutorial/approvals')
     if ((await page.locator('.pg-tab', { hasText: 'notify/notify.eye' }).count()) !== 1) throw new Error('no tab for notify/notify.eye')

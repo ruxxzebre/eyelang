@@ -182,6 +182,56 @@ func TestDocsPrograms(t *testing.T) {
 	}
 }
 
+// TestQuickstartRun runs the quickstart's program, whose reminder waits
+// three days: the run carries the clock there, and the mail service, which
+// nothing in the page serves, answers from the program's recordings.
+func TestQuickstartRun(t *testing.T) {
+	p := New()
+	p.SetFiles(readDir(t, "../../docs/quickstart/code/remind"))
+	var out, errs bytes.Buffer
+	rep := p.Run(RunOptions{Args: []string{"inv-1", "ann@example.com"}, Start: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}, &out, &errs, nil)
+	sent := "mail.send with key \"remind-inv-1\" at 2026-10-15 09:00 → Sent(id: \"m-1\"), from mail.json\n"
+	if rep.Exit != 0 || !strings.Contains(errs.String(), sent) {
+		t.Errorf("Run() = %+v, stderr:\n%s\nwant a line %q", rep, errs.String(), sent)
+	}
+}
+
+// TestFiles reads and writes the playground's files with fs: a run reads
+// them, relative to its program, and its writes stay in memory; a test gets
+// a directory of its own, empty.
+func TestFiles(t *testing.T) {
+	p := New()
+	p.SetFiles(map[string]string{
+		"eye.toml":       "",
+		"data/names.txt": "Ann\nBo\n",
+		"main.eye": `import fs
+
+pub fn main() -> Result((), fs.FsError) uses {fs, stdio} {
+  for name in fs.lines("data/names.txt")? { print("Hello, {name}!") }
+  fs.writeText("out.txt", "written")?
+  print(fs.readText("out.txt")?)
+  Ok(())
+}
+
+test "a test's directory starts empty" {
+  expect(!fs.exists("data/names.txt"))
+  expect(fs.writeText("x.txt", "x") == Ok(()))
+  expect(fs.readText("x.txt") == Ok("x"))
+}
+`,
+	})
+	var out, errs bytes.Buffer
+	if rep := p.Run(RunOptions{}, &out, &errs, nil); rep.Exit != 0 || out.String() != "Hello, Ann!\nHello, Bo!\nwritten\n" {
+		t.Errorf("Run() = %+v, stdout %q, stderr:\n%s", rep, out.String(), errs.String())
+	}
+	if _, ok := p.Files()["out.txt"]; ok {
+		t.Error("a run's write reached the editor's files")
+	}
+	if tr := p.Test(""); tr.Failed != 0 || tr.Passed != 1 {
+		t.Errorf("Test():\n%s", tr.Output)
+	}
+}
+
 func TestEditor(t *testing.T) {
 	p := New()
 	p.SetFiles(map[string]string{"main.eye": hello})

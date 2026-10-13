@@ -71,7 +71,6 @@ compiling and the native port, and new features wait for v0.4.
 ## F. Other open issues
 
 - **#144** Webhooks to many URLs: `http` has only `get`, and a contract has one base URL.
-- **#147** The playground stops after 24 virtual hours, and `fs.readText` can't read its files.
 - **#148** Replace the remaining homelab-specific teaching examples in the docs.
 - **#149** `main` is stale (May, Go 1.25): update it, or make `dev` the default branch.
 - **#152** `llms-full.txt` with the whole reference.
