@@ -33,7 +33,7 @@ test "scalars" {
   print(true |> toJson)
   print(false |> toJson)
   print("plain" |> toJson)
-  print(1500ms |> toJson)
+  print(1500 ms |> toJson)
   print(2 h |> toJson)
   print(3 KiB |> toJson)
 }
@@ -123,7 +123,7 @@ test "times" {
   print(2026-01-01 08:30 in "America/St_Johns" |> toJson)
   print(2026-10-12 |> toJson)
   print([07:40, 14:30:15] |> toJson)
-  let r: Reading = { level: Busy, every: 90s, note: None, at }
+  let r: Reading = { level: Busy, every: 90 s, note: None, at }
   print(r |> toJson)
 }
 
