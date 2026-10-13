@@ -50,6 +50,7 @@ const learn: DefaultTheme.SidebarItem[] = [
       { text: 'Writing Eyelang', link: '/writing-eyelang' },
       { text: 'Glossary', link: '/reference/language/#glossary' },
       { text: 'The future of Eyelang', link: '/future-of-eyelang' },
+      { text: "What's left", link: '/whats-left' },
     ],
   },
   {

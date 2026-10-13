@@ -189,6 +189,9 @@ binaries with `eye build`.
 
 ## What is planned
 
+Every open item, issue by issue, with the undecided open questions and the decisions waiting on
+the owner, is listed in [What's left](/whats-left).
+
 ### v0.4: native compilation (now)
 
 The work in order. The owner's native-focus checkpoint is close to reached: `NaN` equal to
