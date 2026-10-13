@@ -61,7 +61,7 @@ func TestRunnerBuild(t *testing.T) {
 		}
 		want := "hello from the runner 3\n"
 		if tests {
-			want = "1 tests passed"
+			want = "1 test passed"
 		}
 		if !strings.Contains(string(got), want) {
 			t.Errorf("tests=%v: the runner printed %q, want %q in it", tests, got, want)

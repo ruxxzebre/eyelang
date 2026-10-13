@@ -144,7 +144,7 @@ func TestHostedProgram(t *testing.T) {
 		if err == nil || out != want {
 			t.Errorf("--test printed %q (%v), want %q", out, err, want)
 		}
-		if out, _, err := runHosted(context.Background(), exe, []string{"--test", "--run", "totals"}, nil); err != nil || out != "ok    counts and totals\n1 tests passed\n" {
+		if out, _, err := runHosted(context.Background(), exe, []string{"--test", "--run", "totals"}, nil); err != nil || out != "ok    counts and totals\n1 test passed\n" {
 			t.Errorf("--test --run totals printed %q (%v)", out, err)
 		}
 	})

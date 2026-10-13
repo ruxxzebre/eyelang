@@ -65,7 +65,10 @@ func interpreted(prog *ir.Program) string {
 			b.WriteString("      " + line + "\n")
 		}
 	}
-	results := interp.RunTests(prog, "")
+	// The native tests reach the local server hostcalls gets, so http is
+	// live here too: a test doesn't reach the network otherwise.
+	live, _ := interp.LiveModules(prog, []string{"http"})
+	results, _, _ := interp.RunTestsWith(prog, interp.TestOptions{Live: live})
 	failed := 0
 	for _, r := range results {
 		if r.Failure == "" {
@@ -84,9 +87,9 @@ func interpreted(prog *ir.Program) string {
 	case len(results) == 0:
 		b.WriteString("no tests to run\n")
 	case failed > 0:
-		fmt.Fprintf(&b, "%d of %d tests failed\n", failed, len(results))
+		fmt.Fprintf(&b, "%d of %d %s failed\n", failed, len(results), testWord(len(results)))
 	default:
-		fmt.Fprintf(&b, "%d tests passed\n", len(results))
+		fmt.Fprintf(&b, "%d %s passed\n", len(results), testWord(len(results)))
 	}
 	return b.String()
 }
@@ -121,7 +124,7 @@ func native(t *testing.T, exe string) string {
 	lines := strings.Split(out.String(), "\n")
 	for i, l := range lines {
 		l = durations.ReplaceAllString(l, "")
-		if strings.HasSuffix(l, ")") && strings.Contains(l, " tests passed (") {
+		if strings.HasSuffix(l, ")") && (strings.Contains(l, " tests passed (") || strings.Contains(l, " test passed (")) {
 			l = l[:strings.Index(l, " (")]
 		}
 		lines[i] = l
@@ -396,4 +399,12 @@ func TestUnsupported(t *testing.T) {
 			t.Errorf("the error doesn't say %q:\n%v", want, err)
 		}
 	}
+}
+
+// testWord is "test" or "tests", as eye test writes the count.
+func testWord(n int) string {
+	if n == 1 {
+		return "test"
+	}
+	return "tests"
 }

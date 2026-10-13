@@ -45,6 +45,8 @@ compiling and the native port, and new features wait for v0.4.
   - a cold `-O2` build is a few seconds slower since the runtime compiles with the program;
   - the Windows paths (`process.run`, the stack thread) are cross-compiled but never run;
   - tasks and channels run in the Go runner, not in compiled C;
+  - `d.seconds()`, `d.millis()`, `d / n` and `d / e` on a `Duration` (#146) run in the
+    interpreter only;
   - a `wasm32-wasi` target for `eye build`.
 
 ## D. Finishing v0.3: contracts and agents

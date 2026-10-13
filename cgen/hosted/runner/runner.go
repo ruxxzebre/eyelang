@@ -123,10 +123,18 @@ func runTests(res *check.Result, native *Program, filter string, verbose bool, o
 	case len(results) == 0:
 		fmt.Fprintln(out, "no tests to run")
 	case failed > 0:
-		fmt.Fprintf(out, "%d of %d tests failed\n", failed, len(results))
+		fmt.Fprintf(out, "%d of %d %s failed\n", failed, len(results), testWord(len(results)))
 		return 1
 	default:
-		fmt.Fprintf(out, "%d tests passed\n", len(results))
+		fmt.Fprintf(out, "%d %s passed\n", len(results), testWord(len(results)))
 	}
 	return 0
+}
+
+// testWord is "test" or "tests", as eye test writes it.
+func testWord(n int) string {
+	if n == 1 {
+		return "test"
+	}
+	return "tests"
 }

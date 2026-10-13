@@ -639,9 +639,9 @@ static int run_tests(const ey_program *p, int argc, char **argv) {
 	if (ran == 0) {
 		ey_buf_str(&out, "no tests to run\n");
 	} else if (failed > 0) {
-		ey_buf_printf(&out, "%d of %d tests failed\n", failed, ran);
+		ey_buf_printf(&out, "%d of %d test%s failed\n", failed, ran, ran == 1 ? "" : "s");
 	} else {
-		ey_buf_printf(&out, "%d tests passed (", ran);
+		ey_buf_printf(&out, "%d test%s passed (", ran, ran == 1 ? "" : "s");
 		write_duration(&out, total);
 		ey_buf_str(&out, ")\n");
 	}
