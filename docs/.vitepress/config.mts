@@ -99,6 +99,7 @@ const internals: DefaultTheme.SidebarItem[] = [
     text: 'Reviews',
     collapsed: true,
     items: [
+      { text: 'Failure paths and pipes, 2026-10-13', link: '/internals/reviews/failure-paths-and-pipes-2026-10-13' },
       { text: 'What the benchmarks say, 2026-10-12', link: '/internals/reviews/benchmarks-review-2026-10-12' },
       { text: 'Native compilation plan, 2026-10-12', link: '/internals/reviews/native-plan-2026-10-12' },
       { text: 'How it is to type, 2026-10-12', link: '/internals/reviews/ergonomics-2026-10-12' },
