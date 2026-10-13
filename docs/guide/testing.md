@@ -153,11 +153,13 @@ FAIL  a refused digest keeps the items for tomorrow (101µs)
 ```
 
 A call that no exchange answers fails the test, and so does a call to a service the test has no
-fakes for. A test never reaches the network by accident:
+fakes for, even when the service's address is set: a test doesn't reach the network unless
+`eye test --live` names the module. This holds for a contract's operations, `http.get` and
+`ai.generate` alike:
 
 ```text
 main.eye:31:9: job digest: recordings/notify.json has no exchange for notify.send with key "digest-2026-10-15"
-main.eye:31:9: job digest: notify.send calls another service; replay recordings with `with fakes(notify, from: "…")`, or say how it goes over HTTP with @http
+main.eye:31:9: job digest: a test doesn't reach the network: notify.send has no fake here; add with fakes(notify, from: "recordings/"), or run eye test --live notify
 ```
 
 ### What the recordings show

@@ -545,6 +545,7 @@ func hostHTTPGet(in *Interp, params map[string]Value, at ir.Pos) Value {
 	if v, ok := in.fakeHTTPGet(params, at); ok {
 		return v
 	}
+	in.rt.offline(in.stdModule("http", at), "http.get", at)
 	target, _ := params["url"].(string)
 	v := in.httpGet(target, params, at)
 	in.rt.recordGet(target, v)

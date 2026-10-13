@@ -305,6 +305,8 @@ Runs the test blocks of a program's module, each with a fresh in-memory store
 and a clock that moves only when the test advances it. Calls to other services
 are answered from recordings, except for the modules --live names, whose calls
 go where eye run sends them, with the address and secret from the environment.
+A test doesn't reach the network otherwise: a call that no with fakes(…)
+answers and --live doesn't name fails the test.
   -crossings
     	count, for each test and each job run in it, the operations that would cross
     	between compiled code and the runner, and print them by kind at the end

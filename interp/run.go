@@ -84,6 +84,7 @@ func runTest(prog *ir.Program, t *ir.Test, opts TestOptions, rec *recorder) (res
 	in.rt.module = t.Module // only the test's own module's schedules fire
 	in.rt.sandbox = true    // files in a directory of its own, random numbers from a fixed seed
 	in.rt.live = newLiveTest(opts)
+	in.rt.noNetwork = true // other services only through fakes or --live
 	if opts.Crossings {
 		in.rt.crossings = NewCrossings("the test")
 		in.rt.countBuiltins(in.builtins)

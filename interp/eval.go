@@ -412,8 +412,12 @@ func (in *Interp) apply(callee Value, args []argVal, at ir.Pos) Value {
 	case *OpVal:
 		in.rt.crossed("op.call")
 		// A program that serves the contract calls itself, unless the
-		// service's URL is configured: then the service is elsewhere.
+		// service's URL is configured: then the service is elsewhere. A
+		// test calls itself unless --live names the module.
 		_, elsewhere := serviceURL(c.Op.Contract.Module.Path)
+		if in.rt.noNetwork && !in.rt.isLive(c.Op.Contract.Module) {
+			elsewhere = false
+		}
 		if c.Op.Impl != nil && in.rt.fakes[c.Op.Contract] == nil && !elsewhere {
 			return in.rt.serve(c.Op, args, at)
 		}

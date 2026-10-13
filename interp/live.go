@@ -133,6 +133,21 @@ func (rt *runtime) isLive(m *ir.Module) bool {
 	return rt.live != nil && rt.live.modules[m]
 }
 
+// offline fails a test's call to another service that no `with fakes(…)`
+// answered and --live doesn't name: a test doesn't reach the network
+// (SPECS.md §20). m is the module the call belongs to, and what names the
+// call, as `mail.send`. Outside a test it does nothing.
+func (rt *runtime) offline(m *ir.Module, what string, at ir.Pos) {
+	if !rt.noNetwork || rt.isLive(m) {
+		return
+	}
+	name := m.Name
+	if m.Dir == "" {
+		name = m.Path
+	}
+	rt.in.faultf(at, "a test doesn't reach the network: %s has no fake here; add with fakes(%s, from: \"recordings/\"), or run eye test --live %s", what, name, name)
+}
+
 // liveAI reports whether model calls go to the real providers in this test.
 func (rt *runtime) liveAI() bool { return rt.live != nil && rt.live.ai }
 

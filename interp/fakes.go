@@ -286,6 +286,9 @@ func (rt *runtime) callOp(op *ir.Op, args []Value, named map[string]Value, at ir
 	fs := rt.fakes[op.Contract]
 	mod := op.Contract.Module.Name
 	if fs == nil {
+		if rt.services[op.Contract.Module.Path] == nil {
+			rt.offline(op.Contract.Module, mod+"."+op.Name, at)
+		}
 		if v, ok := rt.callHTTP(op, args, named, at); ok {
 			return v
 		}

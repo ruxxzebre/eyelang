@@ -47,6 +47,9 @@ type runtime struct {
 	// live, in a test run with eye test --live, says which modules the
 	// real services answer for, and keeps what --record writes (live.go).
 	live *liveTest
+	// noNetwork, in a test, fails a call to another service that neither a
+	// fake answers nor --live sends out (offline, in live.go).
+	noNetwork bool
 	// services answer contract calls in this process, by the path of the
 	// module that declares the contract, and secrets are given in place of
 	// the environment's: what RunOptions.Services and Secrets hold.

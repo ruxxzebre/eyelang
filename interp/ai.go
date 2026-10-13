@@ -202,6 +202,7 @@ func (in *Interp) complete(req *aiRequest, at ir.Pos) (aiReply, int, string) {
 		}
 		return reply, 0, ""
 	}
+	in.rt.offline(in.stdModule("ai", at), "ai.generate", at)
 	reply, status, failure := in.ask(req, at)
 	in.rt.recordReply(reply, failure)
 	return reply, status, failure

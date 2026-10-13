@@ -16,7 +16,6 @@ same commit.
 ROADMAP's "What's next" opens with the checkpoint: when it is reached, every session works on
 compiling and the native port, and new features wait for v0.4.
 
-- **#141** Tests don't reach the network: a call without `fakes(…)` or `--live` fails the test.
 - **#143** `eye fix`'s help text names every call it rewrites.
 - **#145** Fakes replay a lost reply followed by success for the same key.
 - **#146** A `Duration` turns into a number and can be divided.

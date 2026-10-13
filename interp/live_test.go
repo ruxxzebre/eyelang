@@ -371,3 +371,96 @@ test "a page" {
 		t.Errorf("replayed: %s", r.Failure)
 	}
 }
+
+// TestTestsDontReachTheNetwork checks that a test's call to another service
+// without fakes fails at the call, even with the service's address set, and
+// goes out only when --live names the module (SPECS.md §20).
+func TestTestsDontReachTheNetwork(t *testing.T) {
+	unsetenv(t, "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "EYE_SECRETS")
+	requests := notifyService(t)
+	var mu sync.Mutex
+	fetched, asked := 0, 0
+	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		fetched++
+		mu.Unlock()
+		_, _ = io.WriteString(w, "hello")
+	}))
+	defer page.Close()
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked++
+		mu.Unlock()
+		out, _ := json.Marshal(map[string]any{
+			"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{
+				"content": `{"n": 3, "unit": "Boxes"}`}}},
+		})
+		_, _ = w.Write(out)
+	}))
+	defer gateway.Close()
+	t.Setenv("AI_URL", gateway.URL)
+	t.Setenv("AI_KEY", "gateway-key")
+	count := func(n *int) func() int {
+		return func() int {
+			mu.Lock()
+			defer mu.Unlock()
+			return *n
+		}
+	}
+
+	notifyMain := `
+import notify
+
+job hello(title: String) {
+  let _ = notify.send!(title, key: "hello-{title}")
+}
+
+test "a send without fakes" {
+  let run = hello.start("morning")
+  expect(run.outcome() == Some(Completed(())))
+}
+`
+	pageMain := strings.Replace(`import http
+
+test "a page without fakes" {
+  let got = match http.get("URL/page") {
+    Ok(r) => r.body
+    Err(e) => "{e}"
+  }
+  expect(got == "hello")
+}
+`, "URL", page.URL, 1)
+	modelMain := strings.Replace(liveModelTest, "  with fakes(ai, from: \"recordings/\")\n", "", 1)
+
+	for _, c := range []struct {
+		name  string
+		files map[string]string
+		live  string
+		call  string
+		sent  func() int
+	}{
+		{"a contract", map[string]string{"notify/notify.eye": liveNotify["notify/notify.eye"], "main.eye": notifyMain}, "notify", "notify.send", func() int { return len(*requests) }},
+		{"http.get", map[string]string{"main.eye": pageMain}, "http", "http.get", count(&fetched)},
+		{"ai.generate", map[string]string{"main.eye": modelMain}, "ai", "ai.generate", count(&asked)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			prog := loadFiles(t, c.files)
+			before := c.sent()
+			r := RunTests(prog, "")[0]
+			want := "a test doesn't reach the network: " + c.call + " has no fake here; add with fakes(" + c.live + `, from: "recordings/"), or run eye test --live ` + c.live
+			if !strings.Contains(r.Failure, want) {
+				t.Errorf("without --live: failure %q\nwant it to say %q", r.Failure, want)
+			}
+			if c.sent() != before {
+				t.Errorf("without --live, the service was called")
+			}
+			results, _ := liveRun(t, prog, false, "", c.live)
+			if r := results[0]; r.Failure != "" || r.Skipped != "" {
+				t.Errorf("--live %s: failure %q, skipped %q", c.live, r.Failure, r.Skipped)
+			}
+			if got := c.sent() - before; got != 1 {
+				t.Errorf("--live %s: the service had %d calls, want 1", c.live, got)
+			}
+		})
+	}
+}

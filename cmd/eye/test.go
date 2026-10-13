@@ -27,6 +27,8 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "and a clock that moves only when the test advances it. Calls to other services")
 		fmt.Fprintln(stderr, "are answered from recordings, except for the modules --live names, whose calls")
 		fmt.Fprintln(stderr, "go where eye run sends them, with the address and secret from the environment.")
+		fmt.Fprintln(stderr, "A test doesn't reach the network otherwise: a call that no with fakes(…)")
+		fmt.Fprintln(stderr, "answers and --live doesn't name fails the test.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
