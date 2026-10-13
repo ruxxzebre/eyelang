@@ -798,8 +798,13 @@ func (e *fn) host(x *lir.Runtime, f *ir.Func) {
 
 // runnerHosts are the host functions the Go runner answers for compiled
 // code (runtime/host.c): those that need what the C runtime hasn't, an
-// HTTP client with TLS.
-var runnerHosts = map[string]bool{"http.get": true}
+// HTTP client with TLS, and RE2's matching, which is Go's regexp
+// (compilation.md, "Host functions the runner answers").
+var runnerHosts = map[string]bool{
+	"http.get":      true,
+	"regex.problem": true, "regex.escape": true, "regex.whole": true,
+	"regex.matches": true, "regex.replace": true, "regex.split": true,
+}
 
 // runnerHost calls a host function the runner answers: the arguments the
 // call gives go as the saved record of them by parameter name, and the
