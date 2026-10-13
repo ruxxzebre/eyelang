@@ -18,6 +18,21 @@ not `testdata/syntax`, `testdata/fmt` or `ir/builtin.eye`. Treat the counts as a
 v0.4 unless the owner decides otherwise. Everything below is a proposal for the owner, including
 when to do it. Section 5.1 changes no syntax and can be done now.
 
+## The owner's questions
+
+| # | Question | Answer in short | Section |
+|---|---|---|---|
+| 1 | Why does `parseQuantity` read like JS, and where did we go wrong? | Half is the tutorial: two `if` forms, a needless pipe, a wrong reason for `mapErr`. Half is the language: no short "or fail with X". | 2, 4 |
+| 2 | Why can't `if t == "" { return Err(Empty) }` fold into the first line? | Nothing attaches a check to a binding. `ensure` would; decide it on the lab rewritten with 5.2 and 5.3. | 4.3, 5.5 |
+| 3 | Why can't the error mapping and the `n > 99` check fold into `let n`? | `?` can't take an error. With 5.2 the mapping folds in: `parseInt(t) ? NotANumber(t)`. The range check needs 5.5. | 4.1, 5.2, 5.5 |
+| 4 | `\|> trim` is redundant: should pipes be more ergonomic, or change in scope? | Yes. 85% of pipes are one stage, and G.15 made `\|>` a copy of `.`. Make `.` the call, and give `\|>` the job of feeding a value into any expression. | 4.5, 5.6 |
+| 5 | What are calls without parentheses for functions with no arguments? | `text.trim.lower` for `text.trim().lower()`. It is safe because a type can't have a field and a method of the same name. | 5.6 (P1) |
+| 6 | How does `?` work? | It unwraps `Ok` or `Some`, or returns the `Err` or `None` at once, wrapping the error when exactly one case of the caller's error type holds it. | 3, 4.1 |
+| 7 | Can `?` take an argument, as `mapErr` does? | Yes, after a space: `? NotANumber(t)` or `? BadNumber`. `?(…)` is taken: it calls the unwrapped value. | 5.2 |
+| 8 | Why do we need braces around `return`? | We don't: the Blocks rule already drops them for one statement, except in `let … else`. Allow `else return …`, and make the `then` form the one-line `if`. | 4.2, 5.3 |
+| 9 | Could we write `task.send "joko", 24 h`, without `()`? | Only at the start of a statement, with the arguments running to the end of the line. Elsewhere it collides with indexing, minus, tuples, records and unit literals. Decide after P1. | 5.7 |
+| 10 | Could a leading dot mean an error, `.NewErr`? | No. Variants are already bare names, a line that starts with `.` continues the one before, and the symbol isn't universal. `? x` and `fail x` give the same brevity in words. | 5.8 |
+
 ## 1. The short version
 
 ```eye
@@ -377,6 +392,80 @@ with `?? default` after a pipe. **Leave it.**
 `users.map(.name)`, `pins.filter(.active)`. This would remove 43 of the 71 field lambdas; the 28
 comparisons stay lambdas. This one is the most separable from the rest, and can wait.
 
+### 5.7 Calls without parentheses: `task.send "joko", 24 h`
+
+The owner asked whether a call can drop its parentheses when it has arguments, as in Ruby,
+Elixir and Nim. Today `log.info "done"` is `expected a line break or ';'`. That makes the form
+free to add at the start of a statement, and only there. Elsewhere a name followed by a value
+already has a meaning, or would collide with one:
+
+| Written | What it could mean | Conflict |
+|---|---|---|
+| `f [x]` | `f([x])`, or `f[x]`, an index | index syntax |
+| `f -x` | `f(-x)`, or `f - x` | binary minus |
+| `f (a, b)` | two arguments, or one tuple | tuple syntax |
+| `if ready { … }` | a block, or `ready({ … })` with a record | §4's rule that every `{` has one reading |
+| `g(f a, b)` | `g(f(a), b)`, or `g(f(a, b))` | nesting |
+| `let ok = check a == b` | `check(a == b)`, or `check(a) == b` | precedence |
+| `24 h` | a `Duration` literal (§23: `number unit`) | juxtaposition already means "number, then unit" |
+
+A narrow rule avoids every row: **a statement may start with a call without parentheses, and its
+arguments run to the end of the line.**
+
+```text
+log.info "done"
+task.send "joko", 24 h
+notify.send! chat, "the build is green"
+```
+
+Inside an expression the parentheses stay: on the right of `=`, as an argument, or in a
+condition. An argument that is itself a call keeps them: `log.info format(x)`.
+
+- **Gain:** the commonest statements, logging, sending and recorded steps, lose two characters
+  and read like commands.
+- **Costs:**
+  - two forms of every statement call, so `eye fmt` must pick one;
+  - a call reads differently as a statement and as a value;
+  - an argument that starts with `[`, `(` or `-` needs its own rule, or parentheses.
+- **Earlier decision.** In the spec's first design session, the owner said "don't do bracing now it can be changed
+  later".
+- **Verdict:** possible, but it is a change of look rather than of what can be said. Decide after
+  P1 (5.6), which removes the commonest `()` (calls without arguments) with none of these
+  conflicts.
+
+### 5.8 A dot for errors: `.NewErr`
+
+The owner has seen languages where a leading dot names a case, and asked whether `.NewErr` could
+mean an error. Two languages do something like it:
+- **Swift:** `.failure(.empty)` names a case of the type the context expects.
+- **Zig:** `return error.NotFound`, and `.foo` for an enum literal whose type is inferred.
+
+(Erlang ends a clause with `.`, but that is a terminator, not a return value.)
+
+In Eyelang this runs into three facts:
+
+1. **Variants are already bare names.** It is `Empty`, not `ParseError.Empty`, so a dot to name
+   a case saves nothing. The only thing it could add is the meaning "fail with this", which
+   makes `.Empty` short for `return Err(Empty)`.
+2. **A line that starts with `.` continues the line before** (§4), so a method chain can break
+   before each `.`. A statement `.Empty` on a line of its own would become a method call on the
+   previous line. It could only follow `then`, `else` or `?`.
+3. **Principle 4 prefers words to symbols** unless the symbol is already universal, and a leading
+   dot meaning "fail" isn't.
+
+The same brevity comes from the forms above, which read as words:
+
+```text
+if t == "" then .Empty                  # the dot form
+if t == "" then fail Empty              # 5.4
+let n = parseInt(t) ? NotANumber(t)     # 5.2
+let Some(c) = prefs.chat else fail NoChat
+```
+
+A leading dot is better spent on P6, field lambdas (`users.map(.name)`): only one meaning can
+have it. **Verdict: no.** Take the idea's real point, one short marker for "fail", as `? x` and
+`fail x`.
+
 ## 6. Recommendation and plan
 
 **Phase 0, now, with no syntax change** (allowed under the checkpoint, since it only changes docs):
@@ -408,6 +497,7 @@ comparisons stay lambdas. This one is the most separable from the rest, and can 
 | 6 | `eye fmt`: one form per call (P3) | small, but touches every file | only after 4 and 5 |
 | 7 | `counts[w] = …` (P4) | medium | separate; the ergonomics review already wants it |
 | 8 | `fail`, `ensure`, `.field` (5.4, 5.5, P6) | each small to medium | decide on the lab rewritten with 1 to 6 |
+| 9 | statement calls without parentheses (5.7) | medium | a change of look; decide last |
 
 After steps 1 to 6, `parseQuantity` reads:
 
