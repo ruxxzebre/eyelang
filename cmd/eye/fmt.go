@@ -17,6 +17,7 @@ import (
 	"golang.org/x/term"
 
 	"eyelang/check"
+	"eyelang/ir"
 	"eyelang/syntax"
 )
 
@@ -118,7 +119,7 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 		stats.cache = "off"
 	}
 	code := 0
-	var sigs map[string][]check.Signature
+	var sigs map[string][]usesClause
 	var session check.FormatSession
 	if !*syntaxOnly {
 		var ok bool
@@ -130,8 +131,21 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 	abs := absPaths(files)
 	for i, path := range files {
 		fileStart := time.Now()
-		src, err := os.ReadFile(path)
-		session.RecordSource(abs[i], src, err)
+		var src []byte
+		var err error
+		if *checkOnly {
+			// As the check read it: nothing is written, so a check of the
+			// files as they were when the run began is what's wanted.
+			src, err = session.ReadFile(abs[i])
+			if pathErr, ok := err.(*fs.PathError); ok {
+				err = &fs.PathError{Op: pathErr.Op, Path: path, Err: pathErr.Err}
+			}
+		} else {
+			// Read again before writing, so an edit made during the run
+			// isn't overwritten with what was there before it.
+			src, err = os.ReadFile(path)
+			session.RecordSource(abs[i], src, err)
+		}
 		if err != nil {
 			fmt.Fprintf(stderr, "eye fmt: %v\n", err)
 			code = exitErrors
@@ -240,7 +254,7 @@ func eyeFiles(paths []string) (files, inDirs []string, err error) {
 // returns by absolute path the public functions whose uses clause doesn't
 // say what their bodies do. It reports a program with other errors, whose
 // clauses it leaves as written, and returns false.
-func signatures(files []string, session *check.FormatSession, stats *fmtStats, stderr io.Writer) (map[string][]check.Signature, bool) {
+func signatures(files []string, session *check.FormatSession, stats *fmtStats, stderr io.Writer) (map[string][]usesClause, bool) {
 	var dirs []string // one program for each directory, in the order of files
 	listed := map[string]bool{}
 	for _, path := range absPaths(files) {
@@ -291,7 +305,7 @@ func signatures(files []string, session *check.FormatSession, stats *fmtStats, s
 		}()
 	}
 
-	out := map[string][]check.Signature{}
+	out := map[string][]usesClause{}
 	seen := map[string]bool{} // functions, by file and offset: a module imported by two checked ones comes back twice
 	ok := true
 	for i, dir := range dirs {
@@ -322,23 +336,32 @@ func signatures(files []string, session *check.FormatSession, stats *fmtStats, s
 			file := absPath(s.Func.Pos.File.Path)
 			if key := fmt.Sprintf("%s:%d", file, s.Func.Pos.Offset); !seen[key] {
 				seen[key] = true
-				out[file] = append(out[file], s)
+				out[file] = append(out[file], usesClause{s.Func.Pos, s.Func.Name, s.Effects})
 			}
 		}
 	}
 	return out, ok
 }
 
+// usesClause is the uses clause a function's body says it needs: where the
+// function is, its name and its effects. It holds none of its program's
+// checked code, so each program can be freed once its clauses are taken.
+type usesClause struct {
+	at      ir.Pos
+	name    string
+	effects []string
+}
+
 // writeUses writes the uses clause of each function in sigs into src, the
 // file at path as the checker read it, for format to tidy.
-func writeUses(path string, src []byte, sigs []check.Signature, stderr io.Writer) []byte {
+func writeUses(path string, src []byte, sigs []usesClause, stderr io.Writer) []byte {
 	type edit struct {
 		start, end int
 		text       string
 	}
 	var edits []edit
 	for _, s := range sigs {
-		at := s.Func.Pos
+		at := s.at
 		if !bytes.Equal(at.File.Src, src) {
 			return src // changed since it was checked
 		}
@@ -352,9 +375,9 @@ func writeUses(path string, src []byte, sigs []check.Signature, stderr io.Writer
 		if d == nil {
 			continue
 		}
-		clause := "uses {" + strings.Join(s.Effects, ", ") + "}"
+		clause := "uses {" + strings.Join(s.effects, ", ") + "}"
 		if c := d.ChildByField(syntax.FieldEffects); c != nil {
-			if len(s.Effects) == 0 {
+			if len(s.effects) == 0 {
 				clause = ""
 			}
 			edits = append(edits, edit{c.Span.Start, c.Span.End, clause})
@@ -365,7 +388,7 @@ func writeUses(path string, src []byte, sigs []check.Signature, stderr io.Writer
 			if ret.Kind == syntax.FunctionType {
 				// A uses clause here would be the returned function's.
 				fmt.Fprintf(stderr, "%s: %s returns a function, so eye fmt can't write its uses clause: add uses {%s} by hand\n",
-					at, s.Func.Name, strings.Join(s.Effects, ", "))
+					at, s.name, strings.Join(s.effects, ", "))
 				continue
 			}
 			after = ret

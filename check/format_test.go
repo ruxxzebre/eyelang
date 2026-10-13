@@ -60,8 +60,27 @@ func TestFormatSession(t *testing.T) {
 	if err := os.WriteFile(sharedPath, []byte("pub fn stamp() -> Instant { print(\"now\"); now() }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	changed := session.Check(dir, filepath.Join(dir, "a"))
-	if session.File(sharedPath) == shared {
+	// A session reads each file once: its checks see the files as they were
+	// at the first read, and its inputs say the result is out of date.
+	again := session.Check(dir, filepath.Join(dir, "a"))
+	if session.File(sharedPath) != shared {
+		t.Fatal("a session read a file a second time")
+	}
+	if sigs, _ := formatSignatures(again); len(sigs) != 2 || !strings.HasSuffix(sigs[0], ":clock") {
+		t.Fatalf("a session's second check saw a change: %v", sigs)
+	}
+	inputs, _ := session.Inputs()
+	stale := false
+	for _, in := range inputs {
+		stale = stale || !in.Matches()
+	}
+	if !stale {
+		t.Fatal("the session's inputs still match after a file changed")
+	}
+
+	var next FormatSession
+	changed := next.Check(dir, filepath.Join(dir, "a"))
+	if next.File(sharedPath) == shared {
 		t.Fatal("a changed import reused stale syntax")
 	}
 	sigs, clean := formatSignatures(changed)

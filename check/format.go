@@ -25,10 +25,73 @@ type FormatSession struct {
 	files    map[string]*ir.File
 	inputs   map[string]FormatInput
 	unstable bool
+	reads    map[string]sessionRead // by kind and path: what the filesystem said, once per session
 }
 
-// Check checks module and its imports within the program at dir. Each call
-// reads the sources again and reuses a parsed file only if its bytes match.
+// sessionRead is one answer from the filesystem: a file's contents, a
+// directory's entries or a path's information.
+type sessionRead struct {
+	data    []byte
+	entries []fs.DirEntry
+	info    fs.FileInfo
+	err     error
+}
+
+// read asks the filesystem once per session. Programs share modules and
+// manifests, and reading them again for each program cost more than
+// checking them. Every check in a session sees the same files.
+func (s *FormatSession) read(kind, path string, fn func() sessionRead) sessionRead {
+	key := kind + "\x00" + path
+	s.mu.Lock()
+	r, ok := s.reads[key]
+	s.mu.Unlock()
+	if ok {
+		return r
+	}
+	r = fn()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prev, ok := s.reads[key]; ok {
+		return prev // another check read it first
+	}
+	if s.reads == nil {
+		s.reads = map[string]sessionRead{}
+	}
+	s.reads[key] = r
+	return r
+}
+
+// ReadFile reads path once per session, recording it as an input.
+func (s *FormatSession) ReadFile(path string) ([]byte, error) {
+	r := s.read("file", path, func() sessionRead {
+		data, err := os.ReadFile(path)
+		return sessionRead{data: data, err: err}
+	})
+	s.record(fileInput(path, r.data, r.err))
+	return r.data, r.err
+}
+
+func (s *FormatSession) readDir(path string) ([]fs.DirEntry, error) {
+	r := s.read("dir", path, func() sessionRead {
+		entries, err := os.ReadDir(path)
+		return sessionRead{entries: entries, err: err}
+	})
+	s.record(dirInput(path, r.entries, r.err))
+	return r.entries, r.err
+}
+
+func (s *FormatSession) stat(path string) (fs.FileInfo, error) {
+	r := s.read("stat", path, func() sessionRead {
+		info, err := os.Stat(path)
+		return sessionRead{info: info, err: err}
+	})
+	s.record(statInput(path, r.info, r.err))
+	return r.info, r.err
+}
+
+// Check checks module and its imports within the program at dir. A session
+// reads each file, directory and manifest once, so all its checks see the
+// same files, and parses each source once.
 func (s *FormatSession) Check(dir, moduleDir string) *Result {
 	path := ""
 	if moduleDir != "" {
@@ -179,9 +242,7 @@ func (s *FormatSession) Inputs() (inputs []FormatInput, stable bool) {
 // Root records the ancestor manifests consulted when choosing a program.
 func (s *FormatSession) Root(path string) string {
 	for dir := path; ; dir = filepath.Dir(dir) {
-		manifest := filepath.Join(dir, "eye.toml")
-		info, err := os.Stat(manifest)
-		s.record(statInput(manifest, info, err))
+		info, err := s.stat(filepath.Join(dir, "eye.toml"))
 		if err == nil && !info.IsDir() {
 			return dir
 		}
@@ -192,27 +253,28 @@ func (s *FormatSession) Root(path string) string {
 }
 
 func (c *checker) readInput(path string) ([]byte, error) {
-	data, err := c.readFile(path)
-	if c.parsed != nil {
-		c.parsed.record(fileInput(path, data, err))
+	if c.parsed == nil {
+		return c.readFile(path)
 	}
-	return data, err
+	if src, ok := c.overlay[path]; ok {
+		c.parsed.record(fileInput(path, src, nil))
+		return src, nil
+	}
+	return c.parsed.ReadFile(path)
 }
 
 func (c *checker) readDirInput(path string) ([]fs.DirEntry, error) {
-	entries, err := os.ReadDir(path)
-	if c.parsed != nil {
-		c.parsed.record(dirInput(path, entries, err))
+	if c.parsed == nil {
+		return os.ReadDir(path)
 	}
-	return entries, err
+	return c.parsed.readDir(path)
 }
 
 func (c *checker) statInput(path string) (fs.FileInfo, error) {
-	info, err := os.Stat(path)
-	if c.parsed != nil {
-		c.parsed.record(statInput(path, info, err))
+	if c.parsed == nil {
+		return os.Stat(path)
 	}
-	return info, err
+	return c.parsed.stat(path)
 }
 
 func (c *checker) repositoryInput(dir string) string {

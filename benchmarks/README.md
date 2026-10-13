@@ -70,16 +70,20 @@ phase.
 
 | Build | Total | Check phase | Peak memory |
 |---|---:|---:|---:|
-| Programs checked one after another (`49d7575`) | 13.2 s | 10.9 s | 2.3 GB |
-| Programs checked in parallel (`27287c5`) | 7.0 s | 4.9 s | 2.2 GB |
+| Programs checked one after another (`49d7575`) | 10.8 s | 8.8 s | 2.2 GB |
+| Programs checked in parallel (`27287c5`) | 6.3 s | 4.4 s | 2.2 GB |
+| Each file, directory and manifest read once per run | 5.3 s | 3.7 s | 2.4 GB |
 
-At 100,000 lines: cold about 0.9 s and 270 MiB, warm about 80 ms and 21 MiB.
+The three builds ran alternately, three times each; the table gives the
+middle run. At 100,000 lines: cold about 0.9 s and 270 MiB, warm about 80 ms
+and 21 MiB.
 
-A CPU profile of the parallel build at a million lines shows where the rest
-goes: system calls about 28% (each program rereads the modules it imports,
-and the formatter rereads every file), garbage collection about 35% (the
-session keeps every parsed file for the formatter), and type checking itself
-a small share. Those are the next things to cut.
+Where the rest goes, from a CPU profile and `GODEBUG=gctrace=1`: the live
+heap grows to about 1.1 GB, nearly all of it the parsed syntax of every file,
+which the session keeps so the formatter doesn't parse each file twice.
+Collecting it costs 12–14% of the CPU time. A leaner syntax tree would cut
+both memory and time; reading each time zone once (`checkZones` asks the
+system for every zone literal) would cut about 2%.
 
 ## Adding a benchmark
 
