@@ -31,7 +31,7 @@ when to do it. Section 5.1 changes no syntax and can be done now.
 | 7 | Can `?` take an argument, as `mapErr` does? | Yes, after a space: `? NotANumber(t)` or `? BadNumber`. `?(…)` is taken: it calls the unwrapped value. | 5.2 |
 | 8 | Why do we need braces around `return`? | We don't: the Blocks rule already drops them for one statement, except in `let … else`. Allow `else return …`, and make the `then` form the one-line `if`. | 4.2, 5.3 |
 | 9 | Could we write `task.send "joko", 24 h`, without `()`? | Only at the start of a statement, with the arguments running to the end of the line. Elsewhere it collides with indexing, minus, tuples, records and unit literals. Decide after P1. | 5.7 |
-| 10 | Could a leading dot mean an error, `.NewErr`? | No. Variants are already bare names, a line that starts with `.` continues the one before, and the symbol isn't universal. `? x` and `fail x` give the same brevity in words. | 5.8 |
+| 10 | Could a leading dot mean return, with `.NewErr` for errors? | Feasible after `then`, `else` and `=>`, where it can't be read as a continued method chain. `.x` is `return x`; returning `Err` by type is possible but less clear. It competes with a `fail` keyword: pick one. | 5.8 |
 
 ## 1. The short version
 
@@ -433,38 +433,55 @@ condition. An argument that is itself a call keeps them: `log.info format(x)`.
   P1 (5.6), which removes the commonest `()` (calls without arguments) with none of these
   conflicts.
 
-### 5.8 A dot for errors: `.NewErr`
+### 5.8 A dot for return: `.value` and `.NewErr`
 
-The owner has seen languages where a leading dot names a case, and asked whether `.NewErr` could
-mean an error. Two languages do something like it:
-- **Swift:** `.failure(.empty)` names a case of the type the context expects.
-- **Zig:** `return error.NotFound`, and `.foo` for an enum literal whose type is inferred.
-
-(Erlang ends a clause with `.`, but that is a terminator, not a return value.)
-
-In Eyelang this runs into three facts:
-
-1. **Variants are already bare names.** It is `Empty`, not `ParseError.Empty`, so a dot to name
-   a case saves nothing. The only thing it could add is the meaning "fail with this", which
-   makes `.Empty` short for `return Err(Empty)`.
-2. **A line that starts with `.` continues the line before** (§4), so a method chain can break
-   before each `.`. A statement `.Empty` on a line of its own would become a method call on the
-   previous line. It could only follow `then`, `else` or `?`.
-3. **Principle 4 prefers words to symbols** unless the symbol is already universal, and a leading
-   dot meaning "fail" isn't.
-
-The same brevity comes from the forms above, which read as words:
+The owner asked for a leading dot that means "return": `.x` returns `x`, and `.NewErr` returns an
+error. The closest precedent is Smalltalk's `^x`, a one-character return. Swift's `.failure(…)`
+looks the same but only names a case; the `return` is still written.
 
 ```text
-if t == "" then .Empty                  # the dot form
-if t == "" then fail Empty              # 5.4
-let n = parseInt(t) ? NotANumber(t)     # 5.2
-let Some(c) = prefs.chat else fail NoChat
+fn parseQuantity(text: String) -> Result(Int, ParseError) {
+  let t = text.trim
+  if t == "" then .Empty
+  let n = parseInt(t) ? NotANumber(t)
+  if n > 99 then .TooMany(n)
+  Ok(n)
+}
 ```
 
-A leading dot is better spent on P6, field lambdas (`users.map(.name)`): only one meaning can
-have it. **Verdict: no.** Take the idea's real point, one short marker for "fail", as `? x` and
-`fail x`.
+**Where it can go.** A line that starts with `.` continues the line before (§4), so that a method
+chain can break before each `.`. A `.x` at the start of a line would therefore join the previous
+line. Two ways out:
+
+- **Only in branch positions:** after `then`, `else`, `=>`, and a `let`'s `else`. Statement-level
+  returns keep `return`. This covers every guard, the place it matters, and changes no other rule.
+- **Anywhere, by dropping the leading-dot continuation.** Long chains would then break before
+  `|>`, or with the `.` at the end of the line. That costs little: only 3 lines in the repository
+  start with `.` (`docs/guide/code/contracts/main.eye:52`, and two in
+  `testdata/syntax/valid/newlines.eye`).
+
+**What `.NewErr` returns.** Two rules are possible:
+
+1. **Literal:** `.x` is `return x`, so an error is `.Err(NewErr)`. Predictable, and it saves
+   `return ` (7 characters).
+2. **By type:** in a function that returns `Result(a, e)`, `.x` is `return Err(x)` when `x` is an
+   `e` and not an `a`, and `return x` otherwise. This gives `.Empty` and `.TooMany(n)`, but a
+   reader must know the types to know whether a line fails. It is also ambiguous when `a` and
+   `e` are the same type, as in `Result(String, String)`, where the checker would have to ask
+   for `.Err(x)`.
+
+**Costs.**
+- It is a symbol where principle 4 prefers a word, and it isn't universal: a Swift reader sees a
+  case name, a JS reader a property.
+- It would be a second way to write `return`, so `eye fmt` must pick one form per position.
+- One symbol would have two meanings if P6 (`users.map(.name)`) is also accepted. The positions
+  don't overlap, since a return can't appear in a lambda (G.17) and P6 is only an argument, but
+  a reader still sees the same mark.
+- `if c then .x` against `if c then fail x` (5.4) is the real choice. The dot is shorter; `fail`
+  reads as what it does, and works on `Option` (`fail` alone is `return None`).
+
+**Verdict:** feasible, in branch positions with the literal rule. Choose between it and `fail`
+(5.4), not both. Decide on the lab rewritten with 5.2 and 5.3, writing a few handlers each way.
 
 ## 6. Recommendation and plan
 
@@ -496,7 +513,7 @@ have it. **Verdict: no.** Take the idea's real point, one short marker for "fail
 | 5 | `\|>` into expressions, and `match` without a subject (P2) | medium | gives `\|>` its own job |
 | 6 | `eye fmt`: one form per call (P3) | small, but touches every file | only after 4 and 5 |
 | 7 | `counts[w] = …` (P4) | medium | separate; the ergonomics review already wants it |
-| 8 | `fail`, `ensure`, `.field` (5.4, 5.5, P6) | each small to medium | decide on the lab rewritten with 1 to 6 |
+| 8 | `fail` or `.x`, `ensure`, `.field` (5.4, 5.8, 5.5, P6) | each small to medium | decide on the lab rewritten with 1 to 6 |
 | 9 | statement calls without parentheses (5.7) | medium | a change of look; decide last |
 
 After steps 1 to 6, `parseQuantity` reads:
