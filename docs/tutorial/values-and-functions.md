@@ -58,7 +58,7 @@ When an `expect` fails, it shows the value it got. If `double(21) == 42` said `4
 FAIL  functions (730µs)
       main.eye:4:3: expected double(21) == 43, but double(21) is 42
 
-1 of 1 tests failed
+1 of 1 test failed
 ```
 
 The rest of this page uses tests to show what each line does. Read `expect(a == b)` as "`a` is

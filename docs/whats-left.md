@@ -17,7 +17,6 @@ ROADMAP's "What's next" opens with the checkpoint: when it is reached, every ses
 compiling and the native port, and new features wait for v0.4.
 
 - **#143** `eye fix`'s help text names every call it rewrites.
-- **#150** Small `eye` fixes: "1 tests passed", `eye help build`, a noisy memory line on `eye run`.
 - **#117** The rest of 7.13: maps specialised per key type (1.62× Go's time today), and `String`
   and `Bytes` as views whose slices share their buffer.
 

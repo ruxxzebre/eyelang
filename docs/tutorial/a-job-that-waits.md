@@ -79,7 +79,7 @@ time. `eye test -v` also shows what the runs logged:
 ```text
 ok    a hold ends after 15 minutes unless the order is paid (1.924ms)
       info: released order-1's hold on apples at 2026-10-10 12:15 in "Europe/Dublin"
-1 tests passed (1.924ms)
+1 test passed (1.924ms)
 ```
 
 ## Running it for real

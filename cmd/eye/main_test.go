@@ -25,9 +25,12 @@ func TestRun(t *testing.T) {
 		{name: "--help", args: []string{"--help"}, wantCode: 0, wantStdout: "usage: eye <command>"},
 		{name: "version", args: []string{"version"}, wantCode: 0, wantStdout: "eye 0.0.0-dev"},
 		{name: "unknown command", args: []string{"frobnicate"}, wantCode: exitUsage, wantStderr: `unknown command "frobnicate"`},
+		{name: "help of an unknown command", args: []string{"help", "frobnicate"}, wantCode: exitUsage, wantStderr: `eye help: unknown command "frobnicate"`},
 	}
 	for _, c := range commands {
 		if c.run != nil {
+			// eye help CMD shows what eye CMD -h does, on stdout.
+			tests = append(tests, runCase{name: "help " + c.name, args: []string{"help", c.name}, wantStdout: "usage: eye " + c.name})
 			continue
 		}
 		tests = append(tests, runCase{
@@ -320,7 +323,7 @@ func TestTestCommand(t *testing.T) {
 	if code := run([]string{"test", failing}, &stdout, &stderr); code != exitErrors {
 		t.Errorf("a failing test: exit %d", code)
 	}
-	for _, want := range []string{"FAIL  arithmetic", "t.eye:3:3: expected 1 + 1 == 3, but 1 + 1 is 2", "info: checking", "1 of 1 tests failed"} {
+	for _, want := range []string{"FAIL  arithmetic", "t.eye:3:3: expected 1 + 1 == 3, but 1 + 1 is 2", "info: checking", "1 of 1 test failed"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("eye test printed %q, want %q", stdout.String(), want)
 		}

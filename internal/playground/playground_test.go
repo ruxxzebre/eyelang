@@ -44,7 +44,7 @@ func TestRunAndTest(t *testing.T) {
 	if tr.Passed != 1 || tr.Failed != 0 || len(tr.Results) != 1 || tr.Results[0].Path != "main.eye" || tr.Results[0].Line != 13 {
 		t.Errorf("Test() = %+v", tr)
 	}
-	if !strings.HasPrefix(tr.Output, "ok    greeting names who it greets (") || !strings.Contains(tr.Output, "1 tests passed") {
+	if !strings.HasPrefix(tr.Output, "ok    greeting names who it greets (") || !strings.Contains(tr.Output, "1 test passed") {
 		t.Errorf("Test().Output = %q", tr.Output)
 	}
 

@@ -631,7 +631,11 @@ func (r *REPL) command(text string) (quit bool) {
 				fmt.Fprintf(r.out, "ok    %s\n", res.Name)
 			}
 		}
-		fmt.Fprintf(r.out, "%d of %d tests passed\n", len(results)-failed, len(results))
+		tests := "tests"
+		if len(results) == 1 {
+			tests = "test"
+		}
+		fmt.Fprintf(r.out, "%d of %d %s passed\n", len(results)-failed, len(results), tests)
 	case ":reset":
 		r.decls, r.binds = nil, nil
 		r.sess = interp.NewSession(r.out, r.out, time.Now().Truncate(time.Second))

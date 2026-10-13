@@ -11,8 +11,10 @@ import (
 
 // startLine is the line eye run logs when it starts a program that has
 // jobs, so that a runner's log shows it is alive before any job runs: the
-// program, where its state is kept, the memory runs may hold, and its jobs,
-// each scheduled one with when it next fires.
+// program, where its state is kept, the memory runs may hold when a limit
+// sets it (--memory-limit or a cgroup's), and its jobs, each scheduled one
+// with when it next fires. The host's own memory is left out: it is noise
+// on a laptop, and it holds no run back until the host is full.
 //
 //	eye run: started /program; store: postgres db:5432/app schema lab; memory: 512 MiB; jobs: digest.command, digest.morning (next 2026-10-12 07:40 Europe/Dublin), digest.write
 func (rt *runtime) startLine(program string, store Store, memory string) string {
@@ -22,7 +24,9 @@ func (rt *runtime) startLine(program string, store Store, memory string) string 
 	}
 	b.WriteString("eye run: started " + program)
 	b.WriteString("; store: " + storeName(store))
-	b.WriteString("; memory: " + memory)
+	if !strings.HasSuffix(memory, hostMemoryFrom) {
+		b.WriteString("; memory: " + memory)
+	}
 	first := map[*ir.Job]*schedule{}
 	for _, s := range rt.schedules() {
 		if f := first[s.job]; f == nil || s.val.next(s.last).Before(f.val.next(f.last)) {

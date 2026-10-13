@@ -108,10 +108,10 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 	case len(results) == 0:
 		fmt.Fprintln(stdout, "no tests to run")
 	case failed > 0:
-		fmt.Fprintf(stdout, "%d of %d tests failed%s\n", failed, len(results), also)
+		fmt.Fprintf(stdout, "%d of %s failed%s\n", failed, plural(len(results), "test"), also)
 		return exitErrors
 	default:
-		fmt.Fprintf(stdout, "%d tests passed%s (%s)\n", len(results)-skipped, also, total.Round(time.Microsecond))
+		fmt.Fprintf(stdout, "%s passed%s (%s)\n", plural(len(results)-skipped, "test"), also, total.Round(time.Microsecond))
 	}
 	if recErr != nil {
 		return exitErrors

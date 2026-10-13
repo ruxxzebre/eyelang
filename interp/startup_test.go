@@ -40,6 +40,13 @@ func TestStartLine(t *testing.T) {
 	if got != want {
 		t.Errorf("start line\n%s\nwant\n%s", got, want)
 	}
+	// The host's own memory, which no limit set, isn't shown.
+	got = in.rt.startLine("/program", nil, memoryText(32<<30)+", "+hostMemoryFrom)
+	want = "eye run: started /program; store: in memory only; " +
+		"jobs: morning (next 2026-10-12 07:40 Europe/Dublin), tick (next 2026-10-11 12:15 UTC), write"
+	if got != want {
+		t.Errorf("start line with the host's memory\n%s\nwant\n%s", got, want)
+	}
 }
 
 // eye run says it started before any job runs, on stderr with its other

@@ -154,7 +154,7 @@ eye run -- inv-1 ann@example.com
 ```
 
 ```text
-eye run: started .; store: journal .eye/journal; memory: 32 GiB, the host's memory; jobs: remind
+eye run: started .; store: journal .eye/journal; jobs: remind
 ```
 
 Run the same command again and stop it again. Then ask what is waiting with `eye runs`:

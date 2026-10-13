@@ -68,7 +68,7 @@ ok    a run that passes its deadline ends as an outcome (498µs)
   ```text
   $ eye test --run lost
   ok    a lost reply is settled by asking Notify, not by sending again (242µs)
-  1 tests passed (242µs)
+  1 test passed (242µs)
   ```
 
 - `-v` shows what passing tests logged, too:
@@ -77,7 +77,7 @@ ok    a run that passes its deadline ends as an outcome (498µs)
   $ eye test -v --run refused
   ok    a refused digest keeps the items for tomorrow (217µs)
         warn: Notify refused the digest for 2026-10-14: no chat for ann
-  1 tests passed (217µs)
+  1 test passed (217µs)
   ```
 
 ## A fresh store for each test

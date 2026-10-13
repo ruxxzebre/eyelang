@@ -25,7 +25,7 @@ title: The eye command
 | [`eye repl`](#repl) | start an interactive session: expressions, declarations and jobs |
 | [`eye lsp`](#lsp) | run the language server for editors |
 | [`eye version`](#version) | print the eye version |
-| [`eye help`](#help) | show this message |
+| [`eye help`](#help) | show this message, or a command's: eye help build |
 
 ## eye parse {#parse}
 

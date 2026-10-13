@@ -18,8 +18,11 @@ func runnerMemory(root string, host int64) (int64, string) {
 	if cg := cgroupMemory(root); cg > 0 && (host <= 0 || cg < host) {
 		return cg, "the cgroup's limit"
 	}
-	return host, "the host's memory"
+	return host, hostMemoryFrom
 }
+
+// hostMemoryFrom is what runnerMemory says when it took the host's memory.
+const hostMemoryFrom = "the host's memory"
 
 // cgroupMemory returns the memory limit of the cgroup this process runs in,
 // or 0 if it has none. With cgroup v2 it is the lowest memory.max from the

@@ -137,7 +137,7 @@ func TestCommands(t *testing.T) {
 		`:nope`,
 	)
 	expectOutputs(t, got, `List(Int)`, `*`, `defined twice`,
-		"fn twice(n: Int) -> Int = n * 2\n\nTwice n.", `*`, "ok    adds\n1 of 1 tests passed",
+		"fn twice(n: Int) -> Int = n * 2\n\nTwice n.", `*`, "ok    adds\n1 of 1 test passed",
 		":nope isn't a command; :help lists them")
 	if !strings.HasPrefix(got[1], "fn size(") {
 		t.Errorf(":doc size printed %q", got[1])

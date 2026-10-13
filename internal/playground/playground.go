@@ -208,9 +208,9 @@ func (p *Playground) Test(filter string) TestReport {
 	case len(results) == 0:
 		fmt.Fprintln(&out, "no tests to run: add one, such as test \"it adds\" { expect(1 + 1 == 2) }")
 	case rep.Failed > 0:
-		fmt.Fprintf(&out, "%d of %d tests failed%s\n", rep.Failed, len(results), also)
+		fmt.Fprintf(&out, "%d of %s failed%s\n", rep.Failed, tests(len(results)), also)
 	default:
-		fmt.Fprintf(&out, "%d tests passed%s (%s)\n", rep.Passed, also, total.Round(time.Microsecond))
+		fmt.Fprintf(&out, "%s passed%s (%s)\n", tests(rep.Passed), also, total.Round(time.Microsecond))
 	}
 	rep.Output = out.String()
 	return rep
@@ -416,6 +416,14 @@ func diagnosticsText(diags []Diagnostic) string {
 		fmt.Fprintf(&b, "%s:%d:%d: %s\n", d.Path, d.Range.Start.Line+1, d.Range.Start.Character+1, d.Message)
 	}
 	return b.String()
+}
+
+// tests is "1 test" or "n tests", as eye test writes them.
+func tests(n int) string {
+	if n == 1 {
+		return "1 test"
+	}
+	return fmt.Sprintf("%d tests", n)
 }
 
 func indent(s string) string {

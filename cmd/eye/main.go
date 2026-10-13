@@ -86,6 +86,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "help", "-h", "--help":
+		if len(args) > 1 && args[0] == "help" {
+			return help(args[1], stdout, stderr)
+		}
 		usage(stdout)
 		return 0
 	case "version", "--version":
@@ -110,6 +113,30 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return exitUsage
 }
 
+// help is `eye help CMD`: what `eye CMD -h` prints, on stdout.
+func help(name string, stdout, stderr io.Writer) int {
+	switch name {
+	case "help", "version":
+		usage(stdout)
+		return 0
+	}
+	for _, c := range commands {
+		if c.name != name {
+			continue
+		}
+		if c.run == nil {
+			fmt.Fprintf(stdout, "eye %s: %s; not implemented yet, planned in phase %d (https://github.com/ruxxzebre/eyelang/issues/%d)\n",
+				c.name, c.summary, c.phase, c.issue)
+			return 0
+		}
+		c.run([]string{"-h"}, stdout, stdout)
+		return 0
+	}
+	fmt.Fprintf(stderr, "eye help: unknown command %q\n\n", name)
+	usage(stderr)
+	return exitUsage
+}
+
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "usage: eye <command> [arguments]")
 	fmt.Fprintln(w)
@@ -118,5 +145,5 @@ func usage(w io.Writer) {
 		fmt.Fprintf(w, "  %-8s %s\n", c.name, c.summary)
 	}
 	fmt.Fprintf(w, "  %-8s %s\n", "version", "print the eye version")
-	fmt.Fprintf(w, "  %-8s %s\n", "help", "show this message")
+	fmt.Fprintf(w, "  %-8s %s\n", "help", "show this message, or a command's: eye help build")
 }
