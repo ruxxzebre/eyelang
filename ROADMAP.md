@@ -61,8 +61,8 @@ the native port, and nothing else starts. It is reached when all of these hold:
   keeping its id and key, for faults a retry can cure (unreachable services, timeouts), not for
   `Killed` or `unreachable`.
 - [x] No open issue of the audit's kind: a program `eye check` accepts that fails at run time.
-  The last two, #142 (a `dyn` call ran the wrong impl) and #141 (tests deny the network),
-  are fixed.
+  The last two, a `dyn` call that ran the wrong impl and tests that reached the network, are
+  fixed.
 - [ ] The rest of 7.13: maps specialised per key type (1.62× Go's time today) and strings and
   `Bytes` as views. It starts once 7.9 is merged, since both change the C runtime's strings.
 - [x] 7.9's core gaps in C (time, `Time.format`, random, `fs.lines`, `Show` inside values,
