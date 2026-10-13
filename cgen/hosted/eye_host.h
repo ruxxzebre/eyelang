@@ -18,7 +18,7 @@
 
 /* EYE_HOST_VERSION changes when this interface does; eye_program says which
  * version the program was compiled for, and the runner refuses another. */
-#define EYE_HOST_VERSION 1
+#define EYE_HOST_VERSION 2
 
 /* The runner's side of one call: its run, its transaction and its frame.
  * Compiled code passes it back in every callback and never looks inside. */
@@ -63,8 +63,9 @@ typedef struct {
 
 typedef struct {
 	const char *name;
-	int32_t id_type;    /* the identity's type */
-	int32_t state_type; /* the state, as the store keeps it: a record of its fields */
+	int32_t id_type;       /* the identity's type */
+	int32_t state_type;    /* the state, as the store keeps it: a record of its fields */
+	int32_t snapshot_type; /* what eye_go_entity_read gives: the identity, the version, the state */
 	int32_t nmethods;
 	const eye_method_info *methods;
 } eye_entity_info;
@@ -77,6 +78,22 @@ typedef struct {
 	int32_t result_type;
 } eye_job_info;
 
+/* A function the runner provides: a built-in such as print, expect or
+ * log.info, or a host function of the standard library such as env.get or
+ * http.get, named as a step records it. */
+typedef struct {
+	const char *name;
+	int32_t nparams;
+	const int32_t *param_types;
+	int32_t result_type;
+} eye_host_info;
+
+/* An event a contract declares, named as a declaration is ("bus.counted"). */
+typedef struct {
+	const char *name;
+	int32_t type;
+} eye_event_info;
+
 typedef struct eye_program_info {
 	int32_t version; /* EYE_HOST_VERSION */
 	int32_t ntypes;
@@ -86,9 +103,16 @@ typedef struct eye_program_info {
 	int32_t njobs;
 	const eye_job_info *jobs;
 	int32_t ntests;
-	const char *const *tests;
+	const char *const *tests; /* the tests eye_run_test runs, by name */
 	int32_t nhosts;
-	const char *const *hosts; /* the host functions eye_go_host calls, by name */
+	const eye_host_info *hosts; /* what eye_go_host and EYE_STEP_HOST call */
+	int32_t nevents;
+	const eye_event_info *events; /* what eye_go_publish publishes */
+	int32_t has_main;         /* whether eye_run_main runs main */
+	int32_t main_args_type;   /* main's arguments, a List(String) */
+	int32_t main_result_type; /* what main returns */
+	int32_t key_type;         /* a key, as eye_go_start takes it */
+	int32_t run_type;         /* a run, as eye_go_start gives it */
 } eye_program_info;
 
 /* ---- a job's step
@@ -124,7 +148,9 @@ const eye_program_info *eye_program(void);
  * main would, and returns the exit status. Built since 7.6's groundwork. */
 int eye_main(int argc, char **argv);
 
-eye_status eye_run_main(eye_rt *rt, eye_val args);
+/* Runs main with its arguments, a List(String), as the runner's main does:
+ * once at each start, before the jobs. *result is what main returns. */
+eye_status eye_run_main(eye_rt *rt, eye_val args, eye_val *result);
 eye_status eye_run_test(eye_rt *rt, int32_t test);
 
 /* Runs an entity's method on its state, in the runner's transaction.
@@ -158,18 +184,22 @@ const char *eye_fault(eye_rt *rt);
 /* ---- callbacks: the runner, called by compiled code
  *
  * Entity calls, reads, starts and publishing finish within the transaction,
- * so they are calls rather than steps. Not hosted yet: they come with the
- * rest of 7.6. */
+ * so they are calls rather than steps: an entity call from a method joins
+ * the method's transaction. A callback that returns EYE_FAULT has stopped
+ * what the runner was doing, as a fault, a failed expect or a stop does:
+ * the compiled code returns EYE_FAULT on, up to the runner. The runner
+ * only reads args: they aren't const because Go, which defines these
+ * functions, can't say so. */
 
 eye_status eye_go_entity_call(eye_rt *rt, int32_t entity, eye_val id, int32_t method,
-                              const eye_val *args, int32_t nargs, eye_val *result);
+                              eye_val *args, int32_t nargs, eye_val *result);
 eye_status eye_go_entity_read(eye_rt *rt, int32_t entity, eye_val id, eye_val *snapshot);
-eye_status eye_go_start(eye_rt *rt, int32_t job, const eye_val *args, int32_t nargs,
+eye_status eye_go_start(eye_rt *rt, int32_t job, eye_val *args, int32_t nargs,
                         eye_val key, eye_val *run);
 eye_status eye_go_publish(eye_rt *rt, int32_t event, eye_val value);
 /* A host function that doesn't wait (env.get, the clock, random, log): it
  * runs at once. One that waits is a step, which eye_step_job returns. */
-eye_status eye_go_host(eye_rt *rt, int32_t fn, const eye_val *args, int32_t nargs,
+eye_status eye_go_host(eye_rt *rt, int32_t fn, eye_val *args, int32_t nargs,
                        eye_val *result);
 
 #endif

@@ -41,6 +41,9 @@ type TestOptions struct {
 	// place of the disk's: those of a program held in memory, as in the
 	// online playground.
 	Files map[string][]byte
+	// Native, when set, runs the tests, entity methods and jobs it hosts as
+	// compiled code (native.go).
+	Native Native
 }
 
 // Recorded is a recording file --record wrote, and how many exchanges the

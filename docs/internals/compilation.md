@@ -407,9 +407,14 @@ Values cross it as opaque handles, `eye_val`, so 7.13's layouts can change what 
 without changing a signature.
 
 - **What the program declares:** `eye_program()` gives the tables the runner needs, by index:
-  each entity with its identity's type, its state's type and its methods' parameter and result
-  types; each job with its parameters' types, its frame's type and its result's type; the
-  tests, the saved types and the host functions. A declaration is named as the runner names
+  - each entity, with the types of its identity, its state and its snapshot, and its methods'
+    parameter and result types;
+  - each job, with its parameters' types, its frame's type and its result's type;
+  - the tests, the events with their types, and the host functions with theirs;
+  - whether it runs `main`, with the types of `main`'s arguments and result, and the types of
+    a key and a run, for starts.
+
+  A declaration is named as the runner names
   it: one of the program's own module by its name (`Counter`), one of an imported module with
   the module's path in front (`lab.notify.Message`). `EYE_HOST_VERSION` changes with the
   interface, and the runner refuses a program compiled for another version.
@@ -424,6 +429,8 @@ without changing a signature.
   - `eye_encode`, `eye_decode`, `eye_retain`, `eye_release` and `eye_fault`.
 - **Callbacks**, the runner exported from Go: `eye_go_entity_call`, `eye_go_entity_read`,
   `eye_go_start`, `eye_go_publish` and `eye_go_host`, for what finishes inside a transaction.
+  Their argument arrays aren't `const`, since Go, which defines them, can't say so; the runner
+  only reads them.
 
 The rules that go with it:
 
@@ -449,29 +456,55 @@ The rules that go with it:
 program plugs in through one seam, `interp.Native` (`interp/native.go`), set with
 `RunOptions.Native`:
 
-- `HostsMethod` and `HostsJob` say what the compiled program runs. What it doesn't, the
-  interpreter runs, so a program can be part compiled.
+- `HostsMain`, `HostsTest`, `HostsMethod` and `HostsJob` say what the compiled program runs.
+  What it doesn't, the interpreter runs, so a program can be part compiled.
+- **`main` and the tests** run where the interpreter would run them (`runMain`, `runTest`), so
+  `eye run`'s order and each test's fresh store and clock stay as they are.
+- **Callbacks.** Every call into compiled code is given the runner as an `interp.NativeHost`:
+  entity calls and reads, starts, publishing, and calls of what the runner provides (a built-in
+  such as `print`, `expect` or `log.info`, or a host function such as `env.get`). They go
+  through the runtime's own code (`callEntity`, `snapshot`, `start`, `publish`), so an entity
+  call from a method joins the method's transaction. A Go panic must never unwind through C
+  frames, and the runtime stops with one for a fault, a failed `expect`, a park or a stop. So
+  each callback keeps what stopped it and returns `EYE_FAULT`, and the Go side panics with it
+  again once the compiled code has returned. A failed `expect` in a compiled test reports the
+  test's place, since compiled code has no expression to show.
 - **An entity method** runs where the interpreter would run it, inside the transaction
   (`callIn`). Its arguments are ordered by the method's parameters, with defaults filled in, and
   encoded. The row's state goes in encoded, and the new state comes back encoded.
 - **A job** runs step by step (`runNativeJob`). Each time it stops at a `!`, the run's record
-  keeps the step with its frame (`jobRun.Native`) as its checkpoint, and its log of steps
-  starts over. The step is then taken by the interpreter's own code (`sleep`, `entityStep`), or
-  replayed after a restart, and what it gave resumes the job. The step's commit saves the new
+  keeps the step with its frame (`jobRun.Native`) as its checkpoint. The steps since the last
+  checkpoint move to the run's trail for `eye runs`, as an interpreted checkpoint moves them. The
+  step is then taken by the interpreter's own code (`sleep`, `entityStep`, or a host function,
+  recorded as `durable` records one), or replayed after a restart, and what it gave resumes the
+  job. The step's commit saves the new
   checkpoint, so a crash before it leaves the run where it was, and running the job again from
   there gives the same step.
 - With no compiled program, the interpreter's path is unchanged: one nil check per method call
   and per job turn.
 
 `cgen/hosted/runner` (behind the tag `eyehosted`, with cgo) implements `interp.Native` over
-the entry points, and its `Main` runs a program as `eye run` does. It reads the program's
-declarations from its source, which it checks at start-up. A compiled program will carry its
-IR instead, once `eye build --runner` hosts entities and jobs. `go test ./cgen -run
-TestHostedProgram` builds a hand-written C stand-in (`cgen/hosted/testdata/counter`) into the
-runner through `eye build --runner`'s link step. It runs it on the journal, and on Postgres
-when `EYE_TEST_POSTGRES` is set: it kills the process while the job sleeps and starts it
-again, and the job resumes, calls the C method and finishes. The store holds the same bytes the
-interpreter would write.
+the entry points and exports the callbacks. Its `Main` runs a program as `eye run` does, or its
+tests with `--test`, as `eye test` does.
+
+**The program travels in the binary as its source.** `cgen.ProgramSources` collects the `.eye`
+files of the program's own modules, and its `eye.toml`, for the build to write into the
+generated main. The runner checks them from memory when it starts. The declarations it
+schedules, and whatever the compiled program leaves to the interpreter, come from that check,
+and no directory is needed at run time. Carrying the checked IR instead would need an encoder
+for the IR's pointer graph. Checking costs about 50 ms for the whole lab (2,200 lines, the
+digest among them, process start included), once per start, which doesn't justify one.
+
+`go test ./cgen -run TestHostedProgram` builds a hand-written C stand-in
+(`cgen/hosted/testdata/counter`) into the runner through `eye build --runner`'s link step. In it:
+- `main` reads an entity, starts a job and prints, all in C.
+- `Counter.add` publishes an event and calls `Total.add` in its transaction.
+- The job sleeps, reads `env.get!` as a host step, then counts.
+
+The test runs it on the journal, and on Postgres when `EYE_TEST_POSTGRES` is set. It kills the
+process while the job sleeps and starts it again: the job resumes, takes its steps and
+finishes. The store holds the same bytes, states and events, the interpreter would write. Its
+tests run with `--test`, a failing `expect` included.
 
 ## 2. Values and memory
 

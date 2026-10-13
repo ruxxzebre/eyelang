@@ -74,6 +74,7 @@ func runTest(prog *ir.Program, t *ir.Test, opts TestOptions, rec *recorder) (res
 	in := New(prog, &log, &log)
 	in.hosts = opts.Hosts
 	in.files = opts.Files
+	in.native = opts.Native
 	if newTestStore != nil {
 		in.rt.useStore(newTestStore())
 	}
@@ -120,6 +121,10 @@ func runTest(prog *ir.Program, t *ir.Test, opts TestOptions, rec *recorder) (res
 			rec.add(in.rt.live)
 		}
 	}()
+	if in.native != nil && in.native.HostsTest(t.Name) {
+		in.nativeTest(t)
+		return res
+	}
 	in.callFunc(t.Func, nil, nil, nil, t.Pos)
 	return res
 }

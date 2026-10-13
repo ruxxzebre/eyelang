@@ -984,9 +984,18 @@ whole-program specialisation, and jobs resuming from saved frames.
   interface. `interp.Native` is the seam through which the interpreter's runtime (stores,
   scheduler, steps, replay) runs a compiled program's entity methods and jobs. `cgen/hosted/runner`
   implements it over the C entry points. A hand-written C stand-in runs on the journal and on
-  Postgres, survives being killed mid-sleep, and finishes its job (`cgen/hosted_test.go`). Left:
-  cgen writing the entry points (with 7.9's encoders), the callbacks, host-function steps,
-  compiled `main` and tests in the runner, the IR carried in the binary, and then the digest.
+  Postgres, survives being killed mid-sleep, and finishes its job (`cgen/hosted_test.go`).
+  Since then the Go side is complete:
+  - the callbacks: entity calls, which join the transaction, entity reads, starts, publishing and
+    host functions;
+  - host-function steps, recorded and replayed;
+  - compiled `main`, and tests with `--test`;
+  - the program carried in the binary as its source, checked from memory at start-up in about
+    50 ms for the whole lab.
+
+  Left: cgen writing the entry points and tables (with 7.9's encoders), `eye build --runner`
+  generating the main with the program's sources and the runner's embedded module, and then
+  the digest.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
   Crossings (7.10, counted by the interpreter with `eye run --crossings` on the journal, against

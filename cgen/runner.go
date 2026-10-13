@@ -13,6 +13,7 @@ import (
 
 	"eyelang/internal/gotool"
 	"eyelang/internal/zig"
+	"eyelang/ir"
 )
 
 // A program that needs the runner is built as B′ (compilation.md, "Where
@@ -171,4 +172,29 @@ func goLink(dir, out, target, tags string, ldflags, env []string, progress io.Wr
 		return fmt.Errorf("linking %s into the runner: %v\n%s", out, err, outb)
 	}
 	return nil
+}
+
+// ProgramSources are the program's files, by their paths below its root,
+// as a binary built with the runner carries them for the runner to check
+// when it starts (cgen/hosted/runner, Main): the .eye files of the
+// program's own modules, and its eye.toml.
+func ProgramSources(prog *ir.Program) (map[string]string, error) {
+	root := prog.Root.Dir
+	out := map[string]string{}
+	for _, m := range prog.Modules {
+		if m.Dir == "" {
+			continue // the standard library's, which the runner has
+		}
+		for _, f := range m.Files {
+			rel, err := filepath.Rel(root, f.Path)
+			if err != nil {
+				return nil, err
+			}
+			out[filepath.ToSlash(rel)] = string(f.Src)
+		}
+	}
+	if toml, err := os.ReadFile(filepath.Join(root, "eye.toml")); err == nil {
+		out["eye.toml"] = string(toml)
+	}
+	return out, nil
 }

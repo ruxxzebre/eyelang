@@ -83,6 +83,9 @@ func (in *Interp) runMain(ctx context.Context, main *ir.Func, argv []argVal) (re
 			stopped = true
 		}
 	}()
+	if in.native != nil && in.native.HostsMain() {
+		return in.nativeMain(main, argv), false
+	}
 	result, _ = in.callFunc(main, nil, nil, argv, main.Pos)
 	return result, false
 }
