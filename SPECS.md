@@ -578,7 +578,10 @@ Source files are UTF-8. Names and keywords are ASCII; strings and comments may c
   which hold the bounds as written: `(0..5).end` and `(0..=5).end` are both 5, so `end` doesn't say
   whether the range includes it. A range whose end comes before its start is empty: `5..2` holds
   nothing, and a `for` over it runs no times. A range of times of day is the exception: it wraps
-  midnight, so `23:00..08:00` holds 23:30 and 07:00, as quiet hours need.
+  midnight, so `23:00..08:00` holds 23:30 and 07:00, as quiet hours need. A range has `Eq`,
+  `Hash` and `Show` when its bounds do. Two ranges are equal when they are written alike, with
+  equal bounds and the same `..` or `..=`: `1..5 == 1..5`, but `1..5 != 1..=5`, and `5..2 != 6..1`
+  though both are empty. A range shows as it is written: `"{0..=n}"` with `n` 5 is `0..=5`.
 - **Slices:** `xs[2..5]`, `xs[..n]` and `bytes[i..]` are views that share storage with what they
   come from. A slice is clamped to the elements that exist, so it never fails, while `xs[i]`
   returns an `Option`.

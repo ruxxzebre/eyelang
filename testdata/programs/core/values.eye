@@ -325,3 +325,14 @@ test "average gives the mean as a Float, or None for no numbers" {
   let xs = [3, 4, 4]
   expect(xs.sum().div(xs.size()) == Some(3))
 }
+
+test "ranges compare and show as they are written" {
+  let a = 1..5
+  expect(a == 1..5)
+  expect(a != 1..=5 && a != 1..6 && a != 0..5)
+  expect([0..2, 3..=4] == [0..2, 3..=4])
+  expect([1..5, 1..5, 1..=5] |> toSet |> size == 2)
+  expect("{a} {1..=5} {[0..2, 3..=4]}" == "1..5 1..=5 [0..2, 3..=4]")
+  expect("{09:00..17:00}" == "09:00..17:00")
+  print(a == 1..5, a, 1..=5)
+}

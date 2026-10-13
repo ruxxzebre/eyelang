@@ -577,6 +577,23 @@ func writeKey(b *strings.Builder, v Value) {
 	case *RunVal:
 		b.WriteString("r")
 		b.WriteString(strconv.FormatInt(x.ID, 10))
+	case *RangeVal:
+		// Bounds as written, and whether the end is included; an open end
+		// is "-".
+		b.WriteString("g")
+		if x.Inclusive {
+			b.WriteString("=")
+		}
+		b.WriteString("(")
+		for _, e := range []Value{x.Start, x.End} {
+			if e == nil {
+				b.WriteString("-")
+			} else {
+				writeKey(b, e)
+			}
+			b.WriteString(",")
+		}
+		b.WriteString(")")
 	default:
 		fmt.Fprintf(b, "?%p", v)
 	}
@@ -609,6 +626,11 @@ func variantName(v *ir.Variant) string {
 	}
 	return v.Type.Module.Path + "." + v.Type.Name + "." + v.Name
 }
+
+// Equal reports whether a == b in Eyelang, as the interpreter decides it:
+// for checking what another back end gives back, such as a saved value it
+// decoded.
+func Equal(a, b Value) bool { return equal(a, b) }
 
 // equal reports whether a == b: whether their keys are equal. It compares
 // the common kinds directly, part by part, and builds keys only for the
@@ -658,8 +680,20 @@ func equal(a, b Value) bool {
 		if y, ok := b.(*List); ok {
 			return equalAll(x.Elems, y.Elems)
 		}
+	case *RangeVal:
+		if y, ok := b.(*RangeVal); ok {
+			return x.Inclusive == y.Inclusive && equalBound(x.Start, y.Start) && equalBound(x.End, y.End)
+		}
 	}
 	return keyOf(a) == keyOf(b)
+}
+
+// equalBound compares two ends of ranges, either of which may be open (nil).
+func equalBound(a, b Value) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return equal(a, b)
 }
 
 // equalAll reports whether two lists of values are equal one by one.
@@ -993,6 +1027,20 @@ func writeShowIn(b *strings.Builder, v Value, nested bool, custom func(Value) (s
 		b.WriteString(")")
 	case *RunVal:
 		fmt.Fprintf(b, "Run(%d)", x.ID)
+	case *RangeVal:
+		// As it is written: 1..5, 1..=5, or ..5 with an open start. Its
+		// bounds are written as inside a list, as the C runtime writes them.
+		if x.Start != nil {
+			writeShowIn(b, x.Start, true, custom)
+		}
+		if x.Inclusive {
+			b.WriteString("..=")
+		} else {
+			b.WriteString("..")
+		}
+		if x.End != nil {
+			writeShowIn(b, x.End, true, custom)
+		}
 	case *Closure:
 		b.WriteString("fn " + x.Fn.Name)
 	case *BuiltinFn:
