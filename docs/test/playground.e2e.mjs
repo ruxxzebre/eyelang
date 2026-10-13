@@ -102,7 +102,7 @@ try {
     await page.getByRole('button', { name: 'Test', exact: true }).click()
     await page.waitForFunction(() => /tests? (passed|failed)/.test(document.querySelector('.pg-output')?.textContent ?? ''), null, { timeout: 30_000 })
     const out = await output()
-    if (!out.includes('ok    greeting names who it greets') || !out.includes('1 tests passed')) throw new Error(`output:\n${out}`)
+    if (!out.includes('ok    greeting names who it greets') || !out.includes('1 test passed')) throw new Error(`output:\n${out}`)
   })
 
   await step('the parser highlights the code', async () => {
@@ -182,7 +182,7 @@ try {
     await page.getByRole('button', { name: 'Test', exact: true }).click()
     await page.waitForFunction(() => /tests? (passed|failed)/.test(document.querySelector('.pg-output')?.textContent ?? ''), null, { timeout: 30_000 })
     const out = await output()
-    if (!/\d+ tests passed/.test(out)) throw new Error(`output:\n${out}`)
+    if (!/\d+ tests? passed/.test(out)) throw new Error(`output:\n${out}`)
   })
 
   await step('a program calls a contract another program serves, in the page', async () => {

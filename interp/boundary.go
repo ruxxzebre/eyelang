@@ -39,7 +39,6 @@ func (in *Interp) Global(name string) (v Value, err error) {
 	return nil, fmt.Errorf("the program has no let %s", name)
 }
 
-
 // HostCall answers host function name for compiled code (cgen's
 // runtime/host.c): args is the saved record of the arguments the call
 // gives, by parameter name, and the answer is the saved result. Arguments

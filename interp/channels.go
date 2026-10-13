@@ -107,13 +107,13 @@ type (
 // rgroup is a task group on the system clock: its tasks are goroutines
 // that take turns holding the interpreter's lock.
 type rgroup struct {
-	root    *Interp
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	at      ir.Pos
-	fault   any
-	live    int  // tasks not finished
+	root   *Interp
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+	at     ir.Pos
+	fault  any
+	live   int // tasks not finished
 	// owned is set when a task started the group: it waits for the
 	// group's tasks, and can go on once the last one finishes.
 	owned bool
