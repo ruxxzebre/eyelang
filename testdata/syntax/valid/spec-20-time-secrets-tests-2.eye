@@ -1,9 +1,6 @@
 # SPECS.md section 20, example 2.
-@memory(128 MiB)
-job thumbnails() {}
-
-test "thumbnails don't fit on a small runner" {
-  with memory(64 MiB)
-  let run = thumbnails.start()
-  expect(run.outcome() == Some(Failed(OutOfMemory)))
+# The example is a list of statements, wrapped in a function.
+fn example() {
+  let token: Secret(String) = secret("telegram-bot-token")  # TELEGRAM_BOT_TOKEN
+  log.info("token is {token}")               # compile error: Secret has no Show
 }

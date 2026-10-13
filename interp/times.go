@@ -48,6 +48,14 @@ func (in *Interp) timeMethod(recv Value, name string, args []argVal, at ir.Pos) 
 		return loc
 	}
 	switch x := recv.(type) {
+	case ir.Duration:
+		// Whole seconds or milliseconds, rounded down (SPECS.md §20).
+		switch name {
+		case "seconds":
+			return floorDiv(int64(x), int64(time.Second)), true
+		case "millis":
+			return floorDiv(int64(x), int64(time.Millisecond)), true
+		}
 	case time.Time:
 		switch name {
 		case "unix":

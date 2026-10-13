@@ -822,6 +822,21 @@ fn h() -> NonZero(Int) = 7`, []string{
 			"8:33: dividing by Int fails when it is 0",
 			"10:10: in half, dividing by 0 has no answer",
 		}},
+		{"a Duration divides by a NonZero(Int), or by a Duration as a Float", `fn a(d: Duration, n: Int) -> Duration = d / n
+fn b(d: Duration) -> Duration = d / 0
+fn c(d: Duration, n: NonZero(Int)) -> Duration = d / n + d / 4
+fn e(d: Duration, lead: Duration) -> Float = d / lead * 100.0
+fn f(d: Duration, lead: Duration) -> Duration = d / lead
+fn g(d: Duration) -> Int = d.seconds() + d.millis()
+fn h(n: NonZero(Int)) -> Int = n * 2 + n - n / 3
+fn i() -> Duration {
+  let k = 4
+  k * 1 h + 1 h / k
+}`, []string{
+			"1:45: dividing by Int fails when it is 0, so / and % take a NonZero(Int): match nonzero(n), which is Some(n) unless it is 0, or divide by a literal other than 0",
+			"2:37: dividing by 0 has no answer",
+			"5:49: expected Duration, found Float",
+		}},
 		{"a minus sign and the built-in operators need types that have them", `type Money = { cents: Int }
 fn a() = -true
 fn b() = -Some(1)

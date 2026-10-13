@@ -1493,6 +1493,9 @@ func (in *Interp) binary(op string, a, b Value, at ir.Pos) Value {
 				return x + y
 			case "-":
 				return x - y
+			case "/":
+				// How many times y goes into x, as IEEE 754 divides.
+				return float64(x) / float64(y)
 			}
 		case int64:
 			switch op {

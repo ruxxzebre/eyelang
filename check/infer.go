@@ -2409,6 +2409,8 @@ func (x *fnCheck) timeMethod(r *tcon, e *ir.MethodCall) (typ, bool) {
 		return sig(tTime, in)
 	case r.name == "Instant" && e.Name == "unix":
 		return sig(tInt)
+	case r.name == "Duration" && (e.Name == "seconds" || e.Name == "millis"):
+		return sig(tInt)
 	case r.name == "Time" && e.Name == "next":
 		return sig(tInstant, in, fparam{name: "after", t: tInstant})
 	case r.name == "Date" && e.Name == "at":
@@ -2706,6 +2708,15 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Exp
 		return ""
 	}
 	ln, rn := name(lt), name(rt)
+	// A NonZero(Int) counts as an Int in arithmetic, and what it gives may
+	// be 0: a `let k = 4` that divides a Duration can scale one too. As a
+	// divisor it stays what / and % need.
+	if k, ok := lt.(*tcon); ok && ln == "NonZero" && len(k.args) == 1 && name(prune(k.args[0])) == "Int" {
+		l, lt, ln = tInt, tInt, "Int"
+	}
+	if k, ok := rt.(*tcon); ok && rn == "NonZero" && len(k.args) == 1 && name(prune(k.args[0])) == "Int" && op != "/" && op != "%" {
+		r, rt, rn = tInt, tInt, "Int"
+	}
 	same := func(result typ) typ {
 		x.expect(at, l, r) // on a mismatch, the result is still what the left says
 		return result
@@ -2763,7 +2774,14 @@ func (x *fnCheck) arithNow(op string, l, r typ, rhs ir.Expr, at ir.Pos, e ir.Exp
 	case (ln == "List" || ln == "Set") && op == "+":
 		return same(l)
 	case ln == "Duration":
-		if op == "*" || op == "/" {
+		switch {
+		case op == "/" && rn == "Duration":
+			// How many times one goes into the other (SPECS.md §20).
+			return tFloat
+		case op == "/":
+			x.divisor(r, rhs, at)
+			return tDuration
+		case op == "*":
 			x.expect(at, tInt, r)
 			return tDuration
 		}

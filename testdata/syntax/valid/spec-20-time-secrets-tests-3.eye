@@ -1,15 +1,9 @@
 # SPECS.md section 20, example 3.
-import process
+@memory(128 MiB)
+job thumbnails() {}
 
-fn pull() -> Int uses {process} = match process.run("git", args: ["pull", "--ff-only"]) {
-  Ok(output) => output.status
-  Err(_) => -1
-}
-
-test "pull runs git once" {
-  let ran = fakes(process, from: "recordings/")
-  with ran
-  expect(pull() == 0)
-  let [git] = ran.calls(process.run) else { unreachable("not one run") }
-  expect(git.args == ["pull", "--ff-only"])
+test "thumbnails don't fit on a small runner" {
+  with memory(64 MiB)
+  let run = thumbnails.start()
+  expect(run.outcome() == Some(Failed(OutOfMemory)))
 }

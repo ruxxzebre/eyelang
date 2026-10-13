@@ -107,6 +107,7 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 
   The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
   `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,
-  `Size + Size`, `Int / NonZero(Int)`, `String + String` and `List(a) + List(a)`, which join,
-  and `Set(a) + Set(a)`, which gives the elements of both.
+  `Duration / NonZero(Int)`, `Duration / Duration` (a `Float`, [section 20](/reference/language/time-secrets-tests)), `Size + Size`,
+  `Int / NonZero(Int)`, `String + String` and `List(a) + List(a)`, which join, and
+  `Set(a) + Set(a)`, which gives the elements of both.
   Nothing converts implicitly: `1 + 2.0` is an error.

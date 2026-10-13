@@ -743,6 +743,9 @@ func (c *checker) builtinOp(x *tcon, op string, args []typ) (bool, string) {
 	case "String", "List":
 		return op == "+" && try(x, x), ""
 	case "Duration":
+		if op == "/" && equalTypes(prune(rhs), tDuration) {
+			return try(tDuration, tFloat), ""
+		}
 		if op == "*" || op == "/" {
 			return try(tInt, tDuration), ""
 		}

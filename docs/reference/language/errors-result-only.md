@@ -71,9 +71,11 @@ title: "Errors: Result only"
   ([section 7](/reference/language/mutation)) and shifting by a negative count ([section 5](/reference/language/values-and-types)).
 - **Arithmetic is total.** `Int` has arbitrary precision, so it can't overflow. Small values stay
   unboxed at run time. `/` and `%` take a `NonZero(Int)` divisor. Literals other than `0` qualify
-  automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows
-  IEEE 754, with one exception for equality (below), so dividing by zero gives an infinity rather
-  than a failure.
+  automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. Other
+  arithmetic takes a `NonZero(Int)` as an `Int` and gives an `Int`, which may be 0, so a
+  `let k = 4` that divides can also scale: `k * 1 h` and `1 h / k`. `Float` follows IEEE 754,
+  with one exception for equality (below), so dividing by zero gives an infinity rather than a
+  failure.
 
   ```eye
   let avg = total / 3

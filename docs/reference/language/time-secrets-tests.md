@@ -52,6 +52,20 @@ taken from the host's clock:
 | `day.format("%A %-d %B")` | the date written out: `Monday 12 October` |
 | `t.format("%H:%M")` | the time of day written out: `07:40`, or `7:40 AM` with `"%-I:%M %p"` |
 | `at.unix()` | seconds since 1970-01-01 00:00 UTC, which many APIs take |
+| `d.seconds()`, `d.millis()` | a `Duration` as a number: whole seconds or milliseconds, rounded down, an `Int` |
+
+A `Duration` is divided as a number is: `d / n` by a `NonZero(Int)` is a `Duration`, and `d / e`
+by another `Duration` is how many times `e` goes into `d`, as a `Float` (dividing by a zero
+`Duration` gives an infinity, as for any `Float`). So an average wait, the share of a lead time
+that has passed and a timeout an API takes in milliseconds are ordinary arithmetic:
+
+```eye
+fn averageWait(total: Duration, runs: NonZero(Int)) -> Duration = total / runs
+
+fn percentElapsed(since: Duration, lead: Duration) -> Float = since / lead * 100.0
+
+fn timeoutHeader(limit: Duration) -> String = "{limit.millis()}"
+```
 
 `format` takes strftime's directives: for a date `%A` (the weekday), `%B` (the month), `%d`,
 `%m` and `%Y`; for a time of day `%H` (00 to 23), `%I` (01 to 12), `%M`, `%S` and `%p` (`AM` or

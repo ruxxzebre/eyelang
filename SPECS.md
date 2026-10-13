@@ -243,6 +243,7 @@ and `mut` marked at the call.
 | Ending entities | **`end(ok)` in an entity's own method ends it for good**: `ok` must be an `Approval`, the state is removed, and the store keeps only when it ended and whose approval let it. Calling or reading an ended entity faults; its identity never starts again. In an entity's method `end` is the entity's; elsewhere it is a string's end (section 14) | Ending deletes data, so it takes a person's consent that the compiler checks. If a later call started the identity again from its defaults, a job holding an old reference would bring back what a person approved ending, silently. Resolving `end` by context keeps `s.end()` and the spec's `end(ok)` both |
 | Lazy iteration | **`xs.iter()` gives an `Iter(a)`, a value that describes a walk and runs it again each time it is walked.** Lists, sets, maps, `Int` ranges, strings and `Bytes` give one, and `s.chars()` is one; `map`, `filter`, `take`, `drop`, `enumerate`, `zip` and `flatMap` on an `Iter` give an `Iter`, and the other collection functions walk it. Its functions only compute; it has none of the derived traits, so it can't be live across a `!`; and there are no endless sources (section 5) | Walking twice gives the same elements because an `Iter` is a value, not a cursor a first walk would use up, which would be state shared by everyone holding it. Functions without effects make a second walk cost time and nothing else, wherever it happens. Sources that end keep `size`, `toList` and `sort` sure to finish |
 | Division helpers | **`/` and `%` keep their `NonZero` divisor, and `xs.average()`, `a.div(b)` and `a.rem(b)` give an `Option` instead**: `None` for an empty list or a divisor of 0. `average` gives a `Float` for `Int`s too; `div` and `rem` round down as `/` and `%` do (section 10) | Every mean needed `match nonzero(xs \|> size) { … }`, so the obvious code was long. One result type for every list keeps `average` predictable, and a mean of `1` and `2` that is quietly `1` would be the wrong answer made easy; `xs.sum().div(xs.size())` is there for an `Int` mean (decided 2026-10-12) |
+| Durations as numbers | **`d.seconds()` and `d.millis()` give a `Duration` as a whole number, rounded down; `d / n` takes a `NonZero(Int)`, as an `Int`'s `/` does; `d / e` of two `Duration`s is a `Float`** (section 20). Settled 2026-10-13, as issue #146 proposed | An average wait, the share of a lead time that has passed, and a timeout an API takes in milliseconds had no way to be written. Seconds and milliseconds are the units APIs take; a ratio of two durations has no unit, and rounding it to an `Int` would make `percent elapsed` quietly `0`. From the docs' examples (log-summary, webhook-delivery) |
 | Calls that come back | **A call tree is one transaction, and an entity has one state in it**: a call that comes back to an entity whose method is still running starts from the tree's changes, the outer method goes on from the call's changes as from a `mut self` call, reads in the tree see the state in progress, and the entity commits once (from 2026-10-12, section 14) | Each call loaded its own copy and the last to finish won, so `A.ping` calling `B.pong` calling `A.bump` lost a write without a word. Refusing re-entry would be simpler, but it rejects programs that "the whole call tree commits together" invites |
 | Model tools | **A function declared with `fn` and named where an `ai.Tool` is expected converts to one**, as a value converts to `dyn Trait`; its parameters and result need `Schema`. Its effects count where it is named, and a model call's own effect is `net Ai.generate`, not `net`. In a job each model reply and each tool result is a step (section 19) | `tools: [searchIssues, label]` holds functions of different types, which no rule typed. A conversion keeps what a schema needs, the name, the `##` comment and the types, without a wrapper to write. A call whose own effect was `net` made every public caller list `net`, which covers any tool, so a new tool never showed in review. Recording each step keeps a restarted conversation from running a tool twice. From the spec review of 2026-10-12 |
 | Destructive tools | **`@destructive` adds `approval: Approval` to a function as to a command, and a model's call of one is approved through `ai.generate`'s `approve:`**, a function, usually `fn call: approval!(call, from: someone, within: …)`, called once for each call; without it the call is declined (section 19) | One meaning for the attribute: what it marks runs only with a person's consent, which the type shows. "Until someone approves" named no one; asking through `approval!` answers whom with its `from:`, and keeps its rules (answers by `id`, only from the person asked) with no second way to ask. A function rather than `approver:` and `within:` arguments, which would copy `approval!`'s. From the spec review of 2026-10-12 |
@@ -1076,9 +1077,11 @@ pattern over bytes counts as the list pattern it is.
   (section 7) and shifting by a negative count (section 5).
 - **Arithmetic is total.** `Int` has arbitrary precision, so it can't overflow. Small values stay
   unboxed at run time. `/` and `%` take a `NonZero(Int)` divisor. Literals other than `0` qualify
-  automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. `Float` follows
-  IEEE 754, with one exception for equality (below), so dividing by zero gives an infinity rather
-  than a failure.
+  automatically; for any other value, `nonzero(n)` returns `Option(NonZero(Int))`. Other
+  arithmetic takes a `NonZero(Int)` as an `Int` and gives an `Int`, which may be 0, so a
+  `let k = 4` that divides can also scale: `k * 1 h` and `1 h / k`. `Float` follows IEEE 754,
+  with one exception for equality (below), so dividing by zero gives an infinity rather than a
+  failure.
 
   ```eye context=division
   let avg = total / 3
@@ -1230,8 +1233,9 @@ fn label(x: Named) -> String = "<{x.name()}>"     # any type with an `impl Named
 
   The built-in types come with the combinations that make sense: `Int + Int`, `Float + Float`,
   `Duration + Duration`, `Instant + Duration`, `Instant - Instant` (a `Duration`), `Duration * Int`,
-  `Size + Size`, `Int / NonZero(Int)`, `String + String` and `List(a) + List(a)`, which join,
-  and `Set(a) + Set(a)`, which gives the elements of both.
+  `Duration / NonZero(Int)`, `Duration / Duration` (a `Float`, section 20), `Size + Size`,
+  `Int / NonZero(Int)`, `String + String` and `List(a) + List(a)`, which join, and
+  `Set(a) + Set(a)`, which gives the elements of both.
   Nothing converts implicitly: `1 + 2.0` is an error.
 
 ## 12. Effects and signatures
@@ -2908,6 +2912,20 @@ taken from the host's clock:
 | `day.format("%A %-d %B")` | the date written out: `Monday 12 October` |
 | `t.format("%H:%M")` | the time of day written out: `07:40`, or `7:40 AM` with `"%-I:%M %p"` |
 | `at.unix()` | seconds since 1970-01-01 00:00 UTC, which many APIs take |
+| `d.seconds()`, `d.millis()` | a `Duration` as a number: whole seconds or milliseconds, rounded down, an `Int` |
+
+A `Duration` is divided as a number is: `d / n` by a `NonZero(Int)` is a `Duration`, and `d / e`
+by another `Duration` is how many times `e` goes into `d`, as a `Float` (dividing by a zero
+`Duration` gives an infinity, as for any `Float`). So an average wait, the share of a lead time
+that has passed and a timeout an API takes in milliseconds are ordinary arithmetic:
+
+```eye
+fn averageWait(total: Duration, runs: NonZero(Int)) -> Duration = total / runs
+
+fn percentElapsed(since: Duration, lead: Duration) -> Float = since / lead * 100.0
+
+fn timeoutHeader(limit: Duration) -> String = "{limit.millis()}"
+```
 
 `format` takes strftime's directives: for a date `%A` (the weekday), `%B` (the month), `%d`,
 `%m` and `%Y`; for a time of day `%H` (00 to 23), `%I` (01 to 12), `%M`, `%S` and `%p` (`AM` or
