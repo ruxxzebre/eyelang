@@ -19,11 +19,19 @@ type fmtRun struct {
 // runEye runs eye in dir with its saved results kept under cache.
 func runEye(tb testing.TB, eye, dir, cache string, args ...string) fmtRun {
 	tb.Helper()
+	return runEyeEnv(tb, eye, dir, cache, nil, args...)
+}
+
+// runEyeEnv is runEye with env added to the environment.
+func runEyeEnv(tb testing.TB, eye, dir, cache string, env []string, args ...string) fmtRun {
+	tb.Helper()
 	cmd := exec.Command(eye, args...)
 	cmd.Dir = dir
 	// os.UserCacheDir is $HOME/Library/Caches on macOS and $XDG_CACHE_HOME
 	// elsewhere: both point into cache, so the user's own is left alone.
-	cmd.Env = append(os.Environ(), "HOME="+cache, "XDG_CACHE_HOME="+filepath.Join(cache, "xdg"))
+	// The pinned zig stays where it is, so it isn't fetched again.
+	cmd.Env = append(os.Environ(), "HOME="+cache, "XDG_CACHE_HOME="+filepath.Join(cache, "xdg"), "EYE_ZIG_CACHE="+zigCache())
+	cmd.Env = append(cmd.Env, env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

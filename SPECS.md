@@ -3340,3 +3340,15 @@ operator. All binary operators associate to the left except `??`, which associat
     processes a program may reach (`--allow net Notify, fs "/data"`), checked against the
     effects the program's signatures declare? Should a test be able to ask for one live module
     itself, and how would that interact with `@allow` and `eye gen policy`?
+47. **How fast a million lines compile.** The owner's targets, set on 2026-10-13: `eye build`
+    compiles a program of a million lines in at most a minute; in 10 seconds in the long term;
+    in 1 second at the furthest. Measured that day on a 10-core Mac (`benchmarks/README.md`):
+    checking a million lines takes 3.8 s and writing their C 29 s, 11.6 million lines of C in
+    one file, and the optimised C compile then dominates and grows faster than the program:
+    10,000 lines build in 18 s, 100,000 in 4 minutes. Unoptimised (`-g`), 100,000 lines build
+    in 14 s. Which ways get there: C split into a unit per module, compiled in parallel and
+    cached by its hash, so a module that didn't change isn't compiled again; less C per line of
+    Eyelang (about 12 now); optimising only where it pays; a back end of our own for debug
+    builds, with C for release builds, as Go and Zig do; a checker that runs in parallel and
+    holds less (a million lines take 2.7 GB to check)? And does the 1-second target mean a
+    build from nothing, or a build after an edit, which caching brings within reach sooner?

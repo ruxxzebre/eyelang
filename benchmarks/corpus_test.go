@@ -129,6 +129,19 @@ func eyeBinary(tb testing.TB) string {
 	return builtEye
 }
 
+// zigCache is where the pinned zig is kept, as eye finds it for the user
+// running the benchmarks, so runs with a home of their own don't fetch it.
+func zigCache() string {
+	if dir := os.Getenv("EYE_ZIG_CACHE"); dir != "" {
+		return dir
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(cache, "eyelang", "zig")
+}
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 	if builtEye != "" {
