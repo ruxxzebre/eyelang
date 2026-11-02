@@ -171,6 +171,7 @@ func Compile(files []File, opts BuildOptions) error {
 		flags = append(flags, "-Dmain=eye_main")
 	}
 	if opts.Hosted {
+		// A fault's text and where it happened, kept apart for the runner.
 		flags = append(flags, "-DEY_HOSTED")
 	}
 	units := compileUnits(files, !opts.Debug)

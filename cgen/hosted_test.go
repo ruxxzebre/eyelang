@@ -130,10 +130,10 @@ func TestHostedJobs(t *testing.T) {
 		dir  string
 		want string
 	}{
-		{"testdata/hostjob", "2 tests passed"},
+		{"testdata/hostjob", "4 tests passed"},
 		// The homelab's workloads: the digest's morning among them, with its
 		// contract operations, its model call and the runs it starts.
-		{"../testdata/lab", "32 tests passed"},
+		{"../testdata/lab", "33 tests passed"},
 	} {
 		t.Run(filepath.Base(tc.dir), func(t *testing.T) {
 			exe, _ := buildHostedProgram(t, tc.dir)
@@ -145,6 +145,22 @@ func TestHostedJobs(t *testing.T) {
 				t.Errorf("expected %q:\n%s", tc.want, out)
 			}
 		})
+	}
+}
+
+// TestHostedFault checks that recursion too deep in a compiled job fails its
+// test with the interpreter's message, on the big stack, rather than crashing.
+func TestHostedFault(t *testing.T) {
+	if _, ok := runnerTargets[HostTarget()]; !ok {
+		t.Skip("the runner isn't built for this machine")
+	}
+	exe, _ := buildHostedProgram(t, "testdata/hostfault")
+	out, stderr, _ := runHosted(context.Background(), exe, []string{"--test", "--dir", "testdata/hostfault"}, nil)
+	if !strings.Contains(out, "recursion too deep") || !strings.Contains(out, "job failing: unreachable: gave up here") || !strings.Contains(out, "2 of 2 tests failed") {
+		t.Errorf("expected the test to fail on recursion too deep:\n%s\n%s", out, stderr)
+	}
+	if strings.Contains(stderr, "SIGSEGV") {
+		t.Errorf("the program crashed:\n%s", stderr)
 	}
 }
 
@@ -213,7 +229,7 @@ func TestBuildHostedRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, got)
 	}
-	if !strings.Contains(string(got), "2 tests passed") {
+	if !strings.Contains(string(got), "4 tests passed") {
 		t.Errorf("expected every test to pass:\n%s", got)
 	}
 }

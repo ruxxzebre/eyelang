@@ -21,6 +21,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -198,7 +199,11 @@ func faultOf(rt *C.eye_rt) error {
 	if msg == nil {
 		return errors.New("the compiled program faulted")
 	}
-	return errors.New(C.GoString(msg))
+	text := C.GoString(msg)
+	if at, why, ok := strings.Cut(text, "\x1f"); ok {
+		return &interp.NativeFault{At: at, Msg: why}
+	}
+	return errors.New(text)
 }
 
 // ---- the entry points

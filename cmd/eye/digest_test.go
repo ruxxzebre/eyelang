@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -403,4 +404,64 @@ func labServices(t *testing.T) *lab {
 		t.Setenv(k, v)
 	}
 	return l
+}
+
+// TestNativeCosts prints what 7.6 records, beside the interpreter's: the
+// deployed digest's memory when idle, and how long a run killed in its sleep
+// takes to resume and finish. Run with -v on the machine to record.
+func TestNativeCosts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the runner")
+	}
+	rss := func(cmd *exec.Cmd) string {
+		time.Sleep(4 * time.Second)
+		out, err := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(cmd.Process.Pid)).Output()
+		if err != nil {
+			t.Fatalf("ps: %v", err)
+		}
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return strings.TrimSpace(string(out)) + " KB"
+	}
+	digest := "../../testdata/lab/deploy/digest"
+	native := exec.Command(buildNative(t, digest), "--journal", filepath.Join(t.TempDir(), "j"))
+	if err := native.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("the digest idle, native: %s", rss(native))
+	interpreted, _ := eyeProcess(t, "run", "--memory", digest)
+	t.Logf("the digest idle, eye run: %s", rss(interpreted))
+
+	nap := program(t, map[string]string{"main.eye": "job nap() -> Int {\n  sleep!(1 s)\n  7\n}\n\npub fn main() uses {start nap} {\n  let _ = nap.start(key: \"nap\")\n}\n"})
+	exe := buildNative(t, nap)
+	resume := func(what string, start func() *exec.Cmd) {
+		var best time.Duration
+		for range 5 {
+			_ = os.RemoveAll(filepath.Join(nap, ".eye"))
+			first := start()
+			time.Sleep(300 * time.Millisecond)
+			_ = first.Process.Kill()
+			_ = first.Wait()
+			time.Sleep(time.Second)
+			began := time.Now()
+			second := start()
+			_ = second.Wait()
+			if d := time.Since(began); best == 0 || d < best {
+				best = d
+			}
+		}
+		t.Logf("a run resumes and finishes, %s: %s at best of 5", what, best.Round(time.Millisecond))
+	}
+	resume("native", func() *exec.Cmd {
+		cmd := exec.Command(exe)
+		cmd.Dir = nap
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		return cmd
+	})
+	resume("eye run", func() *exec.Cmd {
+		cmd, _ := eyeProcess(t, "run", nap)
+		return cmd
+	})
 }

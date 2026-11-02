@@ -1,6 +1,7 @@
 package interp
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -64,6 +65,9 @@ type NativeHost interface {
 	// Now is the runner's clock, which a test sets, in nanoseconds since the
 	// epoch.
 	Now() int64
+	// Show writes a value as the program's Show does, for a value only the
+	// runner can read.
+	Show(value []byte) (string, error)
 }
 
 // NativeStep is where a native job stopped: at its end, with its result,
@@ -116,6 +120,10 @@ func (in *Interp) nativeCall(at ir.Pos, what string, f func(h NativeHost) error)
 	err := f(h)
 	if h.stopped != nil {
 		panic(h.stopped)
+	}
+	var nf *NativeFault
+	if errors.As(err, &nf) {
+		panic(&Fault{Pos: in.nativePos(nf.At, at), Msg: nf.Msg})
 	}
 	if err != nil {
 		in.faultf(at, "%s: %v", what, err)

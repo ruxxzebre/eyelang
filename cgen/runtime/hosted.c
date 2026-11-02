@@ -79,27 +79,53 @@ void eyh_dec(eye_val h, ey_decoder d, void *out) {
 /* ---------------------------------------------------------------- faults */
 
 static _Thread_local eyh_trap *eyh_top;
-static _Thread_local char *eyh_message;
+/* Why the last call faulted, read on the thread that made the call, which isn't
+ * the big stack's. The runner runs one call in compiled code at a time. */
+static char *eyh_message;
 _Thread_local eyj *eyj_cur;
 
-/* How much of the stack a call from the runner may use. The stack is the
- * thread's Go gave the call: a Linux thread's is set in eyh_stack below. */
-#define EYH_STACK (size_t)(6 * 1024 * 1024)
+/* A call from the runner runs on a thread with the big stack a compiled
+ * program's main has (stack.c), not the one Go gave it, which musl caps at
+ * 8 MB: so a recursion the interpreter allows runs here too. A call nested
+ * inside it, through a callback, is already on it. */
+static _Thread_local bool eyh_on_big;
+
+typedef struct {
+	int (*run)(void *);
+	void *arg;
+} eyh_call;
+
+static int eyh_big_main(void *p) {
+	eyh_call *c = p;
+	eyh_on_big = true;
+	return c->run(c->arg);
+}
+
+int eyh_big(int (*run)(void *), void *arg) {
+	if (eyh_on_big) return run(arg);
+	eyh_call c = {run, arg};
+	return ey_on_big_stack(eyh_big_main, &c);
+}
 
 void eyh_enter(eyh_trap *t, eye_rt *rt) {
 	t->up = eyh_top;
 	t->job = eyj_cur;
 	t->rt = rt;
-	t->floor = ey_stack_floor;
-	char here;
-	ey_stack_floor = &here - EYH_STACK;
 	eyh_top = t;
 }
 
 void eyh_leave(eyh_trap *t) {
 	eyh_top = t->up;
 	eyj_cur = t->job;
-	ey_stack_floor = t->floor;
+}
+
+/* The machine's zone, whose offsets the runner knows. */
+const ey_zone eyh_local_zone = {"Local", -1, NULL, NULL, 0};
+
+int32_t eyh_local_offset(int64_t unix, int64_t *start, int64_t *end) {
+	int32_t off = 0;
+	eye_go_local_zone(unix, &off, start, end);
+	return off;
 }
 
 /* A fault in compiled code goes to the call the runner made. */
@@ -109,9 +135,11 @@ _Noreturn void eyh_fault(const char *at, const char *msg) {
 		exit(1);
 	}
 	free(eyh_message);
-	size_t n = strlen(at) + strlen(msg) + 3;
+	/* Where and why, which the runner tells apart: a run's Fault holds only
+	 * why, as an interpreted run's does. */
+	size_t n = strlen(at) + strlen(msg) + 2;
 	eyh_message = malloc(n);
-	if (eyh_message) snprintf(eyh_message, n, "%s: %s", at, msg);
+	if (eyh_message) snprintf(eyh_message, n, "%s\x1f%s", at, msg);
 	longjmp(eyh_top->at, 1);
 }
 
@@ -207,6 +235,21 @@ static bool eyh_skip_values(ey_rd *r) {
 	return true;
 }
 
+/* Showing a value only the runner reads asks the runner. */
+static ey_v eyh_show_opaque(const void *p) {
+	ey_v s = *(const ey_v *)p;
+	eye_val h = eyh_bytes(EY_STR(s)->b, (size_t)EY_STR(s)->len), r = EYE_NONE;
+	eye_status st = eye_go_show(eyh_top->rt, h, &r);
+	eye_release(h);
+	if (st != EYE_OK) eyh_unwind();
+	ey_v out = ey_str_new((const char *)EYH(r)->b, (int64_t)EYH(r)->n, &ey_t_string);
+	eye_release(r);
+	return out;
+}
+
+/* A value kept as its encoding: counted and compared as a string is. */
+const ey_type ey_t_opaque = {.kind = EY_STRING, .size = sizeof(ey_v), .align = _Alignof(ey_v), .repr = EY_R_WORD, .show = eyh_show_opaque};
+
 void eys_opaque(ey_buf *b, ey_v s) {
 	ey_buf_add(b, (const char *)EY_STR(s)->b, EY_STR(s)->len);
 }
@@ -214,7 +257,7 @@ void eys_opaque(ey_buf *b, ey_v s) {
 bool eys_read_opaque(ey_rd *r, ey_v *out) {
 	const uint8_t *start = r->p;
 	if (!eyh_skip(r)) return false;
-	*out = ey_str_new((const char *)start, (int64_t)(r->p - start), &ey_t_string);
+	*out = ey_str_new((const char *)start, (int64_t)(r->p - start), &ey_t_opaque);
 	return true;
 }
 

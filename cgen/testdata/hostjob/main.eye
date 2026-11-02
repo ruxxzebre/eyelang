@@ -43,3 +43,38 @@ test "an entity method called directly" {
   expect(Tally("d").add({ name: "x", count: 7 }) == 7)
   expect(Tally("d").names == ["x"])
 }
+
+fn depth(n: Int) -> Int = if n == 0 then 0 else 1 + depth(n - 1)
+
+## Walks a set and a map across steps, and goes deep on the big stack.
+job walks(items: Set(String), counts: Map(String, Int)) -> String {
+  var seen = 0
+  for item in items {
+    sleep!(1 min)
+    seen += item.size()
+  }
+  for (name, count) in counts {
+    sleep!(1 min)
+    seen += name.size() + count
+  }
+  "{seen} after {depth(50000)}"
+}
+
+job shows(id: String) -> String {
+  let ref = Tally(id)
+  sleep!(1 min)
+  "{ref}"
+}
+
+test "a set and a map are walked across steps, and recursion goes deep" {
+  let counts: Map(String, Int) = { "d": 4 }
+  let run = walks.start(toSet(["ab", "c"]), counts, key: "w")
+  advance(10 min)
+  expect(run.outcome() == Some(Completed("8 after 50000")))
+}
+
+test "a Ref shows as it does in the interpreter" {
+  let run = shows.start("s", key: "s")
+  advance(10 min)
+  expect(run.outcome() == Some(Completed("Tally(\"s\")")))
+}

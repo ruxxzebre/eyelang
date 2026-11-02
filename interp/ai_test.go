@@ -473,3 +473,24 @@ job pairs() -> Result(Pair(Pair(Int)), ai.AiError) {
 		t.Errorf("pairs = %s, want %s", got, want)
 	}
 }
+
+// A model call outlasts the limit on contracts and http.get: replies take
+// minutes, and under that limit a long one ended as ProviderError(0).
+func TestModelCallOutlastsTheHTTPLimit(t *testing.T) {
+	noGateway(t)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		out, _ := json.Marshal(anthropicReply(`{"n": 3, "unit": "Boxes"}`, "end_turn", 300, 20))
+		_, _ = w.Write(out)
+	}))
+	t.Cleanup(api.Close)
+	t.Setenv("ANTHROPIC_URL", api.URL)
+	t.Setenv("ANTHROPIC_API_KEY", "claude-key")
+	limit := httpClient.Timeout
+	httpClient.Timeout = 50 * time.Millisecond
+	t.Cleanup(func() { httpClient.Timeout = limit })
+	in := New(load(t, askClaude), io.Discard, io.Discard)
+	if got := runJob(t, in, "ask"); got != "Completed(Ok({ n: 3, unit: Boxes }))" {
+		t.Fatalf("ask = %s", got)
+	}
+}

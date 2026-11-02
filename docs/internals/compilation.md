@@ -556,18 +556,23 @@ form (its code's name and its captures), and the interpreter runs it.
 
 **Memory.** Count (7.5) says which values a function owns. A live variable it owns is dropped when
 it saves. One the code only borrows has no drop in the code, so when it is read back the function
-keeps it in a shadow it drops as it leaves. A `for` over a list in a function that stops walks by
-index (`lir.PrepareSteps`), since an `Iter` can't be saved. A loop over anything else, or a
-function value that isn't a literal live across a step, is a build error that says so.
+keeps it in a shadow it drops as it leaves. A `for` in a function that stops walks by index
+(`lir.PrepareSteps`), since an `Iter` can't be saved: what isn't a list is made one when the loop
+starts. A function value that isn't a literal, live across a step, is a build error that says so,
+and so is a `!` call of a function value.
 
 **Faults.** Each call from the runner is a `setjmp`, and a fault `longjmp`s to the innermost one,
-so it never crosses Go frames. What was live leaks until 7.12's regions. Compiled code runs on the
-thread Go gave the call, so recursion may use 6 MB of stack and then faults; `eye build` without
-the runner keeps its 256 MB.
+so it never crosses Go frames. What was live leaks until 7.12's regions. A fault's text and its
+place cross apart, so a run's `Fault` holds what an interpreted run's does.
 
-**Known differences from the interpreter:** an `Instant` from the runner's clock in the machine's
-zone reads as UTC when compiled code shows it (the instant is the same), and showing a `Ref` or a
-`Run` in compiled code prints its encoding.
+**The stack.** Each call from the runner runs on a thread with the 256 MB stack `eye build` gives
+`main`, since a thread Go made may have as little as musl's 8 MB, and a recursion the interpreter
+allows must run. A call nested inside it, through a callback, stays on that thread. It costs a
+thread per outermost call, a few of which a step makes.
+
+**Showing what only the runner reads.** A `Ref`, a `Run` or a command's result is shown by the
+runner (`eye_go_show`). An `Instant` in the machine's zone keeps that zone, and the runner says its
+offsets (`eye_go_local_zone`), since a compiled program has tables only for the zones it names.
 
 ### Values at the boundary (7.9)
 

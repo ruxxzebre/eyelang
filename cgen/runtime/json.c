@@ -141,6 +141,12 @@ static int64_t json_floor_div(int64_t a, int64_t b) {
 /* the offset east of UTC, in seconds, that zone z has at unix seconds */
 static int32_t json_offset(const ey_zone *z, int64_t unix) {
 	if (!z) return 0;
+#ifdef EY_HOSTED
+	if (z->n < 0) {
+		int64_t start, end;
+		return eyh_local_offset(unix, &start, &end);
+	}
+#endif
 	int32_t lo = 0, hi = z->n; /* the first transition after unix */
 	while (lo < hi) {
 		int32_t mid = (lo + hi) / 2;

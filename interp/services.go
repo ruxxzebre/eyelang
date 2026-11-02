@@ -70,8 +70,12 @@ func (in *Interp) secret(name string, at ir.Pos) *SecretVal {
 	return &SecretVal{name: name, value: v}
 }
 
-// httpClient is shared by contracts, http.get and model calls.
+// httpClient is shared by contracts and http.get.
 var httpClient = &http.Client{Timeout: 60 * time.Second}
+
+// modelClient makes model calls, which often take minutes: under httpClient's
+// limit a long reply ended as ProviderError(0), with its tokens spent.
+var modelClient = &http.Client{Timeout: 15 * time.Minute}
 
 // retryDelays are the waits between tries of a query whose service doesn't
 // answer: about a minute in all, after which the run ends as Unavailable, or
@@ -380,13 +384,8 @@ func (rt *runtime) retryDelay(try int) time.Duration {
 	return retryDelays[try]
 }
 
-// doRequest makes an HTTP request. Other tasks run while it waits, and a
-// task cancelled meanwhile stops when it returns.
-func (in *Interp) doRequest(method, target string, headers http.Header, body []byte) (status int, data []byte, err error) {
-	return in.doRequestWith(httpClient, method, target, headers, body)
-}
-
-// doRequestWith makes an HTTP request with client, as doRequest does.
+// doRequestWith makes an HTTP request with client. Other tasks run while it
+// waits, and a task cancelled meanwhile stops when it returns.
 func (in *Interp) doRequestWith(client *http.Client, method, target string, headers http.Header, body []byte) (status int, data []byte, err error) {
 	in.blocking(func(ctx context.Context) {
 		var r io.Reader

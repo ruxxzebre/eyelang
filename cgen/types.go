@@ -298,7 +298,7 @@ var scalarDescs = map[string]string{
 // desc is the C expression of t's descriptor, writing one if needed.
 func (g *gen) desc(t ir.Ty) string {
 	if g.opaqueData(t) {
-		return "&ey_t_string" // kept as its encoding, counted as a string is
+		return "&ey_t_opaque" // kept as its encoding (runtime/hosted.c)
 	}
 	if d, ok := g.newtypeShowDesc(t); ok {
 		return d

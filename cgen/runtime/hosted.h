@@ -17,9 +17,10 @@ typedef struct eyh_trap {
 	struct eyh_trap *up;
 	struct eyj *job;
 	eye_rt *rt;
-	char *floor;
 } eyh_trap;
 
+/* Runs a call from the runner on the big stack, and gives what it returns. */
+int eyh_big(int (*run)(void *), void *arg);
 void eyh_enter(eyh_trap *t, eye_rt *rt);
 void eyh_leave(eyh_trap *t);
 #define EYH_TRY(t, rt)         \
@@ -40,6 +41,7 @@ void eyh_site(int site, eye_val *args, int nargs, ey_decoder d, void *out);
 
 /* A value that only the runner reads, kept as its encoding: a Ref, a Run, a
  * function the runner runs. */
+extern const ey_type ey_t_opaque;
 void eys_opaque(ey_buf *b, ey_v s);
 bool eys_read_opaque(ey_rd *r, ey_v *out);
 /* Whether an opaque value is of the variant of this saved name, and a field

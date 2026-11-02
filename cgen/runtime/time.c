@@ -58,6 +58,9 @@ static int32_t lookup(const ey_zone *z, int64_t unix, int64_t *start, int64_t *e
 	*start = INT64_MIN;
 	*end = INT64_MAX;
 	if (!z) return 0;
+#ifdef EY_HOSTED
+	if (z->n < 0) return eyh_local_offset(unix, start, end);
+#endif
 	int32_t lo = 0, hi = z->n; /* the first transition after unix */
 	while (lo < hi) {
 		int32_t mid = (lo + hi) / 2;

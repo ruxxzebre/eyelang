@@ -11,6 +11,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"math"
+	"time"
 	"unsafe"
 )
 
@@ -188,4 +190,36 @@ func eye_go_now(rt *C.eye_rt, ns *C.int64_t) C.eye_status {
 		*ns = C.int64_t(c.h.Now())
 		return nil
 	})
+}
+
+//export eye_go_show
+func eye_go_show(rt *C.eye_rt, value C.eye_val, text *C.eye_val) C.eye_status {
+	return back(rt, func(c *call) error {
+		b, err := encode(rt, 0, value)
+		if err != nil {
+			return err
+		}
+		s, err := c.h.Show(b)
+		if err != nil {
+			return err
+		}
+		v, err := decode(rt, 0, []byte(s))
+		*text = v
+		return err
+	})
+}
+
+//export eye_go_local_zone
+func eye_go_local_zone(unix C.int64_t, offset *C.int32_t, start, end *C.int64_t) {
+	t := time.Unix(int64(unix), 0).In(time.Local)
+	_, off := t.Zone()
+	*offset = C.int32_t(off)
+	*start, *end = math.MinInt64, math.MaxInt64
+	from, to := t.ZoneBounds()
+	if !from.IsZero() {
+		*start = C.int64_t(from.Unix())
+	}
+	if !to.IsZero() {
+		*end = C.int64_t(to.Unix())
+	}
 }

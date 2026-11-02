@@ -122,7 +122,7 @@ func (g *gen) callsCompiled(x *lir.Call) bool {
 // log, the environment, randomness.
 func hostedBuiltin(name string) bool {
 	switch name {
-	case "print", "env.get":
+	case "print", "env.get", "now":
 		return true
 	}
 	return strings.HasPrefix(name, "log.") || strings.HasPrefix(name, "random.")
@@ -807,20 +807,25 @@ func (g *gen) hostedEntry() string {
 	// The program, and the dispatch to each entry.
 	fmt.Fprintf(&b, "const eye_program_info *eye_program(void) {\n\tstatic eye_program_info p;\n\tp.version = EYE_HOST_VERSION;\n\tp.nentities = %d;\n\tp.entities = eyh_entities;\n\tp.njobs = %d;\n\tp.jobs = eyh_jobs;\n\tp.nsites = %d;\n\tp.sites = eyh_sites;\n\tey_zones(ey_zone_list, %d);\n\treturn &p;\n}\n\n",
 		len(g.hostEntities), len(g.hostJobs), len(g.sites), g.nzones)
-	b.WriteString("eye_status eye_call_method(eye_rt *rt, int32_t entity, int32_t method, eye_val *state, const eye_val *args, int32_t nargs, eye_val *result) {\n\t(void)nargs;\n\tswitch (entity) {\n")
+	// Each runs on the big stack (eyh_big), with its arguments in a struct.
+	b.WriteString("typedef struct { eye_rt *rt; int32_t entity, method; eye_val *state; const eye_val *args; eye_val *result; } eyh_mcall;\n\n")
+	b.WriteString("static int eyh_method(void *p) {\n\teyh_mcall *c = p;\n\tswitch (c->entity) {\n")
 	for i, he := range g.hostEntities {
-		fmt.Fprintf(&b, "\tcase %d:\n\t\tswitch (method) {\n", i)
+		fmt.Fprintf(&b, "\tcase %d:\n\t\tswitch (c->method) {\n", i)
 		for k := range he.methods {
-			fmt.Fprintf(&b, "\t\tcase %d: return eyh_m%d_%d(rt, state, args, result);\n", k, i, k)
+			fmt.Fprintf(&b, "\t\tcase %d: return eyh_m%d_%d(c->rt, c->state, c->args, c->result);\n", k, i, k)
 		}
 		b.WriteString("\t\t}\n\t\tbreak;\n")
 	}
 	b.WriteString("\t}\n\treturn EYE_FAULT;\n}\n\n")
-	b.WriteString("eye_status eye_step_job(eye_rt *rt, int32_t job, eye_val *frame, eye_val resumed, eye_step *step, eye_val *result) {\n\tswitch (job) {\n")
+	b.WriteString("eye_status eye_call_method(eye_rt *rt, int32_t entity, int32_t method, eye_val *state, const eye_val *args, int32_t nargs, eye_val *result) {\n\t(void)nargs;\n\teyh_mcall c = {rt, entity, method, state, args, result};\n\treturn (eye_status)eyh_big(eyh_method, &c);\n}\n\n")
+	b.WriteString("typedef struct { eye_rt *rt; int32_t job; eye_val *frame; eye_val resumed; eye_step *step; eye_val *result; } eyh_jcall;\n\n")
+	b.WriteString("static int eyh_job(void *p) {\n\teyh_jcall *c = p;\n\tswitch (c->job) {\n")
 	for i := range g.hostJobs {
-		fmt.Fprintf(&b, "\tcase %d: return eyh_j%d(rt, frame, resumed, step, result);\n", i, i)
+		fmt.Fprintf(&b, "\tcase %d: return eyh_j%d(c->rt, c->frame, c->resumed, c->step, c->result);\n", i, i)
 	}
-	b.WriteString("\t}\n\treturn EYE_FAULT;\n}\n")
+	b.WriteString("\t}\n\treturn EYE_FAULT;\n}\n\n")
+	b.WriteString("eye_status eye_step_job(eye_rt *rt, int32_t job, eye_val *frame, eye_val resumed, eye_step *step, eye_val *result) {\n\teyh_jcall c = {rt, job, frame, resumed, step, result};\n\treturn (eye_status)eyh_big(eyh_job, &c);\n}\n")
 	return b.String()
 }
 

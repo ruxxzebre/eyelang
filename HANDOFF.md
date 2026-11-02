@@ -43,9 +43,16 @@ compilation.md, "Compiled jobs", how. `TestMorningDigestNative` passes on the jo
 2. Done: jobs and entities in C.
 3. Done: contracts and outside calls, through sites the runner evaluates.
 4. Done: `eye build --runner` hosts them, with the runner's source inside `eye`.
-5. **Next:** run `TestMorningDigestNative/postgres` (`EYE_TEST_DOCKER=1`, or CI after a push),
-   record idle memory and resume time on the homelab's Linux machine, then close #79 and #112.
-6. The release, once the owner has answered the version question below.
+5. **Next:** CI's step "v0.4's exit test" shows the Postgres run and the Linux costs; record them,
+   then close #79 and #112.
+6. The release, tagged v0.4.0, with notes that 6.6, 6.8 and phase 5's exit criterion are owed.
+
+**The digest in the homelab, read on 2026-11-02.** On the pin 89af4f7 no morning has ended
+`Ok(Accepted(…))`. The article still reached Telegram on the `StillPending` mornings, and those are
+fixed on `dev` (`sent` in digest.eye). Mornings ending `WriteFailed(ProviderError)` with status 0
+are probably the 60 s limit a model call shared with `http.get`, also fixed on `dev`. Nobody has
+read their full text, which `eye runs` cuts off on that pin. Moving the pin is the next step there,
+and is the owner's to approve: it changes what runs in the cluster.
 
 **Done when all of these hold:**
 

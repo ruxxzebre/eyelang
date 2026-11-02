@@ -1,8 +1,10 @@
 package interp
 
 import (
+	"bytes"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"eyelang/ir"
 )
@@ -196,4 +198,51 @@ func (h *nativeHost) Site(site *NativeSite, args [][]byte) ([]byte, error) {
 	return h.guard(func() []byte {
 		return h.in.encode(h.in.evalSite(site, args, h.at), h.at)
 	})
+}
+
+// Show writes a value only the runner reads, as the program's Show does.
+func (h *nativeHost) Show(value []byte) (string, error) {
+	out, err := h.guard(func() []byte {
+		return []byte(h.in.display(h.in.decode(value, h.at)))
+	})
+	return string(out), err
+}
+
+// NativeFault is why compiled code stopped: where, as it was built, and why.
+type NativeFault struct{ At, Msg string }
+
+func (f *NativeFault) Error() string { return f.At + ": " + f.Msg }
+
+// nativePos finds the place compiled code names, written as file:line:col
+// where it was built, in the program this runner carries: at when it isn't
+// there. The file's path differs, so it is matched by what the two end in.
+func (in *Interp) nativePos(place string, at ir.Pos) ir.Pos {
+	parts := strings.Split(place, ":")
+	if len(parts) < 3 {
+		return at
+	}
+	path := strings.Join(parts[:len(parts)-2], ":")
+	line, err1 := strconv.Atoi(parts[len(parts)-2])
+	col, err2 := strconv.Atoi(parts[len(parts)-1])
+	if err1 != nil || err2 != nil {
+		return at
+	}
+	for _, m := range in.prog.Modules {
+		for _, f := range m.Files {
+			rel := ir.SiteFile(in.prog, f)
+			if rel != path && !strings.HasSuffix(path, "/"+rel) && !strings.HasSuffix(f.Path, "/"+path) {
+				continue
+			}
+			offset := 0
+			for l := 1; l < line && offset < len(f.Src); l++ {
+				i := bytes.IndexByte(f.Src[offset:], '\n')
+				if i < 0 {
+					return at
+				}
+				offset += i + 1
+			}
+			return ir.Pos{File: f, Offset: offset + col - 1}
+		}
+	}
+	return at
 }

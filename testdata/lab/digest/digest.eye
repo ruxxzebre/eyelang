@@ -169,7 +169,7 @@ fn channel() -> Channel {
   { event, people, keys: if shadow then "{event}:" else "" }
 }
 
-@unwitnessed("Notify holds a send for an action, or refuses one, only when a destination is misconfigured; no recording has caught either")
+@unwitnessed("Notify refuses a send only when a destination is misconfigured, and holds one for an action past `sent`'s tries only when it is in trouble; no recording has caught either")
 fn deliver(
   article: Article,
   dest: Channel,
@@ -177,6 +177,27 @@ fn deliver(
   only: Option(List(UserId)) = None,
   key: Key,
 ) -> Result(notify.Delivery, DigestError) {
+  let delivery = sent!(article, dest, priority, only, key, tries: 10)
+  match delivery {
+    Accepted(deliveries: 0, deduped: false, ..) => Err(NoReaders)
+    Accepted(..) => Ok(delivery)
+    Pending(action) => Err(StillPending(action))
+    Refused(error) => Err(NotSent(error))
+  }
+}
+
+## Sends the article. Notify answers Pending while it is still admitting a
+## message, which it usually finishes within a second, and sending again with
+## the same key gives the outcome without sending it twice: in the lab, every
+## morning that ended StillPending had in fact been delivered.
+fn sent(
+  article: Article,
+  dest: Channel,
+  priority: notify.Priority,
+  only: Option(List(UserId)),
+  key: Key,
+  tries: Int,
+) -> notify.Delivery {
   let delivery = notify.send!(
     event: dest.event,
     title: article.title,
@@ -187,10 +208,11 @@ fn deliver(
     key:,
   ).reconcile!()
   match delivery {
-    Accepted(deliveries: 0, deduped: false, ..) => Err(NoReaders)
-    Accepted(..) => Ok(delivery)
-    Pending(action) => Err(StillPending(action))
-    Refused(error) => Err(NotSent(error))
+    Pending(_) if tries > 1 => {
+      sleep!(30 s)
+      sent!(article, dest, priority, only, key, tries: tries - 1)
+    }
+    _ => delivery
   }
 }
 
@@ -872,6 +894,15 @@ test "the morning's briefing goes at 07:40 Irish time, for the Irish day" {
   expect(keys(sent) == [])
   advance(1 min)
   expect(keys(sent) == ["ireland-2026-10-12"])
+}
+
+test "a send Notify is still admitting is sent again with its key" {
+  let sent = fakes(notify, from: "recordings/pending/")
+  with sent
+  with clock(2026-10-12 06:30 in "UTC")  # 07:30 in Dublin, on summer time
+  Day(2026-10-12).keep(today)
+  advance(11 min)
+  expect(keys(sent) == ["ireland-2026-10-12", "ireland-2026-10-12"])
 }
 
 test "the morning reads its sources, has the briefing written, and sends it" {

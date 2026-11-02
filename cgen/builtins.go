@@ -232,6 +232,9 @@ func (e *fn) builtin(in *lir.Builtin) {
 		set(fmt.Sprintf("ey_loop_more(%s)", v(0)))
 	case "iter.next":
 		stmt("ey_loop_next(%s, %s);", v(0), out())
+	case "list.of":
+		// What a walk across a step goes through, as a list (lir.PrepareSteps).
+		set(fmt.Sprintf("ey_lazy_list(%s, %s)", v(0), rt()))
 	case "list.elem":
 		// An element a walk knows is there (lir.PrepareSteps).
 		stmt("eyb_list_elem(%s, %s, %s, %s);", v(0), v(1), out(), rt())

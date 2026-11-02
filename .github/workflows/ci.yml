@@ -93,3 +93,9 @@ jobs:
           EYE_TEST_POSTGRES: postgres://eye:eye@localhost:55432/eye?sslmode=disable
           EYE_TEST_DOCKER: "1"
         run: task check
+
+      # By name, so the log shows it ran on Postgres and what it cost on Linux.
+      - name: v0.4's exit test
+        env:
+          EYE_TEST_DOCKER: "1"
+        run: go test -v -count=1 -timeout 600s -run 'TestMorningDigestNative|TestNativeCosts' ./cmd/eye

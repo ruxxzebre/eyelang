@@ -57,9 +57,9 @@ func SiteOf(in Instr) ir.Expr {
 }
 
 // PrepareSteps readies the functions that stop, before Count: a for loop
-// over a list walks it by index, since a walk's place must survive in a
-// frame and an Iter can't be saved. A loop over anything else keeps its
-// Iter, which the back end reports if it is live across a step.
+// walks a list by index, since a walk's place must survive in a frame and an
+// Iter can't be saved. What isn't a list is made one when the loop starts, so
+// it is walked as it stood then, as a loop over a value always is.
 func PrepareSteps(p *Program) {
 	for _, f := range p.Funcs {
 		if Stops(f) {
@@ -72,7 +72,7 @@ func indexLoops(f *Func) {
 	for _, b := range f.Blocks {
 		for i := 0; i < len(b.Instrs); i++ {
 			it, ok := b.Instrs[i].(*Builtin)
-			if !ok || it.Name != "iter" || len(it.Args) != 1 || !isList(it.Args[0].Ty) {
+			if !ok || it.Name != "iter" || len(it.Args) != 1 {
 				continue
 			}
 			if !walkedByIndex(f, it.Dst) {
@@ -83,9 +83,17 @@ func indexLoops(f *Func) {
 			idx := f.newValue(tyInt)
 			// The list stays in a variable of its own: the walk reads it to
 			// the end of the loop.
-			held := f.newValue(list.Ty)
+			var held *Value
+			var made Instr
+			if isList(list.Ty) {
+				held = f.newValue(list.Ty)
+				made = &Move{Dst: held, Src: list}
+			} else {
+				held = f.newValue(&ir.TCon{Name: "List", Args: []ir.Ty{ElemOf(it.Dst.Ty)}})
+				made = &Builtin{Dst: held, Name: "list.of", Args: []*Value{list}}
+			}
 			head := []Instr{
-				&Move{Dst: held, Src: list},
+				made,
 				&Builtin{Dst: n, Name: "size", Args: []*Value{held}},
 				&Const{Dst: idx, Value: int64(0)},
 			}

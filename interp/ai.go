@@ -448,7 +448,7 @@ func (in *Interp) postJSON(target string, headers http.Header, body map[string]a
 	data, _ := json.Marshal(body)
 	headers.Set("Content-Type", "application/json")
 	for try := 0; ; try++ {
-		status, answer, err := in.doRequest("POST", target, headers, data)
+		status, answer, err := in.doRequestWith(modelClient, "POST", target, headers, data)
 		switch {
 		case err != nil && notSent(err) && in.tryAgain(try):
 		case err != nil:

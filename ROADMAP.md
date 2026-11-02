@@ -31,9 +31,14 @@ findings that have no issue yet.
 
 - Phase 5's exit criterion, "the morning digest runs in the lab." The digest runs in the homelab
   on Postgres, in shadow mode beside the TypeScript digest (session eyelang-af; HANDOFF.md says
-  what is deployed and how to read its runs). Its first scheduled morning is 2026-10-12 07:40
-  Europe/Dublin. The criterion closes after one good morning run; replacing the TypeScript
-  digest is the user's decision.
+  what is deployed and how to read its runs). The criterion closes after one good morning run;
+  replacing the TypeScript digest is the user's decision. **As of 2026-11-02 no morning has ended
+  `Ok(Accepted(…))`,** read from the cluster: of 45 runs on the pin 89af4f7, some mornings were
+  delivered but ended `StillPending`, since the digest treated Notify's `Pending` as final, and
+  the rest ended `WriteFailed(ProviderError)` with status 0, whose text `eye runs` cuts off on
+  that pin. Fixed on `dev`: `deliver` sends again with its key, and a model call no longer has
+  `http.get`'s 60 s limit, which is the likely cause of status 0 but not confirmed. It closes once
+  the pin moves past them and a morning ends well.
 - Every carry-over task (C.1 to C.11) is done: the exit tests that closed tasks of v0.1 and v0.2
   left unmet are met, the last being 10,000 waiting tasks within a memory budget (C.6) and every
   SPECS.md example passing the checker (C.7).
@@ -1003,16 +1008,15 @@ whole-program specialisation, and jobs resuming from saved frames.
   the runtime, names a site: a call in the typed IR the binary carries, which the runner evaluates
   with the values held in place, so contract operations, `reconcile!`, `join!`, `poll!` and
   `ai.generate!` keep one implementation. `eye build --runner testdata/lab/deploy/digest` builds
-  for this machine, linux/amd64 and linux/arm64, and all 32 of the lab's tests pass with every job
-  and entity method compiled (`TestHostedJobs`). `TestMorningDigestNative`, v0.4's exit test, passes
-  on the journal: killed while the model writes, the run restarts from its saved frame and the
-  digest goes out with one key. Its Postgres half needs `EYE_TEST_DOCKER=1` and **hasn't run yet**.
-  `main`, tests, views and served operations stay in the interpreter; a lambda given to a site
-  (`poll!`'s) runs there too.
-  Measured on an arm64 Mac under load, on the journal: the digest idles at 28.2 MB against 25.0 MB
-  under `eye run`, a run killed in its sleep resumes and finishes in 23–30 ms against 23–27 ms,
-  and 16,000 steps of a compiled job grow memory by 0.3 MB, as they do interpreted. The binary is
-  15 MB. To record on the homelab's Linux machine before this closes.
+  for this machine, linux/amd64 and linux/arm64, and all the lab's tests pass with every job and
+  entity method compiled (`TestHostedJobs`). `TestMorningDigestNative`, v0.4's exit test, runs on
+  the journal and on Postgres: killed while the model writes, the run restarts from its saved frame
+  and the digest goes out with one key. `main`, tests, views and served operations stay in the
+  interpreter; a lambda given to a site (`poll!`'s) runs there too.
+  Measured by `TestNativeCosts`, on an arm64 Mac under load: the digest idles at 28.6 MB against
+  26.0 MB under `eye run`, and a run killed in its sleep resumes and finishes in 34 ms against
+  40 ms. CI's log prints the same on Linux, in the step "v0.4's exit test". 16,000 steps of a
+  compiled job grow memory by 0.3 MB, as they do interpreted. The binary is 15 MB.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
   Crossings (7.10, counted by the interpreter with `eye run --crossings` on the journal, against
