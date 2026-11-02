@@ -1,8 +1,9 @@
 # Eyelang 2 roadmap
 
-**Status, 2026-10-12:** v0.2.0 is released (phase 5; tag `v0.2.0`), after v0.1.0 (phases 0–4,
-2026-10-10). Phase 6 (v0.3) is under way, with 7.1 to 7.3 of phase 7 pulled into it. Development
-and releases happen on `dev`; `main` stays at Eyelang 1 until that changes.
+**Status, 2026-11-02:** v0.4.0 is released (the digest runs natively; tag `v0.4.0`), after v0.2.0
+(phase 5, 2026-10-12) and v0.1.0 (phases 0–4, 2026-10-10). No v0.3 was tagged: its two exit tests,
+6.6 and 6.8, are still owed, as is phase 5's. Development and releases happen on `dev`; `main`
+stays at Eyelang 1 until that changes.
 
 What gets built, in what order, and how we know each part is done. The language itself is defined
 in [SPECS.md](SPECS.md); what runs today, feature by feature, in
@@ -1013,10 +1014,12 @@ whole-program specialisation, and jobs resuming from saved frames.
   the journal and on Postgres: killed while the model writes, the run restarts from its saved frame
   and the digest goes out with one key. `main`, tests, views and served operations stay in the
   interpreter; a lambda given to a site (`poll!`'s) runs there too.
-  Measured by `TestNativeCosts`, on an arm64 Mac under load: the digest idles at 28.6 MB against
-  26.0 MB under `eye run`, and a run killed in its sleep resumes and finishes in 34 ms against
-  40 ms. CI's log prints the same on Linux, in the step "v0.4's exit test". 16,000 steps of a
-  compiled job grow memory by 0.3 MB, as they do interpreted. The binary is 15 MB.
+  Measured by `TestNativeCosts`, which CI's step "v0.4's exit test" prints. On linux/amd64: the
+  digest idles at 21.2 MB against 23.2 MB under `eye run`, and a run killed in its sleep resumes
+  and finishes in 14 ms against 13 ms. On an arm64 Mac under load: 28.6 MB against 26.0 MB, and
+  34 ms against 40 ms. 16,000 steps of a compiled job grow memory by 0.3 MB, as they do
+  interpreted. The binary is 15 MB.
+  Done on 2026-11-02: on GitHub's Linux runner the test passes on the journal and on Postgres.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
   Crossings (7.10, counted by the interpreter with `eye run --crossings` on the journal, against

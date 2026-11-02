@@ -116,9 +116,7 @@ and checks its checksum. After changing `grammar.js` or an example in SPECS.md, 
 
 Prebuilt binaries for Linux, macOS and Windows are attached to each
 [GitHub release](https://github.com/ruxxzebre/eyelang/releases), starting with v0.1.0. Pushing a
-`v*` tag builds and publishes them; nothing built is committed to git. The latest release, v0.2.0,
-lags far behind `dev`: it lacks much of what this README and the docs describe, such as
-`eye build`, so build from source.
+`v*` tag builds and publishes them; nothing built is committed to git. The latest release is v0.4.0.
 
 ## Repository layout
 

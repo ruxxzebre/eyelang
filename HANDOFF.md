@@ -34,8 +34,9 @@ that finishes it.
 That is #79's done-when and v0.4's exit test. This section replaces the order in the next one
 until v0.4 is out.
 
-**Where it stands (2026-11-02).** Steps 1 to 4 are done; ROADMAP's 7.6 says what was built and
-compilation.md, "Compiled jobs", how. `TestMorningDigestNative` passes on the journal.
+**Where it stands (2026-11-02).** Every step is done; ROADMAP's 7.6 says what was built and
+compilation.md, "Compiled jobs", how. `TestMorningDigestNative` passes on the journal and on
+Postgres. What is next is the speed work ROADMAP's "What's next" orders, and the homelab below.
 
 **In scope, in order:**
 
@@ -43,9 +44,9 @@ compilation.md, "Compiled jobs", how. `TestMorningDigestNative` passes on the jo
 2. Done: jobs and entities in C.
 3. Done: contracts and outside calls, through sites the runner evaluates.
 4. Done: `eye build --runner` hosts them, with the runner's source inside `eye`.
-5. **Next:** CI's step "v0.4's exit test" shows the Postgres run and the Linux costs; record them,
-   then close #79 and #112.
-6. The release, tagged v0.4.0, with notes that 6.6, 6.8 and phase 5's exit criterion are owed.
+5. Done: CI's step "v0.4's exit test" shows the Postgres run and the Linux costs, which ROADMAP's
+   7.6 records.
+6. Done: the release, tagged v0.4.0, with notes that 6.6, 6.8 and phase 5's exit criterion are owed.
 
 **The digest in the homelab, read on 2026-11-02.** On the pin 89af4f7 no morning has ended
 `Ok(Accepted(…))`. The article still reached Telegram on the `StillPending` mornings, and those are

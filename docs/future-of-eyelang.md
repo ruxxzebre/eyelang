@@ -41,12 +41,11 @@ against. Everything below is a means to them.
 | **v0.1.0** | Write, check, format, run and test programs with entities, jobs and views, on an in-memory store with a controllable clock | Released 2026-10-10 |
 | **v0.2.0** | Durable runs on a journal or Postgres, typed model calls, `dyn Trait`, task groups and channels, `@memory`, `@priority` and `@budget` enforced, approvals that reach people | Released 2026-10-11 |
 | **v0.3** | Contracts with other services, network policy and Go/TypeScript code generated from them, model tools, coding agents | 11 of 13 tasks done. Left: 6.6 and 6.8, its exit tests |
-| **v0.4** | Native code through C with reference counting; jobs as state machines; the runner hosting compiled code | 9 of 14 tasks done; 7.9's work is merged and closes with 7.6. Its exit test, the digest running natively (7.6), is the next piece of work |
+| **v0.4.0** | Native code through C with reference counting; jobs that stop at each step and keep only bytes; the runner hosting compiled code | Released 2026-11-02, ahead of v0.3's two exit tests. 11 of 14 tasks done; the speed work goes on (7.11, 7.12, the rest of 7.13) |
 | **v1.0** | Syntax freeze, migration tooling, `eye why`, hot code replacement, documentation | Planned |
 
 Nearly every feature [What runs today](/reference/status) lists is done; that page names each
-one still partial or not built. The biggest gaps are coding agents (6.8) and native compilation of entities, jobs
-and contracts (7.6).
+one still partial or not built. The biggest gap is coding agents (6.8).
 
 ## What is implemented
 
@@ -122,7 +121,7 @@ and contracts (7.6).
   what to add.
 - `with memory(…)` sets the memory a test's runs are admitted against.
 
-### Native compilation (v0.4, in progress)
+### Native compilation (v0.4)
 
 `eye build` compiles a program to one native binary through C11, built by a pinned `zig cc` that
 `eye` fetches and checks itself. It cross-compiles to every release target from any host.
@@ -192,26 +191,17 @@ binaries with `eye build`.
 Every open item, issue by issue, with the undecided open questions and the decisions waiting on
 the owner, is listed in [What's left](/whats-left).
 
-### v0.4: native compilation (now)
+### After v0.4.0: native code, faster
 
-The work in order. The owner's native-focus checkpoint is close to reached: `NaN` equal to
-itself, `with memory(…)` in tests, events between programs, `eye runs --retry`, and the core
-gaps in C (7.9) are done.
+v0.4.0 is out: the morning digest runs as a compiled job on the journal and on Postgres, and on
+Linux it idles at 21.2 MB against 23.2 MB interpreted. `main`, tests, views and served operations
+still run in the interpreter the binary carries. The work in order:
 
-1. **7.6, the runner hosts compiled programs (#79), v0.4's exit test.** The runner's side is
-   done. Two things remain:
-   - the C back end writing the hosting entry points: the program's tables, entity methods, jobs
-     as state machines over saved frames, and encoders at the boundary;
-   - `eye build --runner` building real programs with the runner's module inside.
-
-   **Done when** the morning digest runs as a native job on the journal and on Postgres, with its
-   idle memory and resume time recorded beside the interpreter's. Then v0.4 is released.
-2. **Before the checkpoint closes:**
-   - the rest of 7.13 (#117): maps specialised per key type, and strings and `Bytes` as views,
-     so slicing them stops copying.
-3. **7.11, faster than Go (#114).** Native code beats Go on time on every benchmark, and on
+1. **The rest of 7.13 (#117):** maps specialised per key type, and strings and `Bytes` as views,
+   so slicing them stops copying.
+2. **7.11, faster than Go (#114).** Native code beats Go on time on every benchmark, and on
    memory for every program without entities or jobs. Tracked by `go run ./tools/bench --check`.
-4. **7.12, reuse and fault regions (#115).** A `match` arm reuses the cell it matched, and a
+3. **7.12, reuse and fault regions (#115).** A `match` arm reuses the cell it matched, and a
    failing test frees what it allocated.
 
 ### v0.3: what is left
