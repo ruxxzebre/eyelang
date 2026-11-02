@@ -585,7 +585,7 @@ struct ey_zone {
 /* The machine's zone, as the runner's clock reads it: its n is below zero, and
  * the runner says its offsets (hosted.c). */
 extern const ey_zone eyh_local_zone;
-int32_t eyh_local_offset(int64_t unix, int64_t *start, int64_t *end);
+int32_t eyh_local_offset(int64_t seconds, int64_t *start, int64_t *end);
 #endif
 
 void ey_zones(const ey_zone *const *zones, int n);

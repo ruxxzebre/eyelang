@@ -210,8 +210,8 @@ func eye_go_show(rt *C.eye_rt, value C.eye_val, text *C.eye_val) C.eye_status {
 }
 
 //export eye_go_local_zone
-func eye_go_local_zone(unix C.int64_t, offset *C.int32_t, start, end *C.int64_t) {
-	t := time.Unix(int64(unix), 0).In(time.Local)
+func eye_go_local_zone(seconds C.int64_t, offset *C.int32_t, start, end *C.int64_t) {
+	t := time.Unix(int64(seconds), 0).In(time.Local)
 	_, off := t.Zone()
 	*offset = C.int32_t(off)
 	*start, *end = math.MinInt64, math.MaxInt64

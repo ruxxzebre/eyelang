@@ -224,6 +224,6 @@ eye_status eye_go_now(eye_rt *rt, int64_t *ns);
 /* A value as the program's Show writes it, for what only the runner reads. */
 eye_status eye_go_show(eye_rt *rt, eye_val value, eye_val *text);
 /* The machine's zone at a time: its offset east of UTC, and when that holds. */
-void eye_go_local_zone(int64_t unix_seconds, int32_t *offset, int64_t *start, int64_t *end);
+void eye_go_local_zone(int64_t seconds, int32_t *offset, int64_t *start, int64_t *end);
 
 #endif

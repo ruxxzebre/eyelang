@@ -122,9 +122,9 @@ void eyh_leave(eyh_trap *t) {
 /* The machine's zone, whose offsets the runner knows. */
 const ey_zone eyh_local_zone = {"Local", -1, NULL, NULL, 0};
 
-int32_t eyh_local_offset(int64_t unix, int64_t *start, int64_t *end) {
+int32_t eyh_local_offset(int64_t seconds, int64_t *start, int64_t *end) {
 	int32_t off = 0;
-	eye_go_local_zone(unix, &off, start, end);
+	eye_go_local_zone(seconds, &off, start, end);
 	return off;
 }
 
