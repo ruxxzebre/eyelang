@@ -115,6 +115,7 @@ type checker struct {
 	// expected settles each (fnCheck.chooseVariant).
 	variantChoices map[*ir.Ref][]*ir.Variant
 	overlay        map[string][]byte       // unsaved files, by path
+	carried        bool                    // the copy a compiled binary carries (Options.Carried)
 	parsed         *FormatSession          // immutable syntax and observed formatting inputs
 	index          *Index                  // nil unless a tool asked for it
 	all            bool                    // load every module below root, for tools

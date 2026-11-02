@@ -65,6 +65,9 @@ func (c *checker) contractPolicy(m *module, f *ir.File, d *syntax.Node, ct *ir.C
 // could import one: the lab's digest deployed alone still names the lab's
 // other modules in Notify's @allow.
 func (c *checker) moduleExists(name string) bool {
+	if c.carried {
+		return true // checked when it was built, with the modules around it
+	}
 	for _, m := range c.modules {
 		if m.mod.Name == name && m.mod.Dir != "" {
 			return true

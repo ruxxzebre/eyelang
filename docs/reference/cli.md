@@ -336,8 +336,11 @@ usage: eye build [--test] [--target os/arch] [-o file] [-g] [--emit-c dir] [--ru
 Compiles a program to a native binary: C from the low IR, built with the zig
 that eye pins, fetched into the user's cache the first time. Object files are
 cached by the hash of what made them. The binary runs main, or with --test the
-program's tests. The C back end compiles the core language; entities, jobs,
-views and contracts still run in eye run.
+program's tests. Without --runner the C back end compiles the core language. With
+it, a program's jobs and entity methods compile too, and the binary is the Go
+runner, with its store and scheduler: the first build fetches the modules the
+runner uses into the user's cache, and main, tests, views and served operations
+run in the interpreter it carries.
   -emit-c string
     	write the C, the runtime's with it, into this directory instead of compiling it
   -g	compile without optimisation and with debug information (-O0 -g)

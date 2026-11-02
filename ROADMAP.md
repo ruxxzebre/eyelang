@@ -22,10 +22,10 @@ those can't say, so it stays short: what is owed, and the order. Change it in th
 changes it, and set the date below when you check it; `task next -- --check`, part of
 `task check`, fails when it was checked before the last release or names a closed issue.
 
-Checked: 2026-10-12
+Checked: 2026-11-02
 
-Start with [HANDOFF.md](HANDOFF.md): the native compiler's next tasks in order (for a fresh
-session), the digest in the homelab, and findings that have no issue yet.
+Start with [HANDOFF.md](HANDOFF.md): the scope that finishes v0.4, the digest in the homelab, and
+findings that have no issue yet.
 
 **Owed by releases already made**
 
@@ -76,7 +76,8 @@ or real agents (6.6, 6.8), and new syntax or library features, which go to the o
 unless the native work needs them. Bugs are fixed whenever they are found.
 
 After the checkpoint, in order: 7.6 (the runner hosts compiled programs: the morning digest runs
-natively on the journal and on Postgres; v0.4's exit test, then the release), 7.11 (faster than
+natively on the journal and on Postgres; v0.4's exit test, then the release; built on 2026-11-02,
+its Postgres half still to run), 7.11 (faster than
 Go on every benchmark: maps per key type, strings and `Bytes` as views, the rest of 7.13), 7.12
 (reuse of a matched cell, and a failing test frees what it allocated).
 
@@ -995,9 +996,23 @@ whole-program specialisation, and jobs resuming from saved frames.
   - the program carried in the binary as its source, checked from memory at start-up in about
     50 ms for the whole lab.
 
-  Left: cgen writing the entry points and tables (with 7.9's encoders), `eye build --runner`
-  generating the main with the program's sources and the runner's embedded module, and then
-  the digest.
+  **Progress (2026-11-02):** the compiled side works
+  ([compilation.md, "Compiled jobs"](docs/internals/compilation.md#compiled-jobs-7-6)). A job, a
+  function that waits and an entity method compile. At each `!` a function saves its live
+  variables as bytes and returns, so a waiting run holds no C stack. A step, and any other call of
+  the runtime, names a site: a call in the typed IR the binary carries, which the runner evaluates
+  with the values held in place, so contract operations, `reconcile!`, `join!`, `poll!` and
+  `ai.generate!` keep one implementation. `eye build --runner testdata/lab/deploy/digest` builds
+  for this machine, linux/amd64 and linux/arm64, and all 32 of the lab's tests pass with every job
+  and entity method compiled (`TestHostedJobs`). `TestMorningDigestNative`, v0.4's exit test, passes
+  on the journal: killed while the model writes, the run restarts from its saved frame and the
+  digest goes out with one key. Its Postgres half needs `EYE_TEST_DOCKER=1` and **hasn't run yet**.
+  `main`, tests, views and served operations stay in the interpreter; a lambda given to a site
+  (`poll!`'s) runs there too.
+  Measured on an arm64 Mac under load, on the journal: the digest idles at 28.2 MB against 25.0 MB
+  under `eye run`, a run killed in its sleep resumes and finishes in 23–30 ms against 23–27 ms,
+  and 16,000 steps of a compiled job grow memory by 0.3 MB, as they do interpreted. The binary is
+  15 MB. To record on the homelab's Linux machine before this closes.
   **Done when:** the morning digest runs as a native job on the journal and on Postgres; its idle
   memory and resume time are measured and recorded in this file, beside the interpreter's.
   Crossings (7.10, counted by the interpreter with `eye run --crossings` on the journal, against

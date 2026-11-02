@@ -402,12 +402,13 @@ the user's `go env`. Today the embedded runner is the package `cgen/hosted`, whi
 `eye_main`. It is behind the build tag `eyehosted`, so `eye`'s own build, which has no cgo,
 skips it.
 
-When 7.6 hosts entities and jobs, the runner's packages (`interp` and the stores) and their
-dependencies are embedded the same way. The dependencies are vendored (`go mod vendor`) when
-`eye` is built, so the build runs with `-mod=vendor`, offline. Fetching the runner's module from
-a proxy instead would make a build depend on the network and on a published version matching
-`eye`'s. Embedding ties the runner a program links to the `eye` that compiled it, which is what
-the interface below needs.
+A program with entities, jobs, views or contracts needs the whole runner: `interp` and its stores,
+`check` and what those import. Their source is embedded the same way (`runnersrc.go`), which ties
+the runner a program links to the `eye` that compiled it, as the interface below needs. The
+modules they use, pgx and its dependencies, are not embedded: the first build fetches them into
+the user's cache and checks them against the `go.sum` inside `eye`, as `eye` fetches Go and zig.
+So a first build needs the network, or a `GOPROXY` the user names. This was planned as vendoring,
+with the build offline; fetching keeps megabytes of other people's code out of the repository.
 
 **The interface** is between the runner (Go) and a compiled program (C), declared in
 [`cgen/hosted/eye_host.h`](https://github.com/ruxxzebre/eyelang/blob/dev/cgen/hosted/eye_host.h).
@@ -513,6 +514,60 @@ The test runs it on the journal, and on Postgres when `EYE_TEST_POSTGRES` is set
 process while the job sleeps and starts it again: the job resumes, takes its steps and
 finishes. The store holds the same bytes, states and events, the interpreter would write. Its
 tests run with `--test`, a failing `expect` included.
+
+### Compiled jobs (7.6)
+
+`eye build --runner` compiles a program's jobs and entity methods, and everything they call
+(`cgen/hostgen.go`, `lir/steps.go`, `cgen/runtime/hosted.c`). `main`, tests, views and served
+operations stay in the interpreter the binary carries, and call the compiled code through
+`interp.Native`.
+
+**A function stops by saving and returning.** A function with a `!` in it gets a state number for
+each place it can stop. To stop, it writes a segment of bytes: a hash of its code, the state and
+the variables live there, each in the encoding the interpreter saves values in. It drops what it
+owns and returns; its caller sees that it stopped and does the same. So a waiting run is those
+segments, with no C stack. The `Frame` the runner stores is the segments from the outside in.
+
+```text
+ey_f0_tally(...)               ey_f2_counted(...)
+  v10 = counted(v9, v1)          stop at sleep!       -> saves its live variables, returns
+  if stopping: save, return      <- resumed here on the next turn
+```
+
+**To resume,** the job's function is called again with nothing but its `mut` variables. Each
+function reads its own segment, restores its variables, jumps to its state and calls the next
+one, down to the step that stopped, which reads what the step gave. A frame from other code is
+caught by the hash: the run faults, as an interpreted run does when its job changed.
+
+**A step names a site.** Compiled code has no function for a contract operation, a `reconcile!`
+or an `ai.generate!`. It names a site, a call in the typed IR (a file, an offset and a kind), and
+gives the values of the receiver and arguments as encodings. The binary carries the program's
+source, so the runner holds the same typed IR. It finds the call, copies it with each value held
+in place (`ir.Held`), and evaluates the copy (`interp/sites.go`). So every operation keeps one
+implementation, with its steps, replay, fakes, budgets and retries. The cost is a decode and an
+encode per crossing, which 7.10 counted at 214 for a morning. Non-durable calls of the runtime,
+such as `Ref` construction, an entity's read, an event's publish, `log.info` or `env.get`, take the
+same path through `eye_go_site`.
+
+**What compiled code keeps as its encoding:** a `Ref`, a `Run`, an `Approval`, and a command's
+result, which may also be `Uncertain(key)`. It reads a variant's tag and a field by decoding on
+demand. A literal function passed to a site, as `poll!(…, fn { … })` takes, is kept as its saved
+form (its code's name and its captures), and the interpreter runs it.
+
+**Memory.** Count (7.5) says which values a function owns. A live variable it owns is dropped when
+it saves. One the code only borrows has no drop in the code, so when it is read back the function
+keeps it in a shadow it drops as it leaves. A `for` over a list in a function that stops walks by
+index (`lir.PrepareSteps`), since an `Iter` can't be saved. A loop over anything else, or a
+function value that isn't a literal live across a step, is a build error that says so.
+
+**Faults.** Each call from the runner is a `setjmp`, and a fault `longjmp`s to the innermost one,
+so it never crosses Go frames. What was live leaks until 7.12's regions. Compiled code runs on the
+thread Go gave the call, so recursion may use 6 MB of stack and then faults; `eye build` without
+the runner keeps its 256 MB.
+
+**Known differences from the interpreter:** an `Instant` from the runner's clock in the machine's
+zone reads as UTC when compiled code shows it (the instant is the same), and showing a `Ref` or a
+`Run` in compiled code prints its encoding.
 
 ### Values at the boundary (7.9)
 

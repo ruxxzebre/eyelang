@@ -27,8 +27,11 @@ func runBuild(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Compiles a program to a native binary: C from the low IR, built with the zig")
 		fmt.Fprintln(stderr, "that eye pins, fetched into the user's cache the first time. Object files are")
 		fmt.Fprintln(stderr, "cached by the hash of what made them. The binary runs main, or with --test the")
-		fmt.Fprintln(stderr, "program's tests. The C back end compiles the core language; entities, jobs,")
-		fmt.Fprintln(stderr, "views and contracts still run in eye run.")
+		fmt.Fprintln(stderr, "program's tests. Without --runner the C back end compiles the core language. With")
+		fmt.Fprintln(stderr, "it, a program's jobs and entity methods compile too, and the binary is the Go")
+		fmt.Fprintln(stderr, "runner, with its store and scheduler: the first build fetches the modules the")
+		fmt.Fprintln(stderr, "runner uses into the user's cache, and main, tests, views and served operations")
+		fmt.Fprintln(stderr, "run in the interpreter it carries.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {

@@ -17,8 +17,10 @@ import (
 )
 
 // root is where the program's files are, as the checker reads them: held
-// in memory, under a directory that needn't exist.
-const root = "/eye-program"
+// in memory, under a directory that needn't exist. It is deep, since a
+// program's eye.toml may find modules above it (modules = ["../.."]), and a
+// call compiled code names is found by its file's path relative to the root.
+const root = "/eye-program/p/p/p/p/p/p/p/p"
 
 // Main runs the program as `eye run` does, with the compiled program
 // hosting what it compiled: main first, then its jobs and schedules on the
@@ -59,7 +61,7 @@ func Main(sources map[string]string, args []string, stdout, stderr io.Writer) in
 	for p, text := range sources {
 		overlay[filepath.Join(root, filepath.FromSlash(p))] = []byte(text)
 	}
-	res := check.Check(root, check.Options{Overlay: overlay})
+	res := check.Check(root, check.Options{Overlay: overlay, Carried: true})
 	if *dir != "" {
 		res = check.Check(*dir, check.Options{})
 	}

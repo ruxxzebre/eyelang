@@ -34,28 +34,17 @@ that finishes it.
 That is #79's done-when and v0.4's exit test. This section replaces the order in the next one
 until v0.4 is out.
 
-**Where it stands.** Checked by running `eye build --runner testdata/lab/deploy/digest`: it stops
-at `cgen`'s gate, "the program declares entities, jobs and contracts, which the C back end
-doesn't compile yet". The Go side of hosting and the saved-type encoders exist. A text search
-finds no job lowering in `lir/` or `cgen/`, none of the interface's entry points
-(`eye_program`, `eye_call_method`, `eye_job_frame`, `eye_step_job`) in the code `cgen` writes, and
-no call for contract operations in `cgen/hosted`. So the largest step is still to do, and its size
-is unknown until step 2 starts.
+**Where it stands (2026-11-02).** Steps 1 to 4 are done; ROADMAP's 7.6 says what was built and
+compilation.md, "Compiled jobs", how. `TestMorningDigestNative` passes on the journal.
 
 **In scope, in order:**
 
-1. Clean up: confirm no cloud session is still working in `cgen/`, release the stale claim of
-   `eyelang-dev-42`, and bring local `dev` up to `origin/dev`.
-2. Jobs and entities in C: lower a job to a state machine that resumes from a saved frame, as the
-   interpreter does since 7.3, and have `cgen` write the entry points and tables that
-   `cgen/hosted/eye_host.h` declares. Start with `cgen/hosted_test.go`'s hand-written stand-in
-   replaced by generated code.
-3. Contracts and outside calls: decide how a contract operation and `ai.generate` cross into the
-   runner (through `eye_go_host` or a new callback), then build it, with each one a recorded step
-   that replays. A morning makes 38 contract operations, 16 `http.get` and one `ai.generate`.
-4. `eye build --runner` writes the main with the program's sources and the embedded runner, and
-   `cgen`'s gate lifts for entities, jobs and contracts.
-5. Prove it, then close #79 and #112 and update status.md and ROADMAP.md.
+1. Done: clean up. No cloud session was running, the stale claim is released, and `dev` is current.
+2. Done: jobs and entities in C.
+3. Done: contracts and outside calls, through sites the runner evaluates.
+4. Done: `eye build --runner` hosts them, with the runner's source inside `eye`.
+5. **Next:** run `TestMorningDigestNative/postgres` (`EYE_TEST_DOCKER=1`, or CI after a push),
+   record idle memory and resume time on the homelab's Linux machine, then close #79 and #112.
 6. The release, once the owner has answered the version question below.
 
 **Done when all of these hold:**

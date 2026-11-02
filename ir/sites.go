@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"path/filepath"
-	"strings"
 )
 
 // SiteFile is a file's name in a site, a call a compiled program names for
@@ -15,9 +14,18 @@ func SiteFile(prog *Program, f *File) string {
 	if f == nil {
 		return ""
 	}
-	if prog.Root != nil && prog.Root.Dir != "" {
-		if rel, err := filepath.Rel(prog.Root.Dir, f.Path); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
-			return filepath.ToSlash(rel)
+	// A module of the program's own may be above the root, as eye.toml's
+	// `modules = ["../.."]` finds it. The standard library's have no directory.
+	for _, m := range prog.Modules {
+		if m.Dir == "" || prog.Root == nil {
+			continue
+		}
+		for _, mf := range m.Files {
+			if mf == f {
+				if rel, err := filepath.Rel(prog.Root.Dir, f.Path); err == nil {
+					return filepath.ToSlash(rel)
+				}
+			}
 		}
 	}
 	return f.Path

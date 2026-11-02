@@ -17,6 +17,11 @@ type Options struct {
 	// Overlay holds the text of files that differ from the disk, by path:
 	// an editor's unsaved buffers.
 	Overlay map[string][]byte
+	// Carried says the program is the copy a compiled binary carries, which
+	// holds the modules it imports and not those around them: @allow may
+	// name one it doesn't hold, since the program was checked when it was
+	// built.
+	Carried bool
 	// Module is the directory of the module to check, below the program's
 	// directory, with what it imports. Empty means the program's own module.
 	Module string
@@ -36,7 +41,7 @@ type Result struct {
 // Check checks the program in dir, as Program does, and also indexes what
 // each name refers to, for tools such as the language server.
 func Check(dir string, opts Options) *Result {
-	c := &checker{root: dir, modules: map[string]*module{}, overlay: opts.Overlay, index: &Index{}, all: opts.All}
+	c := &checker{root: dir, modules: map[string]*module{}, overlay: opts.Overlay, index: &Index{}, all: opts.All, carried: opts.Carried}
 	path := ""
 	if opts.Module != "" {
 		rel, err := filepath.Rel(dir, opts.Module)

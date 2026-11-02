@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"eyelang/check"
 	"eyelang/interp"
 	"eyelang/ir"
 	"eyelang/lir"
@@ -144,6 +145,49 @@ func TestHostedJobs(t *testing.T) {
 				t.Errorf("expected %q:\n%s", tc.want, out)
 			}
 		})
+	}
+}
+
+// TestHostedModulesAboveTheRoot runs a program whose eye.toml finds its modules
+// above its directory, as the deployed digest's does: the binary carries them
+// though no module names the one @allow lists, and the runner finds a call in
+// them by the path compiled code names it by.
+func TestHostedModulesAboveTheRoot(t *testing.T) {
+	if _, ok := runnerTargets[HostTarget()]; !ok {
+		t.Skip("the runner isn't built for this machine")
+	}
+	needGo(t)
+	cache, err := exec.Command("go", "env", "GOMODCACHE").Output()
+	if err != nil {
+		t.Skipf("no module cache to build the runner from: %v", err)
+	}
+	t.Setenv("GOMODCACHE", strings.TrimSpace(string(cache)))
+	t.Setenv("GOPROXY", "off")
+	base := t.TempDir()
+	if err := writeTree(base, map[string]string{
+		"deploy/app/eye.toml": "modules = [\"../..\"]\n",
+		"deploy/app/main.eye": "import greet\n\npub fn main() uses {start hello} {\n  let _ = greet.hello.start(\"a\", key: \"a\")\n}\n",
+		"greet/greet.eye": "@port(9) @allow(other)\ncontract Bus {\n  event said: String on \"bus.said\"\n}\n\n" +
+			"pub job hello(name: String) -> String uses {wait} {\n  sleep!(10 ms)\n  log.info(\"said {name}\")\n  \"hello {name}\"\n}\n",
+		"other/other.eye": "pub fn unused() -> Int { 1 }\n",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(base, "deploy/app")
+	prog, diags := check.Program(dir)
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	out := filepath.Join(t.TempDir(), "app")
+	if err := Build(prog, BuildOptions{Out: out, Runner: true}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := exec.Command(out, "--journal", filepath.Join(t.TempDir(), "j")).CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, got)
+	}
+	if !strings.Contains(string(got), "said a") {
+		t.Errorf("the job didn't run to its log line:\n%s", got)
 	}
 }
 
