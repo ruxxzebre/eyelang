@@ -18,8 +18,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Past Go's 10 minutes a package: with nothing cached, the first builds of
+      # the runner fetch zig and Go and compile Go's standard library.
       - name: Test
-        run: go test ./...
+        run: go test -timeout 40m ./...
 
       - name: Build binaries
         env:

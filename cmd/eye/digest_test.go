@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"eyelang/cgen"
 	"eyelang/check"
 	"eyelang/internal/pgtest"
 	"eyelang/interp"
@@ -158,22 +157,26 @@ func TestMorningDigestNative(t *testing.T) {
 	})
 }
 
-// buildNative builds a program as eye build --runner does.
+// buildNative builds a program with eye build --runner, in a process of its
+// own: labServices points this one at a stand-in proxy, and a build on an empty
+// cache must reach the real network to fetch zig and Go.
 func buildNative(t *testing.T, dir string) string {
 	t.Helper()
 	cache, err := exec.Command("go", "env", "GOMODCACHE").Output()
 	if err != nil {
 		t.Skipf("no module cache to build the runner from: %v", err)
 	}
-	t.Setenv("GOMODCACHE", strings.TrimSpace(string(cache)))
-	t.Setenv("GOPROXY", "off")
-	prog, diags := check.Program(dir)
-	if len(diags) > 0 {
-		t.Fatal(diags)
-	}
 	out := filepath.Join(t.TempDir(), "program")
-	if err := cgen.Build(prog, cgen.BuildOptions{Out: out, Runner: true}); err != nil {
-		t.Fatal(err)
+	cmd := exec.Command(os.Args[0], "build", "--runner", "-o", out, dir)
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		if !strings.HasSuffix(strings.ToUpper(name), "_PROXY") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	cmd.Env = append(cmd.Env, "EYE_AS_COMMAND=1", "GOMODCACHE="+strings.TrimSpace(string(cache)), "GOPROXY=off")
+	if got, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("eye build --runner: %v\n%s", err, got)
 	}
 	return out
 }
