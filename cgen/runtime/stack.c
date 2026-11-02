@@ -28,7 +28,12 @@
  * did */
 #define EY_STACK_MARGIN ((size_t)1 << 20)
 
+#ifdef EY_HOSTED
+/* The runner calls compiled code on many threads, one at a time. */
+_Thread_local char *ey_stack_floor;
+#else
 char *ey_stack_floor;
+#endif
 
 _Noreturn void ey_too_deep(const char *at, const char *name) {
 	ey_faultf(at, "recursion too deep: %s was called with %d calls already unfinished; recurse less deeply, or use a loop", name,

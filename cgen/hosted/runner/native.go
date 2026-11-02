@@ -42,6 +42,7 @@ type Program struct {
 	mainResult  int32
 	keyType     int32
 	runType     int32
+	sites       []*interp.NativeSite
 }
 
 type entity struct {
@@ -112,6 +113,13 @@ func Load() (*Program, error) {
 	}
 	for _, e := range unsafe.Slice(p.events, int(p.nevents)) {
 		prog.events = append(prog.events, event{name: C.GoString(e.name), typ: int32(e._type)})
+	}
+	for _, s := range unsafe.Slice(p.sites, int(p.nsites)) {
+		site := &interp.NativeSite{File: C.GoString(s.file), Offset: int(s.offset), End: int(s.end), Kind: C.GoString(s.kind), Durable: s.durable != 0}
+		for _, h := range unsafe.Slice(s.held, int(s.nheld)) {
+			site.Held = append(site.Held, C.GoString(h))
+		}
+		prog.sites = append(prog.sites, site)
 	}
 	return prog, nil
 }
@@ -337,6 +345,19 @@ func (p *Program) step(rt *C.eye_rt, j job, frame C.eye_val, s *C.eye_step) (int
 	args := unsafe.Slice(s.args, int(s.nargs))
 	var params []int32
 	switch s.kind {
+	case C.EYE_STEP_SITE:
+		if s.site < 0 || int(s.site) >= len(p.sites) {
+			return out, fmt.Errorf("the compiled program takes step %d, which it doesn't declare", s.site)
+		}
+		out.Site = p.sites[s.site]
+		for _, a := range args {
+			b, err := encode(rt, 0, a)
+			if err != nil {
+				return out, err
+			}
+			out.Args = append(out.Args, b)
+		}
+		return out, nil
 	case C.EYE_STEP_SLEEP:
 		out.Sleep = time.Duration(s.sleep_ns)
 		return out, nil

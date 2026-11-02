@@ -63,6 +63,7 @@ func Count(p *Program) {
 		c := newCounter(f, p.Layouts)
 		c.analyse()
 		c.rewrite()
+		f.NotOwned = c.notOwned()
 	}
 }
 
@@ -1083,6 +1084,28 @@ func borrowingDef(in Instr) bool {
 		return x.Borrow
 	}
 	return false
+}
+
+// notOwned lists the counted values the code doesn't drop.
+func (c *counter) notOwned() map[*Value]bool {
+	out := map[*Value]bool{}
+	note := func(v *Value) {
+		if v != nil && v.ID < len(c.inf) && c.ls.Counted(v.Ty) {
+			switch c.info(v).cls {
+			case clsBorrowed, clsStatic:
+				out[v] = true
+			}
+		}
+	}
+	for _, p := range c.f.Params {
+		note(p)
+	}
+	for _, b := range c.f.Blocks {
+		for _, in := range b.Instrs {
+			note(dstOf(in))
+		}
+	}
+	return out
 }
 
 func (c *counter) newValue(t ir.Ty) *Value {

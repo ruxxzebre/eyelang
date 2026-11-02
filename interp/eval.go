@@ -49,6 +49,7 @@ type Interp struct {
 	// native runs the entity methods and jobs a compiled program hosts;
 	// nil runs everything in the interpreter (native.go).
 	native Native
+	sites  map[siteKey]ir.Expr // the program's calls, once compiled code named one
 	// funcs is what the interpreter works out once per function, as what
 	// it does with return, break and continue (control.go); units are the
 	// values of the variants without fields, made once.
@@ -489,6 +490,8 @@ func (in *Interp) eval(f *frame, e ir.Expr) Value {
 		}
 	}
 	switch x := e.(type) {
+	case *ir.Held:
+		return x.V
 	case *ir.Lit:
 		return in.lit(x)
 	case *ir.Local:

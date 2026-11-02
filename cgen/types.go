@@ -19,7 +19,8 @@ import (
 
 // objects are the built-in types the runtime still holds as its objects
 // rather than as their layouts say.
-var objects = map[string]bool{"String": true, "Bytes": true, "Key": true, "Zone": true, "Instant": true, "Range": true}
+// A Ref or a Run only the runner reads: it is kept as its encoding.
+var objects = map[string]bool{"String": true, "Bytes": true, "Key": true, "Zone": true, "Instant": true, "Range": true, "Ref": true, "Run": true, "Approval": true}
 
 // layout is the layout of t's values.
 func (g *gen) layout(t ir.Ty) *lir.Layout { return g.lay.Of(rep(t)) }
@@ -296,6 +297,9 @@ var scalarDescs = map[string]string{
 
 // desc is the C expression of t's descriptor, writing one if needed.
 func (g *gen) desc(t ir.Ty) string {
+	if g.opaqueData(t) {
+		return "&ey_t_string" // kept as its encoding, counted as a string is
+	}
 	if d, ok := g.newtypeShowDesc(t); ok {
 		return d
 	}
@@ -429,6 +433,13 @@ func (g *gen) define(d *desc) string {
 			}
 			fmt.Fprintf(&b, "static const ey_variant %s_vs[] = {%s};\n", d.name, strings.Join(vs, ", "))
 			f["variants"] = d.name + "_vs"
+		case t.Entity != nil:
+			fns, fts, _ := lir.RecordFields(t)
+			f["kind"], f["n"], f["name"] = "EY_RECORD", fmt.Sprint(len(fns)), cstring(t.Entity.Name)
+			f["args"], f["names"], f["offs"] = list("f", fts), names("n", fns), offsets("o", fieldOffs(len(fns)))
+			if l.Repr == lir.ReprBox {
+				f["objsize"] = fmt.Sprintf("sizeof(%s)", g.boxOf(d.ty, -1).name)
+			}
 		case t.Decl != nil:
 			fns, fts, ok := lir.RecordFields(t)
 			if !ok {
@@ -456,6 +467,8 @@ func (g *gen) define(d *desc) string {
 		f["kind"], f["name"], f["objsize"] = "EY_FN", `"fn"`, "sizeof(ey_fn)"
 	case *ir.TDyn:
 		f["kind"], f["name"] = "EY_DYN", cstring(t.Trait.Name)
+	case *ir.TVar:
+		// A type nothing pins, as an empty list's element: no value has it.
 	default:
 		g.errorf(ir.Pos{}, "the C back end doesn't support values of type %s yet", d.ty)
 	}

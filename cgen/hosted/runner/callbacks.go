@@ -157,3 +157,35 @@ func eye_go_host(rt *C.eye_rt, fn C.int32_t, args *C.eye_val, nargs C.int32_t, r
 		return err
 	})
 }
+
+//export eye_go_site
+func eye_go_site(rt *C.eye_rt, site C.int32_t, args *C.eye_val, nargs C.int32_t, result *C.eye_val) C.eye_status {
+	return back(rt, func(c *call) error {
+		if int(site) < 0 || int(site) >= len(c.p.sites) {
+			return fmt.Errorf("the compiled program names call %d, which it doesn't declare", site)
+		}
+		var argb [][]byte
+		for _, a := range argList(args, nargs) {
+			b, err := encode(rt, 0, a)
+			if err != nil {
+				return err
+			}
+			argb = append(argb, b)
+		}
+		out, err := c.h.Site(c.p.sites[site], argb)
+		if err != nil {
+			return err
+		}
+		v, err := decode(rt, 0, out)
+		*result = v
+		return err
+	})
+}
+
+//export eye_go_now
+func eye_go_now(rt *C.eye_rt, ns *C.int64_t) C.eye_status {
+	return back(rt, func(c *call) error {
+		*ns = C.int64_t(c.h.Now())
+		return nil
+	})
+}

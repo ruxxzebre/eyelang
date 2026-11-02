@@ -49,6 +49,9 @@ func (b *builder) lowerInstance(in *instance) {
 	switch {
 	case src.Entity != nil && in.lambda == nil:
 		x.self = x.param("state", &ir.TCon{Name: src.Entity.Name, Entity: src.Entity})
+		if src.HasSelf && len(params) > 0 {
+			params = params[1:] // the signature's first is the entity itself
+		}
 	case src.HasSelf && len(params) > 0:
 		x.self = x.param("self", params[0])
 		params = params[1:]
@@ -268,6 +271,50 @@ func nameOf(e ir.Expr) string {
 	return ""
 }
 
+// siteOf is the call a method call runs, which the runner evaluates: a
+// field that holds a function, or a function called on its first argument,
+// is a plain call.
+func siteOf(e *ir.MethodCall) ir.Expr {
+	switch t := e.Target.(type) {
+	case ir.FieldCall:
+		return t.Call
+	case ir.FuncCall:
+		return t.Call
+	}
+	return e
+}
+
+// sited records which expression of the typed IR made v, on the instruction
+// that made it, for what the runner evaluates in a compiled program's place
+// (Site in steps.go).
+func (x *fnb) sited(e ir.Expr, v *Value) *Value {
+	for i := len(x.cur.Instrs) - 1; i >= 0; i-- {
+		if dstOf(x.cur.Instrs[i]) != v {
+			continue
+		}
+		switch in := x.cur.Instrs[i].(type) {
+		case *Call:
+			if in.Site == nil {
+				in.Site = e
+			}
+		case *Builtin:
+			if in.Site == nil {
+				in.Site = e
+			}
+		case *Runtime:
+			if in.Site == nil {
+				in.Site = e
+			}
+		case *CallValue:
+			if in.Site == nil {
+				in.Site = e
+			}
+		}
+		break
+	}
+	return v
+}
+
 func (x *fnb) takeDurable() bool {
 	d := x.durable
 	x.durable = false
@@ -330,16 +377,16 @@ func (x *fnb) expr(e ir.Expr) *Value {
 	case *ir.Ref:
 		return x.ref(e)
 	case *ir.Call:
-		return x.call(e)
+		return x.sited(e, x.call(e))
 	case *ir.MethodCall:
-		return x.methodCall(e)
+		return x.sited(siteOf(e), x.methodCall(e))
 	case *ir.Waiting:
 		x.durable = true
 		v := x.expr(e.Call)
 		x.durable = false
 		return v
 	case *ir.Field:
-		return x.field(e)
+		return x.sited(e, x.field(e))
 	case *ir.Index:
 		return x.index(e)
 	case *ir.Unary:

@@ -41,6 +41,9 @@ func SavedName(t ir.Ty) string { return lir.TypeKey(lir.Resolve(t)) }
 func (g *gen) saver(t ir.Ty) *saver {
 	t = lir.Resolve(t)
 	key := lir.TypeKey(t)
+	if g.opts.Hosted && opaqueType(t) {
+		key = "opaque " + key // a command's result has its type's key
+	}
 	if s, ok := g.savers[key]; ok {
 		return s
 	}
@@ -122,11 +125,16 @@ func (g *gen) saveFunc(s *saver) string {
 		in(&dec, "*(%s *)out = (%s)n;", ct, ct)
 		in(&dec, "return true;")
 	}
+	if g.opts.Hosted && opaqueType(t) {
+		in(&enc, "eys_opaque(b, *(const ey_v *)v);")
+		in(&dec, "return eys_read_opaque(r, (ey_v *)out);")
+		return fmt.Sprintf("void %s(ey_buf *b, const void *v) {\n%s}\n\nbool %s(ey_rd *r, void *out) {\n%s}\n\n", s.enc(), enc.String(), s.dec(), dec.String())
+	}
 	switch x := t.(type) {
 	case *ir.TCon:
 		switch {
 		case x.Entity != nil:
-			cant("a Ref is saved by the runner (ROADMAP 7.6)")
+			g.saveEntity(&enc, &dec, x)
 		case x.Decl != nil && x.Decl.Newtype():
 			v := x.Decl.Variants[0]
 			f := g.saver(lir.VariantFieldTy(t, v, 0))

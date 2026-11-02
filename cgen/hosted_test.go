@@ -18,6 +18,7 @@ import (
 
 	"eyelang/interp"
 	"eyelang/ir"
+	"eyelang/lir"
 )
 
 // counterDir is the program the C stand-in compiles.
@@ -50,6 +51,39 @@ func buildHosted(t *testing.T) (string, *ir.Program) {
 	if err := Compile(files, BuildOptions{Out: lib, Archive: true}); err != nil {
 		t.Fatal(err)
 	}
+	return linkHosted(t, prog, root, work, lib), prog
+}
+
+// buildHostedProgram compiles a program's jobs and entity methods, as eye
+// build --runner does, and links them into the runner.
+func buildHostedProgram(t *testing.T, dir string) (string, *ir.Program) {
+	t.Helper()
+	needGo(t)
+	prog := load(t, dir)
+	root, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	low, errs := lir.Lower(prog)
+	if len(errs) > 0 {
+		t.Fatal(joinErrors(errs))
+	}
+	files, err := Generate(prog, low, Options{Hosted: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	lib := filepath.Join(work, "libprogram.a")
+	if err := Compile(append(Runtime(), files...), BuildOptions{Out: lib, Archive: true, Hosted: true}); err != nil {
+		t.Fatal(err)
+	}
+	return linkHosted(t, prog, root, work, lib), prog
+}
+
+// linkHosted links an archive of the program's C into the runner, with the
+// program's sources carried in the binary.
+func linkHosted(t *testing.T, prog *ir.Program, root, work, lib string) string {
+	t.Helper()
 	sum, err := os.ReadFile(filepath.Join(root, "go.sum"))
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +117,36 @@ func buildHosted(t *testing.T) (string, *ir.Program) {
 	if err := goLink(work, out, HostTarget(), "eyehosted,netgo,osusergo", []string{lib, "-lm"}, env, nil); err != nil {
 		t.Fatal(err)
 	}
-	return out, prog
+	return out
+}
+
+// TestHostedJobs runs a program's tests in the interpreter, with its job and
+// entity methods compiled: what they do must match what `eye test` does with
+// everything interpreted.
+func TestHostedJobs(t *testing.T) {
+	if _, ok := runnerTargets[HostTarget()]; !ok {
+		t.Skip("the runner isn't built for this machine")
+	}
+	for _, tc := range []struct {
+		dir  string
+		want string
+	}{
+		{"testdata/hostjob", "2 tests passed"},
+		// The homelab's workloads: the digest's morning among them, with its
+		// contract operations, its model call and the runs it starts.
+		{"../testdata/lab", "32 tests passed"},
+	} {
+		t.Run(filepath.Base(tc.dir), func(t *testing.T) {
+			exe, _ := buildHostedProgram(t, tc.dir)
+			out, stderr, err := runHosted(context.Background(), exe, []string{"--test", "--dir", tc.dir}, nil)
+			if err != nil {
+				t.Fatalf("%v\n%s\n%s", err, out, stderr)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("expected %q:\n%s", tc.want, out)
+			}
+		})
+	}
 }
 
 // goSources writes the program's sources as a Go file of the main package.

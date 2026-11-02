@@ -27,6 +27,14 @@ type fn struct {
 	// loops are the values a for loop walks with iter.more and iter.next:
 	// the iter that makes one starts a walk, not an Iter value.
 	loops map[*lir.Value]bool
+	// In a program the runner hosts: where a function stops, and the values
+	// the runner holds rather than compiled code (hostgen.go).
+	stops    *stopInfo
+	static   map[*lir.Value]bool
+	opaqueCl map[*lir.Value]bool
+	// shadows are values this function decoded and owns, while the code takes
+	// them as borrowed: it drops them as it leaves.
+	shadows map[*lir.Value]bool
 }
 
 func newFn(g *gen, fs *fileState, f *lir.Func) *fn {
@@ -85,6 +93,9 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 		e.b.WriteString("\t(void)absent;\n")
 	}
 	e.checkDepth()
+	if g.opts.Hosted {
+		e.prepareHosted()
+	}
 	for _, b := range f.Blocks {
 		fmt.Fprintf(&e.b, "b%d:;\n", b.ID)
 		for _, in := range b.Instrs {
@@ -94,6 +105,7 @@ func (g *gen) function(fs *fileState, f *lir.Func) string {
 		e.term(b.Term)
 		e.flush()
 	}
+	e.saves()
 	e.b.WriteString("}\n\n")
 	e.extras()
 	return e.b.String()
@@ -308,6 +320,10 @@ func (e *fn) ptrs(vs []*lir.Value) string {
 }
 
 func (e *fn) instr(in lir.Instr) {
+	if e.stops != nil && lir.Durable(in) {
+		e.step(in)
+		return
+	}
 	switch x := in.(type) {
 	case *lir.At:
 		e.pos = x.Pos
@@ -315,6 +331,10 @@ func (e *fn) instr(in lir.Instr) {
 	case *lir.Const:
 		e.constant(x)
 	case *lir.Move:
+		if e.g.opaqueData(x.Src.Ty) != e.g.opaqueData(x.Dst.Ty) {
+			e.opaqueMove(x)
+			return
+		}
 		e.assign(x.Dst, e.v(x.Src))
 	case *lir.Dup:
 		if st := e.g.dupStmt(x.V.Ty, e.v(x.V)); st != "" {
@@ -365,6 +385,10 @@ func (e *fn) instr(in lir.Instr) {
 	case *lir.MakeMap:
 		e.assign(x.Dst, fmt.Sprintf("ey_map_from(%s, %d, %s, %s)", e.g.desc(x.Dst.Ty), len(x.Keys), e.ptrs(x.Keys), e.ptrs(x.Values)))
 	case *lir.MakeClosure:
+		if e.opaqueCl[x.Dst] {
+			e.opaqueClosure(x)
+			return
+		}
 		e.closure(x.Dst, x.Fn, x.Captures)
 	case *lir.MakeDyn:
 		name, ok := e.g.dynTab[x.Table]
@@ -375,6 +399,10 @@ func (e *fn) instr(in lir.Instr) {
 		e.printf("{ ey_dyn *d_ = ey_alloc(sizeof(ey_dyn) + sizeof(%s), &%s_d); d_->methods = %s; *(%s *)EY_DYN_VAL(d_) = %s; %s = EY_V(d_); }",
 			e.ct(x.Src), name, name, e.ct(x.Src), e.v(x.Src), e.v(x.Dst))
 	case *lir.Field:
+		if e.g.opaqueData(x.Src.Ty) {
+			e.opaqueField(x)
+			return
+		}
 		if kind(x.Src) == "Range" {
 			e.rangeEnd(x)
 			return
@@ -383,12 +411,20 @@ func (e *fn) instr(in lir.Instr) {
 	case *lir.TupleGet:
 		e.field(x.Dst, x.Src, x.Index, false)
 	case *lir.Payload:
+		if e.g.opaqueData(x.Src.Ty) {
+			e.opaquePayload(x)
+			return
+		}
 		if newtype(x.Variant) {
 			e.assign(x.Dst, e.v(x.Src))
 			return
 		}
 		e.assign(x.Dst, e.payload(x.Src, variantIndex(x.Variant), x.Index))
 	case *lir.IsVariant:
+		if e.g.opaqueData(x.Src.Ty) {
+			e.opaqueVariant(x)
+			return
+		}
 		if newtype(x.Variant) {
 			e.assign(x.Dst, "1")
 			return
@@ -413,6 +449,12 @@ func (e *fn) term(t lir.Term) {
 		e.printf("if (%s) goto b%d;", e.v(x.Cond), x.Then.ID)
 		e.printf("goto b%d;", x.Else.ID)
 	case *lir.Return:
+		// The end of a `while true`, which nothing reaches, gives no value.
+		if rt := e.g.resultTy(e.f); x.Value != nil && e.g.layout(x.Value.Ty).Repr == lir.ReprNone && e.g.layout(rt).Repr != lir.ReprNone {
+			e.printf("ey_fault(%s, \"the end of code that gives no value\");", e.at)
+			return
+		}
+		e.dropShadows()
 		// The returned value is owned: the low IR dup'ed it if it had to.
 		if x.Value == nil {
 			e.printf("return 0;")

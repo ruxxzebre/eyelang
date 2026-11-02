@@ -84,6 +84,10 @@ func (e *fn) builtin(in *lir.Builtin) {
 		e.errorf("the C back end doesn't compile durable steps (`!`) yet: jobs run in the Go runner")
 		return
 	}
+	if e.g.opts.Hosted && hostedBuiltin(in.Name) {
+		e.site(in, in.Dst)
+		return
+	}
 	a := bargs(in)
 	arg := func(i int) *lir.Value {
 		if i < len(a) && a[i] != nil && !e.absent(a[i]) {
@@ -228,6 +232,9 @@ func (e *fn) builtin(in *lir.Builtin) {
 		set(fmt.Sprintf("ey_loop_more(%s)", v(0)))
 	case "iter.next":
 		stmt("ey_loop_next(%s, %s);", v(0), out())
+	case "list.elem":
+		// An element a walk knows is there (lir.PrepareSteps).
+		stmt("eyb_list_elem(%s, %s, %s, %s);", v(0), v(1), out(), rt())
 	case "chars":
 		set(fmt.Sprintf("ey_lazy_of(%s, &ey_t_char)", v(0)))
 	case "div", "rem":
@@ -696,6 +703,9 @@ func (e *fn) fixed(in *lir.Builtin, bits int, signed bool, a []*lir.Value) bool 
 // process, and functions as values. Entities, jobs, views, contracts and
 // events are the Go runner's (7.6).
 func (e *fn) runtime(x *lir.Runtime) {
+	if e.g.opts.Hosted && e.hostedRuntime(x) {
+		return
+	}
 	switch x.Op {
 	case "extern.call":
 		f, _ := x.Target.(*ir.Func)

@@ -34,7 +34,8 @@ func Runtime() []File {
 		src, _ := runtimeFS.ReadFile("runtime/" + e.Name())
 		out = append(out, File{Name: e.Name(), Src: src})
 	}
-	return out
+	// What a program the runner hosts includes (runtime/hosted.h).
+	return append(out, File{Name: "eye_host.h", Src: []byte(hostHeader)})
 }
 
 // Targets are the platforms eye build compiles for, as GOOS/GOARCH, and
@@ -83,6 +84,9 @@ type BuildOptions struct {
 	// Archive writes a static library to Out instead of a binary, its
 	// main renamed eye_main for the runner to call.
 	Archive bool
+	// Hosted compiles the runtime for a program the runner hosts: faults
+	// go back to the runner, and the clock is the runner's.
+	Hosted bool
 	// Progress, if set, hears about fetching zig.
 	Progress io.Writer
 }
@@ -161,6 +165,9 @@ func Compile(files []File, opts BuildOptions) error {
 	}
 	if opts.Archive {
 		flags = append(flags, "-Dmain=eye_main")
+	}
+	if opts.Hosted {
+		flags = append(flags, "-DEY_HOSTED")
 	}
 	units := compileUnits(files, !opts.Debug)
 	for _, u := range units {

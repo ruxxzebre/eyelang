@@ -47,6 +47,7 @@ func Main(sources map[string]string, args []string, stdout, stderr io.Writer) in
 	tests := fs.Bool("test", false, "run the program's tests, as eye test does, instead of the program")
 	filter := fs.String("run", "", "with --test, run only the tests whose names hold this text")
 	verbose := fs.Bool("v", false, "with --test, print what each test logged")
+	dir := fs.String("dir", "", "with --test, read the program from this directory, for the recordings its tests read")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -59,6 +60,9 @@ func Main(sources map[string]string, args []string, stdout, stderr io.Writer) in
 		overlay[filepath.Join(root, filepath.FromSlash(p))] = []byte(text)
 	}
 	res := check.Check(root, check.Options{Overlay: overlay})
+	if *dir != "" {
+		res = check.Check(*dir, check.Options{})
+	}
 	if len(res.Diagnostics) > 0 {
 		for _, d := range res.Diagnostics {
 			fmt.Fprintln(stderr, d)

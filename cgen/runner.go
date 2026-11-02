@@ -34,6 +34,9 @@ import (
 //go:embed hosted/*.go
 var hostedFS embed.FS
 
+//go:embed hosted/eye_host.h
+var hostHeader string
+
 // runnerTargets are the targets the runner is built for, and whether each
 // one's binary is linked statically. macOS has no static binaries: one
 // links libSystem, as every Mac program does.

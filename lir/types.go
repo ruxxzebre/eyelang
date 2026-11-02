@@ -10,6 +10,9 @@ import "eyelang/ir"
 // record type.
 func RecordFields(t ir.Ty) ([]string, []ir.Ty, bool) {
 	c, ok := t.(*ir.TCon)
+	if ok && c.Entity != nil {
+		return entityFields(c)
+	}
 	if !ok || c.Decl == nil {
 		return nil, nil, false
 	}
@@ -24,6 +27,24 @@ func RecordFields(t ir.Ty) ([]string, []ir.Ty, bool) {
 	types := make([]ir.Ty, len(names))
 	for i, n := range names {
 		types[i] = fieldTy(t, n)
+	}
+	return names, types, true
+}
+
+// entityFields are the fields of an entity's values, a state or a snapshot:
+// its identity, the version a snapshot has, and its states.
+func entityFields(c *ir.TCon) ([]string, []ir.Ty, bool) {
+	var names []string
+	if c.Entity.ID != nil {
+		names = append(names, c.Entity.ID.Name)
+	}
+	names = append(names, "version")
+	for _, s := range c.Entity.States {
+		names = append(names, s.Name)
+	}
+	types := make([]ir.Ty, len(names))
+	for i, n := range names {
+		types[i] = fieldTy(c, n)
 	}
 	return names, types, true
 }

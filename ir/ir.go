@@ -461,6 +461,13 @@ type (
 		At
 		Value any
 	}
+	// Held is a value the interpreter already has, in a copy of a call it
+	// evaluates for a compiled program (interp/sites.go). The checker never
+	// makes one.
+	Held struct {
+		At
+		V any
+	}
 	// EmptyBraces is `{}`: an empty record, map or set.
 	EmptyBraces struct{ At }
 	// Local reads a slot of the current frame.

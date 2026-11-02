@@ -58,6 +58,12 @@ type NativeHost interface {
 	// built-in such as print, expect or log.info, or a host function of the
 	// standard library such as env.get, by the name a step records it as.
 	Call(fn string, args [][]byte) ([]byte, error)
+	// Site evaluates a call of the program with the values compiled code
+	// gives it (sites.go).
+	Site(site *NativeSite, args [][]byte) ([]byte, error)
+	// Now is the runner's clock, which a test sets, in nanoseconds since the
+	// epoch.
+	Now() int64
 }
 
 // NativeStep is where a native job stopped: at its end, with its result,
@@ -76,6 +82,9 @@ type NativeStep struct {
 	Host   string        `json:",omitempty"`
 	ID     []byte        `json:",omitempty"`
 	Args   [][]byte      `json:",omitempty"`
+	// Site is a step the runner takes by evaluating a call of the program:
+	// any `!` compiled code doesn't do itself.
+	Site *NativeSite `json:",omitempty"`
 	// ResultType is the type of what the step gives back, by the compiled
 	// program's own numbering, for it to read resumed by.
 	ResultType int32 `json:",omitempty"`
@@ -343,6 +352,8 @@ func (in *Interp) runNativeJob(run *jobRun, job *ir.Job, args []argVal) Value {
 // nativeStep takes the step a native job stopped at, or replays it.
 func (in *Interp) nativeStep(run *jobRun, s *NativeStep, at ir.Pos) Value {
 	switch {
+	case s.Site != nil:
+		return in.evalSite(s.Site, s.Args, at)
 	case s.Host != "":
 		// As durable takes a step of a host function: recorded, so a run
 		// that wakes gets what it gave the first time.

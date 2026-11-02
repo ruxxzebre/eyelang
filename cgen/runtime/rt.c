@@ -382,7 +382,15 @@ static jmp_buf test_fault;   /* where a fault in a test goes */
 static ey_buf test_log;      /* what the running test printed and logged */
 static ey_buf test_failure;  /* why it failed */
 
+#ifdef EY_HOSTED
+/* A fault goes back to the runner's call (hosted.c). */
+_Noreturn void eyh_fault(const char *at, const char *msg);
+#endif
+
 _Noreturn void ey_fault(const char *at, const char *msg) {
+#ifdef EY_HOSTED
+	eyh_fault(at, msg);
+#endif
 	if (testing) {
 		test_failure.len = 0;
 		ey_buf_str(&test_failure, at);
@@ -486,11 +494,17 @@ ey_v ey_args(const ey_type *list) {
 	return ey_list_take(list, g_argc, items);
 }
 
+#ifdef EY_HOSTED
+/* The runner's clock, which a test sets (hosted.c). */
+int64_t eyh_now(void);
+static int64_t now_ns(void) { return eyh_now(); }
+#else
 static int64_t now_ns(void) {
 	struct timespec ts;
 	timespec_get(&ts, TIME_UTC);
 	return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
+#endif
 
 ey_v ey_now(void) { return ey_instant_new(now_ns(), NULL); }
 

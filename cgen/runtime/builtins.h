@@ -65,6 +65,12 @@ static inline void eyb_list_index(ey_v l, ey_v i, void *out, const ey_type *opt)
 	ey_dup_at(et, p);
 	ey_some(opt, out, p);
 }
+/* An element that is there, of type et: a walk by index gives it. */
+static inline void eyb_list_elem(ey_v l, ey_v i, void *out, const ey_type *et) {
+	void *p = EY_LIST(l)->items + EY_SMALL_VAL(i) * (int64_t)et->size;
+	ey_dup_at(et, p);
+	memcpy(out, p, (size_t)et->size);
+}
 static inline void eyb_map_get(ey_v mv, const void *k, void *out, const ey_type *opt) {
 	ey_map *m = EY_MAP(mv);
 	int64_t i = ey_map_find(m, k);

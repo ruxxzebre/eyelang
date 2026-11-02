@@ -302,8 +302,17 @@ func object(t ir.Ty) *Layout {
 }
 
 func (ls *Layouts) con(c *ir.TCon) *Layout {
-	if c.Entity != nil || c.Decl == nil && ls.Objects[c.Name] {
+	if c.Decl == nil && ls.Objects[c.Name] {
 		return object(c)
+	}
+	if c.Entity != nil {
+		// A state or a snapshot: a record of its fields (entityFields).
+		names, types, _ := RecordFields(c)
+		slots := make([]Slot, len(names))
+		for i, n := range names {
+			slots[i] = Slot{Name: n, L: ls.shallow(types[i])}
+		}
+		return record(c, slots)
 	}
 	if d := c.Decl; d != nil {
 		switch {

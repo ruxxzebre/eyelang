@@ -18,7 +18,7 @@
 
 /* EYE_HOST_VERSION changes when this interface does; eye_program says which
  * version the program was compiled for, and the runner refuses another. */
-#define EYE_HOST_VERSION 2
+#define EYE_HOST_VERSION 3
 
 /* The runner's side of one call: its run, its transaction and its frame.
  * Compiled code passes it back in every callback and never looks inside. */
@@ -94,6 +94,17 @@ typedef struct {
 	int32_t type;
 } eye_event_info;
 
+/* A call of the program that the runner evaluates for compiled code, found
+ * in the typed IR by where its text is (interp/sites.go). */
+typedef struct {
+	const char *file; /* relative to the program's root */
+	int32_t offset, end;
+	const char *kind; /* "call", "method" or "field" */
+	int32_t durable;  /* it is a `!` step */
+	int32_t nheld;
+	const char *const *held; /* what each value given replaces */
+} eye_site_info;
+
 typedef struct eye_program_info {
 	int32_t version; /* EYE_HOST_VERSION */
 	int32_t ntypes;
@@ -113,6 +124,8 @@ typedef struct eye_program_info {
 	int32_t main_result_type; /* what main returns */
 	int32_t key_type;         /* a key, as eye_go_start takes it */
 	int32_t run_type;         /* a run, as eye_go_start gives it */
+	int32_t nsites;
+	const eye_site_info *sites; /* what eye_go_site and EYE_STEP_SITE name */
 } eye_program_info;
 
 /* ---- a job's step
@@ -126,6 +139,7 @@ typedef enum {
 	EYE_STEP_SLEEP = 1, /* sleep!(…): sleep_ns */
 	EYE_STEP_CALL = 2,  /* Entity(id).method!(args) */
 	EYE_STEP_HOST = 3,  /* a host function that waits or reaches outside: fn(args) */
+	EYE_STEP_SITE = 4,  /* a call of the program the runner evaluates: site, with args */
 } eye_step_kind;
 
 typedef struct eye_step {
@@ -136,6 +150,7 @@ typedef struct eye_step {
 	int32_t method;      /* EYE_STEP_CALL */
 	eye_val id;          /* EYE_STEP_CALL: the entity's identity */
 	int32_t fn;          /* EYE_STEP_HOST: an index into eye_program_info.hosts */
+	int32_t site;        /* EYE_STEP_SITE: an index into eye_program_info.sites */
 	int32_t nargs;
 	const eye_val *args; /* owned by the frame, until the next call on it */
 } eye_step;
@@ -201,5 +216,10 @@ eye_status eye_go_publish(eye_rt *rt, int32_t event, eye_val value);
  * runs at once. One that waits is a step, which eye_step_job returns. */
 eye_status eye_go_host(eye_rt *rt, int32_t fn, eye_val *args, int32_t nargs,
                        eye_val *result);
+/* Evaluates a call of the program with these values, inside the transaction. */
+eye_status eye_go_site(eye_rt *rt, int32_t site, eye_val *args, int32_t nargs,
+                       eye_val *result);
+/* The runner's clock, which a test sets, in nanoseconds since the epoch. */
+eye_status eye_go_now(eye_rt *rt, int64_t *ns);
 
 #endif

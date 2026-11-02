@@ -83,8 +83,12 @@ type Func struct {
 	Blocks []*Block // the first is where it starts
 	// Modes says how it takes each parameter, once Count has decided:
 	// borrowed, owned or mut. Nil before.
-	Modes  []Mode
-	values int
+	Modes []Mode
+	// NotOwned lists the counted values Count made borrowed or static, which
+	// the code never drops: what a compiled job's frame must free for itself
+	// when it reads one back (steps.go). Nil before Count.
+	NotOwned map[*Value]bool
+	values   int
 }
 
 // Mode is how a function takes a parameter of a counted type (Count).
@@ -157,6 +161,7 @@ type (
 		Args    []*Value
 		Mut     []int
 		Durable bool
+		Site    ir.Expr // the call in the typed IR (Site)
 	}
 	// Builtin calls a built-in function, by its name, with named arguments
 	// as written: the back end specialises it by its arguments' types.
@@ -172,6 +177,7 @@ type (
 		Names   []string // each argument's name, "" for a positional one
 		Durable bool
 		InPlace bool
+		Site    ir.Expr
 	}
 	// Runtime asks the runtime: an entity's state or method, a contract's
 	// operation, a job's start, an event, a fake. Target is what it names.
@@ -182,6 +188,7 @@ type (
 		Args    []*Value
 		Names   []string
 		Durable bool
+		Site    ir.Expr
 	}
 	// CallValue calls a closure.
 	CallValue struct {
@@ -189,6 +196,7 @@ type (
 		Callee  *Value
 		Args    []*Value
 		Durable bool
+		Site    ir.Expr
 	}
 	// CallDyn calls a dyn value's method through its table.
 	CallDyn struct {

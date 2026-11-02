@@ -3,8 +3,6 @@ package interp
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
-	"hash/fnv"
 	"math"
 	"math/big"
 	"time"
@@ -349,22 +347,9 @@ func (in *Interp) nameFuncs() {
 				}
 			}
 			for _, fn := range m.Lambdas {
-				add(fn, "lambda "+m.Path+"."+lambdaHash(fn))
+				add(fn, "lambda "+m.Path+"."+ir.LambdaHash(fn))
 			}
 		}
 		in.funcs.names, in.funcs.byName = names, byName
 	})
-}
-
-// lambdaHash names a lambda by its typed IR and the slots its captures go
-// in.
-func lambdaHash(fn *ir.Func) string {
-	var b bytes.Buffer
-	ir.Fprint(&b, fn)
-	for _, c := range fn.Captures {
-		fmt.Fprintf(&b, "capture #%d\n", c.Slot)
-	}
-	sum := fnv.New64a()
-	sum.Write(b.Bytes())
-	return fmt.Sprintf("%016x", sum.Sum64())
 }
