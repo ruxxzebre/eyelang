@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"path/filepath"
+	"strings"
 )
 
 // SiteFile is a file's name in a site, a call a compiled program names for
@@ -22,8 +23,14 @@ func SiteFile(prog *Program, f *File) string {
 		}
 		for _, mf := range m.Files {
 			if mf == f {
+				// Without its leading ../: the root is deeper where the
+				// program was built than in the copy its binary carries.
 				if rel, err := filepath.Rel(prog.Root.Dir, f.Path); err == nil {
-					return filepath.ToSlash(rel)
+					rel = filepath.ToSlash(rel)
+					for strings.HasPrefix(rel, "../") {
+						rel = rel[len("../"):]
+					}
+					return rel
 				}
 			}
 		}
