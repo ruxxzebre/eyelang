@@ -866,10 +866,10 @@ whole-program specialisation, and jobs resuming from saved frames.
 | 7.3 Jobs as state machines, resuming from saved frames (done in the interpreter) | [#76](https://github.com/ruxxzebre/eyelang/issues/76) |
 | 7.4 The C back end and the core runtime (done) | [#77](https://github.com/ruxxzebre/eyelang/issues/77) |
 | 7.5 Reference counting in the low IR: drop after last use, in place when unique (done) | [#78](https://github.com/ruxxzebre/eyelang/issues/78) |
-| 7.6 The runner hosts compiled programs, and the digest runs natively | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
+| 7.6 The runner hosts compiled programs, and the digest runs natively (done) | [#79](https://github.com/ruxxzebre/eyelang/issues/79) |
 | 7.7 Benchmarks against Go: native code faster and leaner, checked (done) | [#110](https://github.com/ruxxzebre/eyelang/issues/110) |
 | 7.8 Native code checked against the interpreter at both levels, and stale numbers fixed (done) | [#111](https://github.com/ruxxzebre/eyelang/issues/111) |
-| 7.9 Core gaps in the C back end: time, toJson, saved types, random, http.get | [#112](https://github.com/ruxxzebre/eyelang/issues/112) |
+| 7.9 Core gaps in the C back end: time, toJson, saved types, random, http.get (done) | [#112](https://github.com/ruxxzebre/eyelang/issues/112) |
 | 7.10 Count the crossings between compiled code and the runner (done) | [#113](https://github.com/ruxxzebre/eyelang/issues/113) |
 | 7.11 Native code faster than Go, and leaner without entities or jobs | [#114](https://github.com/ruxxzebre/eyelang/issues/114) |
 | 7.12 Reuse of matched cells, and a fault frees its region | [#115](https://github.com/ruxxzebre/eyelang/issues/115) |
