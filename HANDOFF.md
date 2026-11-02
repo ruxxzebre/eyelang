@@ -28,6 +28,66 @@ box is ticked, all work turns to compiling and the native port (7.6, then 7.11, 
 the package manager, open question 41 and new features wait for v0.4. Tick a box in the commit
 that finishes it.
 
+## Scope: finish v0.4 (written 2026-11-02, against f5ee304)
+
+**Goal.** Release v0.4: the morning digest runs as a compiled job on the journal and on Postgres.
+That is #79's done-when and v0.4's exit test. This section replaces the order in the next one
+until v0.4 is out.
+
+**Where it stands.** Checked by running `eye build --runner testdata/lab/deploy/digest`: it stops
+at `cgen`'s gate, "the program declares entities, jobs and contracts, which the C back end
+doesn't compile yet". The Go side of hosting and the saved-type encoders exist. A text search
+finds no job lowering in `lir/` or `cgen/`, none of the interface's entry points
+(`eye_program`, `eye_call_method`, `eye_job_frame`, `eye_step_job`) in the code `cgen` writes, and
+no call for contract operations in `cgen/hosted`. So the largest step is still to do, and its size
+is unknown until step 2 starts.
+
+**In scope, in order:**
+
+1. Clean up: confirm no cloud session is still working in `cgen/`, release the stale claim of
+   `eyelang-dev-42`, and bring local `dev` up to `origin/dev`.
+2. Jobs and entities in C: lower a job to a state machine that resumes from a saved frame, as the
+   interpreter does since 7.3, and have `cgen` write the entry points and tables that
+   `cgen/hosted/eye_host.h` declares. Start with `cgen/hosted_test.go`'s hand-written stand-in
+   replaced by generated code.
+3. Contracts and outside calls: decide how a contract operation and `ai.generate` cross into the
+   runner (through `eye_go_host` or a new callback), then build it, with each one a recorded step
+   that replays. A morning makes 38 contract operations, 16 `http.get` and one `ai.generate`.
+4. `eye build --runner` writes the main with the program's sources and the embedded runner, and
+   `cgen`'s gate lifts for entities, jobs and contracts.
+5. Prove it, then close #79 and #112 and update status.md and ROADMAP.md.
+6. The release, once the owner has answered the version question below.
+
+**Done when all of these hold:**
+
+- `eye build --runner testdata/lab/deploy/digest` builds, for linux/amd64 and linux/arm64.
+- The digest's tests give the same results natively as under `eye test`.
+- A native morning completes on the journal and on Postgres, against `cmd/eye/digest_test.go`'s
+  stand-ins, and a process killed while the run waits resumes and finishes without repeating a
+  settled step.
+- Idle memory and resume time are recorded in ROADMAP.md beside the interpreter's.
+- `task check` and CI are green, with the Docker tests.
+
+**Out of scope until v0.4 is out:**
+
+- The rest of 7.13 (maps per key type, strings and `Bytes` as views), 7.11 and 7.12. They follow
+  the release, as "What's next" orders them. The hosting interface passes opaque handles, so
+  later layout changes shouldn't change it.
+- Views and served contracts in native code. The deployed digest declares neither, so the gate
+  keeps refusing them with its message.
+- Compile speed (open question 47), the package manager, open question 41, 6.6 and 6.8.
+- New syntax, including Phase 2 of the failure-paths review. Its Phase 0 changes only docs and may
+  land whenever someone has time.
+
+**Decisions for the owner:**
+
+1. 7.6 before the rest of 7.13, although the checkpoint's 7.13 box is still open. Default: yes,
+   since 7.6 alone stands between `dev` and the release.
+2. The version. v0.3 was never tagged, and its exit tests (6.6, 6.8) are parked until after v0.4.
+   Default: tag v0.4 and say in its notes that those two are still owed.
+3. Whether the digest's first homelab runs were good, which closes phase 5's exit criterion. Reading
+   them needs the cluster, and this repository doesn't say.
+
 ## Native compilation: what comes next, in order
 
 The plan the owner accepted on 2026-10-12 is in
