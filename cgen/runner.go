@@ -57,6 +57,37 @@ exports:
 ...
 `
 
+// frameworkStubs are link-time stubs of the macOS frameworks Go's
+// crypto/x509 imports, which the runner links through its Postgres store.
+// Every Mac has them, but zig ships no macOS frameworks; each stub names
+// the functions Go calls, as libresolv does.
+var frameworkStubs = map[string][]string{
+	"CoreFoundation": {"_CFArrayAppendValue", "_CFArrayCreateMutable", "_CFArrayGetCount", "_CFArrayGetValueAtIndex",
+		"_CFDataCreate", "_CFDataGetBytePtr", "_CFDataGetLength", "_CFDateCreate", "_CFDictionaryGetValueIfPresent", "_CFEqual",
+		"_CFErrorCopyDescription", "_CFErrorGetCode", "_CFNumberGetValue", "_CFRelease",
+		"_CFStringCreateExternalRepresentation", "_CFStringCreateWithBytes"},
+	"Security": {"_SecCertificateCopyData", "_SecCertificateCreateWithData", "_SecPolicyCreateSSL",
+		"_SecTrustCopyCertificateChain", "_SecTrustCreateWithCertificates", "_SecTrustEvaluate",
+		"_SecTrustEvaluateWithError", "_SecTrustSetVerifyDate"},
+}
+
+// writeFrameworkStubs writes frameworkStubs below dir, as -F dir finds them.
+func writeFrameworkStubs(dir string) error {
+	files := map[string]string{}
+	for name, symbols := range frameworkStubs {
+		files[name+".framework/"+name+".tbd"] = fmt.Sprintf(`--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/%s.framework/Versions/A/%s'
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [ %s ]
+...
+`, name, name, strings.Join(symbols, ", "))
+	}
+	return writeTree(dir, files)
+}
+
 // buildRunner links the program's C files into the runner, writing the
 // binary to opts.Out.
 func buildRunner(files []File, opts BuildOptions) error {
@@ -143,7 +174,10 @@ func goLink(dir, out, target, tags string, ldflags, env []string, progress io.Wr
 		if err := os.WriteFile(filepath.Join(sdk, "libresolv.tbd"), []byte(libresolv), 0o644); err != nil {
 			return err
 		}
-		ldflags = append(ldflags, "-L"+sdk)
+		if err := writeFrameworkStubs(sdk); err != nil {
+			return err
+		}
+		ldflags = append(ldflags, "-L"+sdk, "-F"+sdk)
 	}
 	abs, err := filepath.Abs(out)
 	if err != nil {
