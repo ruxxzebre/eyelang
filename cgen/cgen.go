@@ -241,7 +241,7 @@ func (g *gen) unsupportedDecls() {
 	if n := len(kinds); n > 1 {
 		list = strings.Join(kinds[:n-1], ", ") + " and " + kinds[n-1]
 	}
-	g.errorf(first, "the program declares %s, which the C back end doesn't compile yet (ROADMAP 7.6 hosts them in the Go runner); `eye run` and `eye test` run this program", list)
+	g.errorf(first, "the program declares %s, which the C back end doesn't compile yet without the Go runner: `eye build --runner` hosts them, and `eye run` and `eye test` run this program", list)
 }
 
 // roots finds the instances the binary starts from: the own modules' tests,

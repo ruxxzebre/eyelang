@@ -8,8 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -149,20 +147,31 @@ func TestHostedJobs(t *testing.T) {
 	}
 }
 
-// goSources writes the program's sources as a Go file of the main package.
-func goSources(sources map[string]string) string {
-	var paths []string
-	for p := range sources {
-		paths = append(paths, p)
+// TestBuildHostedRunner builds as `eye build --runner` does, the runner's
+// source coming from inside eye, and runs the program's tests in the binary.
+func TestBuildHostedRunner(t *testing.T) {
+	if _, ok := runnerTargets[HostTarget()]; !ok {
+		t.Skip("the runner isn't built for this machine")
 	}
-	sort.Strings(paths)
-	var b strings.Builder
-	b.WriteString("package main\n\n// sources are the program's files, which the runner checks when it starts.\nvar sources = map[string]string{\n")
-	for _, p := range paths {
-		fmt.Fprintf(&b, "\t%s: %s,\n", strconv.Quote(p), strconv.Quote(sources[p]))
+	needGo(t)
+	cache, err := exec.Command("go", "env", "GOMODCACHE").Output()
+	if err != nil {
+		t.Skipf("no module cache to build the runner from: %v", err)
 	}
-	b.WriteString("}\n")
-	return b.String()
+	t.Setenv("GOMODCACHE", strings.TrimSpace(string(cache)))
+	t.Setenv("GOPROXY", "off")
+	prog := load(t, "testdata/hostjob")
+	out := filepath.Join(t.TempDir(), "hostjob.test")
+	if err := Build(prog, BuildOptions{Out: out, Runner: true, Tests: true}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := exec.Command(out).CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, got)
+	}
+	if !strings.Contains(string(got), "2 tests passed") {
+		t.Errorf("expected every test to pass:\n%s", got)
+	}
 }
 
 // TestHostedProgram runs a compiled program in the runner: main, the

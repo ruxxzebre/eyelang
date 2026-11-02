@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"eyelang/cgen"
 	"eyelang/check"
 	"eyelang/internal/pgtest"
 	"eyelang/interp"
@@ -82,6 +84,97 @@ func TestMorningDigestOnPostgres(t *testing.T) {
 		_ = p.Process.Kill()
 		_ = p.Wait()
 	}
+}
+
+// The exit test of v0.4 (ROADMAP.md, 7.6): the same morning, with its jobs and
+// entity methods compiled and linked into the runner by eye build --runner. It
+// holds compiled code to what TestMorningDigestOnPostgres holds the interpreter
+// to: killed while the model writes, the run asks again after the restart, and
+// the digest goes out once.
+func TestMorningDigestNative(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the runner")
+	}
+	lab := labServices(t)
+	dir := labWithMain(t)
+	exe := buildNative(t, dir)
+	run := func(args ...string) (*exec.Cmd, *bytes.Buffer) {
+		t.Helper()
+		cmd := exec.Command(exe, args...)
+		cmd.Dir = dir
+		var out bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &out
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill() })
+		return cmd, &out
+	}
+	morning := func(t *testing.T, store []string, read func() (interp.Store, error)) {
+		lab.reset()
+		lab.holdModel()
+		first, out := run(store...)
+		lab.waitModelCalled(t, 1, out)
+		if err := first.Process.Signal(syscall.SIGKILL); err != nil {
+			t.Fatal(err)
+		}
+		_ = first.Wait()
+		// What the killed process left is compiled code's: a saved frame.
+		st, err := read()
+		if err != nil {
+			t.Fatal(err)
+		}
+		native := false
+		for _, id := range st.Runs() {
+			data, _ := st.Run(id)
+			native = native || bytes.Contains(data, []byte(`"Native":{"Frame"`))
+		}
+		if !native {
+			t.Error("no run holds a native frame: the jobs didn't run compiled")
+		}
+		lab.releaseModel()
+		second, out := run(store...)
+		done := waitForMorning(t, read, dir, out)
+		if !strings.HasPrefix(done.Result, "Ok(Accepted(") {
+			t.Errorf("morning returned %s; the run said:\n%s", done.Result, out)
+		}
+		if n := lab.modelCalls(); n != 2 {
+			t.Errorf("the model was asked %d times, want 2: once before the kill, once after", n)
+		}
+		if keys := lab.notifyKeys(); len(keys) != 2 || keys[0] != "ireland-2026-10-12" || keys[1] != keys[0] {
+			t.Errorf("Notify got sends with keys %v, want the same key twice: the stand-in loses the first reply", keys)
+		}
+		_ = second.Process.Kill()
+		_ = second.Wait()
+	}
+	t.Run("journal", func(t *testing.T) {
+		journal := filepath.Join(dir, ".eye", "journal")
+		morning(t, []string{"--journal", journal}, func() (interp.Store, error) { return interp.ReadJournal(journal) })
+	})
+	t.Run("postgres", func(t *testing.T) {
+		url, _ := pgtest.Own(t)
+		morning(t, []string{"--store", url}, func() (interp.Store, error) { return interp.ReadPostgres(url) })
+	})
+}
+
+// buildNative builds a program as eye build --runner does.
+func buildNative(t *testing.T, dir string) string {
+	t.Helper()
+	cache, err := exec.Command("go", "env", "GOMODCACHE").Output()
+	if err != nil {
+		t.Skipf("no module cache to build the runner from: %v", err)
+	}
+	t.Setenv("GOMODCACHE", strings.TrimSpace(string(cache)))
+	t.Setenv("GOPROXY", "off")
+	prog, diags := check.Program(dir)
+	if len(diags) > 0 {
+		t.Fatal(diags)
+	}
+	out := filepath.Join(t.TempDir(), "program")
+	if err := cgen.Build(prog, cgen.BuildOptions{Out: out, Runner: true}); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 // waitForMorning waits until the morning run is done, and returns it.

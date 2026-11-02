@@ -329,7 +329,9 @@ bool eys_read_instant(ey_rd *r, ey_v *out) {
 	int64_t n;
 	if (!eys_read_tagged(r, 'W', &ns) || !eys_read_text(r, &s, &n)) return false;
 	const ey_zone *z = NULL;
-	if (n > 0 && !eys_text_is(s, n, "UTC")) {
+	/* The runner's clock reads the machine's zone: the instant is the same,
+	 * and compiled code has no table for "Local". */
+	if (n > 0 && !eys_text_is(s, n, "UTC") && !eys_text_is(s, n, "Local")) {
 		/* a zone the program names: the back end wrote its table */
 		ey_v name = ey_str_new(s, n, &ey_t_string);
 		z = ey_zone_find("a saved Instant", name);

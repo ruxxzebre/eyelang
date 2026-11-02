@@ -100,13 +100,17 @@ func Build(prog *ir.Program, opts BuildOptions) error {
 	if len(errs) > 0 {
 		return joinErrors(errs)
 	}
-	files, err := Generate(prog, low, Options{Tests: opts.Tests})
+	hosted := opts.Runner && declaresHosted(prog)
+	files, err := Generate(prog, low, Options{Tests: opts.Tests && !hosted, Hosted: hosted})
 	if err != nil {
 		return err
 	}
 	files = append(Runtime(), files...)
 	if opts.EmitC != "" {
 		return WriteFiles(opts.EmitC, files)
+	}
+	if hosted {
+		return buildHostedRunner(prog, files, opts)
 	}
 	if opts.Runner {
 		return buildRunner(files, opts)
