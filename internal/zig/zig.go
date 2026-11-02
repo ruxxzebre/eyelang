@@ -61,7 +61,8 @@ func Path(progress io.Writer) (string, error) {
 		root = filepath.Join(cache, "eyelang", "zig")
 	}
 	dir := filepath.Join(root, Version)
-	exe := filepath.Join(dir, strings.TrimSuffix(strings.TrimSuffix(a.file, ".tar.xz"), ".zip"), "zig")
+	folder := strings.TrimSuffix(strings.TrimSuffix(a.file, ".tar.xz"), ".zip")
+	exe := filepath.Join(dir, folder, "zig")
 	if runtime.GOOS == "windows" {
 		exe += ".exe"
 	}
@@ -74,13 +75,26 @@ func Path(progress io.Writer) (string, error) {
 	if progress != nil {
 		fmt.Fprintf(progress, "zig: fetching zig %s for %s into %s\n", Version, plat, dir)
 	}
-	archive := filepath.Join(dir, a.file+".part")
-	defer os.Remove(archive)
+	// Unpacked beside the cache and moved into place, so that two builds
+	// fetching at once, as the test packages do on an empty cache, neither
+	// share a download nor see half a toolchain.
+	tmp, err := os.MkdirTemp(dir, "unpack-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmp)
+	archive := filepath.Join(tmp, a.file+".part")
 	if err := download("https://ziglang.org/download/"+Version+"/"+a.file, archive, a.sha256); err != nil {
 		return "", err
 	}
-	if err := unpack(archive, a.file, dir); err != nil {
+	if err := unpack(archive, a.file, tmp); err != nil {
 		return "", err
+	}
+	if err := os.Rename(filepath.Join(tmp, folder), filepath.Join(dir, folder)); err != nil {
+		if _, statErr := os.Stat(exe); statErr != nil {
+			return "", err
+		}
+		// Another build put it there first.
 	}
 	if _, err := os.Stat(exe); err != nil {
 		return "", fmt.Errorf("unpacked %s, but %s isn't there", a.file, exe)
