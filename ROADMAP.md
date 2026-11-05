@@ -1,8 +1,9 @@
 # Eyelang 2 roadmap
 
-**Status, 2026-11-02:** v0.4.0 is released (the digest runs natively; tag `v0.4.0`), after v0.2.0
-(phase 5, 2026-10-12) and v0.1.0 (phases 0–4, 2026-10-10). No v0.3 was tagged: its two exit tests,
-6.6 and 6.8, are still owed, as is phase 5's. Development and releases happen on `dev`; `main`
+**Status, 2026-11-05:** v0.4.0 is released (the digest runs natively; tag `v0.4.0`), after v0.2.0
+(phase 5, 2026-10-12) and v0.1.0 (phases 0–4, 2026-10-10). Phase 5's exit criterion was met on
+2026-11-05, when the digest's first morning on v0.4.0 ended `Ok(Accepted(…))` in the homelab. No
+v0.3 was tagged: its two exit tests, 6.6 and 6.8, are still owed. Development and releases happen on `dev`; `main`
 stays at Eyelang 1 until that changes.
 
 What gets built, in what order, and how we know each part is done. The language itself is defined
@@ -23,23 +24,13 @@ those can't say, so it stays short: what is owed, and the order. Change it in th
 changes it, and set the date below when you check it; `task next -- --check`, part of
 `task check`, fails when it was checked before the last release or names a closed issue.
 
-Checked: 2026-11-02
+Checked: 2026-11-05
 
 Start with [HANDOFF.md](HANDOFF.md): the scope that finishes v0.4, the digest in the homelab, and
 findings that have no issue yet.
 
 **Owed by releases already made**
 
-- Phase 5's exit criterion, "the morning digest runs in the lab." The digest runs in the homelab
-  on Postgres, in shadow mode beside the TypeScript digest (session eyelang-af; HANDOFF.md says
-  what is deployed and how to read its runs). The criterion closes after one good morning run;
-  replacing the TypeScript digest is the user's decision. **As of 2026-11-02 no morning has ended
-  `Ok(Accepted(…))`,** read from the cluster: of 45 runs on the pin 89af4f7, some mornings were
-  delivered but ended `StillPending`, since the digest treated Notify's `Pending` as final, and
-  the rest ended `WriteFailed(ProviderError)` with status 0, whose text `eye runs` cuts off on
-  that pin. Fixed on `dev`: `deliver` sends again with its key, and a model call no longer has
-  `http.get`'s 60 s limit, which is the likely cause of status 0 but not confirmed. It closes once
-  the pin moves past them and a morning ends well.
 - Every carry-over task (C.1 to C.11) is done: the exit tests that closed tasks of v0.1 and v0.2
   left unmet are met, the last being 10,000 waiting tasks within a memory budget (C.6) and every
   SPECS.md example passing the checker (C.7).
@@ -82,8 +73,7 @@ or real agents (6.6, 6.8), and new syntax or library features, which go to the o
 unless the native work needs them. Bugs are fixed whenever they are found.
 
 After the checkpoint, in order: 7.6 (the runner hosts compiled programs: the morning digest runs
-natively on the journal and on Postgres; v0.4's exit test, then the release; built on 2026-11-02,
-its Postgres half still to run), 7.11 (faster than
+natively on the journal and on Postgres; done, and released as v0.4.0), 7.11 (faster than
 Go on every benchmark: maps per key type, strings and `Bytes` as views, the rest of 7.13), 7.12
 (reuse of a matched cell, and a failing test frees what it allocated).
 
@@ -98,9 +88,9 @@ Go on every benchmark: maps per key type, strings and `Bytes` as views, the rest
 2. Runtime at scale (R.1 to R.7, under the phases) is done. The last, R.7, keeps a 48-byte
    handle per waiting run and loads its record when it wakes: 20,000 waiting runs cost about
    7 MB above an idle runner instead of 32, and a restart reads no record.
-3. The digest in the homelab: read its first runs and fix what they show (HANDOFF.md), then move
-   its pin to the latest `dev`, which brings checkpoints (`trains.watch` stops growing) and the
-   image layout of C.11 (the program is `/lab/deploy/digest`).
+3. The digest in the homelab runs v0.4.0 (53ede52) since 2026-11-04, and its first morning on it
+   ended well. Open there (HANDOFF.md): the end time `eye runs` gives a run that never waits, and
+   whether it replaces the TypeScript digest, which is the user's decision.
 4. Phase 6 (v0.3): everything but 6.6 and 6.8 is done; both need what isn't here (6.6 the
    homelab repository, 6.8 real coding-agent sessions), and both are the phase's exit test. `eye gen go|ts` (6.4) writes the types, clients and server stubs
    that 6.6 needs for Notify in the homelab. `eye gen policy` (6.5) writes plain Kubernetes NetworkPolicy, with

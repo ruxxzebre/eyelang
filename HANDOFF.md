@@ -13,9 +13,8 @@ still open with no worktree, it was never merged: start it again from its issue.
 
 ## Pick up first
 
-1. **After the digest's first morning run in the homelab** (due 2026-10-12 07:40 Europe/Dublin), read it and
-   fix what it shows, as "The digest in the homelab" below says. One good run closes phase 5's
-   exit criterion.
+1. **The digest's mornings in the homelab:** the first good one came on 2026-11-05, which met
+   phase 5's exit criterion. "The digest in the homelab" below says what is still open there.
 2. **After every push to `dev`, check CI** (`gh run list --branch dev --workflow ci.yml --limit
    3`, or the GitHub Actions list for `ci.yml`). A local `task check` isn't enough: CI runs the
    Docker tests (`EYE_TEST_DOCKER=1`) and the VS Code window test, which a laptop or a cloud
@@ -52,8 +51,40 @@ Postgres. What is next is the speed work ROADMAP's "What's next" orders, and the
 `Ok(Accepted(…))`. The article still reached Telegram on the `StillPending` mornings, and those are
 fixed on `dev` (`sent` in digest.eye). Mornings ending `WriteFailed(ProviderError)` with status 0
 are probably the 60 s limit a model call shared with `http.get`, also fixed on `dev`. Nobody has
-read their full text, which `eye runs` cuts off on that pin. Moving the pin is the next step there,
-and is the owner's to approve: it changes what runs in the cluster.
+read their full text, which `eye runs` cuts off on that pin. The mornings of 3 and 4 November ended
+the same `WriteFailed` way.
+
+**The pin moved to 53ede52 (v0.4.0) on 2026-11-04, reported by the homelab session.** The owner
+approved it, including what goes beyond the pin: Go 1.27.2 overridden in `ci/foundation/eyelang.nix`
+for this image only, every lab module folder copied into `/program`, and `-X main.version=<rev>` on
+the binary. Stacks commit `22c49eacf`. The pod runs `eye` built from 53ede52 and the store is at
+schema 3.
+
+**The first morning on v0.4.0, 2026-11-05, ended well, which met phase 5's exit criterion.** Read
+from the cluster by the homelab session:
+
+- `#51 digest.morning` ended `Ok(Accepted(…))`, and `#52 digest.write` ended `Ok`, spending 39,198
+  tokens in and 2,711 out ($0.0761).
+- Notify answered `Pending` once. `sent` waited 30 s and sent again with the same key, which gave
+  `Accepted`, and Notify holds one message for it.
+- The Telegram gateway sent it as message 7542 at 08:05:54 UTC, after quiet hours held it until
+  08:00, and the owner saw it. Notify's `updated`, 08:10:43, is when Notify read the result back.
+- No status 0 today, but one morning doesn't show that the 15-minute limit is why.
+- The TypeScript digest (`digest.ireland`) has sent nothing through Notify since at least 31
+  October. Replacing it is the owner's decision.
+- **Bug found, not fixed:** `eye runs` gave #52 an end 152 ms after its start, for about 112 s of
+  work. `run.Ended` reads `rt.now` (`interp/runtime.go:1001`), which is set only when a stretch of a
+  run begins (`interp/runtime.go:936`), so a run that never waits ends when it started. Check
+  whether `@deadline`, which reads the same clock, is affected too.
+
+- **The store's upgrade is one way:** 89af4f7 refuses schema 3. Rollback is restoring
+  `/home/nesko/eyelang-v040/first-20261104T191342Z.sql`, which loses later runs, along with moving
+  the pin back. A rehearsal on scratch copies passed both ways, including this restore.
+- **Disk:** `/srv/stacks-ssd` had about 4.5 GiB of margin before eviction and image GC was failing,
+  which could affect the morning's run. Nobody has fixed this.
+- **Owed here:** nothing in this repository tests the upgrade from 1 to 3 on a store 89af4f7 wrote;
+  `TestPostgresStoreFromBeforeSummariesOpens` covers 2 to 3. v0.4.0's notes don't mention the
+  one-way upgrade. Avoid restarting the pod near 07:40 Dublin time.
 
 **Done when all of these hold:**
 
@@ -82,8 +113,7 @@ and is the owner's to approve: it changes what runs in the cluster.
    since 7.6 alone stands between `dev` and the release.
 2. The version. v0.3 was never tagged, and its exit tests (6.6, 6.8) are parked until after v0.4.
    Default: tag v0.4 and say in its notes that those two are still owed.
-3. Whether the digest's first homelab runs were good, which closes phase 5's exit criterion. Reading
-   them needs the cluster, and this repository doesn't say.
+3. Done: the digest's first good homelab morning, on 2026-11-05, met phase 5's exit criterion.
 
 ## Native compilation: what comes next, in order
 
@@ -190,8 +220,7 @@ Session eyelang-af did the cluster work in the stacks-homelab repository.
   - the Telegram message arrived.
 
   Then move the pin to the latest dev, which adds the model-call details in `eye runs` (111a64e).
-- Phase 5's exit criterion ("the morning digest runs in the lab") closes after one good morning
-  run. Then ROADMAP's "Owed by releases already made" drops that item.
+- Done: phase 5's exit criterion ("the morning digest runs in the lab") was met on 2026-11-05.
 - Replacing the TypeScript digest, instead of running beside it, is the user's decision.
 - **Digest fix owed:** a "Sources not read" line wraps its error twice and escapes it, as in
   `NoAnswer(reason: "NoAnswer(reason: \"Get …\")")`. It should read like
