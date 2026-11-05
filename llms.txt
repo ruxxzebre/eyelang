@@ -1,0 +1,15 @@
+# Eyelang
+
+> Eyelang lets you write a program that runs for days (waits for people, keeps state, calls services that fail) as plainly as a script, and the compiler catches the mistakes such programs usually ship with.
+
+Eyelang is a statically typed language. Jobs pause on `!` steps and survive restarts, entities own their state, contracts type the calls to other services, and tests run days of behaviour on a fake clock with recorded replies. Install it from source (https://github.com/ruxxzebre/eyelang, branch `dev`). Before writing Eyelang, read "Writing Eyelang": it lists the rules the checker enforces and the errors you will meet, with their fixes. The links below are paths on this site; the Markdown sources of every page are in the repository's `docs/` directory.
+
+## Docs
+
+- [Writing Eyelang](/writing-eyelang): a cheat sheet for coding agents: syntax, the four marks (`!`, `mut`, `uses`, `dyn`), jobs, contracts, tests, and common errors with their fixes
+- [Quickstart](/quickstart): install `eye` and run, test and check a first program
+- [A tour](/reference/language/a-tour): one file that touches most of the language
+- [Language reference](/reference/language/): the rules of the language, one page per topic; when a guide and the reference disagree, the reference is right
+- [API reference](/reference/api/): every public declaration of the standard library, with its signature
+- [The eye command](/reference/cli): every command and flag
+- [What runs today](/reference/status): how much of each feature parses, checks and runs
